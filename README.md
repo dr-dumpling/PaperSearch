@@ -8,7 +8,7 @@ It is the open version by default: once installed it searches and downloads open
 
 ![Node.js](https://img.shields.io/badge/node.js->=18.0.0-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Version](https://img.shields.io/badge/version-0.4.1-blue.svg)
+![Version](https://img.shields.io/badge/version-0.4.2-blue.svg)
 [![LinuxDo](https://img.shields.io/badge/LinuxDo-community-1f6feb)](https://linux.do)
 
 [How it works](#how-it-works) | [Quick start](#quick-start) | [Two ways to download](#two-ways-to-download) | [Search sources](#search-sources) | [Configuration](#configuration) | [Agent Skill](#agent-skill) | [Commands](#commands) | [Troubleshooting](#troubleshooting)

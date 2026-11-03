@@ -5,7 +5,10 @@ const { readFileSync } = require("node:fs");
 
 if (workerData?.paperSearchPdfFirstPage === true) {
   const parse = require("pdf-parse/lib/pdf-parse.js");
-  parse(readFileSync(workerData.filePath), { max: workerData.maxPages || 1 })
+  // A plain Uint8Array, not the Buffer: in a worker on Node 24 pdf-parse fails on
+  // a Buffer ("bad XRef entry"), and every PDF would read as unreadable.
+  const file = readFileSync(workerData.filePath);
+  parse(new Uint8Array(file.buffer, file.byteOffset, file.byteLength), { max: workerData.maxPages || 1 })
     .then((result) => {
       const text =
         typeof result.text === "string"

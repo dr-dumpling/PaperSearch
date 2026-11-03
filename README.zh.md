@@ -8,7 +8,7 @@ PaperSearch 是给 AI 工具和终端用的学术文献命令 `paper-search`，�
 
 ![Node.js](https://img.shields.io/badge/node.js->=18.0.0-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Version](https://img.shields.io/badge/version-0.4.1-blue.svg)
+![Version](https://img.shields.io/badge/version-0.4.2-blue.svg)
 [![LinuxDo](https://img.shields.io/badge/LinuxDo-community-1f6feb)](https://linux.do)
 
 [整体逻辑](#整体逻辑) | [快速开始](#快速开始) | [两种下载方式](#两种下载方式) | [检索来源](#检索来源) | [配置](#配置) | [Agent Skill](#agent-skill) | [命令](#命令) | [排障](#排障)
