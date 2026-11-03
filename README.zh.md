@@ -204,7 +204,9 @@ paper-search skills update --targets claude
 
 ## 项目来源
 
-感谢 [LinuxDo](https://linux.do) 社区，命令 + Skill 的路线和工作流改进来自社区交流与开源分享。本项目参考了 [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp) 的思路，并改成独立的命令行工具；机构下载后端从 scansci-pdf 裁出，见 `carsi/NOTICE`。
+- 感谢 [LinuxDo](https://linux.do) 社区：命令 + Skill 的路线和工作流改进来自社区交流与开源分享。
+- [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp)：本项目参考了它的思路，并改成独立的命令行工具。
+- [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf)（MIT）：机构下载后端（`carsi/`）由它裁出，只保留机构访问这一段（CARSI 等联盟登录、出版社网站抓取、会话复用、PDF 捕获），再逐家补充出版社规则；原项目的版权声明保留在 `carsi/NOTICE`。
 
 ## License
 

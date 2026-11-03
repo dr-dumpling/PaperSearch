@@ -204,7 +204,9 @@ Some sources are subject to platform terms, institutional subscriptions or local
 
 ## Origins
 
-Thanks to the [LinuxDo](https://linux.do) community, where the command-plus-Skill approach and workflow improvements came from discussion and open sharing. The project draws on ideas from [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp), reworked into a standalone command; the institutional download backend was carved out of scansci-pdf, see `carsi/NOTICE`.
+- Thanks to the [LinuxDo](https://linux.do) community, where the command-plus-Skill approach and workflow improvements came from discussion and open sharing.
+- [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp): the project draws on its ideas, reworked into a standalone command.
+- [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf) (MIT): the institutional download backend (`carsi/`) was carved out of it, keeping only the institutional access part (CARSI and other federation sign-in, publisher site capture, session reuse, PDF capture), with publisher rules added one by one since; its copyright notice is kept in `carsi/NOTICE`.
 
 ## License
 
