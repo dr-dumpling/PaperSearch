@@ -2,40 +2,10 @@ import { getGenericPlatformToolDescriptors } from '../registry/platformMetadata.
 import { SEARCH_SEMANTIC_SNIPPETS_TOOL } from '../capabilities/body-snippet-search/tools.js';
 import { GET_PAPER_CITATIONS_TOOL, GET_PAPER_REFERENCES_TOOL } from '../capabilities/citation-expansion/tools.js';
 import { QUERY_JOURNAL_METRICS_TOOL } from '../capabilities/journal-metrics/tools.js';
-import { DOWNLOAD_PAPER_TOOL, DOWNLOAD_WITH_FALLBACK_TOOL } from '../capabilities/pdf-discovery/tools.js';
+import { DOWNLOAD_BATCH_TOOL, DOWNLOAD_PAPER_TOOL, DOWNLOAD_WITH_FALLBACK_TOOL } from '../capabilities/pdf-discovery/tools.js';
 import { GET_PAPER_BY_DOI_TOOL, SEARCH_PAPERS_TOOL } from '../capabilities/metadata-search/tools.js';
 const BASE_TOOLS = [
     SEARCH_PAPERS_TOOL,
-    {
-        name: 'search_arxiv',
-        description: 'Search academic papers specifically from arXiv preprint server',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                query: { type: 'string', description: 'Search query string' },
-                maxResults: {
-                    type: 'number',
-                    minimum: 1,
-                    maximum: 50,
-                    description: 'Maximum number of results to return'
-                },
-                category: { type: 'string', description: 'arXiv category filter (e.g., cs.AI, physics.gen-ph)' },
-                author: { type: 'string', description: 'Author name filter' },
-                year: { type: 'string', description: 'Year filter (e.g., "2023", "2020-2023")' },
-                sortBy: {
-                    type: 'string',
-                    enum: ['relevance', 'date', 'citations'],
-                    description: 'Sort results by field'
-                },
-                sortOrder: {
-                    type: 'string',
-                    enum: ['asc', 'desc'],
-                    description: 'Sort order: ascending or descending'
-                }
-            },
-            required: ['query']
-        }
-    },
     {
         name: 'search_webofscience',
         description: 'Search academic papers from Web of Science database',
@@ -190,7 +160,7 @@ const BASE_TOOLS = [
     DOWNLOAD_PAPER_TOOL,
     {
         name: 'search_google_scholar',
-        description: 'Search Google Scholar for academic papers using web scraping',
+        description: 'Search Google Scholar for academic papers using best-effort HTML parsing. Scholar may require low request rates or an authorized proxy.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -319,17 +289,6 @@ const BASE_TOOLS = [
                     enum: ['Journal', 'Book', 'Chapter'],
                     description: 'Publication type filter'
                 }
-            },
-            required: ['query']
-        }
-    },
-    {
-        name: 'search_wiley',
-        description: 'DEPRECATED: Wiley TDM API does not support keyword search. Use search_crossref to find Wiley articles, then use download_paper with platform="wiley" to download PDFs by DOI.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                query: { type: 'string', description: 'This tool is deprecated. Use search_crossref instead.' }
             },
             required: ['query']
         }
@@ -476,7 +435,8 @@ const BASE_TOOLS = [
             required: ['query']
         }
     },
-    DOWNLOAD_WITH_FALLBACK_TOOL
+    DOWNLOAD_WITH_FALLBACK_TOOL,
+    DOWNLOAD_BATCH_TOOL
 ];
 const GENERIC_SEARCH_PROPERTIES = {
     query: { type: 'string', description: 'Search query string' },

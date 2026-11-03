@@ -5,25 +5,14 @@ import { SearchSemanticSnippetsSchema } from '../capabilities/body-snippet-searc
 import { CitationLookupSchema } from '../capabilities/citation-expansion/schemas.js';
 import { GetPaperByDoiSchema, SearchPapersSchema } from '../capabilities/metadata-search/schemas.js';
 import { QueryJournalMetricsSchema } from '../capabilities/journal-metrics/schemas.js';
-import { DownloadPaperSchema, DownloadWithFallbackSchema } from '../capabilities/pdf-discovery/schemas.js';
+import { DownloadBatchSchema, DownloadPaperSchema, DownloadWithFallbackSchema } from '../capabilities/pdf-discovery/schemas.js';
 export { CitationLookupSchema };
-export { DownloadPaperSchema, DownloadWithFallbackSchema };
+export { DownloadBatchSchema, DownloadPaperSchema, DownloadWithFallbackSchema };
 export { GetPaperByDoiSchema, SearchPapersSchema };
 export { QueryJournalMetricsSchema };
 export { SearchSemanticSnippetsSchema };
 const SortBySchema = z.enum(['relevance', 'date', 'citations']);
 const SortOrderSchema = z.enum(['asc', 'desc']);
-export const SearchArxivSchema = z
-    .object({
-    query: z.string().min(1),
-    maxResults: z.number().int().min(1).max(50).optional().default(10),
-    category: z.string().optional(),
-    author: z.string().optional(),
-    year: z.string().optional(),
-    sortBy: SortBySchema.optional(),
-    sortOrder: SortOrderSchema.optional()
-})
-    .strip();
 export const SearchWebOfScienceSchema = z
     .object({
     query: z.string().min(1),
@@ -115,11 +104,6 @@ export const SearchSpringerSchema = z
     type: z.enum(['Journal', 'Book', 'Chapter']).optional()
 })
     .strip();
-export const SearchWileySchema = z
-    .object({
-    query: z.string().min(1)
-})
-    .strip();
 export const SearchScopusSchema = z
     .object({
     query: z.string().min(1),
@@ -199,8 +183,6 @@ export function parseToolArgs(toolName, args) {
     switch (toolName) {
         case 'search_papers':
             return SearchPapersSchema.parse(args);
-        case 'search_arxiv':
-            return SearchArxivSchema.parse(args);
         case 'search_webofscience':
             return SearchWebOfScienceSchema.parse(args);
         case 'search_pubmed':
@@ -236,8 +218,6 @@ export function parseToolArgs(toolName, args) {
             return SearchScienceDirectSchema.parse(args);
         case 'search_springer':
             return SearchSpringerSchema.parse(args);
-        case 'search_wiley':
-            return SearchWileySchema.parse(args);
         case 'search_scopus':
             return SearchScopusSchema.parse(args);
         case 'search_crossref':
@@ -254,6 +234,8 @@ export function parseToolArgs(toolName, args) {
             return SearchCoreSchema.parse(args);
         case 'download_with_fallback':
             return DownloadWithFallbackSchema.parse(args);
+        case 'download_batch':
+            return DownloadBatchSchema.parse(args);
         default:
             return args;
     }

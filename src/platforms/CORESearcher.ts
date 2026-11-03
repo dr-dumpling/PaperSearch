@@ -26,6 +26,13 @@ interface CoreWork {
   downloadCount?: number;
 }
 
+const DOI_PATTERN = /^\s*(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)?(10\.\d{4,9}\/\S+)\s*$/i;
+
+export function coreQuery(query: string): string {
+  const doi = query.match(DOI_PATTERN)?.[1];
+  return doi ? `doi:"${doi}"` : query.replace(/\//g, '\\/');
+}
+
 export class CORESearcher extends PaperSource {
   private readonly client: AxiosInstance;
 
@@ -65,8 +72,10 @@ export class CORESearcher extends PaperSource {
 
       for (let page = 0, offset = 0; papers.length < maxResults && page < maxPages; page += 1) {
         const requestedLimit = Math.min(pageSize, maxResults - papers.length);
-        const response = await this.requestWithRetry('/search/works', {
-          q: query,
+        // The trailing slash avoids CORE's 301; a bare DOI breaks its query
+        // syntax (HTTP 500), so DOIs use the doi field and slashes are escaped.
+        const response = await this.requestWithRetry('/search/works/', {
+          q: coreQuery(query),
           limit: requestedLimit,
           offset,
           ...(options.year ? { year: options.year } : {})

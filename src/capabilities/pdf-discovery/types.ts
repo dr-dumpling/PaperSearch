@@ -1,15 +1,87 @@
+/**
+ * Position of one download inside a caller's serial batch. The counts are the
+ * batch totals before this item; the backend's progress window uses them to
+ * show "k / N" for the whole batch.
+ */
+export interface DownloadBatchPosition {
+  id: string;
+  /** 1-based. */
+  index: number;
+  total: number;
+  done: number;
+  succeeded: number;
+  failed: number;
+}
+
+/** What a download fetches: the main text (default), only supplementary files, or both. */
+export type DownloadContent = "main" | "supplements" | "both";
+
+/** One supplementary file of an article, as collected by the entitled-access backend. */
+export interface SupplementFile {
+  /** The link's description on the article page. */
+  label: string;
+  status: "saved" | "failed" | "skipped";
+  /** Saved file, inside the item's save directory. */
+  file?: string;
+  size?: number;
+  /** Code for a failed or skipped file (http_404, html_page, too_large, ...). */
+  reason?: string;
+}
+
+/** One finished funnel stage, for the local run ledger; never part of tool output. */
+export interface DownloadStageRecord {
+  stage: string;
+  status: "ok" | "error" | "skipped";
+  message: string;
+  code?: string;
+  path?: string;
+  /** ISO time the stage started. */
+  startedAt: string;
+  durationMs: number;
+  /** Backend details: driver, publisher, state, record/diagnostic files, identity verdict. */
+  trace?: Record<string, unknown>;
+}
+
 export interface DownloadWithFallbackOptions {
   source: string;
   paperId: string;
   doi?: string;
   title?: string;
   savePath?: string;
-  /** When false, suppress the final Sci-Hub fallback. Default is true. */
+  /** When false, suppress the optional entitled-access tier. Default is true. */
+  useEntitledAccess?: boolean;
+  /** When false, skip Sci-Hub and continue to optional entitled access. Default is true. */
   useSciHub?: boolean;
+  /** Set when this download is one item of a serial batch. */
+  batch?: DownloadBatchPosition;
+  /**
+   * Set by the batch once an article waited on the user (login, verification)
+   * until its time was up: later articles wait on the user only briefly.
+   */
+  shortUserWait?: boolean;
+  /** Called after every stage (run ledger). */
+  onStage?: (record: DownloadStageRecord) => void;
+  /** main (default) / supplements / both; see DownloadContent. */
+  content?: DownloadContent;
 }
 
 export interface DownloadWithFallbackResult {
-  status: 'ok' | 'error';
+  status: "ok" | "error";
   path?: string;
-  attempts: Array<{ stage: string; status: 'ok' | 'error' | 'skipped'; message: string }>;
+  /** Present only when the saved full text is not a PDF (e.g. Springer TDM JATS XML). */
+  format?: "jats-xml";
+  /** Retained file requiring review; never a successful download path. */
+  review?: { path: string; reason: string };
+  /** Directory of the local run ledger for this call. */
+  runLog?: string;
+  /** Supplementary files, when content is "supplements" or "both". */
+  supplements?: SupplementFile[];
+  attempts: Array<{
+    stage: string;
+    status: "ok" | "error" | "skipped";
+    message: string;
+    code?: string;
+    /** rate_limited: seconds until this item can be tried again. */
+    retryAfterSec?: number;
+  }>;
 }

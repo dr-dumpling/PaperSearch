@@ -11,8 +11,8 @@
  *
  * Scopus is the largest abstract and citation database of peer-reviewed literature
  */
-import { PaperSource, SearchOptions, DownloadOptions, PlatformCapabilities } from './PaperSource.js';
-import { Paper } from '../models/Paper.js';
+import { PaperSource, SearchOptions, DownloadOptions, PlatformCapabilities } from "./PaperSource.js";
+import { Paper } from "../models/Paper.js";
 export declare class ScopusSearcher extends PaperSource {
     private client;
     private rateLimiter;

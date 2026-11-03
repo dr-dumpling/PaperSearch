@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "Neurology",
+    "doi_prefixes": [
+      "10.1212"
+    ],
+    "base_domains": [
+      "neurology.org"
+    ],
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [
+      "https://www.neurology.org/doi/pdf/{doi}"
+    ],
+    "success_url_markers": [
+      "neurology.org/doi/"
+    ],
+    "auth_url_markers": [
+      "/login",
+      "/saml/",
+      "/sso/",
+      "login.openathens.net"
+    ],
+    "auth_title_markers": [
+      "Institutional Login",
+      "Sign In"
+    ],
+    "sso_text_markers": [
+      "institutional login",
+      "access through your institution"
+    ],
+    "supplementary_url_markers": [
+      "suppl_file",
+      "supplementary",
+      "/suppl/"
+    ],
+    "aliases": [
+      "neurology",
+      "aan journals"
+    ],
+    "sample_dois": [
+      "10.1212/wnl.0000000000218791"
+    ]
+  }
+}

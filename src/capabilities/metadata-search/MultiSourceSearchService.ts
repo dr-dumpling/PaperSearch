@@ -3,12 +3,19 @@ import { TIMEOUTS } from '../../config/constants.js';
 import { Paper, PaperFactory } from '../../models/Paper.js';
 import { PaperSource, SearchOptions } from '../../platforms/PaperSource.js';
 import { withTimeout } from '../../infrastructure/security/SecurityUtils.js';
-import { getAliasMap, getDefaultAllSources, resolvePlatformId } from '../../registry/platformMetadata.js';
+import {
+  getAliasMap,
+  getDefaultAllSources,
+  getNoKeySources,
+  NO_KEY_SOURCE_ALIASES,
+  resolvePlatformId
+} from '../../registry/platformMetadata.js';
 import type { MultiSourceSearchResult } from './types.js';
 
 export type { MultiSourceSearchResult } from './types.js';
 
 const ALIASES: Record<string, string> = getAliasMap();
+const NO_KEY_ALIASES = new Set<string>(NO_KEY_SOURCE_ALIASES);
 
 export function parseSourceList(sources: string | undefined, searchers: Searchers): string[] {
   const requested = !sources || sources.trim() === '' ? 'crossref' : sources.trim();
@@ -17,11 +24,14 @@ export function parseSourceList(sources: string | undefined, searchers: Searcher
     return getDefaultAllSources().filter(source => source in searchers);
   }
 
-  return requested
+  const expanded = requested
     .split(',')
     .map(source => source.trim().toLowerCase())
     .filter(Boolean)
-    .map(source => ALIASES[source] || resolvePlatformId(source))
+    .flatMap(source => (NO_KEY_ALIASES.has(source) ? getNoKeySources() : [source]))
+    .map(source => ALIASES[source] || resolvePlatformId(source));
+
+  return expanded
     .filter((source, index, values) => values.indexOf(source) === index)
     .filter(source => source in searchers);
 }

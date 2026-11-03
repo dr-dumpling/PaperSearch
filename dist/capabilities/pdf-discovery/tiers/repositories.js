@@ -1,35 +1,37 @@
-import { downloadPdfFromUrl, safeFilename } from '../../../infrastructure/pdf/PdfDownload.js';
-import { getRepositoryFallbackSources } from '../../../registry/platformMetadata.js';
-export function createRepositoryTier() {
+import { TIMEOUTS } from '../../../config/constants.js';
+import { withTimeout } from '../../../infrastructure/security/SecurityUtils.js';
+import { downloadPmcPdf, pmcidForDoi } from '../pmcCloud.js';
+/**
+ * Repository copies: PubMed Central through its official channels (see
+ * pmcCloud.ts). Repository search results (CORE, OpenAIRE, PMC/Europe PMC
+ * search) are not downloaded here: their links are landing pages or sit
+ * behind bot protection, so searching cost tens of seconds per paper for no
+ * PDF. Other repository copies arrive through Unpaywall's OA locations.
+ */
+export function createRepositoryTier(requestTimeoutMs = TIMEOUTS.REPOSITORY_SEARCH) {
     return {
         id: 'repositories',
         stage: 'repositories',
-        run: tryRepositoryFallback
+        run: (context) => tryPubMedCentral(context, requestTimeoutMs)
     };
 }
-async function tryRepositoryFallback(context) {
-    const queries = [context.doi || '', context.title || ''].filter(Boolean);
-    if (queries.length === 0) {
-        return { status: 'skipped', message: 'No DOI/title provided for repository discovery.' };
-    }
-    for (const source of getRepositoryFallbackSources()) {
-        const searcher = context.searchers[source];
-        if (!searcher)
-            continue;
-        for (const query of queries) {
-            try {
-                const papers = await searcher.search(query, { maxResults: 3 });
-                const paper = papers.find(candidate => candidate.pdfUrl);
-                if (!paper?.pdfUrl)
-                    continue;
-                const path = await downloadPdfFromUrl(paper.pdfUrl, context.savePath, `${source}_${safeFilename(paper.paperId)}`);
-                return { status: 'ok', path, message: path };
-            }
-            catch {
-                continue;
-            }
+async function tryPubMedCentral(context, requestTimeoutMs) {
+    const given = /^PMC\d+$/i.test(context.paperId || '') ? context.paperId.toUpperCase() : '';
+    try {
+        const pmcid = given || (context.doi
+            ? await withTimeout(pmcidForDoi(context.doi, requestTimeoutMs), requestTimeoutMs, 'PMC ID lookup timed out')
+            : '');
+        if (!pmcid) {
+            return { status: 'skipped', message: 'Not in PubMed Central.' };
         }
+        const found = await downloadPmcPdf(pmcid, context.savePath, requestTimeoutMs);
+        if (!found) {
+            return { status: 'skipped', message: `PubMed Central has no PDF for ${pmcid}.` };
+        }
+        return { status: 'ok', path: found.path, message: found.path, trace: { pmcid, via: found.via } };
     }
-    return { status: 'skipped', message: 'No repository PDF candidate succeeded.' };
+    catch (error) {
+        return { status: 'error', message: error instanceof Error ? error.message : String(error) };
+    }
 }
 //# sourceMappingURL=repositories.js.map

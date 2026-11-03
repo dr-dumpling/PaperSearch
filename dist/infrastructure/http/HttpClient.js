@@ -35,7 +35,9 @@ export function setupGlobalProxy() {
         return;
     }
     try {
-        logDebug(`Configuring global HTTP/HTTPS proxy: ${proxy}`);
+        // Never include a proxy URL in logs: it may contain credentials or other
+        // sensitive routing details.
+        logDebug('Configuring global HTTP/HTTPS proxy');
         const agent = proxy.startsWith('socks')
             ? new SocksProxyAgent(proxy)
             : new HttpsProxyAgent(proxy);

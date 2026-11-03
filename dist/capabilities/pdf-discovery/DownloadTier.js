@@ -1,2 +1,2 @@
-export const INSTITUTIONAL_ACCESS_TIER_ID = 'institutional_access';
+export {};
 //# sourceMappingURL=DownloadTier.js.map

@@ -1,1 +1,1 @@
-{"version":3,"file":"unpaywall.d.ts","sourceRoot":"","sources":["../../../../src/capabilities/pdf-discovery/tiers/unpaywall.ts"],"names":[],"mappings":"AAEA,OAAO,KAAK,EAAE,YAAY,EAA2C,MAAM,oBAAoB,CAAC;AAEhG,wBAAgB,mBAAmB,IAAI,YAAY,CAMlD"}
+{"version":3,"file":"unpaywall.d.ts","sourceRoot":"","sources":["../../../../src/capabilities/pdf-discovery/tiers/unpaywall.ts"],"names":[],"mappings":"AAGA,OAAO,KAAK,EAAE,YAAY,EAA2C,MAAM,oBAAoB,CAAC;AAKhG,wBAAgB,mBAAmB,IAAI,YAAY,CAMlD"}

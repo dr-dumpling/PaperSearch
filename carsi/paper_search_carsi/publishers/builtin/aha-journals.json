@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "AHA Journals",
+    "doi_prefixes": [
+      "10.1161"
+    ],
+    "base_domains": [
+      "ahajournals.org"
+    ],
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [
+      "https://www.ahajournals.org/doi/pdf/{doi}?download=true"
+    ],
+    "success_url_markers": [
+      "ahajournals.org/doi/"
+    ],
+    "auth_url_markers": [
+      "/login",
+      "/saml/",
+      "/sso/",
+      "login.openathens.net",
+      "ahasso.heart.org"
+    ],
+    "auth_title_markers": [
+      "Institutional Access",
+      "Sign In"
+    ],
+    "sso_text_markers": [
+      "institutional login",
+      "access through your institution"
+    ],
+    "supplementary_url_markers": [
+      "suppl_file",
+      "supplementary",
+      "/suppl/"
+    ],
+    "aliases": [
+      "aha journals",
+      "ahajournals",
+      "american heart association"
+    ],
+    "sample_dois": [
+      "10.1161/circulationaha.126.082827"
+    ]
+  }
+}

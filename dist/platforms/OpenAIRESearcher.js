@@ -82,8 +82,12 @@ export class OpenAIRESearcher extends PaperSource {
         for (const profile of profiles) {
             for (let attempt = 0; attempt < 3; attempt += 1) {
                 try {
+                    // A DOI in keywords is a syntax error (HTTP 409); it has its own parameter.
+                    const doi = query.match(/^\s*(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)?(10\.\d{4,9}\/\S+)\s*$/i)?.[1];
                     const response = await this.client.get('/search/researchProducts', {
-                        params: { keywords: query, page: profile.page, size: maxResults },
+                        params: doi
+                            ? { doi, page: profile.page, size: maxResults }
+                            : { keywords: query.replace(/\//g, ' '), page: profile.page, size: maxResults },
                         headers: { 'User-Agent': profile.userAgent }
                     });
                     if ([403, 429, 500, 502, 503, 504].includes(response.status)) {

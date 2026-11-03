@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "SAGE",
+    "doi_prefixes": [
+      "10.1177"
+    ],
+    "base_domains": [
+      "sagepub.com"
+    ],
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [
+      "https://journals.sagepub.com/doi/pdf/{doi}"
+    ],
+    "success_url_markers": [
+      "sagepub.com/"
+    ],
+    "auth_url_markers": [
+      "/login",
+      "/saml/",
+      "/sso/",
+      "login.openathens.net"
+    ],
+    "auth_title_markers": [
+      "Institutional Login",
+      "Sign In"
+    ],
+    "sso_text_markers": [
+      "access through your institution",
+      "institutional login",
+      "log in via an institution",
+      "sign in through your institution",
+      "openathens"
+    ],
+    "supplementary_url_markers": [
+      "suppl_file",
+      "suppdata",
+      "supplementary",
+      "supporting-information",
+      "/suppl/"
+    ],
+    "aliases": [
+      "sage"
+    ],
+    "sample_dois": [],
+    "platform": "sage"
+  }
+}

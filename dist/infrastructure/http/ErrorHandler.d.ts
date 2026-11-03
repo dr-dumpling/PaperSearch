@@ -93,6 +93,8 @@ export declare class ErrorHandler {
         initialDelayMs?: number;
         maxDelayMs?: number;
         context?: string;
+        /** Use Retry-After (or the provider-specific delay) instead of jitter. */
+        respectRetryAfter?: boolean;
     }): Promise<T>;
 }
 export default ErrorHandler;

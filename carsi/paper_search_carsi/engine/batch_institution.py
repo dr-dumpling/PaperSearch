@@ -1,0 +1,981 @@
+"""Choosing the federation and the user's configured school on publisher and federation pickers.
+
+Part of ``PublisherBatchDownloader`` (batch.py), which combines the mixins."""
+
+from __future__ import annotations
+
+import re
+import time
+from typing import Any
+from urllib.parse import parse_qs, unquote, urlencode, urlparse
+
+from .batch_common import DownloadResult, _is_browser_error, logger, open_page, pump_until, settle
+
+
+def _school_auth_patterns(config: dict[str, Any]) -> tuple[str, ...]:
+    """The configured school's identity-provider host, for telling its login pages apart.
+
+    Taken from the entityID that ``setup`` saved from the CARSI member list
+    (``https://idp.example.edu.cn/idp/shibboleth`` -> ``idp.example.edu.cn``);
+    empty without one. The package names no school itself.
+    """
+    entity_id = str(config.get("idp_entity_id", "") or "").strip()
+    if not entity_id.startswith("https://"):
+        return ()
+    host = (urlparse(entity_id).hostname or "").lower()
+    return (host,) if host else ()
+
+
+# Institution search input selectors, tried in order on WAYF pages
+_INSTITUTION_SEARCH_SELECTORS: list[str] = [
+    "#searchInstitution", "#bdd-email", 'input[name="institution"]',
+    "#institution-search", 'input[placeholder*="institution"]',
+    'input[placeholder*="University"]',
+]
+
+
+class InstitutionMixin:
+    """Choosing the federation and the user's configured school on publisher and federation pickers."""
+
+    # The school chosen this often on one chooser address, the chooser back each time.
+    SCHOOL_CHOICE_REPEATS = 3
+
+    @staticmethod
+    def _school_choices_here(result: DownloadResult, url: str) -> int:
+        return sum(e["state"] == "auto_institution_entry" and str(e.get("detail", "")).endswith(f"@ {url}")
+                   for e in result.events)
+
+    def _after_repeated_school_choice(self, page: Any, result: DownloadResult, url: str) -> bool:
+        """The chooser came back each time the school was chosen on it. NEJM signed
+        the school in, sent the browser back to its chooser, and the school was
+        chosen there again every 4 s until the wait ran out (2026-11-03). Once per
+        item the article is opened again: signed in, it gives the PDF. After that
+        nothing more is chosen on the chooser; the user may still choose there."""
+        if result.article_url and not any(e["state"] == "institution_choice_returned_article" for e in result.events):
+            try:
+                open_page(page, result.article_url, timeout_ms=60_000)
+            except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
+                self._event(result, "institution_session_return_error", f"{type(exc).__name__}: {str(exc)[:160]}")
+                return False
+            self._event(result, "institution_choice_returned_article",
+                        f"chosen {self.SCHOOL_CHOICE_REPEATS} times @ {url[:160]}")
+            settle(page, 3_000)
+            return True
+        if not any(e["state"] == "institution_choice_stopped" for e in result.events):
+            self._event(result, "institution_choice_stopped", url[:160])
+        return False
+
+    def _select_institution(self, page: Any, result: DownloadResult) -> bool:
+        if getattr(self, "_manual_school", False):
+            return False  # the user reported a wrong school: they choose it in the window
+        if self.config.get("publisher_institution_federation") == "carsi":
+            if self._has_publisher_institution_session(page):
+                # The publisher already shows a signed-in school: nothing to choose
+                # (RSC's account menu names it and was clicked as an entry, 2026-11-01).
+                return False
+            here = str(getattr(page, "url", "") or "")
+            if self._school_choices_here(result, here) >= self.SCHOOL_CHOICE_REPEATS:
+                return self._after_repeated_school_choice(page, result, here)
+            # Everything except human verification and the user's credentials is
+            # automated once an institution is configured: a remembered
+            # "Access through <school>" entry, the school in a publisher list or
+            # search, then Continue. Without a configured school nothing is picked.
+            if self.institution_query and self._select_from_institution_lists(page, result):
+                return True
+            if self.institution_query and self._assist_configured_institution(page, result):
+                return True
+            if self.adapter.prepare_institution_choice(page, result) is False:
+                return False
+            if self._open_seamlessaccess_chooser(page, result):
+                return True
+            try:
+                chosen = self.adapter.choose_institution(page, result)
+            except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
+                # The page navigated while the publisher's step read it (Thieme's
+                # Continue reloading its chooser, 2026-11-02): looked at again next pass.
+                self._event(result, "institution_step_interrupted", f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]}")
+                return False
+            if chosen is not None:
+                return chosen
+            if self.institution_query and self._assist_carsi_discovery(page, result):
+                return True
+            if not any(event["state"] == "institution_selection_required" for event in result.events):
+                self._event(result, "institution_selection_required", "carsi")
+            return False
+        current_url = str(getattr(page, "url", "") or "")
+        host = (urlparse(current_url).netloc or "").lower()
+        if self._is_idp_host(host):
+            return False
+        if not self.institution_query:
+            self._event(result, "institution_required", "No subscription institution was configured for publisher login.")
+            return False
+        if host == "login.openathens.net":
+            # Never fill an OpenAthens account form with an institution name.
+            return False
+        if self._select_openathens_wayfinder(page, result):
+            return True
+        if self.adapter.fill_institution_search(page, result):
+            return True
+        for selector in self.profile.institution_input_selectors:
+            try:
+                inp = page.locator(selector).first
+                if inp.is_visible(timeout=5_000):
+                    inp.fill(self.institution_query)
+                    self._event(result, "institution_search", selector)
+                    settle(page, 2_000)
+                    if self._click_institution_search_result(page, result):
+                        return True
+                    try:
+                        inp.press("Enter", timeout=3_000)
+                        self._event(result, "institution_search_submitted", selector)
+                        settle(page, 3_000)
+                        if self._click_institution_search_result(page, result):
+                            return True
+                        # No entry matched the configured institution: leave the
+                        # choice (and the Continue button) to the user.
+                        if not any(e["state"] == "institution_selection_required" for e in result.events):
+                            self._event(result, "institution_selection_required", "no matching entry")
+                        return False
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+        return False
+
+    # Every <select> of the page, shown or not: JAMA keeps its federation and school
+    # lists hidden behind a search box, ACS leaves its school list disabled after
+    # filling it (2026-11-02). Values and labels, in one round trip.
+    _SELECTS_JS = r"""() => [...document.querySelectorAll('select')].slice(0, 12).map((s, i) => ({
+        i, name: s.id ? '#' + s.id : (s.name || 'select'), disabled: s.disabled, value: s.value,
+        shown: s.getClientRects().length > 0 && getComputedStyle(s).visibility !== 'hidden',
+        options: [...s.options].slice(0, 5000).map(o => [o.value, (o.text || '').replace(/\s+/g, ' ').trim()])}))"""
+    # A list that cannot be chosen in as a user would (hidden, or still disabled once
+    # filled) is set as its own script would, with the events its page listens to.
+    # As a reader does: focus, choose, leave the list. Some sites load the next
+    # list on leaving (blur), not on change.
+    _SET_SELECT_JS = r"""([index, value]) => {
+        const s = document.querySelectorAll('select')[index];
+        if (!s) return false;
+        s.disabled = false;
+        s.focus();
+        s.value = value;
+        s.dispatchEvent(new Event('input', {bubbles: true}));
+        s.dispatchEvent(new Event('change', {bubbles: true}));
+        s.blur();
+        s.dispatchEvent(new FocusEvent('focusout', {bubbles: true}));
+        return s.value === value;
+    }"""
+    # A blank overlay left over the page (a loading backdrop that never closes:
+    # ACS's #globalModalOverlay after choosing the federation, 2026-11-02): large,
+    # fixed, named an overlay/backdrop/modal/loading, with nothing to use inside.
+    _BLANK_OVERLAY_JS = r"""() => {
+        const vw = innerWidth, vh = innerHeight;
+        const named = /overlay|backdrop|modal-bg|loading|spinner|mask/i;
+        for (const e of document.querySelectorAll('body *')) {
+            const s = getComputedStyle(e);
+            if (s.position !== 'fixed' || s.display === 'none' || s.visibility === 'hidden' || Number(s.opacity) === 0) continue;
+            const r = e.getBoundingClientRect();
+            if (r.width * r.height < vw * vh * 0.5 || !named.test(String(e.className) + ' ' + e.id)) continue;
+            const usable = [...e.querySelectorAll('a[href], button, input, select, textarea, iframe')].some(c => c.getClientRects().length);
+            if (usable) continue;
+            const what = e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + '.' + String(e.className).trim().split(/\s+/).slice(0, 2).join('.');
+            e.click();
+            document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+            if (getComputedStyle(e).display !== 'none' && e.isConnected) e.style.display = 'none';
+            return what;
+        }
+        return null;
+    }"""
+    # The chooser's own submit: the nearest shown control around what was chosen,
+    # the first after it ("Access through Institution" on ACS, "Go" on JAMA). What
+    # was chosen is a list (its index among document.querySelectorAll('select')) or
+    # an entry (a selector), whose form's controls only, or with no form none of
+    # another form's; ``controls`` names the controls that count (null: any button
+    # or link-button). Never a control of the page outside the chooser, such as the
+    # header's search (review 2026-11-02).
+    _LIST_SUBMIT_JS = r"""([anchor, controls]) => {
+        const s = typeof anchor === 'number' ? document.querySelectorAll('select')[anchor] : document.querySelector(anchor);
+        if (!s) return null;
+        const own = typeof anchor === 'number' ? undefined : s.closest('form');
+        const shown = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden' && !el.disabled;
+        const text = el => (el.innerText || el.value || el.getAttribute('aria-label') || el.getAttribute('title') || '')
+            .replace(/\s+/g, ' ').trim();
+        const CONTROL = controls || ('button, input[type="submit"], input[type="button"], input[type="image"], '
+            + 'a[href^="javascript" i], a[role="button"], [role="button"], a.button, a.btn');
+        const NOT = /cancel|back|reset|clear|register|personal|sign ?up|help|close|remember|forgot/i;
+        for (let box = s.parentElement, n = 0; box && n < 6; box = box.parentElement, n++) {
+            const found = [...box.querySelectorAll(CONTROL)].filter(c => !s.contains(c) && shown(c) && text(c).length <= 60
+                && !NOT.test(text(c)) && (own === undefined || !('form' in c) || c.form === own));
+            if (!found.length) continue;
+            const pick = found.find(c => s.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING) || found[found.length - 1];
+            document.querySelectorAll('[data-paper-search-submit]').forEach(e => e.removeAttribute('data-paper-search-submit'));
+            pick.setAttribute('data-paper-search-submit', '');
+            return text(pick).slice(0, 80) || pick.tagName;
+        }
+        return null;
+    }"""
+    _CARSI_OPTION = re.compile(r"\bCARSI\b", re.I)
+    # How long one pass waits for the school's option once the federation is chosen
+    # (ACS answered after 35-50 s, 2026-11-02; the login loop asks again).
+    LIST_WAIT_SEC = 15
+
+    def _page_selects(self, page: Any) -> list[dict]:
+        try:
+            found = page.evaluate(self._SELECTS_JS)
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return []
+        return [s for s in found if isinstance(s, dict)] if isinstance(found, list) else []
+
+    def _school_option(self, lists: list[dict]) -> tuple[dict, str, str, str] | None:
+        """``(select, value, label, how)`` for the configured school's option: the
+        one valued with its entityID, else the single one naming it."""
+        entity_id = self._entity_id()
+        names = {self._canonical_school_name(name) for name in self._institution_names()} - {""}
+        for by_id in (True, False):
+            for select in lists:
+                options = [(str(o[0]), str(o[1])) for o in select.get("options") or ()
+                           if isinstance(o, (list, tuple)) and len(o) == 2 and o[0]]
+                if by_id:
+                    hits = [o for o in options if entity_id and (o[0] == entity_id or self._carries_entity_id(o[0], entity_id))]
+                else:
+                    hits = [o for o in options if self._canonical_school_name(o[1]) in names]
+                if len(hits) == 1 or (by_id and hits):
+                    return select, hits[0][0], hits[0][1], "entityID" if by_id else "name"
+        return None
+
+    def _carsi_federation_option(self, lists: list[dict]) -> tuple[dict, str, str] | None:
+        """``(select, value, label)``: a federation list's single CARSI entry."""
+        for select in lists:
+            hits = [(str(o[0]), str(o[1])) for o in select.get("options") or ()
+                    if isinstance(o, (list, tuple)) and len(o) == 2 and o[0] and self._CARSI_OPTION.search(str(o[1]))]
+            if len(hits) == 1:
+                return select, hits[0][0], hits[0][1]
+        return None
+
+    @staticmethod
+    def _filled_lists(lists: Any, federation: dict) -> dict:
+        """The lists other than the federation's with more than a placeholder."""
+        return {str(s.get("name")): list(s.get("options") or ()) for s in lists or ()
+                if s.get("i") != federation.get("i") and len(s.get("options") or ()) > 1}
+
+    # The list chosen in, marked by its index among document.querySelectorAll('select'):
+    # a locator's "select" would also count lists inside shadow roots.
+    _MARK_SELECT_JS = r"""(index) => {
+        document.querySelectorAll('[data-paper-search-list]').forEach(e => e.removeAttribute('data-paper-search-list'));
+        const s = document.querySelectorAll('select')[index];
+        if (s) s.setAttribute('data-paper-search-list', '');
+        return !!s;
+    }"""
+
+    def _set_select(self, page: Any, select: dict, value: str) -> None:
+        """Choose ``value`` the way the page's own script does, shown or hidden: a
+        reader-like select_option made ACS wait about 25 s for its next list, the
+        script's choice fills it in a second (2026-11-02)."""
+        page.evaluate(self._SET_SELECT_JS, [int(select["i"]), value])
+
+    # The page's own load: a reload at the same address is another page.
+    _PAGE_LOAD_JS = "() => performance.timeOrigin"
+
+    def _federation_choice_page(self, page: Any, result: DownloadResult) -> tuple[str, str] | None:
+        """This page (its address and its load) when CARSI may be chosen in its
+        federation list now; None when not: the program chose CARSI on this very
+        page and it shows another federation since (the user's choice, left alone),
+        or the page is navigating (looked at again next pass). A chooser that
+        reloads, at the same address or another, with its first federation
+        selected is a new page and is chosen again (Thieme after its Continue;
+        one rule for every chooser, review 2026-11-02)."""
+        try:
+            here = (str(getattr(page, "url", "") or ""), str(page.evaluate(self._PAGE_LOAD_JS)))
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            self._event(result, "institution_step_interrupted",
+                        f"{type(exc).__name__}: {(str(exc).splitlines() or [''])[0][:160]}")
+            return None
+        if here not in getattr(result, "_federation_pages", ()):
+            return here
+        if not any(e["state"] == "institution_federation_user_choice" and e.get("detail") == here[0][:200]
+                   for e in result.events):
+            self._event(result, "institution_federation_user_choice", here[0][:200])
+        return None
+
+    def _federation_chosen(self, result: DownloadResult, here: tuple[str, str], detail: str) -> None:
+        """Record that the program chose CARSI on page ``here`` (``_federation_choice_page``)."""
+        result._federation_pages = getattr(result, "_federation_pages", set()) | {here}
+        self._event(result, "institution_federation_selected", detail)
+
+    def _close_blank_overlay(self, page: Any, result: DownloadResult) -> None:
+        try:
+            closed = page.evaluate(self._BLANK_OVERLAY_JS)
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return
+        if closed:
+            self._event(result, "overlay_closed", str(closed)[:120])
+
+    def _select_from_institution_lists(self, page: Any, result: DownloadResult) -> bool:
+        """One rule for school lists in <select>s, shown or hidden: the federation
+        list's CARSI entry, then the configured school's option (by entityID, the
+        option's value, else by name), then the list's own submit control. Once per
+        page; True when something was chosen. Without the school in a filled list
+        the publisher has no route for it (``_institution_not_listed``)."""
+        url = str(getattr(page, "url", "") or "")
+        host = (urlparse(url).hostname or "").lower()
+        if (self._is_idp_host(host) or not (self._on_publisher_host(url) or self._is_federation_chooser(url))
+                or any(e["state"] == "institution_list_submitted" and e.get("detail", "").endswith(f"@ {url}")
+                       for e in result.events)):
+            return False  # only the publisher's and the federations' choosers
+        lists = self._page_selects(page)
+        school = self._school_option(lists)
+        federation = None if school else self._carsi_federation_option(lists)
+        if school is None and federation is None:
+            return False
+        if federation is not None:
+            select, value, label = federation
+            if not any(s.get("i") != select.get("i") for s in lists):
+                # No school list beside it (Atypon's entries, Thieme's next page):
+                # the publisher's own chooser rule and the entry assistance decide.
+                return False
+            if select.get("value") != value:
+                here = self._federation_choice_page(page, result)
+                if here is None:
+                    return False
+                self._set_select(page, select, value)
+                self._federation_chosen(result, here, f"carsi: {label} in {select.get('name')} @ {url}")
+                page.wait_for_timeout(500)
+                self._close_blank_overlay(page, result)
+            started, seen = time.time(), {}
+
+            def listed() -> bool:
+                seen["lists"] = self._page_selects(page)
+                seen["school"] = self._school_option(seen["lists"])
+                return seen["school"] is not None
+
+            if not pump_until(page, listed, self.LIST_WAIT_SEC * 1000, step_ms=500):
+                filled = self._filled_lists(seen.get("lists"), select)
+                page.wait_for_timeout(1_000)
+                if filled and not listed() and self._filled_lists(seen["lists"], select) == filled:
+                    # Filled, unchanged a second later, and without the school.
+                    name, options = next(iter(filled.items()))
+                    sample = ", ".join(str(o[1]) for o in options[1:6])
+                    self._event(result, "auto_institution_not_found",
+                                f"carsi list {name} ({len(options)} options: {sample}) @ {url}")
+                    result._institution_not_listed = True
+                    return False
+                count = max((len(s.get("options") or ()) for s in seen.get("lists") or () if s.get("i") != select.get("i")), default=0)
+                if not any(e["state"] == "institution_list_not_ready" and e.get("detail") == f"{count} options @ {url}"
+                           for e in result.events):
+                    self._event(result, "institution_list_not_ready", f"{count} options @ {url}")
+                return False
+            school = seen["school"]
+            if time.time() - started > 10:
+                self._event(result, "wait", f"institution list: {time.time() - started:.0f} s, ended: the school's option appeared")
+        select, value, label, how = school
+        if select.get("value") != value:
+            self._set_select(page, select, value)
+        self._event(result, "institution_selected", f"{label[:80]} ({how}, {select.get('name')})")
+        self._close_blank_overlay(page, result)
+        try:
+            submit = page.evaluate(self._LIST_SUBMIT_JS, [int(select["i"]), None])
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            submit = None
+        if not submit:
+            self._event(result, "institution_submit_missing", url[:200])
+            return True
+        if self._click_control(page, page.locator("[data-paper-search-submit]").first, result,
+                               f"institution list submit: {submit}"):
+            self._event(result, "institution_list_submitted", f"{submit} @ {url}")
+        # Not clicked (script_click_failed): the school is chosen; the next pass submits again.
+        return True
+
+    @staticmethod
+    def _canonical_school_name(text: str) -> str:
+        """A school's name for comparing list labels: case, punctuation,
+        parentheticals, a trailing address, "Univ"/"University" and a trailing
+        "Library" do not count
+        ("EXAMPLE (CITY) UNIV | https://idp.example.edu.cn/idp/shibboleth" = "Example
+        University", as ACS labels them, 2026-11-02); Chinese names are kept."""
+        text = re.split(r"\s+\|\s+|https?://", str(text or ""), maxsplit=1)[0]
+        text = re.sub(r"\([^)]*\)|（[^）]*）", " ", text.lower()).replace("&", " and ")
+        words = re.sub(r"[^a-z0-9一-鿿]+", " ", text).split()
+        words = ["university" if word == "univ" else word for word in words]
+        if words and words[-1] in ("library", "libraries"):
+            words = words[:-1]
+        if words and words[-1] == "university":
+            words = words[:-1]
+        return " ".join(words)
+
+    # CARSI writes some English names with a curly apostrophe ("Xi’an"), publisher lists a straight one.
+    _QUOTES = str.maketrans({"\u2019": "'", "\u2018": "'"})
+
+    def _institution_match_score(self, text: str) -> int:
+        """3 = exactly the configured school, 2 = "<school> University" or "<school>,
+        Library" (optionally a parenthetical; LibLynx names schools "<school>, Library",
+        2026-11-02), 1 = merely contains it. Only 2+ is ever clicked.
+
+        Parentheses that only repeat the school's other names keep the score of
+        the name before them: Elsevier lists a school as "<Chinese name>(<English
+        name>) (<English name>)", next to other schools whose names contain its own."""
+        text = " ".join(str(text or "").translate(self._QUOTES).split()).lower().strip(" .,:;")
+        # Long English names fit: "华中科技大学(Huazhong University of Science and Technology) (...)".
+        aliased = re.fullmatch(r"([^()]+?)((?:\s*\([^()]{1,120}\))+)", text)
+        if aliased:
+            head = self._institution_match_score(aliased.group(1))
+            notes = re.findall(r"\(([^()]{1,120})\)", aliased.group(2))
+            if head >= 2 and all(self._institution_match_score(note) >= 2 for note in notes):
+                return head
+        best = 0
+        for name in self._institution_names():
+            name = " ".join(name.translate(self._QUOTES).split()).lower()
+            if not name:
+                continue
+            if text == name:
+                best = max(best, 3)
+            elif re.fullmatch(re.escape(name) + r"(?: university)?(?:,? (?:the )?librar(?:y|ies))?(?: \([^)]{1,40}\))?", text):
+                best = max(best, 2)
+            elif name in text:
+                best = max(best, 1)
+        return best
+
+    _ENTRY_SELECTOR = "li, a, button, [role=option], [role=button]"
+
+    # An entry's own identifiers: its link and data attributes, and the hidden
+    # fields and data attributes of the elements around it that hold no other
+    # entry (Elsevier keeps each result's entityID in a hidden field, 2026-10-31).
+    _ENTRIES_JS = """(sel) => {
+                const all = [...document.querySelectorAll(sel)];
+                const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+                const cands = all.filter(visible);
+                const inner = cands.filter(el => !cands.some(o => o !== el && el.contains(o)));
+                const ids = el => {
+                    const out = [el.href || el.getAttribute('href') || ''];
+                    for (let row = el, up = 0; row && up < 4; up++) {
+                        for (const a of row.attributes || []) if (a.name.startsWith('data-')) out.push(a.value);
+                        for (const h of row.querySelectorAll('input[type=hidden]')) out.push(h.value || '');
+                        const parent = row.parentElement;
+                        if (!parent || inner.some(o => o !== el && parent.contains(o))) break;
+                        row = parent;
+                    }
+                    return out.filter(Boolean).join(' ').slice(0, 4000);
+                };
+                return inner.map(el => ({i: all.indexOf(el), t: (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim(),
+                                         h: el.href || el.getAttribute('href') || '', ids: ids(el)}))
+                    .filter(it => it.t && it.t.length <= 160);
+            }"""
+
+    def _click_unique_institution_entry(self, page: Any, result: DownloadResult, url: str) -> bool:
+        """Click the single best visible entry for the configured school.
+
+        An entry carrying the school's entityID wins (several such entries are
+        the same school); otherwise the entry naming it. Only innermost
+        candidates count (a list item and its link are one entry). Two entries
+        with the same best name score, or only partial matches, are left to the
+        user; the same text with the same link (an actual link, not two
+        buttons) is one school (SAMS Sigma's "Recently Chosen" above its full
+        list, 2026-11-01).
+        """
+        try:
+            items = page.evaluate(self._ENTRIES_JS, self._ENTRY_SELECTOR)
+        except Exception:
+            return False
+        if not isinstance(items, list):
+            return False
+        entity_id = self._entity_id()
+
+        def score(item: dict) -> int:
+            if self._carries_entity_id(str(item.get("ids") or ""), entity_id):
+                return 4
+            return self._institution_match_score(item.get("t", ""))
+
+        scored = [(score(it), it) for it in items if isinstance(it, dict)]
+        top = max([score for score, _ in scored] or [0])
+        best = [it for score, it in scored if score == top]
+        same = (len(best) == 1 or top == 4
+                or (len({(it.get("t"), it.get("h")) for it in best}) == 1 and best[0].get("h")))
+        if top < 2 or not same:
+            return False
+        target = best[0]
+        before = str(getattr(page, "url", "") or "")
+        try:
+            marked = page.evaluate("""([sel, idx]) => {
+                const el = document.querySelectorAll(sel)[idx];
+                if (!el || el.getClientRects().length === 0) return false;
+                document.querySelectorAll('[data-paper-search-entry]').forEach(e => e.removeAttribute('data-paper-search-entry'));
+                el.setAttribute('data-paper-search-entry', ''); return true;
+            }""", [self._ENTRY_SELECTOR, target["i"]])
+        except Exception:
+            return False
+        if marked is not True:
+            return False
+        try:
+            # A real click, as the user's: the GWT rows of OpenAthens Wayfinder
+            # (Wolters Kluwer OneID) ignore a script's click() (cold start, 2026-11-01).
+            page.locator("[data-paper-search-entry]").first.click(timeout=3_000)
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            # Covered or moving: the script's click, as before.
+            try:
+                page.evaluate("() => { const el = document.querySelector('[data-paper-search-entry]'); if (el) el.click(); }")
+            except Exception as again:
+                if not _is_browser_error(again):
+                    raise
+                return False
+        self._event(result, "auto_institution_entry", f"{target['t'][:80]} @ {url}")
+        self._event(result, "institution_selected", target["t"][:80] + (" (entityID)" if top == 4 else ""))
+        if not self._left_page(page, before):
+            # Elsevier ID's entry goes straight on to the school; its page's other
+            # "Submit and continue" belongs to something else.
+            self._click_optional_continue(page, result, after_selection=True)
+        return True
+
+    @staticmethod
+    def _any_visible(page: Any, selectors: tuple[str, ...]) -> bool:
+        """Whether any of ``selectors`` shows on the page now (no waiting)."""
+        for selector in selectors:
+            try:
+                if page.locator(selector).first.is_visible() is True:
+                    return True
+            except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
+        return False
+
+    @staticmethod
+    def _left_page(page: Any, url: str, timeout_ms: int = 5_000) -> bool:
+        """True once the page has gone on from ``url`` by itself."""
+        try:
+            page.wait_for_url(lambda now: now != url, timeout=timeout_ms)
+            return True
+        except Exception as exc:
+            if _is_browser_error(exc, "TimeoutError"):
+                return False
+            if not _is_browser_error(exc):
+                raise
+            # The wait was cut off by the navigation itself (Firefox's
+            # NS_BINDING_ABORTED, a detached frame: an Atypon chooser going on to
+            # the school failed the article, 2026-11-01): the page has gone on.
+            return True
+
+    def _assist_configured_institution(self, page: Any, result: DownloadResult) -> bool:
+        """Pick the user's configured institution on the current page.
+
+        Order: a remembered "Access through <school>" entry; the single best
+        visible entry naming the school (lists shown after the federation is
+        set, search results); the school in a dropdown; then type the school
+        into an empty institution search box. Ties and partial matches between
+        several entries are left to the user, typed input is never replaced,
+        and Continue follows only our own selection.
+        """
+        names = [n for n in self._institution_names() if n]
+        if not names:
+            return False
+        url = str(getattr(page, "url", "") or "")
+        done = {(e["state"], e.get("detail", "").split(" @ ")[-1]) for e in result.events}
+
+        def once(action: str) -> bool:
+            return (f"auto_{action}", url) not in done
+
+        # 1. remembered entry on an article/access page: "Access through <school>"
+        #    under any of its names ("<Chinese name>(<English name>) (...)", Elsevier ID)
+        if once("remembered_entry"):
+            entries = []
+            for role in ("link", "button"):
+                try:
+                    for entry in page.get_by_role(role, name=re.compile(r"^\s*access through\s+\S", re.I)).all()[:10]:
+                        if entry.is_visible() is True:
+                            label = re.sub(r"^\s*access through\s+", "", entry.inner_text(timeout=1_000), flags=re.I)
+                            entries.append((self._institution_match_score(label), label, entry))
+                except Exception:
+                    continue
+            top = max((score for score, _, _ in entries), default=0)
+            best = [(label, entry) for score, label, entry in entries if score == top]
+            if top >= 2 and len(best) == 1:
+                self._event(result, "auto_remembered_entry", f"{best[0][0][:80]} @ {url}")
+                try:
+                    best[0][1].click(timeout=5_000, no_wait_after=True)
+                except Exception as exc:
+                    if not _is_browser_error(exc):
+                        raise
+                    # The page moved on by itself (OpenAthens forwards to the
+                    # remembered school, 2026-11-01): nothing left to click.
+                    return False
+                return True
+        # 2. a visible entry carrying the school's entityID or naming it (after federation choice / search)
+        if self._click_unique_institution_entry(page, result, url):
+            return True
+        # 3. a dropdown listing the school: _select_from_institution_lists, asked first.
+        # 4. type the school into an empty institution search box (once per page);
+        # never on a verification page, which the challenge wait takes first: a
+        # search there found no school and ended the login (fixture, 2026-11-01).
+        if not self._is_challenge_page(page) and once("institution_search"):
+            if self._assist_carsi_discovery(page, result):
+                self._event(result, "auto_institution_search", f"carsi @ {url}")
+                return True
+            for selector in self._institution_search_selectors(page):
+                try:
+                    box = page.locator(selector).first
+                    if box.is_visible(timeout=800) is not True:
+                        continue
+                    if str(box.input_value(timeout=2_000) or "").strip():
+                        return False  # the user is typing; never replace it
+                    # The English name, with a straight apostrophe (CARSI writes "Xi’an", 2026-11-01).
+                    query = next((q for q in (n.translate(self._QUOTES) for n in names) if q.isascii()), names[0])
+                    # Key by key: search-as-you-type lists (SAMS Sigma, OpenAthens)
+                    # do not search on a filled value (2026-11-01).
+                    box.press_sequentially(query, delay=40)
+                    try:
+                        # Briefly: a read with the default 30 s timeout stalled every
+                        # school choice on AHA's and Neurology's choosers (2026-11-01).
+                        typed = str(box.input_value(timeout=2_000) or "")
+                    except Exception as exc:
+                        if not _is_browser_error(exc):
+                            raise
+                        typed = query  # not readable now: go on to the results
+                    if typed != query and query.endswith(typed):
+                        # Keys typed while the search was still loading are lost
+                        # (the school's name without its first word, RSC 2026-11-01).
+                        settle(page, 1_000)
+                        box.fill("")
+                        box.press_sequentially(query, delay=40)
+                        self._event(result, "institution_search_retyped", f"{typed[:40]} @ {url}")
+                    self._event(result, "auto_institution_search", f"{query} @ {url}")
+                    # The results list as soon as it shows the school (at most 5 s).
+                    if pump_until(page, lambda: self._click_unique_institution_entry(page, result, url), 5_000):
+                        return True
+                    self._event(result, "auto_institution_not_found", f"{query} @ {url}")
+                    # The publisher has no login route for the school: the login ends
+                    # here instead of waiting out the user's time (Neurology, 2026-11-01).
+                    result._institution_not_listed = True
+                    return False
+                except Exception as exc:
+                    # Kept, not dropped: this step once stalled 30 s without a trace.
+                    self._event(result, "institution_search_error",
+                                f"{selector}: {type(exc).__name__}: {str(exc)[:160]} @ {url}")
+                    continue
+        return False
+
+    # SeamlessAccess's "Access through your institution" button: RSC's own class, and
+    # the standard one ("ra21-button", De Gruyter's LibLynx page, 2026-11-02).
+    _SA_BUTTON = "button.js-sa-federated-login, button.ra21-button"
+    _SA_GENERIC_LABELS = frozenset({"access through your institution", "access through your organization",
+                                    "access through your organisation"})
+    # SeamlessAccess's newer button sits in a frame of its own, with its "change" link (#dsbutton).
+    _SA_CTA_FRAME = "https://service.seamlessaccess.org/cta"
+
+    def _open_seamlessaccess_chooser(self, page: Any, result: DownloadResult) -> bool:
+        """Open the institution search behind a SeamlessAccess button; nothing is chosen here.
+
+        The generic "Access through your institution" button is pressed. A button
+        naming another remembered school is changed through its "change
+        institution" link; the configured school's button is clicked by
+        _assist_configured_institution. The button does nothing until the
+        SeamlessAccess frame has loaded (RSC, 2026-11-01): it is pressed only
+        then, and once more when the page has not moved on 10 seconds later.
+        SeamlessAccess's newer button sits in its own frame (``/cta/``): looked for
+        there when the page has none (AIP's institutional login, 2026-11-03); a
+        button there naming the configured school is pressed as it is.
+        """
+        url = str(getattr(page, "url", "") or "")
+        tries = sum(e["state"] == "seamlessaccess_chooser_opened" and e.get("detail") == url for e in result.events)
+        if tries >= 2:
+            return False
+        try:
+            where, change = page, ".js-sa-change-institution"
+            button = page.locator(self._SA_BUTTON).first
+            if button.is_visible() is not True:
+                frames = page.frames if isinstance(page.frames, (list, tuple)) else []
+                where = next((f for f in frames if str(getattr(f, "url", "") or "").startswith(self._SA_CTA_FRAME)), None)
+                if where is None:
+                    return False
+                button, change = where.locator(self._SA_BUTTON).first, "#dsbutton"
+                if button.is_visible() is not True:
+                    return False
+            label = " ".join(str(button.inner_text(timeout=1_000) or "").split()).lower()
+            target = button
+            if label not in self._SA_GENERIC_LABELS:
+                ours = self._institution_match_score(re.sub(r"^access through\s+", "", label)) >= 2
+                if tries or (ours and where is page):
+                    return False
+                if not ours:
+                    target = where.locator(change).first
+                    if target.is_visible() is not True:
+                        return False
+            if where is page and not any("seamlessaccess.org/ps" in str(getattr(frame, "url", "")) for frame in page.frames):
+                return False
+            target.click(timeout=5_000, no_wait_after=True)
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return False
+        self._event(result, "seamlessaccess_chooser_opened", url)
+        if target is button:
+            self._left_page(page, url, timeout_ms=10_000)
+        return True
+
+    def _assist_carsi_discovery(self, page: Any, result: DownloadResult) -> bool:
+        """On CARSI's own IdP discovery page, type the configured institution and click its entry.
+
+        Publisher federation choosers are left alone: there the only automatic
+        step is selecting the CARSI federation. Nothing is submitted here; the
+        user confirms in the window. Without a match the page is left as is.
+        """
+        host = (urlparse(str(getattr(page, "url", "") or "")).hostname or "").lower()
+        if not (host == "carsi.edu.cn" or host.endswith(".carsi.edu.cn")):
+            return False
+        if any(event["state"] == "institution_selected" for event in result.events):
+            return False
+        for selector in (*_INSTITUTION_SEARCH_SELECTORS, "input[type='search']", "input[type='text']"):
+            try:
+                box = page.locator(selector).first
+                if not box.is_visible(timeout=1_500):
+                    continue
+                if (box.input_value(timeout=2_000) or "").strip():
+                    return False  # the user already typed; never overwrite
+                box.fill(self.institution_query)
+                self._event(result, "institution_search", f"carsi:{selector}")
+                pump_until(page, lambda: self._any_visible(page, self._institution_result_selectors()), 2_000)
+                for result_selector in self._institution_result_selectors():
+                    try:
+                        option = page.locator(result_selector).first
+                        if option.is_visible(timeout=1_500):
+                            option.click(timeout=5_000, no_wait_after=True)
+                            self._event(result, "institution_selected", result_selector)
+                            return True
+                    except Exception:
+                        continue
+                return False
+            except Exception:
+                continue
+        return False
+
+    def _click_institution_search_result(self, page: Any, result: DownloadResult) -> bool:
+        for result_selector in self._institution_result_selectors():
+            try:
+                page.locator(result_selector).first.click(timeout=5_000)
+                self._event(result, "institution_selected", result_selector)
+                self._click_optional_continue(page, result, after_selection=True)
+                return True
+            except Exception:
+                continue
+        try:
+            clicked = page.evaluate(
+                """
+                (query) => {
+                  const needle = (query || '').toLowerCase();
+                  if (!needle) return null;
+                  const visible = (el) => {
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+                  };
+                  const textOf = (el) => [
+                    el.innerText || '',
+                    el.textContent || '',
+                    el.getAttribute('aria-label') || '',
+                    el.getAttribute('title') || ''
+                  ].join(' ').replace(/\\s+/g, ' ').trim();
+                  const candidates = [...document.querySelectorAll('a,button,[role="button"],[role="option"],li,div,span')]
+                    .filter(visible)
+                    .filter((el) => {
+                      const text = textOf(el).toLowerCase();
+                      return text.includes(needle) && text.length < 300;
+                    });
+                  const target = candidates.find((el) => textOf(el).toLowerCase().includes(needle));
+                  if (!target) return null;
+                  const clickable = target.closest('a,button,[role="button"],[role="option"],li') || target;
+                  const detail = textOf(clickable).slice(0, 160);
+                  clickable.click();
+                  return detail;
+                }
+                """,
+                self.institution_query,
+            )
+            if clicked:
+                self._event(result, "institution_selected", str(clicked))
+                self._click_optional_continue(page, result, after_selection=True)
+                return True
+        except Exception:
+            return False
+        return False
+
+    # Labels that name no institution; never treated as a remembered school.
+    _GENERIC_INSTITUTION_LABELS = frozenset({
+        "your institution", "your organization", "your organisation", "another organization",
+        "another organisation", "another institution", "university", "institution",
+    })
+
+    # Campus identity-provider hostnames (idp.example.edu.cn, ids.lzu.edu.cn, sso.x.edu ...).
+    _IDP_HOST_RE = re.compile(r"^(?:idp?|ids|sso|cas|login|passport|auth(?:server)?|shibboleth|webauth)\.[^/]+\.edu(?:\.cn)?$")
+
+    def _institution_names(self) -> tuple[str, ...]:
+        """The school being chosen, plus its English name when it is the one saved by setup.
+
+        Setup saves both names from the CARSI member list; the package names no school itself.
+        """
+        query = (self.institution_query or "").strip()
+        names = [query] if query else []
+        if query and query == str(self.config.get("carsi_idp_name") or "").strip():
+            english = str(self.config.get("carsi_idp_name_en") or "").strip()
+            if english and english not in names:
+                names.append(english)
+        return tuple(names)
+
+    def _entity_id(self) -> str:
+        """The configured school's SAML entityID: ``idp_entity_id`` (saved by setup
+        from the CARSI list), else the CARSI list's entry for ``carsi_idp_name``."""
+        configured = str(self.config.get("idp_entity_id") or "").strip()
+        if configured:
+            return configured
+        resolved = getattr(self, "_resolved_entity_id", None)
+        if resolved is None:
+            resolved = self._resolved_entity_id = self._entity_id_from_carsi_list()
+        return resolved
+
+    def _entity_id_from_carsi_list(self) -> str:
+        """The CARSI member list's entityID for the configured school, from the copy
+        setup saved in the data directory (a download never fetches the list)."""
+        name = str(self.config.get("carsi_idp_name") or "").strip()
+        if not name:
+            return ""
+        try:
+            from ..carsi_schools import CACHE_FILE, choose_school, parse_school_list
+            from ..config import DATA_DIR
+
+            cache = DATA_DIR / CACHE_FILE
+            if not cache.is_file():
+                return ""
+            school, _ = choose_school(parse_school_list(cache.read_text(encoding="utf-8")), name)
+        except Exception as exc:  # an unreadable copy: the names decide
+            logger.info("institution: CARSI list unreadable (%s)", type(exc).__name__)
+            return ""
+        return school.entity_id if school else ""
+
+    @staticmethod
+    def _carries_entity_id(text: str, entity_id: str) -> bool:
+        """True when ``text`` (an entry's link, data attributes and hidden fields) names
+        exactly ``entity_id``, plain, URL-encoded once or twice, or JSON-escaped."""
+        if not entity_id or not text:
+            return False
+        decoded = [text]
+        for _ in range(2):
+            decoded.append(unquote(decoded[-1]))
+        pattern = re.compile(r"(?<![\w.:/-])" + re.escape(entity_id) + r"(?![\w.:/-])")
+        return any(pattern.search(t.replace("\\/", "/")) for t in decoded)
+
+    def _is_idp_host(self, host: str) -> bool:
+        """True for the configured school's identity provider or any generic campus IdP hostname."""
+        host = (host or "").lower().split(":")[0]
+        if not host:
+            return False
+        if any(token in host for token in _school_auth_patterns(self.config)):
+            return True
+        return bool(self._IDP_HOST_RE.match(host))
+
+    def _institution_result_selectors(self) -> tuple[str, ...]:
+        """Result locators built from the configured institution name.
+
+        Profile ``institution_result_selectors`` are templates: ``{institution}``
+        is the only school they may name. Without a configured institution there
+        is nothing to click, so the user picks by hand.
+        """
+        names = self._institution_names()
+        if not names:
+            return ()
+        selectors: list[str] = []
+        templates = tuple(self.profile.institution_result_selectors)
+        for name in names:
+            literal = name.replace("\\", "\\\\").replace("'", "\\'")
+            selectors.extend((
+                f"text={name}",
+                f"button:has-text('{literal}')",
+                f"a:has-text('{literal}')",
+                f"[role='button']:has-text('{literal}')",
+                f"[role='option']:has-text('{literal}')",
+                f"li:has-text('{literal}')",
+                f"div:has-text('{literal}')",
+            ))
+            selectors.extend(t.replace("{institution}", literal) for t in templates if "{institution}" in t)
+        selectors.extend(t for t in templates if "{institution}" not in t)
+        return tuple(dict.fromkeys(selectors))
+
+    def _select_openathens_wayfinder(self, page: Any, result: DownloadResult) -> bool:
+        current_url = str(getattr(page, "url", "") or "")
+        parsed = urlparse(current_url)
+        host = (parsed.netloc or "").lower()
+        if not host.endswith("wayfinder.openathens.net"):
+            return False
+        entity_id = self._entity_id()
+        if not entity_id.startswith("https://"):
+            return False  # no configured IdP entityID: the user picks in the wayfinder
+        return_url = parse_qs(parsed.query).get("return", [""])[0]
+        if not return_url.startswith("https://connect.openathens.net/"):
+            return False
+        sep = "&" if "?" in return_url else "?"
+        direct_url = return_url + sep + urlencode(
+            {
+                "entityID": entity_id,
+                "target": current_url,
+            }
+        )
+        try:
+            open_page(page, direct_url, timeout_ms=30_000)
+            self._event(result, "institution_selected", "OpenAthens entityID: configured idp_entity_id")
+            return True
+        except Exception as exc:
+            self._event(result, "institution_select_error", f"{type(exc).__name__}: {exc}")
+            return False
+
+    _CHOOSER_URL_MARKERS = ("shibboleth.htm", "/action/ssostart", "wayfinder.openathens.net",
+                            "carsi.edu.cn", "/wayf", "/discovery", "/ds/", "institution-search")
+
+    # A search box naming an institution in its placeholder or label, or in its id or
+    # name (De Gruyter's LibLynx box has neither placeholder nor label, 2026-11-02).
+    _INSTITUTION_INPUTS = ("input[placeholder*='nstitution']", "input[placeholder*='rganization']",
+                           "input[placeholder*='机构']", "input[aria-label*='nstitution']",
+                           "input[type='search'][id*='nstitution']", "input[type='search'][name*='nstitution']")
+
+    def _institution_search_selectors(self, page: Any) -> tuple[str, ...]:
+        """Inputs the school may be typed into. A publisher's broad selectors
+        (``input[type='search']``, even ``input``) only on a page that asks for an
+        institution: elsewhere they take the site's search box (jacc.org, 2026-10-31)."""
+        if self.profile.institution_input_selectors and self._page_has_institution_chooser(page):
+            return (*self.profile.institution_input_selectors, *self._INSTITUTION_INPUTS)
+        return self._INSTITUTION_INPUTS
+
+    def _page_has_institution_chooser(self, page: Any) -> bool:
+        """True while the page asks the user to pick or type an institution.
+
+        A long dropdown, an institution/organisation search field, a password
+        field, or a known chooser URL means the user may still be choosing.
+        A plain site-search box does not count. Errors count as "choosing": a missed
+        Continue is harmless, a wrong one submits somebody else's school.
+        """
+        try:
+            url = str(getattr(page, "url", "") or "").lower()
+            if any(marker in url for marker in self._CHOOSER_URL_MARKERS):
+                return True
+            return bool(page.evaluate('''() => {
+                const visible = (el) => !el.disabled && el.checkVisibility();
+                const about = /institution|organi[sz]ation|university|school|federation|idp|机构|学校|单位|组织|联盟/i;
+                const label = (el) => [el.getAttribute('placeholder'), el.getAttribute('name'), el.id,
+                    el.getAttribute('aria-label'), el.getAttribute('title'),
+                    el.labels && [...el.labels].map(l => l.innerText).join(' ')].join(' ');
+                return [...document.querySelectorAll('select,input')].filter(visible).some(el => {
+                    if (el.tagName === 'SELECT') return el.options.length >= 5 || about.test(label(el));
+                    const type = (el.getAttribute('type') || 'text').toLowerCase();
+                    if (type === 'password') return true;  // a login form is never submitted for the user
+                    return ['text', 'search'].includes(type) && !el.readOnly && about.test(label(el));
+                });
+            }'''))
+        except Exception:
+            return True

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "Dove Medical Press",
+    "doi_prefixes": [
+      "10.2147"
+    ],
+    "base_domains": [
+      "dovepress.com"
+    ],
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [],
+    "success_url_markers": [
+      "dovepress.com/"
+    ],
+    "auth_url_markers": [
+      "login.php"
+    ],
+    "auth_title_markers": [
+      "Login"
+    ],
+    "sso_text_markers": [],
+    "supplementary_url_markers": [
+      "supplementary"
+    ],
+    "aliases": [
+      "dove",
+      "dovepress",
+      "dove medical press"
+    ],
+    "sample_dois": [
+      "10.2147/jir.s620421"
+    ]
+  }
+}

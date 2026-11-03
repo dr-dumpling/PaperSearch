@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "Copernicus",
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [],
+    "success_url_markers": [
+      ".copernicus.org/articles/",
+      "copernicus.org/articles/"
+    ],
+    "auth_url_markers": [],
+    "auth_title_markers": [],
+    "sso_text_markers": [],
+    "aliases": [
+      "copernicus",
+      "copernicus-publications"
+    ],
+    "doi_prefixes": [
+      "10.5194"
+    ],
+    "sample_dois": [
+      "10.5194/acp-24-1-2024"
+    ],
+    "base_domains": [
+      "copernicus.org"
+    ],
+    "pdf_source_path_templates": [],
+    "pdf_url_markers": [
+      ".pdf",
+      "/articles/",
+      "pdf"
+    ],
+    "pdf_link_text_markers": [
+      "pdf"
+    ],
+    "supplementary_url_markers": [
+      "assets",
+      "supplement",
+      "supplementary"
+    ],
+    "institution_input_selectors": [],
+    "institution_result_selectors": [],
+    "platform": "copernicus"
+  }
+}

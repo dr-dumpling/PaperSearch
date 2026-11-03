@@ -1,18 +1,21 @@
 import { TIMEOUTS } from '../../config/constants.js';
 import { PaperFactory } from '../../models/Paper.js';
 import { withTimeout } from '../../infrastructure/security/SecurityUtils.js';
-import { getAliasMap, getDefaultAllSources, resolvePlatformId } from '../../registry/platformMetadata.js';
+import { getAliasMap, getDefaultAllSources, getNoKeySources, NO_KEY_SOURCE_ALIASES, resolvePlatformId } from '../../registry/platformMetadata.js';
 const ALIASES = getAliasMap();
+const NO_KEY_ALIASES = new Set(NO_KEY_SOURCE_ALIASES);
 export function parseSourceList(sources, searchers) {
     const requested = !sources || sources.trim() === '' ? 'crossref' : sources.trim();
     if (requested.toLowerCase() === 'all') {
         return getDefaultAllSources().filter(source => source in searchers);
     }
-    return requested
+    const expanded = requested
         .split(',')
         .map(source => source.trim().toLowerCase())
         .filter(Boolean)
-        .map(source => ALIASES[source] || resolvePlatformId(source))
+        .flatMap(source => (NO_KEY_ALIASES.has(source) ? getNoKeySources() : [source]))
+        .map(source => ALIASES[source] || resolvePlatformId(source));
+    return expanded
         .filter((source, index, values) => values.indexOf(source) === index)
         .filter(source => source in searchers);
 }

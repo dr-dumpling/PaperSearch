@@ -1,7 +1,8 @@
-import type { CapabilityProfile } from '../capability-profile/index.js';
-import type { SkillStatusResult } from '../skills/index.js';
-export type SmokeSeverity = 'critical' | 'degraded' | 'warning' | 'skipped';
-export type SmokeCaseStatus = 'passed' | 'failed' | 'skipped';
+import type { CapabilityProfile } from "../capability-profile/index.js";
+import type { EntitledAccessReadiness } from "../capability-profile/carsiReadiness.js";
+import type { SkillStatusResult } from "../skills/index.js";
+export type SmokeSeverity = "critical" | "degraded" | "warning" | "skipped";
+export type SmokeCaseStatus = "passed" | "failed" | "skipped";
 export interface SmokeCase {
     name: string;
     ok: boolean;
@@ -17,7 +18,7 @@ export interface SmokeCase {
 }
 export interface LiveSmokeResult {
     ok: boolean;
-    mode: 'live';
+    mode: "live";
     cases: SmokeCase[];
     failedCases: SmokeCase[];
     degradedCases: SmokeCase[];
@@ -34,6 +35,7 @@ export interface LiveSmokeRunner {
         data?: unknown;
     }>;
     capabilityProfile: CapabilityProfile;
+    carsiReadiness: EntitledAccessReadiness;
     skillStatus?: SkillStatusResult;
     hasConfig(key: string): boolean;
 }

@@ -5,6 +5,11 @@ import { TIMEOUTS, USER_AGENT } from '../config/constants.js';
 import { downloadPdfFromUrl, safeFilename } from '../infrastructure/pdf/PdfDownload.js';
 import { PDFExtractor } from '../utils/PDFExtractor.js';
 import { getCoreMaxResultsCap } from '../config/ResultCaps.js';
+const DOI_PATTERN = /^\s*(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)?(10\.\d{4,9}\/\S+)\s*$/i;
+export function coreQuery(query) {
+    const doi = query.match(DOI_PATTERN)?.[1];
+    return doi ? `doi:"${doi}"` : query.replace(/\//g, '\\/');
+}
 export class CORESearcher extends PaperSource {
     client;
     constructor(apiKey) {
@@ -40,8 +45,10 @@ export class CORESearcher extends PaperSource {
             const maxPages = Math.min(20, maxResults);
             for (let page = 0, offset = 0; papers.length < maxResults && page < maxPages; page += 1) {
                 const requestedLimit = Math.min(pageSize, maxResults - papers.length);
-                const response = await this.requestWithRetry('/search/works', {
-                    q: query,
+                // The trailing slash avoids CORE's 301; a bare DOI breaks its query
+                // syntax (HTTP 500), so DOIs use the doi field and slashes are escaped.
+                const response = await this.requestWithRetry('/search/works/', {
+                    q: coreQuery(query),
                     limit: requestedLimit,
                     offset,
                     ...(options.year ? { year: options.year } : {})

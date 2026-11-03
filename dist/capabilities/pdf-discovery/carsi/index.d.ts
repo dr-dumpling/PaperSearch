@@ -1,0 +1,8 @@
+import type { CarsiBackend } from "./types.js";
+/** The configured backend, or the one at ``command`` (a fresh install's self-check). */
+export declare function createCarsiBackend(command?: string): CarsiBackend;
+export { resolveDefaultCarsiProfileDir } from "./CarsiMcpClient.js";
+export { carsiAttemptDetails } from "./CarsiAttempt.js";
+export type { CarsiBackend, CarsiBatchPosition, CarsiBatchUpdate, CarsiDownloadRequest, CarsiInvocationOutcome, CarsiProgress, CarsiReadiness, CarsiReadinessState, } from "./types.js";
+export type { CarsiProgressStage } from "./CarsiProgress.js";
+//# sourceMappingURL=index.d.ts.map

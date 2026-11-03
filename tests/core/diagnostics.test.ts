@@ -16,6 +16,7 @@ describe('diagnostics', () => {
     delete process.env.WOS_API_KEY;
     delete process.env.IEEE_API_KEY;
     delete process.env.EASYSCHOLAR_KEY;
+    delete process.env.WILEY_TDM_TOKEN;
   });
 
   it('should report key-dependent capabilities and configuration state', () => {
@@ -36,6 +37,33 @@ describe('diagnostics', () => {
     const easyscholar = requirements.find(item => item.id === 'easyscholar');
     expect(easyscholar?.configured).toBe(false);
     expect(easyscholar?.missingGroups).toEqual([['EASYSCHOLAR_KEY']]);
+  });
+
+  it('keeps Elsevier requirements metadata-only and removes Wiley TDM diagnostics', () => {
+    process.env.ELSEVIER_API_KEY = 'test-key';
+    process.env.WILEY_TDM_TOKEN = 'legacy-token';
+
+    const requirements = getRequirementStatus();
+    const sciencedirect = requirements.find(item => item.id === 'sciencedirect');
+    const scopus = requirements.find(item => item.id === 'scopus');
+
+    expect(requirements.map(item => item.id)).not.toContain('wiley');
+    expect(sciencedirect).toEqual(
+      expect.objectContaining({
+        configured: true,
+        capability: expect.stringMatching(/metadata/i),
+        keyGroups: [['ELSEVIER_API_KEY']]
+      })
+    );
+    expect(scopus).toEqual(
+      expect.objectContaining({
+        configured: true,
+        capability: expect.stringMatching(/metadata/i),
+        keyGroups: [['ELSEVIER_API_KEY']]
+      })
+    );
+    expect(sciencedirect?.tools).not.toContain('download_paper');
+    expect(scopus?.tools).not.toContain('download_paper');
   });
 
   it('should report EasyScholar journal metrics as configured when the canonical key exists', () => {
@@ -109,6 +137,23 @@ describe('diagnostics', () => {
     expect(diagnostic?.category).toBe('timeout');
     expect(diagnostic?.severity).toBe('warning');
     expect(diagnostic?.summary).toContain('was skipped');
+  });
+
+  it('should explain Google Scholar anti-bot challenges and proxy routing', () => {
+    const diagnostic = diagnoseError(
+      {
+        status: 429,
+        message:
+          'Google Scholar returned an anti-bot challenge (CAPTCHA or unusual-traffic page). Wait before retrying.'
+      },
+      { tool: 'search_google_scholar' }
+    );
+
+    expect(diagnostic?.category).toBe('rate_limit');
+    expect(diagnostic?.platform).toBe('googlescholar');
+    expect(diagnostic?.summary).toContain('anti-bot challenge');
+    expect(diagnostic?.actions.join('\n')).toContain('GOOGLE_SCHOLAR_PROXY_URL');
+    expect(diagnostic?.relatedConfigKeys).toContain('GOOGLE_SCHOLAR_PROXY_URL');
   });
 
   it('should diagnose zero results when key is configured', () => {

@@ -1,1 +1,1 @@
-{"version":3,"file":"httpPolicies.d.ts","sourceRoot":"","sources":["../../src/registry/httpPolicies.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,UAAU,EAAE,MAAM,sCAAsC,CAAC;AAEvE,eAAO,MAAM,aAAa,EAAE,MAAM,CAAC,MAAM,EAAE,UAAU,CAepD,CAAC"}
+{"version":3,"file":"httpPolicies.d.ts","sourceRoot":"","sources":["../../src/registry/httpPolicies.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,UAAU,EAAE,MAAM,sCAAsC,CAAC;AAEvE,eAAO,MAAM,aAAa,EAAE,MAAM,CAAC,MAAM,EAAE,UAAU,CAWpD,CAAC"}

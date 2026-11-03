@@ -349,9 +349,9 @@ export class SemanticScholarSearcher extends PaperSource {
     }
     normalizePdfUrl(url) {
         const clean = url.trim();
-        const arxivAbs = clean.match(/^https?:\/\/arxiv\.org\/abs\/([^?#]+)(?:[?#].*)?$/i);
-        if (arxivAbs) {
-            return `https://arxiv.org/pdf/${arxivAbs[1]}`;
+        // arXiv is not used as a download source.
+        if (/^https?:\/\/(?:export\.)?arxiv\.org\//i.test(clean)) {
+            return '';
         }
         if (/^https?:\/\/api\.unpaywall\.org\//i.test(clean) || /^https?:\/\/(?:dx\.)?doi\.org\//i.test(clean)) {
             return '';

@@ -1,7 +1,7 @@
 import { SEARCH_PLATFORM_VALUES } from '../../registry/platformMetadata.js';
 export const SEARCH_PAPERS_TOOL = {
     name: 'search_papers',
-    description: 'Search academic papers from multiple sources including arXiv, Web of Science, etc.',
+    description: 'Search academic papers from multiple sources including Web of Science, etc.',
     inputSchema: {
         type: 'object',
         properties: {
@@ -9,11 +9,11 @@ export const SEARCH_PAPERS_TOOL = {
             platform: {
                 type: 'string',
                 enum: [...SEARCH_PLATFORM_VALUES, 'all'],
-                description: 'Platform to search (default: crossref). Use --sources for comma-separated multi-source search. Note: Wiley only supports PDF download by DOI.'
+                description: 'Platform to search (default: crossref). Use --sources for comma-separated multi-source search.'
             },
             sources: {
                 type: 'string',
-                description: 'Comma-separated source list for multi-source search, or all for every registered search source except DOI-download-only providers. Failed or unconfigured sources are reported in failed_sources/errors. Example: crossref,openalex,pubmed,pmc'
+                description: 'Comma-separated source list for multi-source search. Use all for the broad registered set, or no-key (aliases: free, no_key) for Crossref, PubMed, Europe PMC, and OpenReview without user API keys. Failed or unconfigured sources are reported in failed_sources/errors. Example: crossref,openalex,pubmed,pmc'
             },
             maxResults: {
                 type: 'number',
@@ -24,7 +24,7 @@ export const SEARCH_PAPERS_TOOL = {
             year: { type: 'string', description: 'Year filter (e.g., "2023", "2020-2023", "2020-")' },
             author: { type: 'string', description: 'Author name filter' },
             journal: { type: 'string', description: 'Journal name filter' },
-            category: { type: 'string', description: 'Category filter (e.g., cs.AI for arXiv)' },
+            category: { type: 'string', description: 'Category filter (e.g., a bioRxiv subject such as neuroscience)' },
             days: {
                 type: 'number',
                 description: 'Number of days to search back (bioRxiv/medRxiv only)'
@@ -64,7 +64,7 @@ export const GET_PAPER_BY_DOI_TOOL = {
             },
             platform: {
                 type: 'string',
-                enum: ['arxiv', 'webofscience', 'pubmed', 'crossref', 'openalex', 'unpaywall', 'pmc', 'europepmc', 'core', 'all'],
+                enum: ['webofscience', 'pubmed', 'crossref', 'openalex', 'unpaywall', 'pmc', 'europepmc', 'core', 'all'],
                 description: 'Platform to search'
             }
         },

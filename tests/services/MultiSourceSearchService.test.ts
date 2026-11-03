@@ -12,7 +12,6 @@ const searchers = {
   pubmed: {},
   pmc: {},
   europepmc: {},
-  arxiv: {},
   biorxiv: {},
   medrxiv: {},
   semantic: {},
@@ -51,14 +50,12 @@ describe('MultiSourceSearchService', () => {
         'pubmed',
         'pmc',
         'europepmc',
-        'arxiv',
         'biorxiv',
         'medrxiv',
         'semantic',
         'iacr',
         'core',
         'openaire',
-        'googlescholar',
         'webofscience',
         'sciencedirect',
         'springer',
@@ -73,6 +70,7 @@ describe('MultiSourceSearchService', () => {
       ]);
       expect(sources).not.toContain('wos');
       expect(sources).not.toContain('scholar');
+      expect(sources).not.toContain('googlescholar');
       expect(sources).not.toContain('springerlink');
       expect(sources).not.toContain('wiley');
     });
@@ -89,6 +87,21 @@ describe('MultiSourceSearchService', () => {
       expect(parseSourceList('springerlink,google_scholar', searchers)).toEqual([
         'springer',
         'googlescholar'
+      ]);
+    });
+
+    it('expands the no-key bundle while preserving real source identities', () => {
+      expect(parseSourceList('no-key', searchers)).toEqual([
+        'crossref',
+        'pubmed',
+        'europepmc',
+        'openreview'
+      ]);
+      expect(parseSourceList('free,crossref', searchers)).toEqual([
+        'crossref',
+        'pubmed',
+        'europepmc',
+        'openreview'
       ]);
     });
   });

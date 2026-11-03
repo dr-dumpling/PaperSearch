@@ -15,7 +15,7 @@ export class UnpaywallSearcher extends PaperSource {
             timeout: TIMEOUTS.DEFAULT,
             headers: {
                 Accept: 'application/json',
-                'User-Agent': `${USER_AGENT} (https://github.com/dr-dumpling/paper-search-cli)`
+                'User-Agent': `${USER_AGENT} (https://github.com/dr-dumpling/PaperSearch)`
             },
             validateStatus: status => status < 500
         });
@@ -46,6 +46,30 @@ export class UnpaywallSearcher extends PaperSource {
         const cleanDoi = this.extractDoi(doi);
         if (!cleanDoi)
             return null;
+        const record = await this.fetchRecord(cleanDoi, 'getPaperByDoi');
+        return record ? this.parseRecord(record, cleanDoi) : null;
+    }
+    /**
+     * Every OA location's PDF URL, published version first, then accepted and
+     * submitted; within a version, repositories before the publisher. Unpaywall's
+     * own best location prefers publisher copies, which often refuse plain HTTP.
+     */
+    async resolvePdfCandidates(doi) {
+        if (!this.email)
+            return [];
+        const cleanDoi = this.extractDoi(doi);
+        if (!cleanDoi)
+            return [];
+        const record = await this.fetchRecord(cleanDoi, 'resolvePdfCandidates');
+        const versionRank = { publishedVersion: 0, acceptedVersion: 1, submittedVersion: 2 };
+        const seen = new Set();
+        return (record?.oa_locations || [])
+            .filter((location) => location.url_for_pdf && !seen.has(location.url_for_pdf) && seen.add(location.url_for_pdf))
+            .map((location) => ({ url: location.url_for_pdf, hostType: location.host_type || '', version: location.version || '' }))
+            .sort((a, b) => (versionRank[a.version] ?? 3) - (versionRank[b.version] ?? 3) ||
+            Number(a.hostType !== 'repository') - Number(b.hostType !== 'repository'));
+    }
+    async fetchRecord(cleanDoi, operation) {
         try {
             const response = await this.client.get(`/${encodeURIComponent(cleanDoi)}`, {
                 params: { email: this.email }
@@ -55,15 +79,11 @@ export class UnpaywallSearcher extends PaperSource {
             if (response.status >= 400) {
                 throw new Error(`Unpaywall request failed with HTTP ${response.status}`);
             }
-            return this.parseRecord(response.data, cleanDoi);
+            return response.data;
         }
         catch (error) {
-            this.handleHttpError(error, 'getPaperByDoi');
+            this.handleHttpError(error, operation);
         }
-    }
-    async resolveBestPdfUrl(doi) {
-        const paper = await this.getPaperByDoi(doi);
-        return paper?.pdfUrl || '';
     }
     async downloadPdf(_paperId, _options = {}) {
         throw new Error('Unpaywall does not host PDFs. Use returned pdf_url with download_with_fallback.');

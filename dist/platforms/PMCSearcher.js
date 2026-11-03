@@ -6,8 +6,8 @@ import { downloadPdfFromUrl, safeFilename } from '../infrastructure/pdf/PdfDownl
 import { PDFExtractor } from '../utils/PDFExtractor.js';
 export class PMCSearcher extends PaperSource {
     client;
-    tool = process.env.NCBI_TOOL || 'paper-search-cli';
-    email = process.env.NCBI_EMAIL || process.env.CROSSREF_MAILTO || 'paper-search-cli@example.com';
+    tool = process.env.NCBI_TOOL || 'papersearch';
+    email = process.env.NCBI_EMAIL || process.env.CROSSREF_MAILTO || 'papersearch@example.com';
     constructor() {
         super('pmc', 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils');
         this.client = axios.create({

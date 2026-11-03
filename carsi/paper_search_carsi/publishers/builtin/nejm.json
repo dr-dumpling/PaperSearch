@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "NEJM",
+    "doi_prefixes": [
+      "10.1056"
+    ],
+    "base_domains": [
+      "nejm.org"
+    ],
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [],
+    "success_url_markers": [
+      "nejm.org/"
+    ],
+    "auth_url_markers": [
+      "/login",
+      "/saml/",
+      "/sso/",
+      "login.openathens.net"
+    ],
+    "auth_title_markers": [
+      "Institutional Login",
+      "Sign In"
+    ],
+    "sso_text_markers": [
+      "access through your institution",
+      "institutional login",
+      "log in via an institution",
+      "sign in through your institution",
+      "openathens"
+    ],
+    "supplementary_url_markers": [
+      "suppl_file",
+      "suppdata",
+      "supplementary",
+      "supporting-information",
+      "/suppl/"
+    ],
+    "aliases": [
+      "nejm"
+    ],
+    "sample_dois": [],
+    "platform": "generic"
+  }
+}

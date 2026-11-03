@@ -1,75 +1,80 @@
 /**
  * ScienceDirect (Elsevier) Searcher
- * 
+ *
  * Documentation: https://dev.elsevier.com/
  * API Endpoints:
  * - Search API: https://api.elsevier.com/content/search/sciencedirect
  * - Article API: https://api.elsevier.com/content/article/doi/
- * 
+ *
  * Required API Key: Yes (X-ELS-APIKey header)
  * Get API key from: https://dev.elsevier.com/apikey/manage
  */
 
-import axios, { AxiosInstance } from 'axios';
-import { PaperSource, SearchOptions, DownloadOptions, PlatformCapabilities } from './PaperSource.js';
-import { Paper, PaperFactory } from '../models/Paper.js';
-import { RateLimiter } from '../infrastructure/rate-limit/RateLimiter.js';
-import { ErrorHandler } from '../infrastructure/http/ErrorHandler.js';
-import { QuotaManager } from '../utils/QuotaManager.js';
-import { logDebug } from '../utils/Logger.js';
-import { TIMEOUTS, USER_AGENT } from '../config/constants.js';
+import axios, { AxiosInstance } from "axios";
+import {
+  PaperSource,
+  SearchOptions,
+  DownloadOptions,
+  PlatformCapabilities,
+} from "./PaperSource.js";
+import { Paper, PaperFactory } from "../models/Paper.js";
+import { RateLimiter } from "../infrastructure/rate-limit/RateLimiter.js";
+import { ErrorHandler } from "../infrastructure/http/ErrorHandler.js";
+import { QuotaManager } from "../utils/QuotaManager.js";
+import { logDebug } from "../utils/Logger.js";
+import { TIMEOUTS, USER_AGENT } from "../config/constants.js";
 
 interface ElsevierSearchResponse {
-  'search-results': {
-    'opensearch:totalResults': string;
-    'opensearch:startIndex': string;
-    'opensearch:itemsPerPage': string;
+  "search-results": {
+    "opensearch:totalResults": string;
+    "opensearch:startIndex": string;
+    "opensearch:itemsPerPage": string;
     entry?: ElsevierEntry[];
     link?: Array<{
-      '@ref': string;
-      '@href': string;
-      '@type': string;
+      "@ref": string;
+      "@href": string;
+      "@type": string;
     }>;
   };
 }
 
 interface ElsevierEntry {
-  'dc:identifier': string;
-  'dc:title': string;
-  'dc:creator'?: string;
-  'prism:publicationName'?: string;
-  'prism:coverDate'?: string;
-  'prism:doi'?: string;
-  'prism:url'?: string;
-  'dc:description'?: string;
-  'prism:volume'?: string;
-  'prism:issueIdentifier'?: string;
-  'prism:pageRange'?: string;
-  'pii'?: string;
-  'load-date'?: string;
+  "dc:identifier": string;
+  "dc:title": string;
+  "dc:creator"?: string;
+  "prism:publicationName"?: string;
+  "prism:coverDate"?: string;
+  "prism:doi"?: string;
+  "prism:url"?: string;
+  "dc:description"?: string;
+  "prism:volume"?: string;
+  "prism:issueIdentifier"?: string;
+  "prism:pageRange"?: string;
+  pii?: string;
+  "load-date"?: string;
   link?: Array<{
-    '@ref': string;
-    '@href': string;
-    '@type': string;
+    "@ref": string;
+    "@href": string;
+    "@type": string;
   }>;
-  'openaccess'?: boolean;
-  'openaccessFlag'?: boolean;
+  openaccess?: boolean;
+  openaccessFlag?: boolean;
 }
 
 interface ElsevierArticleResponse {
-  'full-text-retrieval-response': {
+  "full-text-retrieval-response": {
     coredata: {
-      'dc:identifier': string;
-      'dc:title': string;
-      'dc:creator'?: any;
-      'prism:publicationName'?: string;
-      'prism:coverDate'?: string;
-      'prism:doi'?: string;
-      'dc:description'?: string;
-      'prism:volume'?: string;
-      'prism:issueIdentifier'?: string;
-      'prism:pageRange'?: string;
-      'citedby-count'?: string;
+      "dc:identifier": string;
+      "dc:title": string;
+      "dc:creator"?: any;
+      "prism:publicationName"?: string;
+      "prism:coverDate"?: string;
+      "prism:doi"?: string;
+      "dc:description"?: string;
+      "prism:volume"?: string;
+      "prism:issueIdentifier"?: string;
+      "prism:pageRange"?: string;
+      "citedby-count"?: string;
     };
     originalText?: string;
   };
@@ -81,16 +86,16 @@ export class ScienceDirectSearcher extends PaperSource {
   private quotaManager: QuotaManager;
 
   constructor(apiKey?: string) {
-    super('sciencedirect', 'https://api.elsevier.com', apiKey);
+    super("sciencedirect", "https://api.elsevier.com", apiKey);
 
     this.client = axios.create({
-      baseURL: 'https://api.elsevier.com',
+      baseURL: "https://api.elsevier.com",
       timeout: TIMEOUTS.DEFAULT,
       headers: {
-        'Accept': 'application/json',
-        'User-Agent': USER_AGENT,
-        ...(apiKey ? { 'X-ELS-APIKey': apiKey } : {})
-      }
+        Accept: "application/json",
+        "User-Agent": USER_AGENT,
+        ...(apiKey ? { "X-ELS-APIKey": apiKey } : {}),
+      },
     });
 
     // Elsevier rate limits:
@@ -100,20 +105,20 @@ export class ScienceDirectSearcher extends PaperSource {
 
     this.rateLimiter = new RateLimiter({
       requestsPerSecond,
-      burstCapacity: apiKey ? 20 : 5
+      burstCapacity: apiKey ? 20 : 5,
     });
 
     this.quotaManager = QuotaManager.getInstance();
-    this.quotaManager.registerPlatform('sciencedirect', {
+    this.quotaManager.registerPlatform("sciencedirect", {
       dailyLimit: 5000,
-      envPrefix: 'SCIENCEDIRECT'
+      envPrefix: "SCIENCEDIRECT",
     });
   }
 
   async search(query: string, options: SearchOptions = {}): Promise<Paper[]> {
     const customOptions = options as any;
     if (!this.apiKey) {
-      throw new Error('ScienceDirect API key is required');
+      throw new Error("ScienceDirect API key is required");
     }
 
     const maxResults = Math.min(options.maxResults || 10, 100);
@@ -122,13 +127,13 @@ export class ScienceDirectSearcher extends PaperSource {
     try {
       // Use PUT method with new API format (matching Python implementation)
       const requestBody: any = {
-        qs: query
+        qs: query,
       };
 
       // Add year filter
       if (options.year) {
-        if (options.year.includes('-')) {
-          const [startYear, endYear] = options.year.split('-');
+        if (options.year.includes("-")) {
+          const [startYear, endYear] = options.year.split("-");
           requestBody.date = endYear ? `${startYear}-${endYear}` : startYear;
         } else {
           requestBody.date = options.year;
@@ -144,20 +149,21 @@ export class ScienceDirectSearcher extends PaperSource {
       requestBody.display = {
         offset: 0,
         show: maxResults,
-        sortBy: options.sortBy === 'date' ? 'date' : 'relevance'
+        sortBy: options.sortBy === "date" ? "date" : "relevance",
       };
 
       await this.rateLimiter.waitForPermission();
-      this.quotaManager.checkQuota('sciencedirect');
+      this.quotaManager.checkQuota("sciencedirect");
 
       const response = await ErrorHandler.retryWithBackoff(
-        () => this.client.put('/content/search/sciencedirect', requestBody, {
-          headers: { 'Content-Type': 'application/json' }
-        }),
-        { context: 'ScienceDirect search' }
+        () =>
+          this.client.put("/content/search/sciencedirect", requestBody, {
+            headers: { "Content-Type": "application/json" },
+          }),
+        { context: "ScienceDirect search" },
       );
 
-      this.quotaManager.incrementUsage('sciencedirect');
+      this.quotaManager.incrementUsage("sciencedirect");
 
       const results = response.data?.results || [];
 
@@ -176,7 +182,7 @@ export class ScienceDirectSearcher extends PaperSource {
 
       return papers;
     } catch (error: any) {
-      this.handleHttpError(error, 'search');
+      this.handleHttpError(error, "search");
     }
   }
 
@@ -204,7 +210,9 @@ export class ScienceDirectSearcher extends PaperSource {
       const authors: string[] = [];
       const authorsData = result.authors || [];
       if (Array.isArray(authorsData)) {
-        const sortedAuthors = [...authorsData].sort((a, b) => (a.order || 999) - (b.order || 999));
+        const sortedAuthors = [...authorsData].sort(
+          (a, b) => (a.order || 999) - (b.order || 999),
+        );
         for (const author of sortedAuthors) {
           if (author.name) {
             authors.push(author.name.trim());
@@ -214,24 +222,24 @@ export class ScienceDirectSearcher extends PaperSource {
 
       return PaperFactory.create({
         paperId: result.pii || `scidir_${Date.now()}`,
-        title: result.title || 'No title',
+        title: result.title || "No title",
         authors: authors,
-        abstract: '',
+        abstract: "",
         doi: result.doi,
         publishedDate: publishedDate,
         url: result.uri,
-        source: 'sciencedirect',
+        source: "sciencedirect",
         journal: result.sourceTitle,
         year: year,
         extra: {
           pii: result.pii,
           openAccess: result.openAccess || false,
           volumeIssue: result.volumeIssue,
-          pages: result.pages
-        }
+          pages: result.pages,
+        },
       });
     } catch (error) {
-      logDebug('Error parsing ScienceDirect result:', error);
+      logDebug("Error parsing ScienceDirect result:", error);
       return null;
     }
   }
@@ -247,17 +255,19 @@ export class ScienceDirectSearcher extends PaperSource {
         await this.rateLimiter.waitForPermission();
 
         const response = await ErrorHandler.retryWithBackoff(
-          () => this.client.get(`/content/article/pii/${paper.paperId}`, {
-            params: { view: 'META_ABS' }
-          }),
-          { context: 'ScienceDirect abstract' }
+          () =>
+            this.client.get(`/content/article/pii/${paper.paperId}`, {
+              params: { view: "META_ABS" },
+            }),
+          { context: "ScienceDirect abstract" },
         );
 
-        const coredata = response.data?.['full-text-retrieval-response']?.coredata;
+        const coredata =
+          response.data?.["full-text-retrieval-response"]?.coredata;
         if (coredata) {
-          paper.abstract = coredata['dc:description'] || '';
+          paper.abstract = coredata["dc:description"] || "";
         }
-        
+
         enrichedPapers.push(paper);
       } catch (error) {
         // If enrichment fails, keep original paper
@@ -273,86 +283,102 @@ export class ScienceDirectSearcher extends PaperSource {
       // Extract PDF URL if available
       let pdfUrl: string | undefined;
       if (entry.link) {
-        const pdfLink = entry.link.find(l => l['@type'] === 'application/pdf');
+        const pdfLink = entry.link.find(
+          (l) => l["@type"] === "application/pdf",
+        );
         if (pdfLink) {
-          pdfUrl = pdfLink['@href'];
+          pdfUrl = pdfLink["@href"];
         }
       }
 
       // Build paper URL
-      const paperUrl = entry['prism:url'] || 
-                      (entry['prism:doi'] ? `https://doi.org/${entry['prism:doi']}` : undefined);
+      const paperUrl =
+        entry["prism:url"] ||
+        (entry["prism:doi"]
+          ? `https://doi.org/${entry["prism:doi"]}`
+          : undefined);
 
       return PaperFactory.create({
-        paperId: entry['prism:doi'] || entry['dc:identifier'] || entry.pii || '',
-        title: entry['dc:title'] || '',
-        authors: entry['dc:creator'] ? [entry['dc:creator']] : [],
-        abstract: entry['dc:description'] || '',
-        doi: entry['prism:doi'],
-        publishedDate: entry['prism:coverDate'] ? new Date(entry['prism:coverDate']) : null,
+        paperId:
+          entry["prism:doi"] || entry["dc:identifier"] || entry.pii || "",
+        title: entry["dc:title"] || "",
+        authors: entry["dc:creator"] ? [entry["dc:creator"]] : [],
+        abstract: entry["dc:description"] || "",
+        doi: entry["prism:doi"],
+        publishedDate: entry["prism:coverDate"]
+          ? new Date(entry["prism:coverDate"])
+          : null,
         pdfUrl: pdfUrl,
         url: paperUrl,
-        source: 'sciencedirect',
-        journal: entry['prism:publicationName'],
-        volume: entry['prism:volume'],
-        issue: entry['prism:issueIdentifier'],
-        pages: entry['prism:pageRange'],
+        source: "sciencedirect",
+        journal: entry["prism:publicationName"],
+        volume: entry["prism:volume"],
+        issue: entry["prism:issueIdentifier"],
+        pages: entry["prism:pageRange"],
         extra: {
           pii: entry.pii,
-          openAccess: entry.openaccess || entry.openaccessFlag || false
-        }
+          openAccess: entry.openaccess || entry.openaccessFlag || false,
+        },
       });
     } catch (error) {
-      logDebug('Error parsing ScienceDirect entry:', error);
+      logDebug("Error parsing ScienceDirect entry:", error);
       return null;
     }
   }
 
   async getArticleDetails(doi: string): Promise<Paper | null> {
     if (!this.apiKey) {
-      throw new Error('ScienceDirect API key is required');
+      throw new Error("ScienceDirect API key is required");
     }
 
     try {
       await this.rateLimiter.waitForPermission();
 
       const response = await ErrorHandler.retryWithBackoff(
-        () => this.client.get<ElsevierArticleResponse>(`/content/article/doi/${doi}`, {
-          params: { view: 'FULL' }
-        }),
-        { context: 'ScienceDirect article details' }
+        () =>
+          this.client.get<ElsevierArticleResponse>(
+            `/content/article/doi/${doi}`,
+            {
+              params: { view: "META_ABS" },
+            },
+          ),
+        { context: "ScienceDirect article details" },
       );
 
-      const coredata = response.data['full-text-retrieval-response']?.coredata;
+      const coredata = response.data["full-text-retrieval-response"]?.coredata;
       if (!coredata) return null;
 
       // Extract authors
-      let authors = '';
-      if (coredata['dc:creator']) {
-        if (Array.isArray(coredata['dc:creator'])) {
-          authors = coredata['dc:creator'].map((a: any) => a.$).join(', ');
-        } else if (typeof coredata['dc:creator'] === 'string') {
-          authors = coredata['dc:creator'];
+      let authors = "";
+      if (coredata["dc:creator"]) {
+        if (Array.isArray(coredata["dc:creator"])) {
+          authors = coredata["dc:creator"].map((a: any) => a.$).join(", ");
+        } else if (typeof coredata["dc:creator"] === "string") {
+          authors = coredata["dc:creator"];
         }
       }
 
       return PaperFactory.create({
         paperId: doi,
-        title: coredata['dc:title'] || '',
+        title: coredata["dc:title"] || "",
         authors: authors ? [authors] : [],
-        abstract: coredata['dc:description'] || '',
-        doi: coredata['prism:doi'] || doi,
-        publishedDate: coredata['prism:coverDate'] ? new Date(coredata['prism:coverDate']) : null,
+        abstract: coredata["dc:description"] || "",
+        doi: coredata["prism:doi"] || doi,
+        publishedDate: coredata["prism:coverDate"]
+          ? new Date(coredata["prism:coverDate"])
+          : null,
         url: `https://doi.org/${doi}`,
-        source: 'sciencedirect',
-        journal: coredata['prism:publicationName'],
-        volume: coredata['prism:volume'],
-        issue: coredata['prism:issueIdentifier'],
-        pages: coredata['prism:pageRange'],
-        citationCount: coredata['citedby-count'] ? parseInt(coredata['citedby-count']) : undefined
+        source: "sciencedirect",
+        journal: coredata["prism:publicationName"],
+        volume: coredata["prism:volume"],
+        issue: coredata["prism:issueIdentifier"],
+        pages: coredata["prism:pageRange"],
+        citationCount: coredata["citedby-count"]
+          ? parseInt(coredata["citedby-count"])
+          : undefined,
       });
     } catch (error: any) {
-      logDebug('ScienceDirect article details error:', error.message);
+      logDebug("ScienceDirect article details error:", error.message);
       return null;
     }
   }
@@ -364,20 +390,28 @@ export class ScienceDirectSearcher extends PaperSource {
       fullText: false,
       citations: true,
       requiresApiKey: true,
-      supportedOptions: ['maxResults', 'year', 'author', 'journal']
+      supportedOptions: ["maxResults", "year", "author", "journal"],
     };
   }
 
-  async downloadPdf(paperId: string, options: DownloadOptions = {}): Promise<string> {
-    throw new Error('PDF download requires institutional access for ScienceDirect');
+  async downloadPdf(
+    paperId: string,
+    options: DownloadOptions = {},
+  ): Promise<string> {
+    throw new Error(
+      "ScienceDirect itself does not perform authorized PDF downloads; the optional CARSI tier is handled by the unified download funnel.",
+    );
   }
 
-  async readPaper(paperId: string, options: DownloadOptions = {}): Promise<string> {
+  async readPaper(
+    paperId: string,
+    options: DownloadOptions = {},
+  ): Promise<string> {
     const paper = await this.getArticleDetails(paperId);
     if (!paper) {
-      throw new Error('Paper not found');
+      throw new Error("Paper not found");
     }
-    return paper.abstract || 'Abstract not available';
+    return paper.abstract || "Abstract not available";
   }
 
   /**
@@ -388,15 +422,17 @@ export class ScienceDirectSearcher extends PaperSource {
       // Get paper to check DOI
       const paper = await this.getArticleDetails(paperId);
       if (!paper || !paper.doi) {
-        logDebug(`ScienceDirect paper ${paperId} has no DOI, cannot fetch citations`);
+        logDebug(
+          `ScienceDirect paper ${paperId} has no DOI, cannot fetch citations`,
+        );
         return [];
       }
 
-      const { CrossrefSearcher } = await import('./CrossrefSearcher.js');
+      const { CrossrefSearcher } = await import("./CrossrefSearcher.js");
       const crossref = new CrossrefSearcher();
       return await crossref.getCitations(paper.doi);
     } catch (error) {
-      logDebug('Error getting ScienceDirect citations:', error);
+      logDebug("Error getting ScienceDirect citations:", error);
       return [];
     }
   }
@@ -409,15 +445,17 @@ export class ScienceDirectSearcher extends PaperSource {
       // Get paper to check DOI
       const paper = await this.getArticleDetails(paperId);
       if (!paper || !paper.doi) {
-        logDebug(`ScienceDirect paper ${paperId} has no DOI, cannot fetch references`);
+        logDebug(
+          `ScienceDirect paper ${paperId} has no DOI, cannot fetch references`,
+        );
         return [];
       }
 
-      const { CrossrefSearcher } = await import('./CrossrefSearcher.js');
+      const { CrossrefSearcher } = await import("./CrossrefSearcher.js");
       const crossref = new CrossrefSearcher();
       return await crossref.getReferences(paper.doi);
     } catch (error) {
-      logDebug('Error getting ScienceDirect references:', error);
+      logDebug("Error getting ScienceDirect references:", error);
       return [];
     }
   }

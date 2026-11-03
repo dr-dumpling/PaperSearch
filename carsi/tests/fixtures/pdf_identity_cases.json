@@ -1,0 +1,941 @@
+[
+ {
+  "group": "doi",
+  "name": "a label glued to its resolver URL",
+  "text": "DOIhttps://doi.org/\n10.1000/target.\nAbstract\nBody",
+  "doi": "10.1000/target",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a label glued to its resolver URL, with the title",
+  "text": "Nutrition and health in a long article title\nDOIhttps://doi.org/\n10.1000/target.\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a cover's article link (Taylor & Francis)",
+  "text": "To link to this article: https://doi.org/10.1000/target\nAbstract\nBody",
+  "doi": "10.1000/target",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a cover's article link (Taylor & Francis), with the title",
+  "text": "Nutrition and health in a long article title\nTo link to this article: https://doi.org/10.1000/target\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a label without a colon",
+  "text": "DOI 10.1000/target\nAbstract\nBody",
+  "doi": "10.1000/target",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a label without a colon, with the title",
+  "text": "Nutrition and health in a long article title\nDOI 10.1000/target\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a pre-proof cover",
+  "text": "DOI:https://doi.org/10.1000/target\nAbstract\nBody",
+  "doi": "10.1000/target",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a pre-proof cover, with the title",
+  "text": "Nutrition and health in a long article title\nDOI:https://doi.org/10.1000/target\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a label glued to the DOI (Thieme)",
+  "text": "DOI10.1000/target\nAbstract\nBody",
+  "doi": "10.1000/target",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a label glued to the DOI (Thieme), with the title",
+  "text": "Nutrition and health in a long article title\nDOI10.1000/target\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a bibliography block (Thieme)",
+  "text": "Bibliography\nHorm Metab Res 2024; 56: 890–899\nDOI    10.1000/target\nAbstract\nBody",
+  "doi": "10.1000/target",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a bibliography block (Thieme), with the title",
+  "text": "Nutrition and health in a long article title\nBibliography\nHorm Metab Res 2024; 56: 890–899\nDOI    10.1000/target\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a running line (BMJ)",
+  "text": "Whelan BM, et al. Br J Sports Med 2026;60:36–43. doi:10.1000/target\nAbstract\nBody",
+  "doi": "10.1000/target",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a running line (BMJ), with the title",
+  "text": "Nutrition and health in a long article title\nWhelan BM, et al. Br J Sports Med 2026;60:36–43. doi:10.1000/target\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "upper case",
+  "text": "https://doi.org/10.1000/TARGET\nAbstract\nBody",
+  "doi": "10.1000/target",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "upper case, with the title",
+  "text": "Nutrition and health in a long article title\nhttps://doi.org/10.1000/TARGET\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "broken after the prefix (The Lancet)",
+  "text": "Journal\nhttps://doi.org/10.1016/\nS2665-9913(25)00091-8\nAbstract",
+  "doi": "10.1016/S2665-9913(25)00091-8",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "broken after a hyphen (British Journal of Cancer)",
+  "text": "Journal\nhttps://doi.org/10.1038/s41416-026-\n03614-8\nAbstract",
+  "doi": "10.1038/s41416-026-03614-8",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "broken after doi.org (Oxford Academic)",
+  "text": "Journal\nhttps://doi.org\n /10.1093/jpp/rgag123\nAbstract",
+  "doi": "10.1093/jpp/rgag123",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a space after the prefix (British Journal of Haematology)",
+  "text": "Journal\nDOI: 10.1111/ bjh.70912\nAbstract",
+  "doi": "10.1111/bjh.70912",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "its last digit split off (British Journal of Social Psychology)",
+  "text": "Journal\nDOI: 10.1111/bjso.7014 0  \nAbstract",
+  "doi": "10.1111/bjso.70140",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "typographic dashes and a soft hyphen",
+  "text": "Journal\nhttps://doi.org/10.1245/s10434‐026‐20785­‐z\nAbstract",
+  "doi": "10.1245/s10434-026-20785-z",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a control character after it",
+  "text": "Journal\nhttps://doi.org/10.1245/s10434-026-20785-z\b\nAbstract",
+  "doi": "10.1245/s10434-026-20785-z",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a page anchor after it (The Journal of Physiology)",
+  "text": "Journal\n(https://doi.org/10.1113/JP284198#support-information-section).\nAbstract",
+  "doi": "10.1113/jp284198",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "not part of the longer DOI 10.1000/abc.123",
+  "text": "Journal\nhttps://doi.org/10.1000/abc.123\nAbstract",
+  "doi": "10.1000/abc",
+  "title": "",
+  "expected": "unverified"
+ },
+ {
+  "group": "doi",
+  "name": "not part of the longer DOI 10.1000/abc-2",
+  "text": "Journal\nhttps://doi.org/10.1000/abc-2\nAbstract",
+  "doi": "10.1000/abc",
+  "title": "",
+  "expected": "unverified"
+ },
+ {
+  "group": "doi",
+  "name": "not part of the longer DOI 10.1000/abc/9002528",
+  "text": "Journal\nhttps://doi.org/10.1000/abc/9002528\nAbstract",
+  "doi": "10.1000/abc",
+  "title": "",
+  "expected": "unverified"
+ },
+ {
+  "group": "doi",
+  "name": "followed by a full stop",
+  "text": "Journal\ndoi:10.1000/abc.\nAbstract",
+  "doi": "10.1000/abc",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a versioned link to the same article is no other DOI (Oxford Academic)",
+  "text": "Journal\nhttps://doi.org/10.1093/bjd/ljag474/9002528\nAbstract",
+  "doi": "10.1093/bjd/ljag474",
+  "title": "An unrelated long title of something else",
+  "expected": "unverified"
+ },
+ {
+  "group": "doi",
+  "name": "under the journal's former prefix (Annals of Internal Medicine, 10.1059 to 10.7326)",
+  "text": "Increasing Prevalence of Knee Pain\ndoi:10.1059/0003-4819-155-11-201112060-00004\nAbstract",
+  "doi": "10.7326/0003-4819-155-11-201112060-00004",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "a short suffix under another prefix is another DOI",
+  "text": "Journal\ndoi:10.1059/abc.12\nAbstract",
+  "doi": "10.7326/abc.12",
+  "title": "",
+  "expected": "mismatch"
+ },
+ {
+  "group": "title",
+  "name": "across line breaks, hyphenation and soft hyphens (British Journal of Haematology)",
+  "text": "Ageing and female sex progressively remodel B-­ and T-­ cell \ncompartments\nSummary",
+  "doi": "10.1111/bjh.70912",
+  "title": "Ageing and female sex progressively remodel B‐ and T‐cell compartments",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "line numbers on their own lines (Oxford Academic accepted manuscript)",
+  "text": "© The Author(s) 2026.\n1 \nRedefining Cardiometabolic Disease: Expert Consensus on the \n1 \nCardioVascular–Kidney–Liver–Metabolic (CVKLM) Multiorgan Staging  \n2 \n3 \nGuillaume Baudry, MD, PhD\n4 ",
+  "doi": "10.1093/eurjpc/zwag563",
+  "title": "Redefining Cardiometabolic Disease: Expert Consensus on the CardioVascular–Kidney–Liver–Metabolic (CVKLM) Multiorgan Staging",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "line numbers at the ends of lines (Oxford Academic accepted manuscript)",
+  "text": "1 \nRedefining Cardiometabolic Disease: Expert Consensus on the 1 \nCardioVascular–Kidney–Liver–Metabolic (CVKLM) Multiorgan Staging  2 \n 3 \nGuillaume Baudry, MD, PhD, 4 ",
+  "doi": "10.1093/eurjpc/zwag563",
+  "title": "Redefining Cardiometabolic Disease: Expert Consensus on the CardioVascular–Kidney–Liver–Metabolic (CVKLM) Multiorgan Staging",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "author superscripts and a year at its end (Veterinary Record)",
+  "text": "Disease of South American camelids in England and Wales:\nAnalysis of diagnoses\nbetween 2012 and 2021\nSonja Jeckel\n1\nCarissa Chow\n2\n1\nRoyal Veterinary College\nAbstract",
+  "doi": "10.1002/vetr.71218",
+  "title": "Disease of South American camelids in England and Wales: Analysis of diagnoses between 2012 and 2021",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "OCR splitting a word in an old scan (British Journal of Haematology 1980)",
+  "text": "Britishjournal ojtiaematology, 1980, 45, 187-193.\nAnnotation\nIMMUNOTHERAPY I N THE TREATMENT OF ACUTE LEUKAEMIA\nAlthough the phenomenon of tuniour rejection",
+  "doi": "10.1111/j.1365-2141.1980.tb07137.x",
+  "title": "IMMUNOTHERAPY IN THE TREATMENT OF ACUTE LEUKAEMIA",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "markup and an escaped ampersand in the Crossref title",
+  "text": "Moghat, the roots of Glossostemon bruguieri (Desf.) as a\n nutraceutical against metabolic syndrome & more\nAbstract",
+  "doi": "10.1093/jpp/rgag123",
+  "title": "Moghat, the roots of\n <i>Glossostemon bruguieri</i>\n (Desf.) as a nutraceutical against metabolic syndrome &amp; more",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "a numeric entity in the Crossref title",
+  "text": "Moghat, the roots of Glossostemon bruguieri (Desf.) as a\n nutraceutical against metabolic syndrome & more\nAbstract",
+  "doi": "10.1093/jpp/rgag123",
+  "title": "Moghat, the roots of Glossostemon bruguieri (Desf.) as a nutraceutical against metabolic syndrome &#38; more",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "Greek letters dropped on both sides",
+  "text": "Autophagy \nlimits steady-\nstate IL-1α \nexpression to \nrestrain innate \nimmunity\n",
+  "doi": "10.1038/x",
+  "title": "Autophagy limits steady-state IL-1α expression to restrain innate immunity",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "a ligature extracted as '!' (Biomaterials 1999)",
+  "text": "Biomaterials 20 (1999)\nBioactive ceramics: the e!ect of surface reactivity on bone formation and bone cell function\nP. Ducheyne",
+  "doi": "10.1016/x",
+  "title": "Bioactive ceramics: the effect of surface reactivity on bone formation and bone cell function",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "an OCR misread letter (Journal of Bone and Joint Surgery 2005)",
+  "text": "THE IMPACT OF DIABETES ON PATIENT OUTCOMES AETER ANKLE FRACTURE\nBY SHANTI P. GANESH",
+  "doi": "10.2106/x",
+  "title": "The impact of diabetes on patient outcomes after ankle fracture",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "Greek letters extracted as Latin ones (Journal of Bone and Mineral Research)",
+  "text": "Particulate Wear Debris Activates Protein Tyrosine Kinases and Nuclear Factor kB, Which Down-Regulates Type I Collagen Synthesis",
+  "doi": "10.1359/x",
+  "title": "Particulate Wear Debris Activates Protein Tyrosine Kinases and Nuclear Factor κB, Which Down‐Regulates Type I Collagen Synthesis",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "a short title inside another article's title, with that article's DOI",
+  "text": "Nonalcoholic Fatty Liver Disease in Adults: Current Concepts\nhttps://doi.org/10.1210/endrev/bnz009",
+  "doi": "10.1038/nrdp.2015.80",
+  "title": "Nonalcoholic fatty liver disease",
+  "expected": "mismatch"
+ },
+ {
+  "group": "title",
+  "name": "a short title alone on a page without other DOIs",
+  "text": "Nonalcoholic fatty liver disease\nAbstract",
+  "doi": "10.1038/nrdp.2015.80",
+  "title": "Nonalcoholic fatty liver disease",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "a whole title inside another, longer title (PLOS ONE)",
+  "text": "Patient-Related Risk Factors for Periprosthetic Joint Infection after Total Joint Arthroplasty: A Systematic Review and Meta-Analysis\nhttps://doi.org/10.1371/journal.pone.0150866",
+  "doi": "10.1016/j.jhin.2014.10.008",
+  "title": "Risk factors for periprosthetic joint infection after total joint arthroplasty: a systematic review and meta-analysis",
+  "expected": "unverified"
+ },
+ {
+  "group": "title",
+  "name": "a short title at the start of a longer title (Obesity Reviews)",
+  "text": "Successful weight loss maintenance: A systematic review of weight control registries\nAbstract",
+  "doi": "10.1146/annurev.nutr.21.1.323",
+  "title": "Successful weight loss maintenance",
+  "expected": "unverified"
+ },
+ {
+  "group": "title",
+  "name": "a short title inside a sentence",
+  "text": "Contemporary medical, device, and surgical therapies for obesity in adults\nAbstract",
+  "doi": "10.1016/S0140-6736(24)01210-8",
+  "title": "Obesity in adults",
+  "expected": "unverified"
+ },
+ {
+  "group": "title",
+  "name": "a long title inside a longer line, with the DOI as well",
+  "text": "Patient-Related Risk Factors for Periprosthetic Joint Infection after Total Joint Arthroplasty: A Systematic Review and Meta-Analysis\nhttps://doi.org/10.1016/j.jhin.2014.10.008",
+  "doi": "10.1016/j.jhin.2014.10.008",
+  "title": "Risk factors for periprosthetic joint infection after total joint arthroplasty: a systematic review and meta-analysis",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "the main title alone is no title: a series shares it (RAND working papers)",
+  "text": "Harmonization of Cross-National Studies of Aging to the Health and Retirement Study\nChronic Medical Conditions",
+  "doi": "10.7249/WR861.4",
+  "title": "Harmonization of Cross-National Studies of Aging to the Health and Retirement Study: Employment and Retirement Measures",
+  "expected": "unverified"
+ },
+ {
+  "group": "title",
+  "name": "numbers at its end (MMWR)",
+  "text": "MMWR / February 12, 2021 / Vol. 70 / No. 6\nComorbidities Among Young Adults with Congenital Heart Defects — Arizona, Arkansas, and Metropolitan Atlanta, 2016–2019\nMatthew E. Oster, MD\nSee https://doi.org/10.1016/j.ahj.2019.12.021",
+  "doi": "10.15585/mmwr.mm7006a3",
+  "title": "Comorbidities Among Young Adults with Congenital Heart Defects — Arizona, Arkansas, and Metropolitan Atlanta, 2016–2019",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "other numbers at its end",
+  "text": "MMWR / February 12, 2021 / Vol. 70 / No. 6\nComorbidities Among Young Adults with Congenital Heart Defects — Arizona, Arkansas, and Metropolitan Atlanta, 2016–2018\nMatthew E. Oster, MD\nSee https://doi.org/10.1016/j.ahj.2019.12.021",
+  "doi": "10.15585/mmwr.mm7006a3",
+  "title": "Comorbidities Among Young Adults with Congenital Heart Defects — Arizona, Arkansas, and Metropolitan Atlanta, 2016–2019",
+  "expected": "mismatch"
+ },
+ {
+  "group": "title",
+  "name": "the same title with its number",
+  "text": "Outcomes of Type 1\nDiabetes in Older Adults Treated in Primary Care Settings\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Outcomes of Type 1 Diabetes in Older Adults Treated in Primary Care Settings",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "another number is another title",
+  "text": "Outcomes of Type 1\nDiabetes in Older Adults Treated in Primary Care Settings\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Outcomes of Type 2 Diabetes in Older Adults Treated in Primary Care Settings",
+  "expected": "unverified"
+ },
+ {
+  "group": "title",
+  "name": "other words are another title",
+  "text": "Outcomes of Type 1\nDiabetes in Older Adults Treated in Primary Care Settings\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Outcomes of Diabetes in Younger Adults Treated in Primary Care",
+  "expected": "unverified"
+ },
+ {
+  "group": "title",
+  "name": "too short to name one article",
+  "text": "Editorial\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Editorial",
+  "expected": "unverified"
+ },
+ {
+  "group": "title",
+  "name": "a Chinese title",
+  "text": "中文标题测试研究进展\n摘要",
+  "doi": "10.1000/target",
+  "title": "中文标题测试研究进展",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "another Chinese title",
+  "text": "中文标题测试研究进展\n摘要",
+  "doi": "10.1000/target",
+  "title": "中文标题实验研究进展",
+  "expected": "unverified"
+ },
+ {
+  "group": "decision",
+  "name": "DOI and title together, whatever other DOIs (The Lancet)",
+  "text": "Articles\nhttps://doi.org/10.1000/target\nClinical features of patients infected with a novel coronavirus\nSee Online/Comment\nhttps://doi.org/10.1016/\nS0140-6736(20)30185-9\nSummary",
+  "doi": "10.1000/target",
+  "title": "Clinical features of patients infected with a novel coronavirus",
+  "expected": "verified"
+ },
+ {
+  "group": "decision",
+  "name": "the DOI alone without other DOIs (Wiley 'Issue Information')",
+  "text": "Issue Information\nhttps://doi.org/10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Issue Information",
+  "expected": "verified"
+ },
+ {
+  "group": "decision",
+  "name": "the title alone without other DOIs (Nature 1970)",
+  "text": "NATURE VOL. 227 JULY 4 1970\nClinical features of patients infected with a novel coronavirus\nby E. OHTSUKA",
+  "doi": "10.1000/target",
+  "title": "Clinical features of patients infected with a novel coronavirus",
+  "expected": "verified"
+ },
+ {
+  "group": "decision",
+  "name": "the DOI alone with other DOIs: a comment that cites the article",
+  "text": "Comment\nhttps://doi.org/10.1000/comment\nSee the article doi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Clinical features of patients infected with a novel coronavirus",
+  "expected": "unverified"
+ },
+ {
+  "group": "decision",
+  "name": "the whole title with a data set's DOI",
+  "text": "Clinical features of patients infected with a novel coronavirus\nData: https://doi.org/10.6084/m9.figshare.32873816",
+  "doi": "10.1000/target",
+  "title": "Clinical features of patients infected with a novel coronavirus",
+  "expected": "verified"
+ },
+ {
+  "group": "decision",
+  "name": "a misread title with other DOIs",
+  "text": "Clinical features of patlents infected with a novel coronavirus\nData: https://doi.org/10.6084/m9.figshare.32873816",
+  "doi": "10.1000/target",
+  "title": "Clinical features of patients infected with a novel coronavirus",
+  "expected": "unverified"
+ },
+ {
+  "group": "decision",
+  "name": "a misread title without other DOIs",
+  "text": "Clinical features of patlents infected with a novel coronavirus",
+  "doi": "10.1000/target",
+  "title": "Clinical features of patients infected with a novel coronavirus",
+  "expected": "verified"
+ },
+ {
+  "group": "decision",
+  "name": "another article's DOI broken after its prefix (The Lancet)",
+  "text": "Obesity in adults\nhttps://doi.org/10.1016/\nS0140-6736(22)02403-5\nSummary",
+  "doi": "10.1016/S0140-6736(24)01210-8",
+  "title": "Obesity in adults",
+  "expected": "unverified"
+ },
+ {
+  "group": "decision",
+  "name": "only another article's DOI",
+  "text": "Other article\nhttps://doi.org/10.1000/other\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Clinical features of patients infected with a novel coronavirus",
+  "expected": "mismatch"
+ },
+ {
+  "group": "decision",
+  "name": "another article with a DOI one digit apart",
+  "text": "Other article\nhttps://doi.org/10.1111/bjh.70913",
+  "doi": "10.1111/bjh.70912",
+  "title": "",
+  "expected": "mismatch"
+ },
+ {
+  "group": "decision",
+  "name": "nothing after the reference list counts",
+  "text": "Other article\nhttps://doi.org/10.1000/other\nReferences\nhttps://doi.org/10.1000/target\nClinical features of patients infected with a novel coronavirus",
+  "doi": "10.1000/target",
+  "title": "Clinical features of patients infected with a novel coronavirus",
+  "expected": "mismatch"
+ },
+ {
+  "group": "decision",
+  "name": "a reference list only",
+  "text": "Letter\nReferences\nhttps://doi.org/10.1000/target",
+  "doi": "10.1000/target",
+  "title": "",
+  "expected": "unverified"
+ },
+ {
+  "group": "decision",
+  "name": "an empty page",
+  "text": "",
+  "doi": "10.1000/target",
+  "title": "Clinical features of patients infected with a novel coronavirus",
+  "expected": "unverified"
+ },
+ {
+  "group": "decision",
+  "name": "a DOI of the old SICI form",
+  "text": "Journal\ndoi:10.1002/(SICI)1097-0274(199804)33:4<409::AID-AJIM12>3.0.CO;2-2\nAbstract",
+  "doi": "10.1002/(SICI)1097-0274(199804)33:4<409::AID-AJIM12>3.0.CO;2-2",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "decision",
+  "name": "the title of an article with a SICI DOI",
+  "text": "Clinical features of patients infected with a novel coronavirus\nAbstract",
+  "doi": "10.1002/(SICI)1097-0274(199804)33:4<409::AID-AJIM12>3.0.CO;2-2",
+  "title": "Clinical features of patients infected with a novel coronavirus",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "an attachment headed ICMJE DISCLOSURE FORM",
+  "text": "ICMJE DISCLOSURE FORM\nNutrition and health in a long article title\ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "an attachment headed Supporting Information",
+  "text": "Supporting Information\nNutrition and health in a long article title\ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "an attachment headed Supplementary Material",
+  "text": "Supplementary Material\nNutrition and health in a long article title\ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "an attachment headed Supplementary Online Content",
+  "text": "Supplementary Online Content\nNutrition and health in a long article title\ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "an attachment headed Electronic Supporting Information",
+  "text": "Electronic Supporting Information\nNutrition and health in a long article title\ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "an attachment headed PLAIN LANGUAGE SUMMARY",
+  "text": "PLAIN LANGUAGE SUMMARY\nNutrition and health in a long article title\ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "an article whose toolbar lists its Supporting Information below the title (ACS)",
+  "text": "Investigation of Cu(II) Binding by Human Calprotectin Reveals an\nUnusual Fluxional Coordination Environment\nErica L. Debley, Guodong Rao, Mayukh Bhadra, Trisha Nguyen, Jason Shearer, R. David Britt,\nand Elizabeth M. Nolan*\nCite This: https://doi.org/10.1021/jacs.6c12304\nRead Online\nACCESS\nMetrics & More\nArticle Recommendations\n*\nsı\nSupporting Information\nABSTRACT: Human calprotectin (CP, S100A8/S100A9 heterooligomer) is a multi-metal sequestering protein",
+  "doi": "10.1021/jacs.6c12304",
+  "title": "Investigation of Cu(II) Binding by Human Calprotectin Reveals an Unusual Fluxional Coordination Environment",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "a supplementary file that names the article after its heading",
+  "text": "Supporting Information\nInvestigation of Cu(II) Binding by Human Calprotectin Reveals an Unusual Fluxional Coordination Environment\nErica L. Debley\nTable S1. Primers\nhttps://doi.org/10.1021/jacs.6c12304",
+  "doi": "10.1021/jacs.6c12304",
+  "title": "Investigation of Cu(II) Binding by Human Calprotectin Reveals an Unusual Fluxional Coordination Environment",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "an article that mentions its supporting information",
+  "text": "Nutrition and health in a long article title\ndoi:10.1000/target\nAbstract\nSupporting information is available.",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "a notice headed CORRECTION about the article",
+  "text": "CORRECTION\nhttps://doi.org/10.1000/notice\nNutrition and health in a long article title\nIn the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. \ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a notice headed Correction to: Nutrition about the article",
+  "text": "Correction to: Nutrition\nhttps://doi.org/10.1000/notice\nNutrition and health in a long article title\nIn the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. \ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a notice headed Erratum about the article",
+  "text": "Erratum\nhttps://doi.org/10.1000/notice\nNutrition and health in a long article title\nIn the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. \ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a notice headed Retraction Note about the article",
+  "text": "Retraction Note\nhttps://doi.org/10.1000/notice\nNutrition and health in a long article title\nIn the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. \ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a notice headed RETRACTED: Nutrition about the article",
+  "text": "RETRACTED: Nutrition\nhttps://doi.org/10.1000/notice\nNutrition and health in a long article title\nIn the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. \ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a notice headed Research briefing about the article",
+  "text": "Research briefing\nhttps://doi.org/10.1000/notice\nNutrition and health in a long article title\nIn the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. \ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a notice headed LETTER TO THE EDITOR about the article",
+  "text": "LETTER TO THE EDITOR\nhttps://doi.org/10.1000/notice\nNutrition and health in a long article title\nIn the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. \ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a notice headed WITHDRAWN: Nutrition and health about the article",
+  "text": "WITHDRAWN: Nutrition and health\nhttps://doi.org/10.1000/notice\nNutrition and health in a long article title\nIn the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. \ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a notice headed Author Correction: Nutrition about the article",
+  "text": "Author Correction: Nutrition\nhttps://doi.org/10.1000/notice\nNutrition and health in a long article title\nIn the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. \ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a correction requested by its DOI, with the article's title in Crossref (Neurology)",
+  "text": "CORRECTION\nLesion-Level Subtypes of White Matter Hyperintensity Evolution\nNeurology 2026;107:e218791. doi:10.1212/WNL.0000000000218791\nIn the article by Gonzalez-Gomez et al.\nReference\n1. doi:10.1212/WNL.0000000000218472",
+  "doi": "10.1212/wnl.0000000000218791",
+  "title": "Lesion-Level Subtypes of White Matter Hyperintensity Evolution Beyond Spatial Location",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "a reply requested by its DOI (The Journal of Clinical Pharmacology)",
+  "text": "Letter to the Editor\nThe Journal of Clinical Pharmacology\nDOI: 10.1002/jcph.70317\nReply to “Beyond Fortnightly Convenience”\nTo the Editor",
+  "doi": "10.1002/jcph.70317",
+  "title": "Reply to “Beyond Fortnightly Convenience”",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "an erratum requested by a title that says so (International Journal of Surgery)",
+  "text": "Targeting SIRT3 to regulate ferroptosis for preventing osteoporosis: Erratum\nFollowing the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. \nReference\ndoi:10.1097/JS9.0000000000005648",
+  "doi": "10.1097/js9.0000000000005648",
+  "title": "Targeting SIRT3 to regulate ferroptosis for preventing osteoporosis: Erratum",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "the same erratum is not the article it corrects",
+  "text": "Targeting SIRT3 to regulate ferroptosis for preventing osteoporosis: Erratum\nFollowing the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. Following the publication of the article, the authors identified issues. \nReference\ndoi:10.1097/JS9.0000000000005648",
+  "doi": "10.1097/js9.0000000000001234",
+  "title": "Targeting SIRT3 to regulate ferroptosis for preventing osteoporosis",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "an article whose title starts with such a word",
+  "text": "Correction of hallux valgus deformity with a minimally invasive osteotomy\ndoi:10.1000/target\nAbstract",
+  "doi": "10.1000/target",
+  "title": "Correction of hallux valgus deformity with a minimally invasive osteotomy",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "a requested letter under a Letter to the editor heading, its DOI in the footer (Journal of Infection)",
+  "text": "Contents lists available at ScienceDirect\nJournal of Infection\njournal homepage: www.elsevier.com/locate/jinf\nLetter to the Editor\nTiming of surgery for hip fracture in patients taking direct oral anticoagulants\nDear Editor,\nWe read with interest the recent report on anticoagulants and the timing of hip fracture surgery. We read with interest the recent report on anticoagulants and the timing of hip fracture surgery. We read with interest the recent report on anticoagulants and the timing of hip fracture surgery. We read with interest the recent report on anticoagulants and the timing of hip fracture surgery. We read with interest the recent report on anticoagulants and the timing of hip fracture surgery. \nhttps://doi.org/10.1000/letter\nReceived 2 February 2026",
+  "doi": "10.1000/letter",
+  "title": "Timing of surgery for hip fracture in patients taking direct oral anticoagulants",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "an article whose abstract opens with 'Upper eyelid retraction', its DOI in the footer",
+  "text": "Outcomes of levator recession for thyroid eye disease in a large cohort\nA. Author, B. Author\nAbstract\nUpper eyelid retraction is the most common sign of thyroid eye disease, and levator recession is one of the operations that lower the lid. Upper eyelid retraction is the most common sign of thyroid eye disease, and levator recession is one of the operations that lower the lid. Upper eyelid retraction is the most common sign of thyroid eye disease, and levator recession is one of the operations that lower the lid. \nhttps://doi.org/10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Outcomes of levator recession for thyroid eye disease in a large cohort",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "an article whose abstract line starts with 'retraction', the title alone",
+  "text": "Outcomes of levator recession for thyroid eye disease in a large cohort\nAbstract\nPurpose: To report the outcomes of levator recession for upper eyelid\nretraction in thyroid eye disease.\nMethods: A retrospective review.",
+  "doi": "10.1000/target",
+  "title": "Outcomes of levator recession for thyroid eye disease in a large cohort",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "a notice headed Notice of Retraction about the article",
+  "text": "Notice of Retraction\nhttps://doi.org/10.1000/notice\nNutrition and health in a long article title\nIn the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. \ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a notice headed Expression of Concern: Nutrition about the article",
+  "text": "Expression of Concern: Nutrition\nhttps://doi.org/10.1000/notice\nNutrition and health in a long article title\nIn the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. \ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a notice headed Corrigendum to “Nutrition” about the article",
+  "text": "Corrigendum to “Nutrition”\nhttps://doi.org/10.1000/notice\nNutrition and health in a long article title\nIn the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. In the article cited below, a sentence was corrected. \ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a correction printing the article's whole title and DOI, with its own DOI near the top",
+  "text": "CORRECTION\nLesion-Level Subtypes of White Matter Hyperintensity Evolution\nNeurology 2026;107:e218791. doi:10.1212/WNL.0000000000218791\nIn the article by Gonzalez-Gomez et al., the legend of the second figure was incomplete. In the article by Gonzalez-Gomez et al., the legend of the second figure was incomplete. In the article by Gonzalez-Gomez et al., the legend of the second figure was incomplete. In the article by Gonzalez-Gomez et al., the legend of the second figure was incomplete. In the article by Gonzalez-Gomez et al., the legend of the second figure was incomplete. \nNeurology 2026;106:e218472. doi:10.1212/WNL.0000000000218472",
+  "doi": "10.1212/wnl.0000000000218472",
+  "title": "Lesion-Level Subtypes of White Matter Hyperintensity Evolution",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "an Author Correction that prints the article's DOI near the top after its own (Nature)",
+  "text": "Nature | Vol 600 | 2 April 2026 | E1\nCorrections & amendments\nAuthor Correction:\nNutrition and health in a long article title\nA. Author, B. Author\nhttps://doi.org/10.1000/notice\nPublished online: 2 April 2026\nCorrection to: Nature https://doi.org/10.1000/target\nPublished online 2 January 2026\nIn the version of this article initially published, a sentence was wrong.",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a corrigendum repeating the article's whole title and DOI, its own DOI further down (Frontiers)",
+  "text": "Corrigendum: Nutrition and health in older adults living\nin rural areas: a long article title\nA. Author, B. Author\n1 Department of Orthopaedics, A University Hospital, A City, A Country\n1 Department of Orthopaedics, A University Hospital, A City, A Country\n1 Department of Orthopaedics, A University Hospital, A City, A Country\n1 Department of Orthopaedics, A University Hospital, A City, A Country\nKeywords\nnutrition, health\nA Corrigendum on\nNutrition and health in older adults living in rural areas: a long article title\nby Author A and Author B (2023). Front. Immunol. 14:1134412. doi: 10.1000/target\nIn the published article, there was an error in the affiliations.\nhttps://doi.org/10.1000/notice",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in older adults living in rural areas: a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "source",
+  "name": "a scan without a text layer, from a URL naming the DOI (an encoded slash)",
+  "text": "",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "source": "https://journals.example/doi/pdfdirect/10.1000%2Ftarget",
+  "expected": "source"
+ },
+ {
+  "group": "source",
+  "name": "a scan with a download stamp on each page, from a URL naming the DOI and a query",
+  "text": "Downloaded from https://journals.example by AbCdEfGh on 11/02/2026\nDownloaded from https://journals.example by AbCdEfGh on 11/02/2026\nDownloaded from https://journals.example by AbCdEfGh on 11/02/2026\n",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "source": "https://journals.example/doi/pdf/10.1000/target?download=true",
+  "expected": "source"
+ },
+ {
+  "group": "source",
+  "name": "a scan from a URL naming the DOI and a .pdf file name",
+  "text": "",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "source": "https://journals.example/content/pdf/10.1000/target.pdf",
+  "expected": "source"
+ },
+ {
+  "group": "source",
+  "name": "a scan without a source URL",
+  "text": "",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "source",
+  "name": "a scan from a URL naming another DOI",
+  "text": "",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "source": "https://journals.example/doi/pdf/10.1000/other",
+  "expected": "unverified"
+ },
+ {
+  "group": "source",
+  "name": "a scan from a URL naming a longer DOI (10.1002/art.70156 for 10.1002/art.7015)",
+  "text": "",
+  "doi": "10.1002/art.7015",
+  "title": "",
+  "source": "https://journals.example/doi/pdfdirect/10.1002/art.70156",
+  "expected": "unverified"
+ },
+ {
+  "group": "source",
+  "name": "a scan from a URL naming a longer DOI (10.1000/target.2)",
+  "text": "",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "source": "https://journals.example/doi/pdf/10.1000/target.2",
+  "expected": "unverified"
+ },
+ {
+  "group": "source",
+  "name": "a scan from a URL naming a longer DOI (10.1000/target/9002528)",
+  "text": "",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "source": "https://journals.example/doi/pdf/10.1000/target/9002528",
+  "expected": "unverified"
+ },
+ {
+  "group": "source",
+  "name": "a short notice without DOIs is no scan",
+  "text": "Erratum\nNutrition and health in a long article title\nIn the article cited below, a figure label was wrong.",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "source": "https://journals.example/doi/pdf/10.1000/target",
+  "expected": "unverified"
+ },
+ {
+  "group": "source",
+  "name": "a short notice with its own DOI is no scan",
+  "text": "Expression of Concern\nhttps://doi.org/10.1000/notice\nThe editors are looking into the article cited below.",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "source": "https://journals.example/doi/pdf/10.1000/target",
+  "expected": "unverified"
+ },
+ {
+  "group": "source",
+  "name": "a short page with a short title and another DOI is no scan",
+  "text": "Obesity in adults\nhttps://doi.org/10.1000/other",
+  "doi": "10.1000/target",
+  "title": "Obesity in adults",
+  "source": "https://journals.example/doi/pdf/10.1000/target",
+  "expected": "unverified"
+ },
+ {
+  "group": "source",
+  "name": "a page with some 400 letters of text is no scan",
+  "text": "Issue information\nThis page lists the contents of the issue and the members of the editorial board. This page lists the contents of the issue and the members of the editorial board. This page lists the contents of the issue and the members of the editorial board. This page lists the contents of the issue and the members of the editorial board. This page lists the contents of the issue and the members of the editorial board. This page lists the contents of the issue and the members of the editorial board. ",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "source": "https://journals.example/doi/pdf/10.1000/target",
+  "expected": "unverified"
+ }
+]

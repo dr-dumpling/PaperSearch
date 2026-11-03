@@ -28,7 +28,7 @@ export class CrossrefSearcher extends PaperSource {
             timeout: TIMEOUTS.DEFAULT,
             headers: {
                 'Accept': 'application/json',
-                'User-Agent': `${USER_AGENT} paper-search-cli/0.1.0 (mailto:${this.mailto})`
+                'User-Agent': `${USER_AGENT} (mailto:${this.mailto})`
             }
         });
         // Crossref polite pool: 50 req/s with mailto, conservative 3 req/s, burst=5

@@ -17,8 +17,8 @@ interface PmcSummary {
 
 export class PMCSearcher extends PaperSource {
   private readonly client: AxiosInstance;
-  private readonly tool = process.env.NCBI_TOOL || 'paper-search-cli';
-  private readonly email = process.env.NCBI_EMAIL || process.env.CROSSREF_MAILTO || 'paper-search-cli@example.com';
+  private readonly tool = process.env.NCBI_TOOL || 'papersearch';
+  private readonly email = process.env.NCBI_EMAIL || process.env.CROSSREF_MAILTO || 'papersearch@example.com';
 
   constructor() {
     super('pmc', 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils');

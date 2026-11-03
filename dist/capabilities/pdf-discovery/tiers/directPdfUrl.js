@@ -1,4 +1,6 @@
 import { downloadPdfFromUrl, safeFilename } from '../../../infrastructure/pdf/PdfDownload.js';
+import { getCapabilityProfileSources, resolvePlatformId } from '../../../registry/platformMetadata.js';
+const OPEN_ACCESS_SOURCE_IDS = new Set(getCapabilityProfileSources('pdf_open_access'));
 export function createDirectPdfUrlTier() {
     return {
         id: 'direct_pdf_url',
@@ -17,11 +19,22 @@ async function tryDirectMetadataUrl(context) {
         if (!paper?.pdfUrl) {
             return { status: 'skipped', message: 'No pdf_url found in source metadata.' };
         }
+        if (!hasOpenAccessProvenance(context.source, paper)) {
+            return {
+                status: 'skipped',
+                message: 'Metadata PDF URL was not downloaded because the record has no explicit open-access provenance.'
+            };
+        }
         const path = await downloadPdfFromUrl(paper.pdfUrl, context.savePath, `${context.source}_${safeFilename(paper.paperId)}`);
         return { status: 'ok', path, message: path };
     }
     catch (error) {
         return { status: 'error', message: error?.message || String(error) };
     }
+}
+export function hasOpenAccessProvenance(source, paper) {
+    if (paper.extra?.openAccess === true || paper.extra?.isOpenAccess === true)
+        return true;
+    return OPEN_ACCESS_SOURCE_IDS.has(resolvePlatformId(source));
 }
 //# sourceMappingURL=directPdfUrl.js.map

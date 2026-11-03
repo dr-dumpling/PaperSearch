@@ -1,131 +1,151 @@
 ---
 name: paper-search
 description: |
-  学术文献检索与论文获取调度器，基于 paper-search CLI，而不是 MCP server。
-  用于：搜索论文、查找相似研究、做文献综述初筛、验证 PMID/DOI、下载论文 PDF、
-  调用 Crossref/OpenAlex/PubMed/PMC/Europe PMC/arXiv/bioRxiv/medRxiv/Semantic Scholar/CORE/OpenAIRE/DBLP/ACM/USENIX/OpenReview/IACR 等来源，
-  使用 Semantic Scholar Open Access snippet 索引检索论文正文片段中的方法学细节，
-  通过 Semantic Scholar Graph API 查询已知论文的施引文献和参考文献，
-  以及通过 EasyScholar 查询期刊影响因子、JCR/SSCI 分区、中科院分区、JCI、ESI、预警和等级指标。
-  当用户提到“搜文献”“找论文”“文献检索”“search papers”“find papers”“literature search”
-  “查一下有没有相关研究”“帮我找几篇参考文献”“看看别人怎么做的”“别人怎么写”
-  “Methods 里怎么做的”“Methods 写法”“方法学写法对照”“下载论文 PDF”
-  “验证 PMID”“验证 DOI”“正文片段检索”“snippet search”“方法学细节检索”
-  “影响因子”“IF”“JCR 分区”“中科院分区”“期刊分区”“期刊等级”
-  “目标期刊指标”“journal metrics”等任务时使用。
-  此 skill 只负责指导 agent 调用 paper-search CLI；API key 必须通过 paper-search setup、
-  paper-search config、.env 或环境变量配置，绝不要写入 Skill 文件。
+  学术文献检索与论文获取调度器，通过本机的 paper-search 命令完成（不是 MCP 服务）。
+  用于：检索论文、查找相似研究、文献综述初筛、核验 PMID/DOI、下载论文 PDF 和补充材料
+  （默认只有开放下载；需要学校订阅的正文和补充材料，要另装可选的机构下载扩展，用用户学校的权限获取），
+  调用 Crossref、OpenAlex、PubMed、PMC、Europe PMC、bioRxiv、medRxiv、Semantic Scholar、CORE、OpenAIRE、DBLP、ACM、USENIX、OpenReview、IACR 等来源，
+  在 Semantic Scholar 开放获取正文片段索引里查方法学细节，
+  通过 Semantic Scholar Graph API 查已知论文的施引文献和参考文献，
+  以及通过 EasyScholar 查期刊影响因子、JCR/SSCI 分区、中科院分区、JCI、ESI、预警和等级。
+  用户说“搜文献”“找论文”“文献检索”“查一下有没有相关研究”“帮我找几篇参考文献”“看看别人怎么做的”
+  “Methods 里怎么做的”“方法学写法对照”“下载论文 PDF”“下载补充材料”“用学校权限下载”“批量下载”
+  “验证 PMID”“验证 DOI”“正文片段检索”“影响因子”“JCR 分区”“中科院分区”“期刊分区”“期刊等级”，
+  或用英文说 “search papers”“find papers”“literature search”“snippet search”“journal metrics” 时使用。
+  本 Skill 只指导调用 paper-search；API key 通过 paper-search setup、paper-search config、.env 或环境变量配置，绝不写入 Skill 文件。
 ---
 
-# Paper Search CLI
+# 文献检索与下载（paper-search）
 
-你是学术文献检索调度器。本 Skill 是 Routing Skill：负责把用户意图路由到 `paper-search` CLI，并维护证据、密钥和下载边界。优先通过 `paper-search` CLI 完成论文检索、元数据核验、施引/参考文献扩展、正文片段检索、期刊指标查询和 PDF 获取；不要把本 Skill 当作密钥、cookie、账号或下载策略的存储位置。
+你是学术文献检索调度器。本 Skill 是路由 Skill：把用户的意图交给 `paper-search` 命令完成，并守住证据、密钥和下载的边界；它不存放密钥、Cookie、账号或下载策略。
 
-Reference 读取规则：
+## 整体逻辑
 
-- 需要确认安装、配置、doctor、smoke、Skill 同步或健康状态时，读 `references/management-layer.md`。
-- 需要在搜索、期刊指标、PDF 获取、正文片段检索之间做路由时，读 `references/capability-routing.md`。
-- 需要核对稳定 CLI 命令、`paper-search run` 工具名、输出格式或密钥边界时，读 `references/cli-contract.md`。
-- 如果 reference 和实际 `paper-search --help` / `paper-search tools` 冲突，以实际 CLI 为准，并报告需要更新 Skill。
+```text
+用户的文献请求
+│
+├─ 找论文、核验 DOI/PMID → metadata_search
+│    paper-search search / run search_*（Crossref、PubMed、OpenAlex 等）
+│    └─ 用户确认条目、需要全文 → 转到下面的“下载”
+│
+├─ 查施引文献、参考文献 → citation_expansion
+│    run get_paper_citations / get_paper_references（Semantic Scholar）
+│
+├─ 查影响因子、分区 → journal_metrics
+│    journal-metrics（EasyScholar，需要 EASYSCHOLAR_KEY）
+│
+├─ 找 Methods 写法、参数 → body_snippet_search
+│    run search_semantic_snippets（需要 SEMANTIC_SCHOLAR_API_KEY）
+│
+└─ 下载正文、补充材料 → pdf_discovery
+     download / run download_with_fallback / run download_batch
+     同一个下载命令，按顺序尝试：
+     │
+     ├─ ① 开放下载（默认就有）
+     │    primary → direct_pdf_url → repositories → unpaywall → publisher_api
+     ├─ ② Sci-Hub 兜底（默认开启，useSciHub=false 关闭）
+     ├─ ③ 机构下载（可选扩展，paper-search carsi install 安装后才有）
+     │    entitled_access：浏览器打开出版社网站 → 程序选 CARSI 和学校
+     │    → 用户在浏览器里登录学校、完成人机验证 → 程序取 PDF
+     │    补充材料只走这一步：正文已由 ①② 拿到时，content=both 也会单独来这里取
+     │
+     ├─ 每一步拿到文件都核对身份（首页的 DOI、题名）；通过就保存，后面的步骤不再试
+     └─ 都没拿到 → paper-search failures --format text，按四类失败向用户说明
+
+管理命令：doctor（体检）、setup / config（配置 key）、skills（同步 Skill）、carsi（机构下载扩展的安装、状态、更新、卸载）
+```
+
+## 读哪个参考文件
+
+| 要做的事 | 参考文件 |
+|---|---|
+| 安装、更新、配置、健康检查（doctor）、冒烟测试（smoke）、Skill 同步 | `references/management-layer.md` |
+| 在检索、施引扩展、期刊指标、PDF 获取、正文片段检索之间选路由；开放下载的各个渠道；核验论文身份 | `references/capability-routing.md` |
+| 核对命令、`paper-search run` 的工具名、参数和输出格式 | `references/cli-contract.md` |
+| 检索类命令出错（命令缺失、缺 key、限流、0 结果、Scholar 验证页） | `references/troubleshooting.md` |
+| 机构下载：安装或检查扩展、配置学校、选择浏览器（Camoufox / ego） | `references/carsi-setup.md` |
+| 机构下载：登录与验证、批量、进度窗口、失败分类、补充材料、确认下载成功 | `references/browser-download.md` |
+| 机构下载：某家出版社、某本期刊能不能下正文和补充材料，没有学校登录路线时怎么办 | `references/publisher-support.md` |
+
+参考文件与实际的 `paper-search --help`、`paper-search tools` 不一致时，以实际命令为准，并告诉用户 Skill 需要更新。
 
 ## 快速自检
 
-第一次使用、环境不确定，或用户问“现在能用哪些能力”时：
+第一次使用、环境不确定，或用户问“现在能用哪些功能”时：
 
 ```bash
 command -v paper-search
+paper-search --version
 paper-search doctor --pretty
 ```
 
-需要给用户一份可读健康报告时：
-
-```bash
-paper-search doctor --format text
-```
-
-安装缺失时先说明缺失；用户要求安装时再执行：
-
-```bash
-npm install -g paper-search-cli
-paper-search setup
-paper-search doctor --pretty
-```
-
-用户问“如何更新”、安装后怀疑 Skill 过期，或 `doctor`/`skills status` 显示 Skill 不同步时，先区分包本体更新和 Skill 同步；不要只运行 `skills update`。完整流程查看 `references/management-layer.md` 的 `Package Update And Capability Setup`。
-
-普通用户更新：
-
-```bash
-npm install -g paper-search-cli@latest
-paper-search skills update --targets agents --pretty
-paper-search doctor --pretty
-```
-
-本地维护者更新：
-
-```bash
-git pull
-npm install
-npm run build
-npm install -g .
-paper-search skills update --targets agents --pretty
-paper-search doctor --pretty
-```
-
-缺少 API key 或 email 时，不要让用户在聊天里发送密钥；提示用户用 `paper-search setup` 或 `paper-search config` 在本机配置。
+给用户看可读的报告用 `paper-search doctor --format text`。命令缺失时按 `references/management-layer.md` 安装。更新时先区分包本体更新和 Skill 同步，不要只运行 `skills update`；步骤见 `references/management-layer.md` 的“包更新与功能配置”一节。
 
 ## 功能地图
 
-本 Skill 只有五个文献主功能。`doctor`、`smoke`、`config`、`skills` 是管理层命令，不属于文献任务本身。
+本 Skill 有五个文献功能；`doctor`、`smoke`、`config`、`skills`、`carsi`、`failures` 是管理和诊断命令。
 
 | 用户意图 | 能力名 | 首选入口 | 关键边界 |
 |---|---|---|---|
-| 搜论文、找相关研究、验证 DOI/PMID、做文献初筛 | `metadata_search` | `paper-search search` 集成入口 / `paper-search run search_*` 精确工具入口 | 只返回和核验论文元数据；Sci-Hub 不属于搜索源 |
-| 查询已知论文的施引文献或参考文献 | `citation_expansion` | `paper-search run get_paper_citations` / `paper-search run get_paper_references` | 需要已知 `paperId`、DOI 或 arXiv ID；不是关键词检索 |
-| 查影响因子、JCR/SSCI/中科院分区、JCI、ESI、预警、期刊等级 | `journal_metrics` | `paper-search journal-metrics` / `paper-search run query_journal_metrics` | 这是期刊指标查询，不是论文检索；需要 `EASYSCHOLAR_KEY` |
-| 获取或下载已确认论文的 PDF | `pdf_discovery` | `paper-search download` / `paper-search run download_with_fallback` | 先核验论文身份，再下载；Sci-Hub 是默认开启的最后 fallback |
-| 在论文正文片段中找 Methods/参数/写法线索 | `body_snippet_search` | `paper-search run search_semantic_snippets` | 查 Semantic Scholar OA snippet 索引；需要 `SEMANTIC_SCHOLAR_API_KEY`；不是完整全文解析 |
+| 搜论文、找相关研究、核验 DOI/PMID、文献初筛 | `metadata_search` | `paper-search search` 集成入口 / `paper-search run search_*` 精确工具入口 | 只返回和核验论文元数据；Sci-Hub 不属于搜索源 |
+| 查已知论文的施引文献或参考文献 | `citation_expansion` | `paper-search run get_paper_citations` / `paper-search run get_paper_references` | 需要已知的 `paperId`、DOI 或 arXiv ID；不是关键词检索 |
+| 查影响因子、JCR/SSCI/中科院分区、JCI、ESI、预警、期刊等级 | `journal_metrics` | `paper-search journal-metrics` / `paper-search run query_journal_metrics` | 查期刊，不查论文；需要 `EASYSCHOLAR_KEY` |
+| 下载已确认论文的 PDF | `pdf_discovery` | `paper-search download` / `paper-search run download_with_fallback` | 先核验论文身份；默认只走开放下载，装了机构下载扩展时最后再用学校权限 |
+| 批量下载一组已确认的论文（几十到几百篇） | `pdf_discovery` | `paper-search run download_batch` | 一次调用，不自己循环单篇；用学校权限时读 `references/browser-download.md` |
+| 下载补充材料（附录、Supporting Information） | `pdf_discovery` | `download_with_fallback` / `download_batch` 设 `content` 为 `supplements` 或 `both` | 只有机构下载能取；只有部分出版社有规则，见 `references/publisher-support.md` |
+| 在论文正文片段中找 Methods、参数、写法线索 | `body_snippet_search` | `paper-search run search_semantic_snippets` | 查 Semantic Scholar 开放获取片段索引；需要 `SEMANTIC_SCHOLAR_API_KEY`；不是完整全文解析 |
+
+## 两种下载方式
+
+本 Skill 默认是开放版本：装好 `paper-search` 就能用开放下载。机构下载是可选扩展，默认不安装、不启用；用户需要下载学校订阅的文章或补充材料时，征得同意后用 `paper-search carsi install` 安装（见 `references/carsi-setup.md`）。
+
+| | 开放下载（默认） | 机构下载（可选扩展） |
+|---|---|---|
+| 能不能直接用 | 装好 `paper-search` 就能用 | 默认没装；`paper-search carsi install` 安装（下载约 3 GB，用 ego lite 时约 0.5 GB） |
+| 能拿到什么 | 开放获取的正文 | 用户学校订阅的正文；有规则的出版社还能取补充材料 |
+| 怎么拿 | 程序直接下载，通常几秒，不用登录：来源自带的下载、元数据里的 PDF 地址、PMC、Unpaywall、出版社接口（用户自己的 key）；最后是默认开启的 Sci-Hub 兜底（它不是开放获取，`useSciHub=false` 关闭） | 打开一个浏览器，经 CARSI 登录用户的学校，在出版社网站上取 PDF；账号密码和人机验证由用户在浏览器里完成 |
+| 补充材料 | 不提供 | 有规则的出版社可以取，见 `references/publisher-support.md` |
+| 结果里怎么看 | `attempts[]` 里成功的一步是 `primary`、`direct_pdf_url`、`repositories`、`unpaywall`、`publisher_api` 或 `scihub` | 成功的一步是 `entitled_access` |
+| 参考文件 | `references/capability-routing.md` 的“PDF 获取” | `references/carsi-setup.md`、`references/browser-download.md`、`references/publisher-support.md` |
+
+两种方式用同一个下载命令，不需要分开调用：先试开放下载；拿不到时，机构下载已启用才继续用学校权限，它固定是最后一步。
+
+- 交付时告诉用户文件来自哪种方式：开放下载、Sci-Hub，还是机构下载。
+- 开放下载没拿到、机构下载又没装时：告诉用户开放渠道没有找到这篇；如果学校订阅了它，可以安装机构下载扩展后再试。安装前先征得用户同意，不擅自安装。
+- 用机构下载前，先运行 `paper-search carsi status --format text` 确认扩展可用：显示已安装并启用，或者“PaperSearch 配置”一行显示已启用并给出后端路径。后一种是用户自己维护的后端（例如开发版），第一行写“未安装”是正常的，直接使用，不要再安装或改路径；`paper-search doctor` 里 `entitled_access` 为 `available` 也说明后端能用。
+- 扩展自己的命令 `paper-search-carsi` 安装后通常不在 PATH 上：`command -v paper-search-carsi` 找不到时，用 `carsi status` 输出里“PaperSearch 配置”一行“后端”后面的完整路径调用，例如 `<后端路径> issues`、`<后端路径> progress --json`。
 
 ## 默认工作流
 
-开放式文献任务使用 Two-Stage Paper Workflow：
+开放式的文献任务分两步：
 
-1. 先做 `metadata_search`：检索和核验文献条目，确认题名、作者、年份、期刊、DOI、PMID/PMCID、URL、摘要线索和相关性。
-2. 用户确认条目或任务明确需要 PDF 后，再做 `pdf_discovery`：下载选中的已核验条目；下载失败项记录原因，不阻塞其他条目。
+1. 先做 `metadata_search`：检索并核验题名、作者、年份、期刊、DOI、PMID/PMCID、网址、摘要线索和相关性。
+2. 用户确认条目，或任务明确需要 PDF 后，再做 `pdf_discovery`；失败的条目记下原因，不阻塞其他条目。
 
-Direct Paper Request 可以跳过广泛发现：用户给出单个 DOI、PMID、PMCID、arXiv ID 或已核验清单并明确要求下载时，先核验目标身份，再进入下载。
+直接下载请求（用户给出单个 DOI、PMID、PMCID 或已核验的清单，并明确要求下载）可以跳过广泛检索：先核验目标身份，再下载。
 
-## 验证与输出边界
+下载前问清要什么：机构下载已启用、用户又没说要不要补充材料时，开始下载前问一次（批量也只问一次），三个选项：
 
-关键论文输出前尽量验证：
+- 只要正文（默认，`content` 为 `main`）；
+- 正文加补充材料（`content` 为 `both`）；
+- 只要补充材料（`content` 为 `supplements`，正文已有时用）。
 
-```bash
-paper-search run search_pubmed --arg query="37654321[PMID]" --arg maxResults=1 --pretty
-paper-search run get_paper_by_doi --arg doi="10.xxxx/xxxxx" --pretty
-paper-search run search_crossref --arg query="full paper title" --arg maxResults=3 --pretty
-```
+问的时候顺带说明：补充材料只有部分出版社支持，见 `references/publisher-support.md`。用户已经说明的不再问。机构下载没启用时只走开放下载、只下正文；用户要补充材料时，告诉用户需要先安装机构下载扩展（`references/carsi-setup.md`）。
 
-规则：
+几十到几百篇用一次 `download_batch`，不要自己循环调用单篇下载。下载结束后运行 `paper-search failures --format text`，按失败类别向用户说明。
 
-- 不凭模型记忆编造 PMID、DOI、期刊、年份或作者。
-- PMID 必须能被 PubMed 查询确认；DOI 必须能被 DOI 查询或 Crossref/OpenAlex/Semantic Scholar 结果支持。
-- 同一论文的 PMID、DOI、题名、第一作者和年份应一致；不一致时标记为可疑。
-- `config` / `doctor` 输出应视为已脱敏，但不要复述、保存或写入任何原始密钥。
+## 核心规则
 
-## 常见失败处理
-
-| 场景 | 处理 |
-|---|---|
-| CLI 不存在 | 提示安装 `npm install -g paper-search-cli` |
-| API key 缺失 | 提示运行 `paper-search setup`；不要索要或保存 key |
-| EasyScholar key 缺失 | 提示运行 `paper-search setup EASYSCHOLAR_KEY`；不要让用户在聊天中发送 SecretKey |
-| 429 限流 | 降低 `--max-results`，换平台，或提示配置可选 key |
-| 0 结果 | 放宽关键词，换英文同义词，换平台，或用 `--sources` 扩展 |
-| 下载失败 | 优先开放获取来源和 `download_with_fallback`，报告失败原因 |
-| 用户要求完整正文 | 先下载 PDF；再交给当前环境可用的 PDF/MinerU 解析流程 |
+- 不凭模型记忆编造 PMID、DOI、期刊、年份或作者；关键论文输出前按 `references/capability-routing.md` 核验。
+- 同一篇论文的 PMID、DOI、题名、第一作者和年份应一致；不一致时标为可疑。
+- 不让用户在聊天里发送 API key、密码或验证码；`config`、`doctor` 的输出已脱敏，也不要复述或保存原始密钥。
+- 学校登录、人机验证只由用户在下载浏览器里完成；agent 不代填、不代点、不绕过验证。
+- 下载结果以命令的最终返回和实际保存的文件为准；每个文件都要核对身份（首页的 DOI 和题名）才算成功，交付时给出实际文件路径。
+- “没有权限”必须有依据，原因不明的不说成没有权限。
+- 出版社支持表说明的是程序能不能走通这类网站，不代表用户学校订阅了某本期刊。
 
 ## 不属于本 Skill 的事
 
 - 不管理 Zotero、Obsidian 或其他文献库。
 - 不写论文正文，不做语言润色。
-- 不把 API key、token、cookie 写入 Skill、README 或回复。
+- 不把 API key、token、Cookie 写入 Skill、README 或回复。

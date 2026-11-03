@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "Royal Society Publishing",
+    "article_url_template": "https://royalsocietypublishing.org/doi/{doi}",
+    "pdf_url_templates": [
+      "https://royalsocietypublishing.org/doi/pdf/{doi}"
+    ],
+    "success_url_markers": [
+      "royalsocietypublishing.org/doi/"
+    ],
+    "auth_url_markers": [
+      "login.openathens.net",
+      "/action/showLogin",
+      "/saml/",
+      "/sso/",
+      "/login"
+    ],
+    "auth_title_markers": [
+      "OpenAthens",
+      "Institutional Login",
+      "Login",
+      "Identity"
+    ],
+    "sso_text_markers": [
+      "institutional login",
+      "log in through your institution",
+      "access through your institution",
+      "openathens"
+    ],
+    "aliases": [
+      "royalsocietypublishing",
+      "royal-society-publishing",
+      "the-royal-society"
+    ],
+    "doi_prefixes": [
+      "10.1098"
+    ],
+    "sample_dois": [
+      "10.1098/rsos.150470"
+    ],
+    "base_domains": [
+      "royalsocietypublishing.org"
+    ],
+    "pdf_source_path_templates": [],
+    "pdf_url_markers": [
+      "/doi/pdf/",
+      "pdf"
+    ],
+    "pdf_link_text_markers": [
+      "pdf"
+    ],
+    "supplementary_url_markers": [
+      "supplementary",
+      "supplement",
+      "suppl_file"
+    ],
+    "institution_input_selectors": [],
+    "institution_result_selectors": [],
+    "platform": "royal society"
+  }
+}

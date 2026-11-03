@@ -1,19 +1,20 @@
-import { CONFIG_KEYS, listConfigEntries } from '../config/index.js';
+import { CONFIG_KEYS, listConfigEntries } from "../config/index.js";
 import {
   getCapabilityProfileConfigKeysBySource,
-  getCapabilityProfileSources
-} from '../../registry/platformMetadata.js';
+  getCapabilityProfileSources,
+} from "../../registry/platformMetadata.js";
+import type { EntitledAccessReadiness } from "./carsiReadiness.js";
 
-export type CapabilityStatus = 'available' | 'degraded' | 'unavailable';
+export type CapabilityStatus = "available" | "degraded" | "unavailable";
 
 export interface CapabilityEntry {
   id:
-    | 'metadata_search'
-    | 'citation_expansion'
-    | 'body_snippet_search'
-    | 'journal_metrics'
-    | 'pdf_discovery'
-    | 'entitled_access';
+    | "metadata_search"
+    | "citation_expansion"
+    | "body_snippet_search"
+    | "journal_metrics"
+    | "pdf_discovery"
+    | "entitled_access";
   status: CapabilityStatus;
   reason: string;
   configured: string[];
@@ -21,6 +22,10 @@ export interface CapabilityEntry {
   sourceGroups?: Record<string, string[]>;
   requiredKeys?: string[];
   optionalKeys?: string[];
+  readiness?: {
+    state: EntitledAccessReadiness["state"] | "not_evaluated";
+    code: string;
+  };
 }
 
 export interface CapabilityProfile {
@@ -29,139 +34,233 @@ export interface CapabilityProfile {
   summary: Record<string, CapabilityStatus>;
 }
 
-const METADATA_FREE_SOURCES = getCapabilityProfileSources('metadata_free');
-const METADATA_ENTITLED_SOURCES = getCapabilityProfileSources('metadata_entitled');
-const OPEN_ACCESS_SOURCES = getCapabilityProfileSources('pdf_open_access');
-const ENTITLED_ACCESS_SOURCES = getCapabilityProfileSources('pdf_entitled');
-const SCIHUB_SOURCES = getCapabilityProfileSources('pdf_scihub');
+export interface CapabilityProfileOptions {
+  carsiReadiness?: EntitledAccessReadiness;
+}
 
-const ENTITLED_KEY_BY_SOURCE = getCapabilityProfileConfigKeysBySource(['pdf_entitled']);
+interface CarsiCapabilitySnapshot {
+  state: EntitledAccessReadiness["state"] | "not_evaluated";
+  code: string;
+  status: CapabilityStatus;
+  reason: string;
+  configured: string[];
+  missing: string[];
+}
 
-export function buildCapabilityProfile(): CapabilityProfile {
+const METADATA_FREE_SOURCES = getCapabilityProfileSources("metadata_free");
+const METADATA_ENTITLED_SOURCES =
+  getCapabilityProfileSources("metadata_entitled");
+const OPEN_ACCESS_SOURCES = getCapabilityProfileSources("pdf_open_access");
+const SCIHUB_SOURCES = getCapabilityProfileSources("pdf_scihub");
+const CARSI_BACKEND_SOURCE = "carsi";
+
+const METADATA_KEY_BY_SOURCE = getCapabilityProfileConfigKeysBySource([
+  "metadata_entitled",
+]);
+
+export function buildCapabilityProfile(
+  options: CapabilityProfileOptions = {},
+): CapabilityProfile {
   const configuredKeys = configuredConfigKeys();
+  const carsi = carsiCapabilitySnapshot(options.carsiReadiness);
   const entries: CapabilityEntry[] = [
     metadataSearchEntry(configuredKeys),
     citationExpansionEntry(),
     bodySnippetSearchEntry(configuredKeys),
     journalMetricsEntry(configuredKeys),
-    pdfDiscoveryEntry(configuredKeys),
-    entitledAccessEntry(configuredKeys)
+    pdfDiscoveryEntry(carsi),
+    entitledAccessEntry(carsi),
   ];
   return {
-    ok: entries.some(entry => entry.status === 'available' || entry.status === 'degraded'),
+    ok: entries.some(
+      (entry) => entry.status === "available" || entry.status === "degraded",
+    ),
     entries,
-    summary: Object.fromEntries(entries.map(entry => [entry.id, entry.status])) as CapabilityProfile['summary']
+    summary: Object.fromEntries(
+      entries.map((entry) => [entry.id, entry.status]),
+    ) as CapabilityProfile["summary"],
   };
 }
 
 function metadataSearchEntry(configuredKeys: Set<string>): CapabilityEntry {
-  const configuredEntitled = METADATA_ENTITLED_SOURCES.filter(source => keysConfigured(configuredKeys, ENTITLED_KEY_BY_SOURCE[source] || []));
-  const missingEntitled = METADATA_ENTITLED_SOURCES.filter(source => !configuredEntitled.includes(source));
+  const configuredEntitled = METADATA_ENTITLED_SOURCES.filter((source) =>
+    keysConfigured(configuredKeys, METADATA_KEY_BY_SOURCE[source] || []),
+  );
+  const missingEntitled = METADATA_ENTITLED_SOURCES.filter(
+    (source) => !configuredEntitled.includes(source),
+  );
   return {
-    id: 'metadata_search',
-    status: 'available',
-    reason: `Free metadata sources are available (${METADATA_FREE_SOURCES.join(', ')}). Sci-Hub is excluded from metadata_search; entitled metadata sources are ${configuredEntitled.length ? `configured for ${configuredEntitled.join(', ')}` : 'not configured'}.`,
+    id: "metadata_search",
+    status: "available",
+    reason: `Free metadata sources are available (${METADATA_FREE_SOURCES.join(", ")}). Sci-Hub is excluded from metadata_search; entitled metadata sources are ${configuredEntitled.length ? `configured for ${configuredEntitled.join(", ")}` : "not configured"}.`,
     configured: [...METADATA_FREE_SOURCES, ...configuredEntitled],
     missing: missingEntitled,
     sourceGroups: {
       free_sources: METADATA_FREE_SOURCES,
       entitled_sources: configuredEntitled,
-      missing_entitled_sources: missingEntitled
+      missing_entitled_sources: missingEntitled,
     },
-    optionalKeys: unique(Object.values(ENTITLED_KEY_BY_SOURCE).flat())
+    optionalKeys: unique(Object.values(METADATA_KEY_BY_SOURCE).flat()),
   };
 }
 
 function citationExpansionEntry(): CapabilityEntry {
   return {
-    id: 'citation_expansion',
-    status: 'available',
-    reason: 'Semantic Scholar Graph API citation expansion is available; SEMANTIC_SCHOLAR_API_KEY is optional for higher quota.',
-    configured: ['semantic_scholar_graph'],
+    id: "citation_expansion",
+    status: "available",
+    reason:
+      "Semantic Scholar Graph API citation expansion is available; SEMANTIC_SCHOLAR_API_KEY is optional for higher quota.",
+    configured: ["semantic_scholar_graph"],
     missing: [],
     sourceGroups: {
-      citation_sources: ['semantic_scholar_graph']
+      citation_sources: ["semantic_scholar_graph"],
     },
-    optionalKeys: ['SEMANTIC_SCHOLAR_API_KEY']
+    optionalKeys: ["SEMANTIC_SCHOLAR_API_KEY"],
   };
 }
 
 function bodySnippetSearchEntry(configuredKeys: Set<string>): CapabilityEntry {
-  const hasKey = configuredKeys.has('SEMANTIC_SCHOLAR_API_KEY');
+  const hasKey = configuredKeys.has("SEMANTIC_SCHOLAR_API_KEY");
   return {
-    id: 'body_snippet_search',
-    status: hasKey ? 'available' : 'unavailable',
+    id: "body_snippet_search",
+    status: hasKey ? "available" : "unavailable",
     reason: hasKey
-      ? 'SEMANTIC_SCHOLAR_API_KEY is configured, so Semantic Scholar Open Access body snippet search can run.'
-      : 'SEMANTIC_SCHOLAR_API_KEY is missing; metadata search still works, but body snippet search cannot run.',
-    configured: hasKey ? ['semantic_snippet_index'] : [],
-    missing: hasKey ? [] : ['SEMANTIC_SCHOLAR_API_KEY'],
-    requiredKeys: ['SEMANTIC_SCHOLAR_API_KEY']
+      ? "SEMANTIC_SCHOLAR_API_KEY is configured, so Semantic Scholar Open Access body snippet search can run."
+      : "SEMANTIC_SCHOLAR_API_KEY is missing; metadata search still works, but body snippet search cannot run.",
+    configured: hasKey ? ["semantic_snippet_index"] : [],
+    missing: hasKey ? [] : ["SEMANTIC_SCHOLAR_API_KEY"],
+    requiredKeys: ["SEMANTIC_SCHOLAR_API_KEY"],
   };
 }
 
 function journalMetricsEntry(configuredKeys: Set<string>): CapabilityEntry {
-  const hasKey = configuredKeys.has('EASYSCHOLAR_KEY');
+  const hasKey = configuredKeys.has("EASYSCHOLAR_KEY");
   return {
-    id: 'journal_metrics',
-    status: hasKey ? 'available' : 'unavailable',
+    id: "journal_metrics",
+    status: hasKey ? "available" : "unavailable",
     reason: hasKey
-      ? 'EASYSCHOLAR_KEY is configured, so EasyScholar journal metrics can run.'
-      : 'EASYSCHOLAR_KEY is missing; journal metrics are unavailable until the EasyScholar SecretKey is configured.',
-    configured: hasKey ? ['easyscholar'] : [],
-    missing: hasKey ? [] : ['EASYSCHOLAR_KEY'],
-    requiredKeys: ['EASYSCHOLAR_KEY']
+      ? "EASYSCHOLAR_KEY is configured, so EasyScholar journal metrics can run."
+      : "EASYSCHOLAR_KEY is missing; journal metrics are unavailable until the EasyScholar SecretKey is configured.",
+    configured: hasKey ? ["easyscholar"] : [],
+    missing: hasKey ? [] : ["EASYSCHOLAR_KEY"],
+    requiredKeys: ["EASYSCHOLAR_KEY"],
   };
 }
 
-function pdfDiscoveryEntry(configuredKeys: Set<string>): CapabilityEntry {
-  const configuredEntitled = ENTITLED_ACCESS_SOURCES.filter(source => keysConfigured(configuredKeys, ENTITLED_KEY_BY_SOURCE[source] || []));
-  const missingEntitled = ENTITLED_ACCESS_SOURCES.filter(source => !configuredEntitled.includes(source));
+function pdfDiscoveryEntry(
+  carsi: CarsiCapabilitySnapshot,
+): CapabilityEntry {
   return {
-    id: 'pdf_discovery',
-    status: configuredEntitled.length > 0 ? 'available' : 'degraded',
-    reason: configuredEntitled.length > 0
-      ? `Open-access PDF discovery, entitled access sources (${configuredEntitled.join(', ')}), and Sci-Hub final fallback are available.`
-      : 'Open-access PDF discovery and Sci-Hub final fallback are available; entitled access sources are not configured.',
-    configured: [...OPEN_ACCESS_SOURCES, ...configuredEntitled, ...SCIHUB_SOURCES],
-    missing: missingEntitled,
+    id: "pdf_discovery",
+    status: "available",
+    reason: `Open-access PDF discovery and the Sci-Hub fallback stage are available; ${carsi.reason}`,
+    configured: [
+      ...OPEN_ACCESS_SOURCES,
+      ...carsi.configured,
+      ...SCIHUB_SOURCES,
+    ],
+    missing: carsi.missing,
     sourceGroups: {
       open_access_sources: OPEN_ACCESS_SOURCES,
-      entitled_access_sources: configuredEntitled,
-      missing_entitled_access_sources: missingEntitled,
-      scihub_sources: SCIHUB_SOURCES
+      entitled_access_sources: carsi.configured,
+      missing_entitled_access_sources: carsi.missing,
+      scihub_sources: SCIHUB_SOURCES,
     },
-    optionalKeys: unique(Object.values(ENTITLED_KEY_BY_SOURCE).flat())
   };
 }
 
-function entitledAccessEntry(configuredKeys: Set<string>): CapabilityEntry {
-  const configured = ENTITLED_ACCESS_SOURCES.filter(source => keysConfigured(configuredKeys, ENTITLED_KEY_BY_SOURCE[source] || []));
-  const missing = ENTITLED_ACCESS_SOURCES.filter(source => !configured.includes(source));
+function entitledAccessEntry(
+  carsi: CarsiCapabilitySnapshot,
+): CapabilityEntry {
   return {
-    id: 'entitled_access',
-    status: configured.length > 0 ? 'available' : 'unavailable',
-    reason: configured.length > 0
-      ? `User-specific access is configured for ${configured.join(', ')}.`
-      : 'No publisher, database, TDM, or institutional access keys are configured.',
-    configured,
-    missing,
+    id: "entitled_access",
+    status: carsi.status,
+    reason: `${carsi.reason} Publisher metadata keys do not enable entitled PDF retrieval.`,
+    configured: carsi.configured,
+    missing: carsi.missing,
     sourceGroups: {
-      configured_sources: configured,
-      missing_sources: missing
+      configured_sources: carsi.configured,
+      missing_sources: carsi.missing,
     },
-    requiredKeys: unique(Object.values(ENTITLED_KEY_BY_SOURCE).flat())
+    readiness: {
+      state: carsi.state,
+      code: carsi.code,
+    },
   };
+}
+
+function carsiCapabilitySnapshot(
+  readiness?: EntitledAccessReadiness,
+): CarsiCapabilitySnapshot {
+  if (!readiness) {
+    return {
+      state: "not_evaluated",
+      code: "not_evaluated",
+      status: "unavailable",
+      reason:
+        "CARSI readiness was not evaluated in this capability snapshot.",
+      configured: [],
+      missing: [],
+    };
+  }
+
+  switch (readiness.state) {
+    case "available":
+      return {
+        state: readiness.state,
+        code: readiness.code,
+        status: "available",
+        reason:
+          "The optional CARSI backend is enabled and contract-compatible.",
+        configured: [CARSI_BACKEND_SOURCE],
+        missing: [],
+      };
+    case "absent":
+      return {
+        state: readiness.state,
+        code: readiness.code,
+        status: "unavailable",
+        reason: "The optional CARSI backend executable is not available.",
+        configured: [],
+        missing: [CARSI_BACKEND_SOURCE],
+      };
+    case "incompatible":
+      return {
+        state: readiness.state,
+        code: readiness.code,
+        status: "unavailable",
+        reason: "The optional CARSI backend is not contract-compatible.",
+        configured: [],
+        missing: [],
+      };
+    case "disabled":
+      return {
+        state: readiness.state,
+        code: readiness.code,
+        status: "unavailable",
+        reason: "The optional CARSI backend integration is disabled.",
+        configured: [],
+        missing: [],
+      };
+  }
 }
 
 function configuredConfigKeys(): Set<string> {
-  return new Set(listConfigEntries(false).filter(entry => entry.configured).map(entry => entry.key));
+  return new Set(
+    listConfigEntries(false)
+      .filter((entry) => entry.configured)
+      .map((entry) => entry.key),
+  );
 }
 
 function keysConfigured(configuredKeys: Set<string>, keys: string[]): boolean {
-  return keys.length > 0 && keys.some(key => configuredKeys.has(key));
+  return keys.length > 0 && keys.some((key) => configuredKeys.has(key));
 }
 
 function unique(values: string[]): string[] {
-  return [...new Set(values.filter(key => (CONFIG_KEYS as readonly string[]).includes(key)))];
+  return [
+    ...new Set(
+      values.filter((key) => (CONFIG_KEYS as readonly string[]).includes(key)),
+    ),
+  ];
 }

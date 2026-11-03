@@ -5,7 +5,7 @@
 
 export interface Paper {
   // === 核心字段 ===
-  /** 唯一标识符 (如 arXiv ID, PMID, DOI) */
+  /** 唯一标识符 (如 PMID, DOI) */
   paperId: string;
   
   /** 论文标题 */
@@ -29,7 +29,7 @@ export interface Paper {
   /** 论文页面URL */
   url: string;
   
-  /** 来源平台 (如 'arxiv', 'pubmed', 'webofscience') */
+  /** 来源平台 (如 'pubmed', 'webofscience') */
   source: string;
 
   // === 可选字段 ===

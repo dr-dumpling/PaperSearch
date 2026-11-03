@@ -7,22 +7,22 @@ export declare const QueryJournalMetricsSchema: z.ZodEffects<z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     includeRaw: boolean;
     journal?: string | undefined;
-    journals?: string | string[] | undefined;
     file?: string | undefined;
+    journals?: string | string[] | undefined;
 }, {
     journal?: string | undefined;
-    journals?: string | string[] | undefined;
     file?: string | undefined;
+    journals?: string | string[] | undefined;
     includeRaw?: boolean | undefined;
 }>, {
     includeRaw: boolean;
     journal?: string | undefined;
-    journals?: string | string[] | undefined;
     file?: string | undefined;
+    journals?: string | string[] | undefined;
 }, {
     journal?: string | undefined;
-    journals?: string | string[] | undefined;
     file?: string | undefined;
+    journals?: string | string[] | undefined;
     includeRaw?: boolean | undefined;
 }>;
 //# sourceMappingURL=schemas.d.ts.map

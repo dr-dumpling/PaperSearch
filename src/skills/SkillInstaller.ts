@@ -236,6 +236,11 @@ export function statusSkillTargets(targetIds: string[], options: { skillsRoot?: 
   };
 }
 
+/** Digest of the bundled Skill's files, the `bundledHash` of a status. */
+export function bundledSkillHash(sourceRoot?: string): string {
+  return skillDigest(loadSkillFiles(sourceRoot));
+}
+
 export function installSkillTargets(targetIds: string[], options: { skillsRoot?: string; sourceRoot?: string } = {}): SkillInstallResult {
   const root = resolve(options.skillsRoot || homedir());
   const files = loadSkillFiles(options.sourceRoot);

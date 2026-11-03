@@ -1,16 +1,17 @@
 export {
   createDefaultDownloadTiers,
   downloadWithFallback,
-  INSTITUTIONAL_ACCESS_TIER_ID,
   insertDownloadTierBefore
 } from './OpenAccessFallbackService.js';
-export { handleDownloadPaper, handleDownloadWithFallback } from './handler.js';
-export { DownloadPaperSchema, DownloadWithFallbackSchema } from './schemas.js';
+export { handleDownloadBatch, handleDownloadPaper, handleDownloadWithFallback } from './handler.js';
+export { DownloadBatchSchema, DownloadPaperSchema, DownloadWithFallbackSchema } from './schemas.js';
 export {
+  DOWNLOAD_BATCH_TOOL,
   DOWNLOAD_PAPER_TOOL,
   DOWNLOAD_WITH_FALLBACK_TOOL,
   PDF_DISCOVERY_TOOLS
 } from './tools.js';
+export { downloadBatch, downloadBatchItem, MAX_BATCH_ITEMS } from './batch.js';
 
 export type {
   DownloadTier,
@@ -19,6 +20,7 @@ export type {
 } from './DownloadTier.js';
 
 export type {
+  DownloadBatchPosition,
   DownloadWithFallbackOptions,
   DownloadWithFallbackResult
 } from './types.js';

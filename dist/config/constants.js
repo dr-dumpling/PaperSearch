@@ -19,7 +19,15 @@ export const TIMEOUTS = {
     /** Per-source timeout for fan-out operations */
     SOURCE_TASK: 15000,
     /** Timeout buffer for withTimeout wrapper */
-    BUFFER: 5000
+    BUFFER: 5000,
+    /**
+     * Wall-clock cap for one non-entitled download stage. Library socket
+     * timeouts only fire on idle sockets; a trickling or proxied response can
+     * otherwise hold a whole download for many minutes.
+     */
+    FALLBACK_STAGE: 180000,
+    /** Wall-clock cap for one repository search (one source, one query) */
+    REPOSITORY_SEARCH: 10000
 };
 /**
  * Rate Limiting Configuration
@@ -58,11 +66,9 @@ export const API_ENDPOINTS = {
     SPRINGER_OA: 'https://api.springernature.com/openaccess',
     ELSEVIER: 'https://api.elsevier.com',
     SEMANTIC_SCHOLAR: 'https://api.semanticscholar.org/graph/v1',
-    ARXIV: 'http://export.arxiv.org/api',
     PUBMED: 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils',
     BIORXIV: 'https://api.biorxiv.org',
     MEDRXIV: 'https://api.medrxiv.org',
-    WILEY_TDM: 'https://api.wiley.com/onlinelibrary/tdm/v1',
     DBLP: 'https://dblp.org/search/publ/api',
     IEEE_XPLORE: 'https://ieeexploreapi.ieee.org/api/v1/search/articles',
     OPENREVIEW: 'https://api.openreview.net'
@@ -70,11 +76,11 @@ export const API_ENDPOINTS = {
 /**
  * Default User Agent
  */
-export const USER_AGENT = 'Paper-Search-CLI/1.0 (Academic Research Tool)';
+export const USER_AGENT = 'PaperSearch/0.4 (Academic Research Tool)';
 /**
  * Default mailto for Crossref polite pool
  */
-export const DEFAULT_MAILTO = process.env.CROSSREF_MAILTO || 'paper-search-cli@example.com';
+export const DEFAULT_MAILTO = process.env.CROSSREF_MAILTO || 'papersearch@example.com';
 /**
  * DOI validation pattern
  */

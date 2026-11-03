@@ -12,8 +12,8 @@ export declare const CitationLookupSchema: z.ZodEffects<z.ZodObject<{
 }, {
     paperId?: string | undefined;
     doi?: string | undefined;
-    arxivId?: string | undefined;
     limit?: number | undefined;
+    arxivId?: string | undefined;
 }>, {
     limit: number;
     paperId?: string | undefined;
@@ -22,7 +22,7 @@ export declare const CitationLookupSchema: z.ZodEffects<z.ZodObject<{
 }, {
     paperId?: string | undefined;
     doi?: string | undefined;
-    arxivId?: string | undefined;
     limit?: number | undefined;
+    arxivId?: string | undefined;
 }>;
 //# sourceMappingURL=schemas.d.ts.map

@@ -97,6 +97,8 @@ export declare function statusSkillTargets(targetIds: string[], options?: {
     skillsRoot?: string;
     sourceRoot?: string;
 }): SkillStatusResult;
+/** Digest of the bundled Skill's files, the `bundledHash` of a status. */
+export declare function bundledSkillHash(sourceRoot?: string): string;
 export declare function installSkillTargets(targetIds: string[], options?: {
     skillsRoot?: string;
     sourceRoot?: string;

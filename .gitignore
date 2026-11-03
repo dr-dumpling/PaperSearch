@@ -145,3 +145,9 @@ WARP.md
 /cache/
 *.cache
 .ace-tool/
+
+# CARSI backend (Python)
+carsi/.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/

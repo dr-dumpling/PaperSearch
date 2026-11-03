@@ -1,5 +1,6 @@
 import { Paper } from '../models/Paper.js';
 import { PaperSource, SearchOptions, DownloadOptions, PlatformCapabilities } from './PaperSource.js';
+export declare function coreQuery(query: string): string;
 export declare class CORESearcher extends PaperSource {
     private readonly client;
     constructor(apiKey?: string);

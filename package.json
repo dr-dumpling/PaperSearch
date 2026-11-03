@@ -1,7 +1,7 @@
 {
-  "name": "paper-search-cli",
-  "version": "0.3.4",
-  "description": "Agent-friendly CLI for searching and downloading academic papers from multiple sources.",
+  "name": "papersearch",
+  "version": "0.4.0",
+  "description": "PaperSearch: an agent-friendly command for searching and downloading academic papers from multiple sources.",
   "main": "dist/cli.js",
   "type": "module",
   "bin": {
@@ -24,7 +24,13 @@
     "README.zh.md",
     "skills/",
     "LICENSE",
-    ".env.example"
+    ".env.example",
+    "carsi/pyproject.toml",
+    "carsi/README.md",
+    "carsi/LICENSE",
+    "carsi/NOTICE",
+    "carsi/paper_search_carsi/",
+    "!**/__pycache__/**"
   ],
   "keywords": [
     "cli",
@@ -39,6 +45,7 @@
   "author": "dianel; CLI adaptation by dr-dumpling",
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@types/cheerio": "^0.22.35",
     "axios": "^1.7.2",
     "cheerio": "^1.1.2",
@@ -104,10 +111,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dr-dumpling/paper-search-cli.git"
+    "url": "git+https://github.com/dr-dumpling/PaperSearch.git"
   },
-  "homepage": "https://github.com/dr-dumpling/paper-search-cli#readme",
+  "homepage": "https://github.com/dr-dumpling/PaperSearch#readme",
   "bugs": {
-    "url": "https://github.com/dr-dumpling/paper-search-cli/issues"
+    "url": "https://github.com/dr-dumpling/PaperSearch/issues"
   }
 }

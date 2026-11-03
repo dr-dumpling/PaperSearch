@@ -2,17 +2,10 @@ import { describe, expect, it } from '@jest/globals';
 import { initializeSearchers } from '../../src/core/searchers.js';
 
 describe('initializeSearchers', () => {
-  it('instantiates Wiley as a download-only platform from the registry', () => {
+  it('does not instantiate the removed Wiley native downloader', () => {
     const searchers = initializeSearchers();
 
-    expect(searchers.wiley).toBeDefined();
-    expect(searchers.wiley.getCapabilities()).toEqual(
-      expect.objectContaining({
-        search: false,
-        download: true,
-        requiresApiKey: true
-      })
-    );
+    expect((searchers as any).wiley).toBeUndefined();
   });
 
   it('keeps registry generic platforms and aliases available through the searcher map', () => {

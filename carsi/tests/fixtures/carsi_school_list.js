@@ -1,0 +1,3 @@
+var IdPList = new Array();
+IdPList[0]=[{"entityID":"https:\/\/idp.example.edu.cn\/idp\/shibboleth","IdP_CN":"\u793a\u4f8b\u5927\u5b66","IdP_EN":"Example University","dns":"example.edu.cn","logo":"","IdP_CN_PY":"shi li da xue"},{"entityID":"https:\/\/idp.example-normal.edu.cn\/idp\/shibboleth","IdP_CN":"\u793a\u4f8b\u5e08\u8303\u5927\u5b66","IdP_EN":"Example Normal University","dns":"example-normal.edu.cn","logo":"","IdP_CN_PY":"shi li shi fan da xue"}];
+IdPList[1]=[{"entityID":"https:\/\/login.sample.ac.cn\/idp\/shibboleth","IdP_CN":"\u6837\u672c\u5b66\u9662","IdP_EN":"Sample College","dns":"sample.ac.cn","logo":"","IdP_CN_PY":"yang ben xue yuan"}];

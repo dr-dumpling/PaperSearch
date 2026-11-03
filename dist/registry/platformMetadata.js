@@ -4,6 +4,7 @@ export const PLATFORM_METADATA = [
         displayName: 'Crossref',
         sourceKind: 'official-api',
         defaultInAll: true,
+        noKeyDefault: true,
         supportedOptions: ['maxResults', 'year', 'author', 'sortBy', 'sortOrder'],
         schemaKind: 'crossref',
         supportsDoiLookup: true,
@@ -28,6 +29,7 @@ export const PLATFORM_METADATA = [
         displayName: 'PubMed',
         sourceKind: 'official-api',
         defaultInAll: true,
+        noKeyDefault: true,
         optionalConfigKeys: [['PUBMED_API_KEY'], ['NCBI_EMAIL'], ['NCBI_TOOL']],
         supportedOptions: ['maxResults', 'year', 'author', 'journal', 'sortBy'],
         schemaKind: 'pubmed',
@@ -60,6 +62,7 @@ export const PLATFORM_METADATA = [
         displayName: 'Europe PMC',
         sourceKind: 'official-api',
         defaultInAll: true,
+        noKeyDefault: true,
         supportedOptions: ['maxResults', 'year'],
         schemaKind: 'pmc-style',
         supportsDoiLookup: true,
@@ -69,20 +72,6 @@ export const PLATFORM_METADATA = [
         capabilityProfileSources: [
             { group: 'metadata_free', order: 50 },
             { group: 'pdf_open_access', order: 50 }
-        ],
-        capabilityGroups: ['metadata_search', 'pdf_discovery']
-    },
-    {
-        id: 'arxiv',
-        displayName: 'arXiv',
-        sourceKind: 'official-api',
-        defaultInAll: true,
-        supportedOptions: ['maxResults', 'year', 'author', 'category', 'sortBy', 'sortOrder'],
-        schemaKind: 'arxiv',
-        doiLookupOrder: 90,
-        capabilityProfileSources: [
-            { group: 'metadata_free', order: 60 },
-            { group: 'pdf_open_access', order: 10 }
         ],
         capabilityGroups: ['metadata_search', 'pdf_discovery']
     },
@@ -175,11 +164,18 @@ export const PLATFORM_METADATA = [
         aliases: ['scholar', 'google_scholar'],
         displayName: 'Google Scholar',
         sourceKind: 'html',
-        defaultInAll: true,
+        defaultInAll: false,
+        optionalConfigKeys: [
+            ['GOOGLE_SCHOLAR_PROXY_URL'],
+            ['SCHOLAR_RATE_LIMIT_RPS'],
+            ['SCHOLAR_MAX_RETRIES'],
+            ['SCHOLAR_TIMEOUT_MS']
+        ],
         supportedOptions: ['maxResults', 'year', 'author'],
         schemaKind: 'google-scholar',
         capabilityProfileSources: [{ group: 'metadata_free', order: 130 }],
-        capabilityGroups: ['metadata_search']
+        capabilityGroups: ['metadata_search'],
+        description: 'Best-effort HTML discovery; use explicitly because Scholar may return anti-bot challenges.'
     },
     {
         id: 'webofscience',
@@ -192,11 +188,8 @@ export const PLATFORM_METADATA = [
         supportedOptions: ['maxResults', 'year', 'author', 'journal', 'sortBy', 'sortOrder'],
         schemaKind: 'webofscience',
         doiLookupOrder: 80,
-        capabilityProfileSources: [
-            { group: 'metadata_entitled', order: 10 },
-            { group: 'pdf_entitled', order: 10 }
-        ],
-        capabilityGroups: ['metadata_search', 'entitled_access']
+        capabilityProfileSources: [{ group: 'metadata_entitled', order: 10 }],
+        capabilityGroups: ['metadata_search']
     },
     {
         id: 'sciencedirect',
@@ -206,11 +199,8 @@ export const PLATFORM_METADATA = [
         configKeys: [['ELSEVIER_API_KEY']],
         supportedOptions: ['maxResults', 'year', 'author', 'journal', 'openAccess'],
         schemaKind: 'sciencedirect',
-        capabilityProfileSources: [
-            { group: 'metadata_entitled', order: 20 },
-            { group: 'pdf_entitled', order: 20 }
-        ],
-        capabilityGroups: ['metadata_search', 'pdf_discovery', 'entitled_access']
+        capabilityProfileSources: [{ group: 'metadata_entitled', order: 20 }],
+        capabilityGroups: ['metadata_search', 'pdf_discovery']
     },
     {
         id: 'springer',
@@ -222,11 +212,8 @@ export const PLATFORM_METADATA = [
         optionalConfigKeys: [['SPRINGER_OPENACCESS_API_KEY']],
         supportedOptions: ['maxResults', 'year', 'author', 'journal', 'openAccess', 'subject', 'type'],
         schemaKind: 'springer',
-        capabilityProfileSources: [
-            { group: 'metadata_entitled', order: 30 },
-            { group: 'pdf_entitled', order: 40 }
-        ],
-        capabilityGroups: ['metadata_search', 'pdf_discovery', 'entitled_access']
+        capabilityProfileSources: [{ group: 'metadata_entitled', order: 30 }],
+        capabilityGroups: ['metadata_search', 'pdf_discovery']
     },
     {
         id: 'scopus',
@@ -237,25 +224,8 @@ export const PLATFORM_METADATA = [
         optionalConfigKeys: [['SCOPUS_SEARCH_API_KEY']],
         supportedOptions: ['maxResults', 'year', 'author', 'journal', 'affiliation', 'subject', 'openAccess', 'documentType'],
         schemaKind: 'scopus',
-        capabilityProfileSources: [
-            { group: 'metadata_entitled', order: 40 },
-            { group: 'pdf_entitled', order: 30 }
-        ],
-        capabilityGroups: ['metadata_search', 'pdf_discovery', 'entitled_access']
-    },
-    {
-        id: 'wiley',
-        displayName: 'Wiley TDM',
-        sourceKind: 'official-api',
-        defaultInAll: false,
-        configKeys: [['WILEY_TDM_TOKEN']],
-        supportedOptions: [],
-        schemaKind: 'wiley-deprecated',
-        capabilityGroups: ['pdf_discovery', 'entitled_access'],
-        supportsDoiLookup: false,
-        isRepository: false,
-        capabilityProfileSources: [{ group: 'pdf_entitled', source: 'wiley_tdm', order: 60 }],
-        description: 'Wiley TDM API supports DOI-targeted PDF download only; use Crossref/OpenAlex for metadata discovery.'
+        capabilityProfileSources: [{ group: 'metadata_entitled', order: 40 }],
+        capabilityGroups: ['metadata_search', 'pdf_discovery']
     },
     {
         id: 'scihub',
@@ -303,11 +273,8 @@ export const PLATFORM_METADATA = [
         configKeys: [['IEEE_API_KEY']],
         supportedOptions: ['maxResults', 'year', 'author', 'journal', 'sortBy', 'sortOrder', 'articleTitle', 'startRecord'],
         schemaKind: 'generic',
-        capabilityProfileSources: [
-            { group: 'metadata_entitled', order: 50 },
-            { group: 'pdf_entitled', order: 50 }
-        ],
-        capabilityGroups: ['metadata_search', 'entitled_access'],
+        capabilityProfileSources: [{ group: 'metadata_entitled', order: 50 }],
+        capabilityGroups: ['metadata_search'],
         description: 'Search IEEE Xplore metadata using the official API. Requires IEEE_API_KEY.'
     },
     {
@@ -341,6 +308,7 @@ export const PLATFORM_METADATA = [
         displayName: 'OpenReview',
         sourceKind: 'official-api',
         defaultInAll: true,
+        noKeyDefault: true,
         directTool: true,
         toolName: 'search_openreview',
         supportedOptions: ['maxResults', 'year', 'author', 'journal', 'venue'],
@@ -358,6 +326,15 @@ export const SEARCH_PLATFORM_VALUES = PLATFORM_METADATA.flatMap(platform => [
 export const DEFAULT_ALL_SOURCES = PLATFORM_METADATA
     .filter(platform => platform.defaultInAll)
     .map(platform => platform.id);
+/**
+ * Explicit low-friction metadata bundle. These sources do not require a
+ * user-provided API key for their normal metadata search paths. They still
+ * have provider-specific rate limits and should not be treated as unlimited.
+ */
+const NO_KEY_SOURCE_IDS = PLATFORM_METADATA
+    .filter(platform => platform.noKeyDefault)
+    .map(platform => platform.id);
+export const NO_KEY_SOURCE_ALIASES = ['no-key', 'no_key', 'free'];
 const VIRTUAL_CAPABILITY_PROFILE_SOURCES = [
     { group: 'pdf_open_access', source: 'openalex_oa_metadata', order: 90 },
     { group: 'pdf_open_access', source: 'semantic_open_access_pdf', order: 100 },
@@ -392,6 +369,9 @@ export function getPlatformMetadata(platform) {
 }
 export function getDefaultAllSources() {
     return [...DEFAULT_ALL_SOURCES];
+}
+export function getNoKeySources() {
+    return [...NO_KEY_SOURCE_IDS];
 }
 export function getRepositoryFallbackSources() {
     return PLATFORM_METADATA

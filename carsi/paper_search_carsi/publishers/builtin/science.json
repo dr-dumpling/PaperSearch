@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "Science",
+    "article_url_template": "https://www.science.org/doi/{doi}",
+    "pdf_url_templates": [
+      "https://www.science.org/doi/epdf/{doi}",
+      "https://www.science.org/doi/pdf/{doi}",
+      "https://www.science.org/doi/pdf/{doi}?download=true"
+    ],
+    "success_url_markers": [
+      "science.org/doi/",
+      "www.science.org/doi/"
+    ],
+    "auth_url_markers": [
+      "login.openathens.net",
+      "/action/showLogin",
+      "/saml/",
+      "/sso/",
+      "/login"
+    ],
+    "auth_title_markers": [
+      "OpenAthens",
+      "Institutional Login",
+      "Login",
+      "Identity"
+    ],
+    "sso_text_markers": [
+      "institutional login",
+      "log in through your institution",
+      "access through your institution",
+      "openathens"
+    ],
+    "aliases": [
+      "science",
+      "aaas",
+      "american-association-for-the-advancement-of-science"
+    ],
+    "doi_prefixes": [
+      "10.1126"
+    ],
+    "sample_dois": [
+      "10.1126/sciadv.adp3964"
+    ],
+    "base_domains": [
+      "www.science.org",
+      "science.org"
+    ],
+    "pdf_source_path_templates": [],
+    "pdf_url_markers": [
+      "/doi/epdf/",
+      "/doi/pdf/",
+      "download=true",
+      "pdf"
+    ],
+    "pdf_link_text_markers": [
+      "pdf"
+    ],
+    "supplementary_url_markers": [
+      "supplementary",
+      "supplement",
+      "suppl_file"
+    ],
+    "institution_input_selectors": [],
+    "institution_result_selectors": [],
+    "platform": "science"
+  }
+}

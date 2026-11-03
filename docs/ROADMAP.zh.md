@@ -1,65 +1,29 @@
-# paper-search-cli Roadmap
+# PaperSearch Roadmap
 
-本文记录当前架构之外的后续演进方向。当前事实源是 [`ARCHITECTURE.zh.md`](./ARCHITECTURE.zh.md)。本文不是当前实现说明，也不是必须立即执行的任务书。
-
----
-
-## 当前状态
-
-当前版本已经完成：
-
-- citation expansion 工具接入。
-- `DownloadTier` 扩展点和默认下载层顺序。
-- `PlatformMetadata` 字段扩展。
-- `PlatformFactoryRegistry` 初步拆分。
-- `HttpClient` / `HttpPolicy` 最小 scaffold。
-- `capabilities/`、`registry/`、`infrastructure/`、`management/` 主目录已经就位。
-- 旧 `core/`、`services/`、`utils/` 入口保留兼容 re-export，避免破坏既有 import。
-- 工具 schema、alias、capability profile、fallback attempts 的契约测试。
-
-当前文档策略：
-
-- `ARCHITECTURE.zh.md` 只描述当前架构。
-- 已完成的 refactor 任务书不再保留。
-- 未来机构访问只作为后续规划，不属于当前能力。
+本文记录当前架构之外的后续演进方向。当前事实源是 [`ARCHITECTURE.zh.md`](./ARCHITECTURE.zh.md)。本文不是当前实现说明，也不是立即执行任务书。
 
 ---
 
-## 1. 能力目录后续清理
-
-当前业务能力边界和主目录已经拆出：
-
-```text
-src/capabilities/
-src/registry/
-src/infrastructure/
-src/management/
-```
-
-后续重点不再是大搬迁，而是分阶段清理旧兼容路径和继续收敛派生逻辑：
-
-1. 逐步把仍指向 `core/`、`services/`、`utils/` 兼容层的内部 import 改到新路径。
-2. 清理确认无外部依赖的旧 re-export。
-3. 继续把手写清单从 registry metadata 派生。
-4. 保持每次只处理一类边界，方便 review 和回滚。
-
-约束：
-
-- 清理旧路径时不改变工具名、schema、JSON 输出和 Skill contract。
-- 不把 `platforms/`、registry、HttpClient、Paper 模型放进某个 capability。
-- 每次只清理一个能力或一个依赖面，保持变更可回滚。
+当前已实现的能力一律见 [`ARCHITECTURE.zh.md`](./ARCHITECTURE.zh.md)，本文只列未完成项。已经开工的主题，目标、进展和待做写在 `dev/`；已完成的归档在 `history/`。
 
 ---
 
-## 2. 数据源注册表继续收敛
+## 1. Registry 派生继续完善
 
-当前 `platformMetadata.ts` 已经记录平台身份、别名、schema 类型、能力分组、DOI lookup 支持和 repository 标记。后续可以继续把以下手写清单收敛到注册表派生：
+当前 registry 已经支持：
 
-- DOI lookup source 列表。
-- repository fallback source 列表。
-- capability profile 的 source group。
-- diagnostics 里的 direct tool / platform 映射。
-- 普通平台工具 schema 的生成逻辑。
+- `defaultInAll` 派生 default all sources。
+- `doiLookupOrder` 派生 `get_paper_by_doi all` sources。
+- `repositoryFallbackOrder` 派生 repository fallback sources。
+- `capabilityProfileSources` 派生 capability profile source groups。
+- `schemaKind` 区分 generic 与特殊 schema 工具。
+
+后续可继续完善：
+
+- diagnostics 里的 direct tool / platform 映射从 metadata 派生。
+- 普通平台工具 schema 进一步由 schema registry/factory 管理。
+- Searcher factory context 的特殊依赖关系继续显式化，例如 USENIX 复用 DBLP。
+- 新平台 onboarding 继续收敛到 “Searcher + metadata + factory + tests” 四件套。
 
 约束：
 
@@ -69,26 +33,13 @@ src/management/
 
 ---
 
-## 3. Searcher factory registry 完整化
+## 2. HttpClient 落地
 
-当前 `PLATFORM_FACTORIES` 已经集中实例化平台 Searcher，`initializeSearchers()` 已经基于 `PLATFORM_METADATA` 和 alias 自动组装实例。
-
-后续可以继续优化：
-
-- 减少 `Searchers` 接口中的手写字段。
-- 为平台实例化补充契约测试，确认 canonical id 和 alias 指向同一实例。
-- 为依赖其它 Searcher 的平台保留 factory context，例如 USENIX 复用 DBLP。
-- 让新增普通平台只需要新增 Searcher class、metadata、factory 和必要测试。
-
----
-
-## 4. 统一 HttpClient 落地
-
-当前 `HttpClient` 只是最小 scaffold，尚未完整执行 rate limit、cache、retry 和统一错误分类。
+当前 `HttpClient` 仍是 scaffold，尚未完整执行 rate limit、cache、retry 和统一错误分类。
 
 后续目标：
 
-- 在 `HttpClient.request()` 中实现：
+- 在 `HttpClient.request()` 中逐步实现：
   - rate limit；
   - cache；
   - retry；
@@ -99,7 +50,7 @@ src/management/
   - error classification；
   - 脱敏日志。
 - 让平台常规 HTTP 请求逐步停止直接 `import axios`。
-- 先迁移少量免费、稳定、易 mock 的平台，例如 Crossref、OpenAlex、arXiv。
+- 先迁移少量免费、稳定、易 mock 的平台，例如 Crossref、OpenAlex。
 - 避免一次性迁移全部平台。
 
 验收方向：
@@ -110,12 +61,29 @@ src/management/
 
 ---
 
-## 5. DownloadTier 后续增强
+## 3. Live smoke 与错误分类
+
+当前 mock smoke 和核心契约测试已经覆盖主要 wiring。后续可以增强 live smoke 的错误分类：
+
+- DBLP / USENIX timeout 明确归类为外部服务或网络 degraded。
+- ScienceDirect / Springer metadata API 401 明确归类为 credential 或 API product-permission issue，不解释为 Authorized PDF Retrieval 状态。
+- bioRxiv / IACR 原生 PDF 403 明确归类为 native source degraded，并保留 repository fallback。
+- doctor/status 输出中继续脱敏 key、token、session、URL 凭据。
+
+约束：
+
+- live smoke 不应成为单元测试依赖。
+- live smoke 失败不应让 mock smoke 失败。
+- key-backed publisher metadata 不应被描述成 Authorized PDF Retrieval 或 guaranteed full-text access。
+
+---
+
+## 4. DownloadTier 后续增强
 
 当前 PDF fallback 顺序为：
 
 ```text
-primary -> direct_pdf_url -> repositories -> unpaywall -> scihub
+primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access
 ```
 
 当前已经支持：
@@ -123,17 +91,41 @@ primary -> direct_pdf_url -> repositories -> unpaywall -> scihub
 - `createDefaultDownloadTiers()`。
 - `insertDownloadTierBefore()`。
 - `downloadWithFallback(..., tiers)` 注入自定义 tier。
-- 默认 attempts 不包含 `institutional_access`。
+- 单一顺序 `primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access`，且 `download_paper` 的 native download 只执行一次。
+- 默认 attempts 包含 `entitled_access`，不包含旧名 `institutional_access`。
+- repository sources 从 registry 派生。
+- CARSI 后端作为默认关闭的唯一可选 Entitled Download Backend；精确 `PAPER_SEARCH_CARSI_ENABLED=true` 才启用，`useEntitledAccess` 只能进一步关闭。
+- `doctor`、`setup`、live smoke 报告 `disabled` / `absent` / `incompatible` / `available`；mock/offline snapshot 不 spawn，并报告 `not_evaluated`。
+- 工作区已接入可选 executable 配置、专属 profile 下载互斥与取消清理、固定 `attempts[].code`、待核查文件 `review` 和首页 DOI/标题/正文身份校验。
+- 产品已处理按 MCP 请求 token 绑定的固定阶段通知，CLI 写 stderr，默认 stdout 保持最终 JSON；旧后端无通知时仍兼容。
 
-后续可以增强：
+浏览器型路线住在本仓库 `carsi/` 目录的 `paper-search-carsi`（从维护者的 scansci-pdf 分叉裁出，MIT，只保留机构阶段），打包进 PaperSearch，用 `paper-search carsi install` 安装（ADR 0013）。后端内的 Elsevier API 路径与旧出版社直连路线已删除，只剩出版社浏览器捕获（经 CARSI 等联盟登录）和 Cookie 快路径，WebVPN、EZProxy 已移到仓库根目录 `campus-proxy/` 暂存、不接入；旧的通用 CARSI 驱动已于 2026-11-02 删除。进度、验收和待办见 `dev/institutional-backend.zh.md`，在契约之外的行为见 CARSI 后端说明。
 
-- 将 repository sources 从 `platformMetadata.isRepository` 派生。
-- 对 attempts message 做更统一的错误分类和脱敏。
-- 在未来机构访问实现时，把 `institutional_access` 插入到 `scihub` 前，并保持默认不启用。
+### 4.1 后端 `paper-search-carsi`（`carsi/`）的待办
+
+这些项在 `carsi/` 里完成，PaperSearch 只需在契约或 README 变化时同步：
+
+- 发布：一键安装阶段 1–6 见 `dev/institutional-installer.zh.md`；随 PaperSearch 的下一个 npm 版本发布（版本号由用户定）。
+- 真实验收：各出版社验收集和冷启动验收（`acceptance/cold-start.json`），见 dev 记录第 6、7 节。
+- 出版社贡献流程：tier 1 JSON 的贡献指南与 schema 校验、`publisher-check --doi` 作为贡献者自检；清理 `elsevier.json` 里残留的单一学校选择器。
+- 可选的 `download_batch` 工具（同一出版社多篇共享一次登录），需要先在契约探测里作为可选工具处理。
+
+### 4.2 PaperSearch 侧可以增强
+
+- Capability Profile 暴露 `publisher_api` 的可用性（哪些出版社 key 已配置），并考虑更多 key 型全文 API 适配器（例如 Wiley TDM）。
+
+- 在既有授权层固定错误码基础上，完善其他 tier 的错误分类与 remediation，不重复新增另一套后端命令。
+- 对 native source 403 / 401 / timeout 形成更清晰的 fallback reason。
+- 后端的真实产品 MCP 进度链、新用户/其他学校及剩余出版社入口验收由后端仓库完成后，再更新这里的支持矩阵；不以离线测试代替实测。
+- 保留补充材料接口，后续扩展正文同一 context 内的全部附件发现、抓取、角色核验和清单交付；当前只验收正文 PDF，不声称附件齐全。
+- 浏览器型 Authorized PDF Retrieval 只委托给可选 Entitled Download Backend（CARSI 后端 `paper-search-carsi`）。CLI 保留下载编排、key 型 `publisher_api`、结果规范化和 PDF 校验，但不实现浏览器、WebVPN、CARSI、EZProxy 或其它本地授权 fallback。
+- `metadata_entitled`、开放获取来源、repository、Unpaywall 和 Sci-Hub 保持独立；不得因为后端规划而合并或删除。
+- 兼容新增可自动接受，可检测破坏保持 `incompatible` 并只修改 adapter/factory；不承诺后端任意改动零修改。
+- 历史实施与验证报告见 `history/`；长期后端规格见 `dependencies/carsi-backend.zh.md`；CARSI 后端在契约之外的行为见 `dependencies/carsi-backend-notes.zh.md`。
 
 ---
 
-## 6. Skill 与 CLI 契约持续同步
+## 5. Skill 与 CLI 契约持续同步
 
 继续保持：
 
@@ -141,6 +133,13 @@ primary -> direct_pdf_url -> repositories -> unpaywall -> scihub
 - `SkillContract.test.ts` 校验 Direct Run Tools 与源码工具注册表一致。
 - README 不声称未来能力已经实现。
 - Skill 不保存私密配置值。
+- 工具名、inputSchema、JSON 输出和 Capability Profile 改动必须同步 contracts 和 tests。
+
+---
+
+## 6. 机构下载后端（`carsi/`）
+
+进行中：最终目标、已完成、待做见 `dev/institutional-backend.zh.md`。
 
 ---
 
@@ -148,10 +147,16 @@ primary -> direct_pdf_url -> repositories -> unpaywall -> scihub
 
 本文不要求立即执行任何代码改造。
 
-本文不定义：
+除 CARSI 后端相关规格已单独定义的内容外，本文不定义：
 
-- WebVPN / CARSI / EZProxy 当前能力；
+- `paper-search carsi install|status|update|uninstall` 之外的后端命令、账号登录流程或 provider selector；
 - 新的 top-level citation command；
-- 默认启用机构访问；
+- 默认启用 Authorized PDF Retrieval；
 - 删除 Sci-Hub fallback；
-- 改变当前 Agent-facing JSON 输出结构。
+- 改变当前 Agent-facing JSON 输出结构；
+- 在用户没有运行 `paper-search carsi install` / `update` 时安装或升级后端；
+- 删除旧 re-export 兼容层。
+
+## 已移除的来源
+
+- arXiv（2026-10-31，维护者决定）：不再作为检索或下载来源；Semantic Scholar 返回的 arxiv.org PDF 链接也不使用。引文扩展仍接受 arXiv ID 作为论文标识（经 Semantic Scholar 查询，不访问 arXiv）。

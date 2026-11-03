@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "PNAS",
+    "article_url_template": "https://www.pnas.org/doi/{doi}",
+    "pdf_url_templates": [
+      "https://www.pnas.org/doi/epdf/{doi}",
+      "https://www.pnas.org/doi/pdf/{doi}?download=true",
+      "https://www.pnas.org/doi/pdf/{doi}"
+    ],
+    "success_url_markers": [
+      "pnas.org/doi/",
+      "www.pnas.org/doi/"
+    ],
+    "auth_url_markers": [
+      "login.openathens.net",
+      "/action/showLogin",
+      "/saml/",
+      "/sso/",
+      "/login"
+    ],
+    "auth_title_markers": [
+      "OpenAthens",
+      "Institutional Login",
+      "Login",
+      "Identity"
+    ],
+    "sso_text_markers": [
+      "institutional login",
+      "log in through your institution",
+      "access through your institution",
+      "openathens"
+    ],
+    "aliases": [
+      "pnas",
+      "proceedings-national-academy-sciences"
+    ],
+    "doi_prefixes": [
+      "10.1073"
+    ],
+    "sample_dois": [
+      "10.1073/pnas.2309123120"
+    ],
+    "base_domains": [
+      "www.pnas.org",
+      "pnas.org"
+    ],
+    "pdf_source_path_templates": [],
+    "pdf_url_markers": [
+      "/doi/epdf/",
+      "/doi/pdf/",
+      "download=true",
+      "pdf"
+    ],
+    "pdf_link_text_markers": [
+      "pdf"
+    ],
+    "supplementary_url_markers": [
+      "supplementary",
+      "suppl_file",
+      "supporting-information"
+    ],
+    "institution_input_selectors": [],
+    "institution_result_selectors": [],
+    "platform": "generic"
+  }
+}

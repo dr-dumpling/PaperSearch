@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "ASCE",
+    "doi_prefixes": [
+      "10.1061"
+    ],
+    "base_domains": [
+      "ascelibrary.org"
+    ],
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [
+      "https://ascelibrary.org/doi/pdf/{doi}"
+    ],
+    "success_url_markers": [
+      "ascelibrary.org/doi/"
+    ],
+    "auth_url_markers": [
+      "/login",
+      "/saml/",
+      "/sso/",
+      "login.openathens.net"
+    ],
+    "auth_title_markers": [
+      "Institutional Login",
+      "Sign In"
+    ],
+    "sso_text_markers": [
+      "institutional login",
+      "access through your institution"
+    ],
+    "supplementary_url_markers": [
+      "suppl_file",
+      "supplementary",
+      "/suppl/"
+    ],
+    "aliases": [
+      "asce",
+      "asce library",
+      "american society of civil engineers"
+    ],
+    "sample_dois": [
+      "10.1061/jbenf2.beeng-7078"
+    ]
+  }
+}

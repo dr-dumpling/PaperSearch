@@ -218,20 +218,26 @@ export class ErrorHandler {
      */
     static getRetryDelay(error, attempt = 1) {
         const status = error.response?.status || error.status;
-        // For rate limiting, check Retry-After header
-        if (status === 429) {
-            const retryAfter = error.response?.headers?.['retry-after'];
-            if (retryAfter) {
-                const seconds = parseInt(retryAfter, 10);
-                if (!isNaN(seconds)) {
-                    return seconds * 1000;
+        // For rate limiting and temporary server errors, check Retry-After first.
+        if (status === 429 || (status && status >= 500)) {
+            const headers = error.response?.headers;
+            const retryAfter = headers?.['retry-after'] ?? headers?.['Retry-After'] ?? headers?.get?.('retry-after');
+            if (retryAfter !== undefined && retryAfter !== null) {
+                const value = Array.isArray(retryAfter) ? retryAfter[0] : String(retryAfter);
+                const seconds = Number(value);
+                if (Number.isFinite(seconds)) {
+                    return Math.max(0, seconds * 1000);
+                }
+                const retryAt = Date.parse(value);
+                if (!Number.isNaN(retryAt)) {
+                    return Math.max(0, retryAt - Date.now());
                 }
             }
-            // Default: exponential backoff for rate limits
-            return Math.min(60000, 1000 * Math.pow(2, attempt));
-        }
-        // For server errors, use exponential backoff
-        if (status && status >= 500) {
+            if (status === 429) {
+                // Default: exponential backoff for rate limits
+                return Math.min(60000, 1000 * Math.pow(2, attempt));
+            }
+            // Server errors use a shorter cap than rate-limit responses.
             return Math.min(30000, 1000 * Math.pow(2, attempt));
         }
         // Default delay
@@ -241,7 +247,7 @@ export class ErrorHandler {
      * Retry a function with exponential backoff and full jitter
      */
     static async retryWithBackoff(fn, options = {}) {
-        const { maxRetries = 3, initialDelayMs = 1000, maxDelayMs = 30000, context = 'operation' } = options;
+        const { maxRetries = 3, initialDelayMs = 1000, maxDelayMs = 30000, context = 'operation', respectRetryAfter = false } = options;
         let lastError;
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
@@ -252,11 +258,17 @@ export class ErrorHandler {
                 if (attempt >= maxRetries || !ErrorHandler.isRetryable(error)) {
                     throw error;
                 }
-                // Exponential backoff with full jitter
+                // Exponential backoff with full jitter by default. Scraping providers
+                // can opt into the server-provided Retry-After value to avoid a second
+                // request while the provider is explicitly asking us to wait.
                 const baseDelay = Math.min(maxDelayMs, initialDelayMs * Math.pow(2, attempt));
                 const jitteredDelay = Math.floor(Math.random() * baseDelay);
-                logDebug(`[Retry] ${context} attempt ${attempt + 1}/${maxRetries} failed, retrying in ${jitteredDelay}ms`);
-                await new Promise(resolve => setTimeout(resolve, jitteredDelay));
+                const suggestedDelay = respectRetryAfter
+                    ? Math.min(maxDelayMs, ErrorHandler.getRetryDelay(error, attempt + 1))
+                    : undefined;
+                const delay = suggestedDelay === undefined ? jitteredDelay : suggestedDelay;
+                logDebug(`[Retry] ${context} attempt ${attempt + 1}/${maxRetries} failed, retrying in ${delay}ms`);
+                await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
         throw lastError;

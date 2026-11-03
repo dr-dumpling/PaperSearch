@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "Oxford Academic",
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [],
+    "success_url_markers": [
+      "academic.oup.com/"
+    ],
+    "auth_url_markers": [
+      "login.openathens.net",
+      "/saml/",
+      "/sso/",
+      "/login",
+      "/my-account/login"
+    ],
+    "auth_title_markers": [
+      "OpenAthens",
+      "Institutional Login",
+      "Login",
+      "Identity"
+    ],
+    "sso_text_markers": [
+      "sign in through your institution",
+      "institutional login",
+      "log in through your institution",
+      "access through your institution",
+      "openathens"
+    ],
+    "aliases": [
+      "oxfordacademic",
+      "oxford-academic",
+      "oup",
+      "oxford-university-press"
+    ],
+    "doi_prefixes": [
+      "10.1093"
+    ],
+    "sample_dois": [
+      "10.1093/nar/gkaa892"
+    ],
+    "base_domains": [
+      "academic.oup.com"
+    ],
+    "pdf_source_path_templates": [],
+    "pdf_url_markers": [
+      "/doi/pdf/",
+      "/doi/epdf/",
+      "/article-pdf/",
+      "pdf"
+    ],
+    "pdf_link_text_markers": [
+      "pdf"
+    ],
+    "supplementary_url_markers": [
+      "supplementary",
+      "supplement",
+      "suppl_file"
+    ],
+    "institution_input_selectors": [],
+    "institution_result_selectors": [],
+    "platform": "oxford"
+  }
+}

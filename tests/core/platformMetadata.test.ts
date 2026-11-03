@@ -5,8 +5,9 @@ import {
   getDefaultAllSources,
   getDoiLookupSources,
   getGenericPlatformToolDescriptors,
-  getGenericSearchToolPlatform,
   getGenericSearchToolNames,
+  getGenericSearchToolPlatform,
+  getNoKeySources,
   getPlatformMetadata,
   getPlatformToolDescriptors,
   getRepositoryFallbackSources,
@@ -24,27 +25,15 @@ describe('platformMetadata', () => {
     expect(resolvePlatformId('europe_pmc')).toBe('europepmc');
   });
 
-  it('recognizes newly registered search platforms', () => {
+  it('recognizes registered search platforms and excludes the removed Wiley downloader', () => {
     expect(isKnownSearchPlatform('dblp')).toBe(true);
     expect(isKnownSearchPlatform('ieee')).toBe(true);
     expect(isKnownSearchPlatform('acm')).toBe(true);
     expect(isKnownSearchPlatform('usenix')).toBe(true);
     expect(isKnownSearchPlatform('openreview')).toBe(true);
     expect(isKnownSearchPlatform('springerlink')).toBe(true);
-    expect(isKnownSearchPlatform('wiley')).toBe(true);
-  });
-
-  it('registers Wiley as a download-only entitled platform', () => {
-    expect(getPlatformMetadata('wiley')).toEqual(
-      expect.objectContaining({
-        id: 'wiley',
-        displayName: 'Wiley TDM',
-        defaultInAll: false,
-        schemaKind: 'wiley-deprecated',
-        capabilityGroups: ['pdf_discovery', 'entitled_access'],
-        configKeys: [['WILEY_TDM_TOKEN']]
-      })
-    );
+    expect(isKnownSearchPlatform('wiley')).toBe(false);
+    expect(getPlatformMetadata('wiley')).toBeUndefined();
   });
 
   it('maps generic direct search tools to platforms', () => {
@@ -56,19 +45,56 @@ describe('platformMetadata', () => {
     expect(getGenericSearchToolPlatform('search_springerlink')).toBe('springerlink');
   });
 
-  it('keeps aliases out of default all sources', () => {
+  it('keeps aliases and removed download-only adapters out of default all sources', () => {
     expect(getDefaultAllSources()).not.toEqual(
-      expect.arrayContaining(['wos', 'scholar', 'google_scholar', 'springerlink', 'pubmed_central', 'europe_pmc'])
+      expect.arrayContaining([
+        'wos',
+        'scholar',
+        'google_scholar',
+        'springerlink',
+        'pubmed_central',
+        'europe_pmc',
+        'wiley'
+      ])
     );
+    expect(getDefaultAllSources()).not.toContain('googlescholar');
     expect(getDefaultAllSources()).not.toContain('wiley');
+  });
+
+  it('defines a bounded no-key metadata bundle', () => {
+    expect(getNoKeySources()).toEqual([
+      'crossref',
+      'pubmed',
+      'europepmc',
+      'openreview'
+    ]);
+    expect(getNoKeySources()).not.toContain('googlescholar');
+    expect(getNoKeySources()).not.toContain('semantic');
+    expect(getNoKeySources()).not.toContain('openalex');
+  });
+
+  it('keeps Google Scholar explicitly searchable while excluding it from high-frequency all-source runs', () => {
+    expect(getPlatformMetadata('googlescholar')).toEqual(
+      expect.objectContaining({
+        id: 'googlescholar',
+        defaultInAll: false,
+        optionalConfigKeys: expect.arrayContaining([
+          ['GOOGLE_SCHOLAR_PROXY_URL'],
+          ['SCHOLAR_RATE_LIMIT_RPS'],
+          ['SCHOLAR_MAX_RETRIES'],
+          ['SCHOLAR_TIMEOUT_MS']
+        ])
+      })
+    );
+    expect(getDefaultAllSources()).not.toContain('googlescholar');
   });
 
   it('derives repository fallback sources without changing order or tier boundaries', () => {
     expect(getRepositoryFallbackSources()).toEqual(['pmc', 'europepmc', 'core', 'openaire']);
-    expect(getRepositoryFallbackSources()).not.toEqual(expect.arrayContaining(['unpaywall', 'wiley', 'scihub']));
+    expect(getRepositoryFallbackSources()).not.toEqual(expect.arrayContaining(['unpaywall', 'scihub']));
   });
 
-  it('derives DOI lookup sources without silently adding unsupported all-source platforms', () => {
+  it('derives DOI lookup sources without silently adding unsupported platforms', () => {
     expect(getDoiLookupSources()).toEqual([
       'crossref',
       'openalex',
@@ -77,20 +103,18 @@ describe('platformMetadata', () => {
       'pmc',
       'europepmc',
       'core',
-      'webofscience',
-      'arxiv'
+      'webofscience'
     ]);
     expect(getDoiLookupSources()).not.toEqual(expect.arrayContaining(['semantic', 'wiley']));
   });
 
-  it('derives capability profile source groups while preserving virtual source names', () => {
+  it('derives metadata and open-access profile groups without local authorized sources', () => {
     expect(getCapabilityProfileSources('metadata_free')).toEqual([
       'crossref',
       'openalex',
       'pubmed',
       'pmc',
       'europepmc',
-      'arxiv',
       'biorxiv',
       'medrxiv',
       'semantic',
@@ -111,7 +135,6 @@ describe('platformMetadata', () => {
       'ieee'
     ]);
     expect(getCapabilityProfileSources('pdf_open_access')).toEqual([
-      'arxiv',
       'biorxiv',
       'medrxiv',
       'pmc',
@@ -126,25 +149,16 @@ describe('platformMetadata', () => {
       'scopus_open_access_metadata',
       'iacr'
     ]);
-    expect(getCapabilityProfileSources('pdf_entitled')).toEqual([
-      'webofscience',
-      'sciencedirect',
-      'scopus',
-      'springer',
-      'ieee',
-      'wiley_tdm'
-    ]);
     expect(getCapabilityProfileSources('pdf_scihub')).toEqual(['scihub']);
   });
 
-  it('derives capability profile config keys for entitled sources', () => {
-    expect(getCapabilityProfileConfigKeysBySource(['pdf_entitled'])).toEqual({
+  it('derives publisher keys for metadata only', () => {
+    expect(getCapabilityProfileConfigKeysBySource(['metadata_entitled'])).toEqual({
       webofscience: ['WOS_API_KEY'],
       sciencedirect: ['ELSEVIER_API_KEY'],
-      scopus: ['ELSEVIER_API_KEY'],
       springer: ['SPRINGER_API_KEY'],
-      ieee: ['IEEE_API_KEY'],
-      wiley_tdm: ['WILEY_TDM_TOKEN']
+      scopus: ['ELSEVIER_API_KEY'],
+      ieee: ['IEEE_API_KEY']
     });
   });
 

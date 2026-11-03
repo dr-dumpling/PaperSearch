@@ -10,9 +10,5 @@ export const HTTP_POLICIES: Record<string, HttpPolicy> = {
     rateLimit: { rps: 1 },
     cache: { ttlMs: 3_600_000 },
     timeoutMs: 10_000
-  },
-  arxiv: {
-    rateLimit: { rps: 0.33 },
-    timeoutMs: 10_000
   }
 };

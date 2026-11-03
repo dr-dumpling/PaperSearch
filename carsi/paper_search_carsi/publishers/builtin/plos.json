@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "PLOS",
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [],
+    "success_url_markers": [
+      "journals.plos.org/"
+    ],
+    "auth_url_markers": [],
+    "auth_title_markers": [],
+    "sso_text_markers": [],
+    "aliases": [
+      "plos",
+      "public-library-of-science"
+    ],
+    "doi_prefixes": [
+      "10.1371"
+    ],
+    "sample_dois": [
+      "10.1371/journal.pone.0000001"
+    ],
+    "base_domains": [
+      "journals.plos.org",
+      "plos.org"
+    ],
+    "pdf_source_path_templates": [],
+    "pdf_url_markers": [
+      "type=printable",
+      "/article/file",
+      "pdf"
+    ],
+    "pdf_link_text_markers": [
+      "pdf"
+    ],
+    "supplementary_url_markers": [
+      "type=supplementary",
+      "supplementary",
+      "figure/image",
+      "thumbnail"
+    ],
+    "institution_input_selectors": [],
+    "institution_result_selectors": [],
+    "platform": "generic"
+  }
+}

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { CORESearcher } from '../../src/platforms/CORESearcher.js';
+import { CORESearcher, coreQuery } from '../../src/platforms/CORESearcher.js';
 
 describe('CORESearcher', () => {
   afterEach(() => {
@@ -40,21 +40,21 @@ describe('CORESearcher', () => {
     expect(get).toHaveBeenCalledTimes(4);
     expect(get).toHaveBeenNthCalledWith(
       1,
-      '/search/works',
+      '/search/works/',
       expect.objectContaining({
         params: expect.objectContaining({ limit: 100, offset: 0 })
       })
     );
     expect(get).toHaveBeenNthCalledWith(
       2,
-      '/search/works',
+      '/search/works/',
       expect.objectContaining({
         params: expect.objectContaining({ limit: 75, offset: 100 })
       })
     );
     expect(get).toHaveBeenNthCalledWith(
       4,
-      '/search/works',
+      '/search/works/',
       expect.objectContaining({
         params: expect.objectContaining({ limit: 25, offset: 225 })
       })
@@ -85,3 +85,12 @@ describe('CORESearcher', () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("coreQuery", () => {
+  it("searches a DOI by its field and escapes other slashes", () => {
+    expect(coreQuery("10.1371/journal.pmed.1004397")).toBe('doi:"10.1371/journal.pmed.1004397"');
+    expect(coreQuery("https://doi.org/10.1000/x")).toBe('doi:"10.1000/x"');
+    expect(coreQuery("TCP/IP congestion")).toBe("TCP\\/IP congestion");
+  });
+});
+

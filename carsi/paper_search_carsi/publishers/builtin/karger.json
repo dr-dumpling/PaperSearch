@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "Karger",
+    "doi_prefixes": [
+      "10.1159"
+    ],
+    "base_domains": [
+      "karger.com"
+    ],
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [],
+    "success_url_markers": [
+      "karger.com/"
+    ],
+    "auth_url_markers": [
+      "/login",
+      "/saml/",
+      "/sso/",
+      "login.openathens.net"
+    ],
+    "auth_title_markers": [
+      "Institutional Login",
+      "Sign In"
+    ],
+    "sso_text_markers": [
+      "access through your institution",
+      "institutional login",
+      "log in via an institution",
+      "sign in through your institution",
+      "openathens"
+    ],
+    "supplementary_url_markers": [
+      "suppl_file",
+      "suppdata",
+      "supplementary",
+      "supporting-information",
+      "/suppl/"
+    ],
+    "aliases": [
+      "karger"
+    ],
+    "sample_dois": [
+      "10.1159/000519469"
+    ],
+    "platform": "generic"
+  }
+}

@@ -155,6 +155,7 @@ export const API_REQUIREMENTS: ApiRequirement[] = [
     productAccess: 'Springer Nature Metadata API and optional OpenAccess API access',
     commonFailures: [
       'The Springer API key is invalid, expired, or not recognized by the selected endpoint',
+      'The key covers the Metadata API but not full-text (TDM) access: publisher_api then gets HTTP 401 and skips Springer for the rest of the run',
       'OpenAccess API access is not enabled for this key',
       'Filters such as subject, year, or type are too restrictive'
     ],
@@ -163,24 +164,6 @@ export const API_REQUIREMENTS: ApiRequirement[] = [
       'Try `paper-search search "machine learning" --platform springer --max-results 1 --pretty` as a minimal test.',
       'Generate or verify the key in the Springer Nature developer portal.',
       'Set `SPRINGER_OPENACCESS_API_KEY` only if you have a separate OpenAccess API key.'
-    ]
-  },
-  {
-    id: 'wiley',
-    platform: 'wiley',
-    capability: 'Wiley PDF download by DOI',
-    tools: ['download_paper'],
-    keyGroups: [['WILEY_TDM_TOKEN']],
-    productAccess: 'Wiley TDM entitlement for PDF download',
-    commonFailures: [
-      'The Wiley token is missing, expired, or not entitled for the requested DOI',
-      'The DOI is not a Wiley DOI',
-      'The requested article is outside the token permissions'
-    ],
-    actions: [
-      'Run `paper-search doctor --pretty` and confirm `WILEY_TDM_TOKEN` is configured.',
-      'Verify the DOI belongs to Wiley before using `download_paper --platform wiley`.',
-      'Check Wiley TDM token permissions if 401/403 persists.'
     ]
   },
   {
@@ -271,6 +254,25 @@ export const API_REQUIREMENTS: ApiRequirement[] = [
     ]
   },
   {
+    id: 'googlescholar',
+    platform: 'googlescholar',
+    capability: 'Google Scholar HTML metadata search',
+    tools: ['search_google_scholar', 'search_papers'],
+    keyGroups: [],
+    optionalKeyGroups: [['GOOGLE_SCHOLAR_PROXY_URL']],
+    commonFailures: [
+      'Google Scholar returns an anti-bot or CAPTCHA challenge',
+      'The source rate-limits repeated requests from the same network',
+      'The HTML result layout changes and no longer exposes searchable result blocks'
+    ],
+    actions: [
+      'Retry Google Scholar alone with `--max-results 1` after waiting briefly; CAPTCHA and `/sorry` pages are not retried blindly.',
+      'Keep the adapted low-volume defaults (`SCHOLAR_RATE_LIMIT_RPS=0.5`, `SCHOLAR_MAX_RETRIES=2`, `SCHOLAR_TIMEOUT_MS=15000`).',
+      'Set `GOOGLE_SCHOLAR_PROXY_URL` with an authorized HTTP(S) or SOCKS proxy when a stable separate egress is available.',
+      'Use Crossref, OpenAlex, Semantic Scholar, PubMed, Europe PMC, CORE, or OpenAIRE for the primary search.'
+    ]
+  },
+  {
     id: 'easyscholar',
     platform: 'easyscholar',
     capability: 'EasyScholar journal metrics: impact factor, JCR quartile, CAS zones, JCI, ESI, and rank datasets',
@@ -301,11 +303,11 @@ const DIRECT_TOOL_PLATFORM: Record<string, string> = {
   search_springer: 'springer',
   search_springerlink: 'springerlink',
   search_scopus: 'scopus',
-  search_wiley: 'wiley',
   query_journal_metrics: 'easyscholar',
   search_crossref: 'crossref',
   search_core: 'core',
-  search_openaire: 'openaire'
+  search_openaire: 'openaire',
+  search_google_scholar: 'googlescholar'
 };
 
 export function getRequirementStatus(): RequirementStatus[] {
@@ -450,6 +452,29 @@ export function diagnoseError(error: any, context: DiagnosticContext = {}): Diag
         'Remove year, author, journal, subject, document type, and sort options; then add them back one at a time.',
         ...platformActions(platform)
       ],
+      relatedConfigKeys
+    };
+  }
+
+  if (/anti-bot|captcha|unusual traffic|automated queries/i.test(message)) {
+    return {
+      severity: 'warning',
+      category: 'rate_limit',
+      platform,
+      tool: context.tool,
+      summary: `${displayPlatform(platform)} returned an anti-bot challenge instead of search results.`,
+      likelyCauses: [
+        'Google Scholar flagged the request or network as automated.',
+        'Requests were too frequent or multiple sources reached Scholar concurrently.',
+        'The provider requires a fresh session, a lower request rate, or a separate authorized egress.'
+      ],
+      actions: [
+        'Wait before retrying and keep `--max-results` small.',
+        'Set `GOOGLE_SCHOLAR_PROXY_URL` to an authorized HTTP(S) or SOCKS proxy if available.',
+        'Use `paper-search search "your query" --sources no-key --pretty` to switch to the no-key metadata bundle.',
+        ...platformActions(platform),
+        'Use Crossref, OpenAlex, Semantic Scholar, PubMed, Europe PMC, CORE, or OpenAIRE as alternatives.'
+      ].filter((action, index, actions) => actions.indexOf(action) === index),
       relatedConfigKeys
     };
   }

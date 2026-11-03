@@ -1,43 +1,101 @@
-import type { Searchers } from '../../core/searchers.js';
-import type { DownloadTier } from './DownloadTier.js';
-import type { DownloadWithFallbackOptions, DownloadWithFallbackResult } from './types.js';
-import { createDirectPdfUrlTier } from './tiers/directPdfUrl.js';
-import { createPrimaryTier } from './tiers/primary.js';
-import { createRepositoryTier } from './tiers/repositories.js';
-import { createSciHubTier } from './tiers/scihub.js';
-import { createUnpaywallTier } from './tiers/unpaywall.js';
+import type { Searchers } from "../../core/searchers.js";
+import { TIMEOUTS } from "../../config/constants.js";
+import { unlinkSync } from "node:fs";
+import { verifyPdfIdentity, type PdfIdentityStatus } from "../../infrastructure/pdf/PdfIdentity.js";
+import { sanitizeDoi, withTimeout } from "../../infrastructure/security/SecurityUtils.js";
+import { identityRejection } from "./identity.js";
+import type {
+  DownloadTier,
+  DownloadTierContext,
+  DownloadTierResult,
+} from "./DownloadTier.js";
+import type {
+  DownloadWithFallbackOptions,
+  DownloadWithFallbackResult,
+} from "./types.js";
+import type { CarsiBackend } from "./carsi/index.js";
+import { createDirectPdfUrlTier } from "./tiers/directPdfUrl.js";
+import { createEntitledAccessTier } from "./tiers/entitledAccess.js";
+import { createPrimaryTier } from "./tiers/primary.js";
+import { createPublisherApiTier } from "./tiers/publisherApi.js";
+import { createRepositoryTier } from "./tiers/repositories.js";
+import { createSciHubTier } from "./tiers/scihub.js";
+import { createUnpaywallTier } from "./tiers/unpaywall.js";
 
-export { INSTITUTIONAL_ACCESS_TIER_ID } from './DownloadTier.js';
-export type { DownloadTier, DownloadTierContext, DownloadTierResult } from './DownloadTier.js';
-export type { DownloadWithFallbackOptions, DownloadWithFallbackResult } from './types.js';
+export type {
+  DownloadTier,
+  DownloadTierContext,
+  DownloadTierResult,
+} from "./DownloadTier.js";
+export type {
+  DownloadWithFallbackOptions,
+  DownloadWithFallbackResult,
+} from "./types.js";
 
-export function createDefaultDownloadTiers(): DownloadTier[] {
+export function createDefaultDownloadTiers(
+  carsiBackend?: CarsiBackend,
+): DownloadTier[] {
   return [
     createPrimaryTier(),
     createDirectPdfUrlTier(),
     createRepositoryTier(),
     createUnpaywallTier(),
-    createSciHubTier()
+    createPublisherApiTier(),
+    createSciHubTier(),
+    createEntitledAccessTier(carsiBackend),
   ];
 }
 
 export function insertDownloadTierBefore(
   tiers: DownloadTier[],
   beforeStage: string,
-  tier: DownloadTier
+  tier: DownloadTier,
 ): DownloadTier[] {
-  const index = tiers.findIndex(item => item.stage === beforeStage);
+  const index = tiers.findIndex((item) => item.stage === beforeStage);
   if (index < 0) return [...tiers, tier];
   return [...tiers.slice(0, index), tier, ...tiers.slice(index)];
+}
+
+export interface DownloadFallbackLimits {
+  /** Wall-clock cap per non-entitled stage (entitled access has its own). */
+  stageTimeoutMs?: number;
+}
+
+const STAGE_TIMEOUT = "paper-search-stage-timeout";
+
+/** A stage that outlives its deadline is recorded and skipped, never awaited. */
+async function runStage(
+  tier: DownloadTier,
+  context: DownloadTierContext,
+  timeoutMs: number,
+): Promise<DownloadTierResult> {
+  if (tier.stage === "entitled_access") return tier.run(context);
+  try {
+    return await withTimeout(tier.run(context), timeoutMs, STAGE_TIMEOUT);
+  } catch (error) {
+    if (error instanceof Error && error.message === STAGE_TIMEOUT) {
+      return {
+        status: "error",
+        code: "stage_timeout",
+        message: `${tier.stage} did not finish within ${Math.round(timeoutMs / 1000)}s and was skipped.`,
+      };
+    }
+    throw error;
+  }
 }
 
 export async function downloadWithFallback(
   searchers: Searchers,
   options: DownloadWithFallbackOptions,
-  tiers: DownloadTier[] = createDefaultDownloadTiers()
+  tiers: DownloadTier[] = createDefaultDownloadTiers(),
+  limits: DownloadFallbackLimits = {},
+  verifyIdentity: PdfIdentityCheck = verifyPdfIdentity,
 ): Promise<DownloadWithFallbackResult> {
-  const savePath = options.savePath || './downloads';
-  const attempts: DownloadWithFallbackResult['attempts'] = [];
+  const stageTimeoutMs = limits.stageTimeoutMs ?? TIMEOUTS.FALLBACK_STAGE;
+  const savePath = options.savePath || "./downloads";
+  const attempts: DownloadWithFallbackResult["attempts"] = [];
+  let review: DownloadWithFallbackResult["review"];
+  const reviewPaths: string[] = [];
   const context = {
     searchers,
     source: normalizeSource(options.source),
@@ -45,24 +103,153 @@ export async function downloadWithFallback(
     doi: options.doi,
     title: options.title,
     savePath,
-    useSciHub: options.useSciHub !== false
+    useEntitledAccess: options.useEntitledAccess !== false,
+    useSciHub: options.useSciHub !== false,
+    ...(options.batch ? { batch: options.batch } : {}),
+    ...(options.content === "both" ? { withSupplements: true } : {}),
+    ...(options.shortUserWait ? { shortUserWait: true } : {}),
   };
+  let supplements: DownloadWithFallbackResult["supplements"];
 
   for (const tier of tiers) {
-    const result = await tier.run(context);
-    attempts.push({ stage: tier.stage, status: result.status, message: result.message });
-    if (result.status === 'ok' && result.path) {
-      return { status: 'ok', path: result.path, attempts };
+    const startedAt = Date.now();
+    let result: DownloadTierResult;
+    if (SELF_VERIFYING_STAGES.has(tier.stage)) {
+      // These tiers check identity themselves; give them the title first.
+      const doi = context.doi && sanitizeDoi(context.doi).valid ? context.doi : "";
+      if (doi) await fillTitle(context, doi);
+    }
+    try {
+      result = await runStage(tier, context, stageTimeoutMs);
+    } catch (error) {
+      notifyStage(options, tier.stage, startedAt, {
+        status: "error",
+        code: "stage_exception",
+        message: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      });
+      throw error;
+    }
+    result = await identityGate(result, context, verifyIdentity);
+    notifyStage(options, tier.stage, startedAt, result);
+    attempts.push({
+      stage: tier.stage,
+      status: result.status,
+      message: result.message,
+      ...(result.code ? { code: result.code } : {}),
+      ...(result.retryAfterSec ? { retryAfterSec: result.retryAfterSec } : {}),
+    });
+    if (result.review) {
+      review = result.review;
+      reviewPaths.push(result.review.path);
+    }
+    if (result.supplements?.length) supplements = result.supplements;
+    if (result.status === "ok" && result.path) {
+      discardReviews(reviewPaths, result.path);
+      return {
+        status: "ok",
+        path: result.path,
+        ...(result.format && result.format !== "pdf"
+          ? { format: result.format }
+          : {}),
+        attempts,
+        ...(supplements ? { supplements } : {}),
+      };
     }
   }
 
-  return { status: 'error', attempts };
+  return {
+    status: "error",
+    attempts,
+    ...(review ? { review } : {}),
+    ...(supplements ? { supplements } : {}),
+  };
+}
+
+/** Tiers that verify the PDF's identity themselves (publisher APIs, the browser backend). */
+const SELF_VERIFYING_STAGES = new Set(["publisher_api", "entitled_access"]);
+
+export type PdfIdentityCheck = (
+  path: string,
+  identifier: string,
+  title?: string,
+) => Promise<PdfIdentityStatus>;
+
+/**
+ * Every PDF must be this article before the funnel stops: tiers that did not
+ * check it themselves are checked here. A PDF that fails is kept for review and
+ * the next tier runs. Without a DOI the current rules cannot check, so the PDF
+ * is accepted as before and marked "not_checked" in the ledger trace.
+ */
+async function identityGate(
+  result: DownloadTierResult,
+  context: DownloadTierContext,
+  verifyIdentity: PdfIdentityCheck,
+): Promise<DownloadTierResult> {
+  if (result.status !== "ok" || !result.path || result.verified || (result.format && result.format !== "pdf")) {
+    return result;
+  }
+  const doi = context.doi && sanitizeDoi(context.doi).valid ? context.doi : "";
+  if (!doi) return { ...result, trace: { ...result.trace, identity: "not_checked" } };
+  await fillTitle(context, doi);
+  const identity = await verifyIdentity(result.path, doi, context.title);
+  const rejection = identityRejection(identity, result.path);
+  return rejection
+    ? { ...rejection, trace: { ...result.trace, identity } }
+    : { ...result, verified: true, trace: { ...result.trace, identity } };
+}
+
+/**
+ * The title is evidence of its own (PdfIdentity): it settles a PDF that also
+ * prints other DOIs. Requests that name only a DOI get the title from Crossref
+ * once, for this check and for the tiers that follow.
+ */
+async function fillTitle(context: DownloadTierContext, doi: string): Promise<void> {
+  if (context.title?.trim() || context.titleLookedUp) return;
+  context.titleLookedUp = true;
+  const crossref = (context.searchers as any)?.crossref;
+  if (!crossref?.getPaperByDoi) return;
+  try {
+    const paper = (await withTimeout(crossref.getPaperByDoi(doi), 10_000, "title lookup timed out")) as { title?: string } | null;
+    if (paper?.title) context.title = String(paper.title);
+  } catch {
+    // Without a title the check still runs on the DOI evidence alone.
+  }
+}
+
+/** A later tier succeeded: files kept for review by earlier tiers are not needed. */
+function discardReviews(paths: string[], keep: string): void {
+  for (const path of paths) {
+    if (path === keep) continue;
+    try {
+      unlinkSync(path);
+    } catch {
+      // Already gone or not ours to remove; the download result is unaffected.
+    }
+  }
+}
+
+function notifyStage(
+  options: DownloadWithFallbackOptions,
+  stage: string,
+  startedAt: number,
+  result: DownloadTierResult,
+): void {
+  options.onStage?.({
+    stage,
+    status: result.status,
+    message: result.message,
+    ...(result.code ? { code: result.code } : {}),
+    ...(result.path ? { path: result.path } : {}),
+    startedAt: new Date(startedAt).toISOString(),
+    durationMs: Date.now() - startedAt,
+    ...(result.trace ? { trace: result.trace } : {}),
+  });
 }
 
 function normalizeSource(source: string): string {
   const normalized = source.trim().toLowerCase();
-  if (normalized === 'google_scholar') return 'googlescholar';
-  if (normalized === 'pubmed_central') return 'pmc';
-  if (normalized === 'europe_pmc') return 'europepmc';
+  if (normalized === "google_scholar") return "googlescholar";
+  if (normalized === "pubmed_central") return "pmc";
+  if (normalized === "europe_pmc") return "europepmc";
   return normalized;
 }

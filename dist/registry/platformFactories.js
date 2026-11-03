@@ -1,5 +1,4 @@
 import { ACMSearcher } from '../platforms/ACMSearcher.js';
-import { ArxivSearcher } from '../platforms/ArxivSearcher.js';
 import { BioRxivSearcher, MedRxivSearcher } from '../platforms/BioRxivSearcher.js';
 import { CORESearcher } from '../platforms/CORESearcher.js';
 import { CrossrefSearcher } from '../platforms/CrossrefSearcher.js';
@@ -21,21 +20,19 @@ import { SpringerSearcher } from '../platforms/SpringerSearcher.js';
 import { UnpaywallSearcher } from '../platforms/UnpaywallSearcher.js';
 import { USENIXSearcher } from '../platforms/USENIXSearcher.js';
 import { WebOfScienceSearcher } from '../platforms/WebOfScienceSearcher.js';
-import { WileySearcher } from '../platforms/WileySearcher.js';
 export const PLATFORM_FACTORIES = {
     crossref: ({ env }) => new CrossrefSearcher(env.CROSSREF_MAILTO),
     openalex: () => new OpenAlexSearcher(),
     pubmed: ({ env }) => new PubMedSearcher(env.PUBMED_API_KEY),
     pmc: () => new PMCSearcher(),
     europepmc: () => new EuropePMCSearcher(),
-    arxiv: () => new ArxivSearcher(),
     biorxiv: () => new BioRxivSearcher('biorxiv'),
     medrxiv: () => new MedRxivSearcher(),
     semantic: ({ env }) => new SemanticScholarSearcher(env.SEMANTIC_SCHOLAR_API_KEY),
     iacr: () => new IACRSearcher(),
     core: () => new CORESearcher(),
     openaire: () => new OpenAIRESearcher(),
-    googlescholar: () => new GoogleScholarSearcher(),
+    googlescholar: ({ env }) => new GoogleScholarSearcher(env.GOOGLE_SCHOLAR_PROXY_URL),
     webofscience: ({ env }) => new WebOfScienceSearcher(env.WOS_API_KEY, env.WOS_API_VERSION),
     sciencedirect: ({ env }) => new ScienceDirectSearcher(env.ELSEVIER_API_KEY),
     springer: ({ env }) => new SpringerSearcher(env.SPRINGER_API_KEY, env.SPRINGER_OPENACCESS_API_KEY),
@@ -49,7 +46,6 @@ export const PLATFORM_FACTORIES = {
         const dblp = instances.dblp instanceof DBLPSearcher ? instances.dblp : new DBLPSearcher();
         return new USENIXSearcher(dblp);
     },
-    openreview: () => new OpenReviewSearcher(),
-    wiley: ({ env }) => new WileySearcher(env.WILEY_TDM_TOKEN)
+    openreview: () => new OpenReviewSearcher()
 };
 //# sourceMappingURL=platformFactories.js.map

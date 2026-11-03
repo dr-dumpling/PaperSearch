@@ -1,8 +1,8 @@
-# Management Layer Reference
+# 管理层：安装、检查、更新、Skill 同步
 
-Use this reference when checking whether `paper-search` is installed, configured, healthy, and synchronized with the installed agent Skill. These commands help the agent decide readiness; they do not perform literature tasks.
+用这一篇判断 `paper-search` 是否已安装、已配置、运行正常，以及已安装的 Skill 是否与包内的一致。这些命令只帮助判断能不能用，本身不做文献任务。
 
-## Management Commands
+## 管理命令
 
 ```bash
 paper-search doctor --pretty
@@ -16,66 +16,63 @@ paper-search tools --pretty
 paper-search config list --pretty
 ```
 
-| Command | Purpose | Use When |
+| 命令 | 作用 | 何时用 |
 |---|---|---|
-| `paper-search doctor --pretty` | Complete health report: masked config, Capability Profile, platform status, and missing items | First use, uncertain environment, or user asks what capabilities are available |
-| `paper-search doctor --format text` | Human-readable health report | You need to summarize health for the user |
-| `paper-search smoke --mock --pretty` | Offline check of CLI wiring, Capability Profile logic, and Skill sync status logic | After code/install changes, or when network is unavailable |
-| `paper-search smoke --live --pretty` | Small real checks of free metadata, configured key-backed capabilities, and Sci-Hub mirror availability | User asks for local live verification or provider/network issues are suspected |
-| `paper-search skills status --pretty` | Shows whether Installed Skill files match the Bundled Skill | Install/update checks or debugging why an agent reads old Skill text |
-| `paper-search skills diff --targets agents --format text` | Previews managed-file diffs between Bundled Skill and Installed Skill | Before updating Skill files |
-| `paper-search skills update --targets agents --pretty` | Syncs package-managed Skill files into the user Skill directory while preserving Extra Skill Files | After the user confirms Skill update |
-| `paper-search tools --pretty` | Lists `paper-search run` tool names and argument schemas | Unsure about exact tool name or arguments |
-| `paper-search config list --pretty` | Shows masked configuration status | Need to confirm whether key/email/caps are configured |
+| `paper-search doctor --pretty` | 完整健康报告：脱敏后的配置、能力概况、各来源状态和缺少的项目 | 第一次使用、环境不确定，或用户问现在能用哪些功能 |
+| `paper-search doctor --format text` | 给人看的健康报告 | 需要向用户概括健康状况 |
+| `paper-search smoke --mock --pretty` | 离线检查命令接线、能力概况的判断和 Skill 同步状态的判断 | 改过代码或安装之后，或没有网络时 |
+| `paper-search smoke --live --pretty` | 小规模真实检查：免费元数据来源、已配置 key 的功能、Sci-Hub 镜像是否可用 | 用户要求本机实测，或怀疑来源、网络有问题 |
+| `paper-search skills status --pretty` | 显示已安装的 Skill 是否与包内 Skill 一致 | 安装、更新检查，或排查 agent 读到旧 Skill |
+| `paper-search skills diff --targets agents --format text` | 预览包内 Skill 与已安装 Skill 的差异 | 更新 Skill 之前 |
+| `paper-search skills update --targets agents --pretty` | 把包管理的 Skill 文件同步到用户的 Skill 目录，保留用户自己加的文件 | 用户确认更新 Skill 之后 |
+| `paper-search tools --pretty` | 列出 `paper-search run` 的工具名和参数结构 | 不确定工具名或参数时 |
+| `paper-search config list --pretty` | 显示脱敏后的配置状态 | 确认 key、email、开关是否已配置 |
 
-## Doctor
+## 健康检查（doctor）
 
-`paper-search doctor` is the main health report. It combines masked configuration, Capability Profile, and platform status.
+`paper-search doctor` 是主要的健康报告，包含脱敏后的配置、能力概况和各来源状态。
 
-Capability Profile entries are independent workflow capabilities:
+能力概况里的每一项是一种独立的能力：
 
-- `metadata_search`: metadata search through configured/free literature sources. Sci-Hub must not be included in metadata search.
-- `citation_expansion`: citation and reference expansion for a known paper through Semantic Scholar Graph API. `SEMANTIC_SCHOLAR_API_KEY` is optional for higher quota.
-- `body_snippet_search`: Semantic Scholar Open Access snippet search. It requires `SEMANTIC_SCHOLAR_API_KEY`.
-- `journal_metrics`: EasyScholar journal metrics. It requires `EASYSCHOLAR_KEY`.
-- `pdf_discovery`: PDF discovery and download through source-native download, metadata PDF URLs, open-access sources, entitled-access sources when configured, and the default enabled Sci-Hub Fallback.
-- `entitled_access`: user-specific access rights such as publisher API keys, database keys, TDM tokens, or institutional entitlements.
+- `metadata_search`：经已配置或免费的文献来源检索元数据。Sci-Hub 不算检索来源。
+- `citation_expansion`：经 Semantic Scholar Graph API 查已知论文的施引文献和参考文献。`SEMANTIC_SCHOLAR_API_KEY` 可选，有 key 时配额更高。
+- `body_snippet_search`：Semantic Scholar 开放获取正文片段检索，需要 `SEMANTIC_SCHOLAR_API_KEY`。
+- `journal_metrics`：EasyScholar 期刊指标，需要 `EASYSCHOLAR_KEY`。
+- `pdf_discovery`：PDF 获取与下载，经来源自带的下载、元数据里的 PDF 地址、开放获取来源、机构库、Unpaywall，以及默认开启的 Sci-Hub 兜底。
+- `entitled_access`：可选的机构下载后端（CARSI）。机构下载后端（CARSI）是唯一可选的授权下载后端，默认关闭。`doctor`、交互式 `setup` 和真实冒烟测试会给出它的运行状态：`disabled`（未启用）、`absent`（找不到后端）、`incompatible`（后端版本不兼容）或 `available`（能连上）；离线的能力概况不启动后端，显示 `not_evaluated`。
 
-Use JSON output for agent decisions. Use `--format text` only when the user needs a readable report.
+出版社或数据库的 key（记为 `metadata_entitled`）与 `entitled_access` 无关：它们只开放元数据或开放获取接口，不能当作本机的授权 PDF 后端。除机构下载后端外，没有浏览器、WebVPN 或 EZProxy 兜底。
 
-## Smoke
+`PAPER_SEARCH_CARSI_ENABLED` 不是密钥，只有值恰好是 `true` 时才启用机构下载后端。单次请求的 `useEntitledAccess` 默认是 `true`，但只能关掉这一层，不能绕过全局关闭。一次下载失败只影响那一次，不改写全局的可用状态。
 
-`paper-search smoke --mock` is offline and should pass without provider keys.
+agent 做判断时读 JSON 输出；只有用户需要可读报告时才用 `--format text`。
 
-`paper-search smoke --live` performs small real checks:
+## 冒烟测试（smoke）
 
-- free metadata check always runs
-- Sci-Hub mirror availability is checked by default without downloading PDFs
-- configured key-backed capabilities get lightweight checks
-- unconfigured key-backed capabilities are marked `skipped`
+`paper-search smoke --mock` 完全离线，没有任何 key 也应通过。它不启动机构下载后端，离线快照里显示 `not_evaluated`。
 
-Live smoke severity:
+`paper-search smoke --live` 做小规模的真实检查：
 
-- `critical` failures make the command fail.
-- `degraded` means a configured or default-enabled capability did not work as expected and must include remediation, but it is not the same as whole-tool failure.
-- `warning` and `skipped` are informational.
+- 免费元数据来源总是检查；
+- 默认检查 Sci-Hub 镜像是否可用，不下载 PDF；
+- 已配置 key 的功能做轻量检查，未配置的标为 `skipped`；
+- 已启用的机构下载后端只做接口兼容检查（`initialize + tools/list`），不清缓存、不登录、不下载 PDF。
 
-When reporting live smoke results, include any `message` and `remediation` for degraded cases.
+真实冒烟测试的严重程度：
 
-## Skill Sync
+- `critical`：命令判为失败。
+- `degraded`：已配置或默认开启的功能没按预期工作，必须带修复建议，但不等于整个工具不可用。
+- `warning`、`skipped`：仅供参考。
 
-The npm package ships a Bundled Skill under `skills/paper-search`. Installing or updating user-visible Skill files is explicit.
+报告结果时，把 `degraded` 项的 `message` 和 `remediation` 一起告诉用户。
 
-Supported targets:
+## Skill 同步
 
-- `agents`
-- `codex`
-- `claude`
-- `cursor`
-- `gemini`
-- `antigravity`
+npm 包在 `skills/paper-search` 下自带一份 Skill（包内 Skill）。安装或更新用户可见的 Skill 文件需要明确执行命令。
 
-Routine sync after package updates:
+支持的目标：`agents`、`codex`、`claude`、`cursor`、`gemini`、`antigravity`。
+
+包更新后的例行同步：
 
 ```bash
 paper-search skills status --targets agents --pretty
@@ -83,27 +80,29 @@ paper-search skills diff --targets agents --format text
 paper-search skills update --targets agents --pretty
 ```
 
-`skills update` overwrites package-managed files and preserves Extra Skill Files. `skills diff` may show diffs only for Managed Skill Files; extra files are listed by name only.
+`skills update` 覆盖包管理的文件，保留用户自己加的文件；`skills diff` 只显示包管理文件的差异，用户自己加的文件只列文件名。
 
-## Package Update And Capability Setup
+升级后自动同步：升级 PaperSearch 后第一次运行 `paper-search`（`skills`、`setup` 除外）时，它把用户已经装过的 Skill 更新到包内版本：只更新原来装过的位置，保留用户自己加的文件，替换下来的旧文件备份在 `${XDG_DATA_HOME:-~/.local/share}/paper-search-cli/skill-backups/`，并在 stderr 写一行说明；一个都没装时只提示一次怎么装。`paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false` 关闭，之后用 `skills update` 手动同步。`doctor` 的 `skills` 一项列出各位置是否最新。看到 stderr 里的更新说明时，告诉用户新开的 AI 会话才会读到新版本。
 
-`skills update` only syncs Bundled Skill files into the selected Installed Skill directory. It does not update the npm package, GitHub checkout, compiled CLI files, or provider configuration.
+## 包更新与功能配置
 
-`paper-search setup` only configures keys, email, and install destinations for the currently installed CLI. It does not update the package body.
+`skills update` 只把包内 Skill 同步到选定的 Skill 目录，不更新 npm 包、GitHub 检出、编译后的命令文件或数据源配置。
 
-Ordinary user update path:
+`paper-search setup` 只为当前已安装的命令配置 key、email 和 Skill 安装位置，不更新包本体。
+
+普通用户的更新步骤（从旧包 `paper-search-cli` 升级时，先运行 `npm uninstall -g paper-search-cli`，两个包提供同一个 `paper-search` 命令，不能同时装；配置和 Skill 都保留）：
 
 ```bash
-npm install -g paper-search-cli@latest
+npm install -g papersearch@latest
 paper-search skills update --targets agents --pretty
 paper-search doctor --pretty
 paper-search setup
 paper-search smoke --mock --pretty
 ```
 
-Use `doctor` before or after `setup` to inspect the Capability Profile. Missing, unavailable, or degraded capability entries should tell the agent which key, email, source, or environment item the user needs to configure.
+`setup` 前后都可以用 `doctor` 看能力概况。缺少、不可用或降级的能力会写明用户需要配置哪个 key、email、来源或环境项。
 
-Maintainer or local-dev update path:
+维护者或本地开发版的更新步骤：
 
 ```bash
 git pull
@@ -116,18 +115,28 @@ paper-search setup
 paper-search smoke --mock --pretty
 ```
 
-Use the local-dev path when validating this repository checkout before publishing or before installing a local build globally.
+`npm install -g .` 把全局命令链接到这个仓库目录，之后仓库重新编译，全局命令随之变化。要装一个固定的版本，先运行 `npm pack`，再 `npm install -g <生成的 .tgz>`。发布前或在本机全局安装本地构建前，用这条路径验证仓库。
 
-## Configuration Checks
+机构下载扩展（CARSI 后端）与 PaperSearch 本体分开更新，只在用户要求时安装：
 
-Configuration sources, in priority order:
+```bash
+paper-search carsi status --format text
+paper-search carsi install
+paper-search doctor --pretty
+```
 
-1. Shell environment variables
-2. Current directory `.env`
-3. User config file under `~/.config/paper-search-cli/config.json`
-4. Free-source built-in defaults
+`install` 先列出要下载的内容和位置，再准备它自己的 Python、安装后端和浏览器，并启用它（`PAPER_SEARCH_CARSI_ENABLED=true`、`PAPER_SEARCH_CARSI_EXECUTABLE`）。PaperSearch 升级后，`status` 会提示何时运行 `paper-search carsi update`。用户在别处维护的后端用 `paper-search config set PAPER_SEARCH_CARSI_EXECUTABLE <路径>` 指定。学校、浏览器（Camoufox 或 ego）和账号见 `carsi-setup.md`；账号密码只在用户自己的浏览器里输入，不进聊天、配置、命令参数或日志。`doctor` 显示 `available` 只证明后端接口能用，不代表已登录学校或对某篇有权限。日常下载仍用 `paper-search download`、`paper-search run download_with_fallback` 或 `download_batch`，见 `browser-download.md`。
 
-Useful commands:
+## 配置检查
+
+配置来源按优先级：
+
+1. Shell 环境变量
+2. 当前目录的 `.env`
+3. 用户配置文件 `~/.config/paper-search-cli/config.json`
+4. 免费来源的内置默认值
+
+常用命令：
 
 ```bash
 paper-search setup
@@ -137,4 +146,4 @@ paper-search config get EASYSCHOLAR_KEY --pretty
 paper-search doctor --pretty
 ```
 
-Do not ask users to paste secrets into chat. Do not write secrets into Skill, README, tests, or logs. `doctor` and `config` output should mask configured secret values.
+不要让用户把密钥贴到聊天里，不要把密钥写进 Skill、README、测试或日志。`doctor` 和 `config` 的输出会把已配置的密钥脱敏。

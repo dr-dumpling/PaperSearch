@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "AMS",
+    "article_url_template": "https://journals.ametsoc.org/doi/{doi}",
+    "pdf_url_templates": [
+      "https://journals.ametsoc.org/doi/epdf/{doi}",
+      "https://journals.ametsoc.org/doi/pdf/{doi}"
+    ],
+    "success_url_markers": [
+      "journals.ametsoc.org/"
+    ],
+    "auth_url_markers": [
+      "login.openathens.net",
+      "/action/showLogin",
+      "/saml/",
+      "/sso/",
+      "/login"
+    ],
+    "auth_title_markers": [
+      "OpenAthens",
+      "Institutional Login",
+      "Login",
+      "Identity"
+    ],
+    "sso_text_markers": [
+      "institutional login",
+      "log in through your institution",
+      "access through your institution",
+      "openathens"
+    ],
+    "aliases": [
+      "ams",
+      "ametsoc",
+      "american-meteorological-society"
+    ],
+    "doi_prefixes": [
+      "10.1175"
+    ],
+    "sample_dois": [
+      "10.1175/aies-d-23-0093.1"
+    ],
+    "base_domains": [
+      "journals.ametsoc.org",
+      "ametsoc.org"
+    ],
+    "pdf_source_path_templates": [],
+    "pdf_url_markers": [
+      "/doi/epdf/",
+      "/doi/pdf/",
+      "pdf"
+    ],
+    "pdf_link_text_markers": [
+      "pdf"
+    ],
+    "supplementary_url_markers": [
+      "supplementary",
+      "supplemental",
+      "supporting-information",
+      "suppl_file"
+    ],
+    "institution_input_selectors": [],
+    "institution_result_selectors": [],
+    "platform": "generic"
+  }
+}

@@ -18,6 +18,7 @@ import { PaperSource, SearchOptions, DownloadOptions, PlatformCapabilities } fro
 import { Paper, PaperFactory } from '../models/Paper.js';
 import { RateLimiter } from '../infrastructure/rate-limit/RateLimiter.js';
 import { ErrorHandler } from '../infrastructure/http/ErrorHandler.js';
+import { downloadPdfFromUrl, safeFilename } from '../infrastructure/pdf/PdfDownload.js';
 import { QuotaManager } from '../utils/QuotaManager.js';
 import { logDebug, logWarn } from '../utils/Logger.js';
 import { TIMEOUTS, USER_AGENT } from '../config/constants.js';
@@ -312,55 +313,28 @@ export class SpringerSearcher extends PaperSource {
   }
 
   async downloadPdf(doi: string, options: { savePath?: string } = {}): Promise<string> {
-    // Search for the paper and check if it has a PDF URL
-    const papers = await this.search(doi, { maxResults: 1 });
-    
-    if (papers.length === 0) {
-      throw new Error('Paper not found');
+    const doiValidation = sanitizeDoi(doi);
+    if (!doiValidation.valid) {
+      throw new Error(`Invalid DOI: ${doiValidation.error}`);
     }
-    
-    if (!papers[0].pdfUrl) {
-      // Try searching with openAccess filter to get PDF links
-      const openAccessPapers = await this.search(doi, { maxResults: 1, openAccess: true } as any);
-      if (openAccessPapers.length === 0 || !openAccessPapers[0].pdfUrl) {
-        throw new Error('PDF not available (may require institutional access or not be open access)');
-      }
-      papers[0] = openAccessPapers[0];
-    }
-
-    const paper = papers[0];
-    if (!paper.pdfUrl) {
-      throw new Error('PDF URL not available for this paper');
+    const targetDoi = doiValidation.sanitized.toLowerCase();
+    const papers = await this.search(doiValidation.sanitized, { maxResults: 1, openAccess: true });
+    const paper = papers.find(candidate => {
+      const candidateValidation = sanitizeDoi(candidate.doi || candidate.paperId);
+      return candidate.pdfUrl &&
+        candidate.extra?.openAccess === true &&
+        candidateValidation.valid &&
+        candidateValidation.sanitized.toLowerCase() === targetDoi;
+    });
+    if (!paper?.pdfUrl) {
+      throw new Error('No explicitly open-access Springer PDF is available for this paper.');
     }
 
-    // Download PDF
-    const fs = await import('fs');
-    const path = await import('path');
-    
-    const savePath = options.savePath || './downloads';
-    if (!fs.existsSync(savePath)) {
-      fs.mkdirSync(savePath, { recursive: true });
-    }
-
-    const fileName = `${doi.replace(/[\/\\:*?"<>|]/g, '_')}.pdf`;
-    const filePath = path.join(savePath, fileName);
-
-    try {
-      const response = await ErrorHandler.retryWithBackoff(
-        () => axios.get(paper.pdfUrl, { responseType: 'stream' }),
-        { context: 'Springer download' }
-      );
-
-      const writer = fs.createWriteStream(filePath);
-      response.data.pipe(writer);
-
-      return new Promise((resolve, reject) => {
-        writer.on('finish', () => resolve(filePath));
-        writer.on('error', reject);
-      });
-    } catch (error: any) {
-      throw new Error(`Failed to download PDF: ${error.message}`);
-    }
+    return downloadPdfFromUrl(
+      paper.pdfUrl,
+      options.savePath || './downloads',
+      `springer_${safeFilename(doiValidation.sanitized)}`
+    );
   }
 
   getCapabilities(): PlatformCapabilities {

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "LWW",
+    "doi_prefixes": [
+      "10.5435"
+    ],
+    "base_domains": [
+      "journals.lww.com",
+      "ovid.com"
+    ],
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [],
+    "success_url_markers": [
+      "journals.lww.com/",
+      "ovid.com/jnls/"
+    ],
+    "auth_url_markers": [
+      "/login",
+      "/saml/",
+      "/sso/",
+      "login.openathens.net",
+      "login.wolterskluwer.com",
+      "/auth/signin"
+    ],
+    "auth_title_markers": [
+      "Institutional Login",
+      "Sign In"
+    ],
+    "sso_text_markers": [
+      "access through your institution",
+      "institutional login",
+      "log in via an institution",
+      "sign in through your institution",
+      "openathens",
+      "institutional users",
+      "access through ovid",
+      "check access"
+    ],
+    "supplementary_url_markers": [
+      "suppl_file",
+      "suppdata",
+      "supplementary",
+      "supporting-information",
+      "/suppl/",
+      "/sdc/",
+      "links.lww.com"
+    ],
+    "aliases": [
+      "lww"
+    ],
+    "sample_dois": [
+      "10.5435/JAAOS-D-20-00979"
+    ],
+    "platform": "generic"
+  }
+}

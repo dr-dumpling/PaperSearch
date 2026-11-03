@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "MDPI",
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [],
+    "success_url_markers": [
+      "mdpi.com/"
+    ],
+    "auth_url_markers": [],
+    "auth_title_markers": [],
+    "sso_text_markers": [],
+    "aliases": [
+      "mdpi",
+      "mdpi-ag"
+    ],
+    "doi_prefixes": [
+      "10.3390"
+    ],
+    "sample_dois": [
+      "10.3390/foods10081757"
+    ],
+    "base_domains": [
+      "www.mdpi.com",
+      "mdpi.com"
+    ],
+    "pdf_source_path_templates": [],
+    "pdf_url_markers": [
+      "/pdf",
+      "pdf"
+    ],
+    "pdf_link_text_markers": [
+      "pdf"
+    ],
+    "supplementary_url_markers": [
+      "supplementary",
+      "supplement",
+      "/s1",
+      "table-s",
+      "figure-s"
+    ],
+    "institution_input_selectors": [],
+    "institution_result_selectors": [],
+    "platform": "generic"
+  }
+}

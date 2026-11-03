@@ -4,9 +4,16 @@
  */
 
 import { jest, beforeAll, afterAll, afterEach } from '@jest/globals';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // Set test environment
 process.env.NODE_ENV = 'test';
+// Run ledgers from tests never land in the user's data directory.
+process.env.PAPER_SEARCH_RUNLOG_DIR = mkdtempSync(join(tmpdir(), 'paper-search-runlog-'));
+// CLI runs from tests never update the user's installed Skill; the sync's own tests turn it on.
+process.env.PAPER_SEARCH_SKILL_AUTO_UPDATE = 'false';
 
 // Increase timeout for API tests
 jest.setTimeout(30000);
@@ -28,6 +35,10 @@ afterEach(() => {
   delete process.env.CROSSREF_MAILTO;
   delete process.env.WOS_VERBOSE_LOGGING;
   delete process.env.IEEE_API_KEY;
+  delete process.env.GOOGLE_SCHOLAR_PROXY_URL;
+  delete process.env.SCHOLAR_RATE_LIMIT_RPS;
+  delete process.env.SCHOLAR_MAX_RETRIES;
+  delete process.env.SCHOLAR_TIMEOUT_MS;
 });
 
 export {};

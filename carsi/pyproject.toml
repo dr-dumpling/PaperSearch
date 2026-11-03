@@ -1,0 +1,41 @@
+[project]
+name = "paper-search-carsi"
+version = "0.1.0"
+description = "Institutional (publisher-authorized) PDF download backend for PaperSearch, carved out of scansci-pdf"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+# Ranges below the next major version; the browser stack is pinned below (ADR 0013).
+dependencies = [
+    "requests>=2.31,<3",
+    "requests[socks]>=2.31,<3",
+    "urllib3>=2.7.0,<3",
+    "beautifulsoup4>=4.12,<5",
+    "mcp[cli]>=1.12,<3.0",
+    "pymupdf>=1.24,<3",
+]
+
+[project.optional-dependencies]
+# Pinned together, stable releases only: camoufox 0.5.8 pairs with browser
+# 156.0.1-beta.36 (browser/backend.py CAMOUFOX_BROWSER), driven by Playwright 1.62.0.
+camoufox = ["camoufox[geoip]==0.5.8", "playwright==1.62.0"]
+# ego backend: one shared remote-debugging connection (browser/ego_relay.py), driven by Playwright.
+ego = ["websockets>=13,<18", "playwright==1.62.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+paper-search-carsi = "paper_search_carsi.cli:main"
+
+[build-system]
+requires = ["setuptools>=77.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["paper_search_carsi*"]
+
+[tool.setuptools.package-data]
+paper_search_carsi = ["publishers/builtin/*.json", "publishers/schema.json", "data/*.json", "assets/*.png"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

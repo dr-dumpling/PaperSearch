@@ -9,8 +9,8 @@
  * Required API Key: Yes (X-ELS-APIKey header)
  * Get API key from: https://dev.elsevier.com/apikey/manage
  */
-import { PaperSource, SearchOptions, DownloadOptions, PlatformCapabilities } from './PaperSource.js';
-import { Paper } from '../models/Paper.js';
+import { PaperSource, SearchOptions, DownloadOptions, PlatformCapabilities } from "./PaperSource.js";
+import { Paper } from "../models/Paper.js";
 export declare class ScienceDirectSearcher extends PaperSource {
     private client;
     private rateLimiter;

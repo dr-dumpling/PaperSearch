@@ -1,4 +1,3 @@
-import type { ArxivSearcher } from '../platforms/ArxivSearcher.js';
 import type { BioRxivSearcher, MedRxivSearcher } from '../platforms/BioRxivSearcher.js';
 import type { CORESearcher } from '../platforms/CORESearcher.js';
 import type { CrossrefSearcher } from '../platforms/CrossrefSearcher.js';
@@ -17,10 +16,8 @@ import type { SemanticScholarSearcher } from '../platforms/SemanticScholarSearch
 import type { SpringerSearcher } from '../platforms/SpringerSearcher.js';
 import type { UnpaywallSearcher } from '../platforms/UnpaywallSearcher.js';
 import type { WebOfScienceSearcher } from '../platforms/WebOfScienceSearcher.js';
-import type { WileySearcher } from '../platforms/WileySearcher.js';
 export type SearcherMap = Record<string, PaperSource>;
 export interface Searchers extends SearcherMap {
-    arxiv: ArxivSearcher;
     webofscience: WebOfScienceSearcher;
     pubmed: PubMedSearcher;
     biorxiv: BioRxivSearcher;
@@ -31,7 +28,6 @@ export interface Searchers extends SearcherMap {
     scihub: SciHubSearcher;
     sciencedirect: ScienceDirectSearcher;
     springer: SpringerSearcher;
-    wiley: WileySearcher;
     scopus: ScopusSearcher;
     crossref: CrossrefSearcher;
     openalex: OpenAlexSearcher;

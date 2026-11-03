@@ -184,4 +184,26 @@ describe('ErrorHandler.retryWithBackoff', () => {
       randomSpy.mockRestore();
     }
   });
+
+  it('should honor Retry-After when explicitly requested', async () => {
+    const error = {
+      response: {
+        status: 429,
+        headers: { 'retry-after': '0' }
+      }
+    };
+
+    const mockFn = jest.fn<() => Promise<string>>()
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce('success');
+
+    const result = await ErrorHandler.retryWithBackoff(mockFn, {
+      maxRetries: 1,
+      initialDelayMs: 1000,
+      respectRetryAfter: true
+    });
+
+    expect(result).toBe('success');
+    expect(mockFn).toHaveBeenCalledTimes(2);
+  });
 });

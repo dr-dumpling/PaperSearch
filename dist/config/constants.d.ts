@@ -20,6 +20,14 @@ export declare const TIMEOUTS: {
     readonly SOURCE_TASK: 15000;
     /** Timeout buffer for withTimeout wrapper */
     readonly BUFFER: 5000;
+    /**
+     * Wall-clock cap for one non-entitled download stage. Library socket
+     * timeouts only fire on idle sockets; a trickling or proxied response can
+     * otherwise hold a whole download for many minutes.
+     */
+    readonly FALLBACK_STAGE: 180000;
+    /** Wall-clock cap for one repository search (one source, one query) */
+    readonly REPOSITORY_SEARCH: 10000;
 };
 /**
  * Rate Limiting Configuration
@@ -58,11 +66,9 @@ export declare const API_ENDPOINTS: {
     readonly SPRINGER_OA: "https://api.springernature.com/openaccess";
     readonly ELSEVIER: "https://api.elsevier.com";
     readonly SEMANTIC_SCHOLAR: "https://api.semanticscholar.org/graph/v1";
-    readonly ARXIV: "http://export.arxiv.org/api";
     readonly PUBMED: "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
     readonly BIORXIV: "https://api.biorxiv.org";
     readonly MEDRXIV: "https://api.medrxiv.org";
-    readonly WILEY_TDM: "https://api.wiley.com/onlinelibrary/tdm/v1";
     readonly DBLP: "https://dblp.org/search/publ/api";
     readonly IEEE_XPLORE: "https://ieeexploreapi.ieee.org/api/v1/search/articles";
     readonly OPENREVIEW: "https://api.openreview.net";
@@ -70,7 +76,7 @@ export declare const API_ENDPOINTS: {
 /**
  * Default User Agent
  */
-export declare const USER_AGENT = "Paper-Search-CLI/1.0 (Academic Research Tool)";
+export declare const USER_AGENT = "PaperSearch/0.4 (Academic Research Tool)";
 /**
  * Default mailto for Crossref polite pool
  */
@@ -99,6 +105,14 @@ declare const _default: {
         readonly SOURCE_TASK: 15000;
         /** Timeout buffer for withTimeout wrapper */
         readonly BUFFER: 5000;
+        /**
+         * Wall-clock cap for one non-entitled download stage. Library socket
+         * timeouts only fire on idle sockets; a trickling or proxied response can
+         * otherwise hold a whole download for many minutes.
+         */
+        readonly FALLBACK_STAGE: 180000;
+        /** Wall-clock cap for one repository search (one source, one query) */
+        readonly REPOSITORY_SEARCH: 10000;
     };
     RATE_LIMITS: {
         /** Default requests per second */
@@ -128,11 +142,9 @@ declare const _default: {
         readonly SPRINGER_OA: "https://api.springernature.com/openaccess";
         readonly ELSEVIER: "https://api.elsevier.com";
         readonly SEMANTIC_SCHOLAR: "https://api.semanticscholar.org/graph/v1";
-        readonly ARXIV: "http://export.arxiv.org/api";
         readonly PUBMED: "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
         readonly BIORXIV: "https://api.biorxiv.org";
         readonly MEDRXIV: "https://api.medrxiv.org";
-        readonly WILEY_TDM: "https://api.wiley.com/onlinelibrary/tdm/v1";
         readonly DBLP: "https://dblp.org/search/publ/api";
         readonly IEEE_XPLORE: "https://ieeexploreapi.ieee.org/api/v1/search/articles";
         readonly OPENREVIEW: "https://api.openreview.net";

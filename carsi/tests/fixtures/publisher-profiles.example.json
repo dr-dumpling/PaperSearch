@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "profiles": {
+    "cambridge": {
+      "pdf_url_templates": [],
+      "auth_url_markers": [
+        "/login",
+        "/saml/",
+        "/sso/",
+        "login.openathens.net"
+      ],
+      "auth_title_markers": [
+        "Institutional Login",
+        "Sign In"
+      ],
+      "sso_text_markers": [
+        "access through your institution",
+        "institutional login",
+        "openathens"
+      ],
+      "supplementary_url_markers": [
+        "supplementary",
+        "supplement",
+        "suppl_file",
+        "supporting-information"
+      ],
+      "name": "Cambridge University Press",
+      "aliases": [
+        "cambridge-core"
+      ],
+      "base_domains": [
+        "cambridge.org"
+      ],
+      "doi_prefixes": [
+        "10.1017"
+      ],
+      "article_url_template": "https://doi.org/{doi}",
+      "success_url_markers": [
+        "cambridge.org/core/"
+      ]
+    }
+  }
+}

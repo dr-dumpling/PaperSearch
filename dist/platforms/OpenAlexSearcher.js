@@ -11,7 +11,7 @@ export class OpenAlexSearcher extends PaperSource {
             timeout: TIMEOUTS.DEFAULT,
             headers: {
                 Accept: 'application/json',
-                'User-Agent': `${USER_AGENT} (mailto:${process.env.CROSSREF_MAILTO || 'paper-search-cli@example.com'})`
+                'User-Agent': `${USER_AGENT} (mailto:${process.env.CROSSREF_MAILTO || 'papersearch@example.com'})`
             }
         });
     }

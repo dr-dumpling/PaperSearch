@@ -1,0 +1,46 @@
+/** Only fixed product messages cross the backend boundary; never forward raw hints. */
+const MESSAGES = {
+    login_required: "需要机构登录。请在 PaperSearch 专属下载环境完成登录后重试。",
+    login_timeout: "等待机构登录超时。请检查下载浏览器并完成登录后重试；超时不代表没有全文权限。",
+    login_not_reached: "程序没能进入学校登录页（一直停在出版社页面），这不是没有权限；已记为原因不明，待排查。",
+    login_page_closed: "机构登录页面已关闭。请重新打开下载浏览器后重试。",
+    login_credentials_rejected: "机构登录凭证被拒绝。请在下载浏览器核查登录提示并手动处理；不自动重复提交。",
+    login_retries_exhausted: "机构登录重试次数已用尽。请核查下载浏览器状态后再决定是否重试。",
+    idp_login_error: "学校统一身份认证返回了错误页（例如“50000 未知错误”）。请稍后重试；若反复出现，请向学校图书馆确认该出版社的 CARSI 服务是否开通。",
+    idp_account_locked: "学校统一身份认证提示账号已被锁定，程序无法继续登录。请按学校的说明解锁账号后重试。",
+    idp_no_return_to_publisher: "学校登录完成后停在了学校自己的页面（{host}），没有回到出版社。通常说明学校没有为这家出版社开通 CARSI 访问；可以换一所有权限的学校，或在校园网下访问。",
+    idp_password_expired: "学校统一身份认证提示密码已过期。请先到学校的统一身份认证修改密码，再重试。",
+    user_skipped: "已按你的操作跳过这一篇；没有记住期刊，以后会照常下载。",
+    no_entitlement: "已按你的记录跳过：该期刊或出版社标记为无权限，未打开浏览器。查看或撤销记录：paper-search-carsi entitlements。",
+    institution_federation_unavailable: "出版社的机构登录里找不到你的学校（这家出版社没有接入 CARSI），程序无法代为登录；请在校园网或学校 VPN 下下载，或在进度窗口点“出版社无权限”。",
+    institution_not_registered: "认证应用或入口未注册，或与当前认证渠道不兼容。请核查认证入口；这不代表学校没有该论文订阅。",
+    paywall: "页面提示全文访问受限，尚不能确认机构登录或订阅状态；请核查页面，不要连续重复登录。",
+    entitlement_missing: "学校登录后仍拿不到全文，学校可能没有订阅这部分内容：出版社仍限制这篇论文的全文访问。请核查机构订阅范围、年份和账号权限；不自动重复登录。",
+    cloudflare_blocked: "网页需要人工安全验证。请在下载浏览器完成验证后重试。",
+    captcha_required: "网页需要人工安全验证。请在下载浏览器完成验证后重试。",
+    download_timeout: "下载等待超时。请检查下载浏览器是否在等待登录或人工验证，再重试。",
+    timeout: "下载等待超时。请检查下载浏览器是否在等待登录或人工验证，再重试。",
+    cancelled: "下载已取消。",
+    profile_busy: "另一项下载正在使用专属下载环境，请等待其结束后重试。若上次进程异常退出，请按文档检查残留锁。",
+    profile_unavailable: "无法锁定专属下载环境，请检查目录是否可写。",
+    not_found: "未找到这篇论文的可用 PDF。",
+    publisher_content_error: "出版社返回内容服务错误或没有这篇文章的页面，未取得 PDF。请核查出版社页面；此错误不代表需要重新登录。",
+    publisher_unreachable: "出版社网站没有应答（连接被断开或打开超时），未取得 PDF。这不代表没有权限；稍后重试，或换一个网络再试。",
+    browser_unresponsive: "下载浏览器长时间没有响应，已结束这一篇，批量中的其他文章照常继续；可稍后单独重试这一篇。",
+    unsupported_platform: "这篇文章只在出版社的另一个平台（如 ClinicalKey）提供，需单独订阅，PaperSearch 暂不支持在该平台登录和下载；本次未取得 PDF。",
+    unsupported_publisher: "这篇文章的 DOI 没有指向 PaperSearch 能登录的出版社网站（DOI 解析失败、直接指向 PDF 文件，或是暂不支持的平台），没有打开浏览器，本次未取得 PDF；这不代表没有权限，可在校园网下到出版社页面自己下载。",
+    generic_institution_entry_missing: "这家出版社还没有专门的规则，按通用规则没有找到机构登录入口；可以把这篇报告给我们补规则，或在校园网下下载。",
+    access_blocked: "出版社网站拦截了当前网络（可能是当前网络被网站防护拦截，也可能是下载过多被暂停）；本次未取得 PDF，同一期刊本批后续文章直接跳过。可换网络或稍后再试。",
+    rate_limited: "这家出版社一小时内的下载已到上限（防止学校因下载过多被暂停访问）；批量下载会等到可以继续时再下这一篇，单篇请稍后再试。",
+    source_exception: "下载路径发生程序异常，请检查后端诊断记录；本次未取得 PDF。",
+    suspicious_pdf: "后端未确认取得有效全文，请核查下载结果。",
+    pdf_wrong_article: "捕获到的 PDF 首页印着另一篇文章的 DOI（常见于阅读器残留上一篇或出版社返回说明文档），已丢弃，未保存。请检查后端运行记录。",
+    invalid_download_result: "下载后端返回的结果无法使用，请检查后端版本兼容性。",
+    download_failed: "未取得可用 PDF；后端未提供可识别的失败分类。",
+};
+export function carsiAttemptDetails(code, trace) {
+    const knownCode = Object.hasOwn(MESSAGES, code) ? code : "download_failed";
+    // The school's site a login stopped on is a validated host name (CarsiResultNormalizer).
+    return { code: knownCode, message: MESSAGES[knownCode].replace("{host}", trace?.stoppedHost || "学校的网站") };
+}
+//# sourceMappingURL=CarsiAttempt.js.map

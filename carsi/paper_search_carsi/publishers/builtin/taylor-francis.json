@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "Taylor & Francis",
+    "doi_prefixes": [
+      "10.1080"
+    ],
+    "base_domains": [
+      "tandfonline.com"
+    ],
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [
+      "https://www.tandfonline.com/doi/pdf/{doi}?needAccess=true"
+    ],
+    "success_url_markers": [
+      "tandfonline.com/"
+    ],
+    "auth_url_markers": [
+      "/login",
+      "/saml/",
+      "/sso/",
+      "login.openathens.net"
+    ],
+    "auth_title_markers": [
+      "Institutional Login",
+      "Sign In"
+    ],
+    "sso_text_markers": [
+      "access through your institution",
+      "institutional login",
+      "log in via an institution",
+      "sign in through your institution",
+      "openathens"
+    ],
+    "supplementary_url_markers": [
+      "suppl_file",
+      "suppdata",
+      "supplementary",
+      "supporting-information",
+      "/suppl/"
+    ],
+    "aliases": [
+      "taylor-francis",
+      "taylor & francis",
+      "tandfonline"
+    ],
+    "sample_dois": [
+      "10.1080/01635581.2025.2553381"
+    ],
+    "platform": "tandfonline"
+  }
+}

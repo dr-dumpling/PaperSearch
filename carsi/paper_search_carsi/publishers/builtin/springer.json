@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "name": "Springer Nature",
+    "article_url_template": "https://doi.org/{doi}",
+    "pdf_url_templates": [
+      "https://link.springer.com/content/pdf/{doi}.pdf",
+      "https://www.nature.com/articles/{doi_suffix}.pdf"
+    ],
+    "success_url_markers": [
+      "link.springer.com/article/",
+      "nature.com/articles/"
+    ],
+    "auth_url_markers": [
+      "login.openathens.net",
+      "wayf.springernature.com",
+      "/saml/",
+      "/sso/",
+      "/login"
+    ],
+    "auth_title_markers": [
+      "OpenAthens",
+      "Institutional Login",
+      "Sign in",
+      "Login",
+      "Identity"
+    ],
+    "sso_text_markers": [
+      "institutional login",
+      "log in through your institution",
+      "log in via an institution",
+      "access through your institution",
+      "openathens"
+    ],
+    "aliases": [
+      "springer",
+      "springer-nature",
+      "nature"
+    ],
+    "doi_prefixes": [
+      "10.1007",
+      "10.1038",
+      "10.1186"
+    ],
+    "sample_dois": [
+      "10.1038/s41586-020-2649-2"
+    ],
+    "base_domains": [
+      "link.springer.com",
+      "www.nature.com",
+      "nature.com",
+      "springernature.com",
+      "biomedcentral.com",
+      "springeropen.com"
+    ],
+    "pdf_source_path_templates": [
+      {
+        "domain": "link.springer.com",
+        "path_prefix": "/article/",
+        "path_template": "/content/pdf/{doi}.pdf"
+      },
+      {
+        "domain": "nature.com",
+        "path_prefix": "/articles/",
+        "path_template": "{source_path}.pdf"
+      }
+    ],
+    "pdf_url_markers": [
+      "/content/pdf/",
+      ".pdf",
+      "pdf"
+    ],
+    "pdf_link_text_markers": [
+      "pdf"
+    ],
+    "supplementary_url_markers": [
+      "suppl_file",
+      "suppdata",
+      "supporting-information",
+      "supplementary",
+      "/mediaobjects/",
+      "moesm",
+      "/esm/",
+      "_esm."
+    ],
+    "institution_input_selectors": [
+      "input#autocomplete-input"
+    ],
+    "institution_result_selectors": [],
+    "platform": "springer"
+  }
+}

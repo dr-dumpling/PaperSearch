@@ -1,0 +1,14 @@
+#!/bin/sh
+# Runs the CLI from this checkout. Python: $CARSI_PYTHON, else the checkout's own
+# .venv (pip install -e ".[camoufox]" && python -m camoufox fetch).
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -n "$CARSI_PYTHON" ]; then
+  PY="$CARSI_PYTHON"
+elif [ -x "$HERE/.venv/bin/python" ]; then
+  PY="$HERE/.venv/bin/python"
+else
+  echo "paper-search-carsi：找不到 Python。请在 $HERE/.venv 建虚拟环境，或设置 CARSI_PYTHON。" >&2
+  exit 1
+fi
+export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
+exec "$PY" -m paper_search_carsi.cli "$@"

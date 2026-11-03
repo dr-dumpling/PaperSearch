@@ -1,68 +1,61 @@
-import type { Searchers } from './searchers.js';
-import type { ToolName } from './schemas.js';
-import { parseToolArgs } from './schemas.js';
-import { PaperFactory, type Paper } from '../models/Paper.js';
-import { PaperSource } from '../platforms/PaperSource.js';
-import { handleSemanticSnippets } from '../capabilities/body-snippet-search/handler.js';
+import type { Searchers } from "./searchers.js";
+import type { CarsiBackend } from "../capabilities/pdf-discovery/carsi/index.js";
+import type { ToolName } from "./schemas.js";
+import { parseToolArgs } from "./schemas.js";
+import { PaperFactory, type Paper } from "../models/Paper.js";
+import { PaperSource } from "../platforms/PaperSource.js";
+import { handleSemanticSnippets } from "../capabilities/body-snippet-search/handler.js";
 import {
   handleGetPaperCitations,
-  handleGetPaperReferences
-} from '../capabilities/citation-expansion/handler.js';
+  handleGetPaperReferences,
+} from "../capabilities/citation-expansion/handler.js";
 import {
   handleGenericSearch,
   handleGetPaperByDoi,
-  handleSearchPapers
-} from '../capabilities/metadata-search/handler.js';
-import { handleJournalMetrics } from '../capabilities/journal-metrics/handler.js';
+  handleSearchPapers,
+} from "../capabilities/metadata-search/handler.js";
+import { handleJournalMetrics } from "../capabilities/journal-metrics/handler.js";
 import {
+  handleDownloadBatch,
   handleDownloadPaper,
-  handleDownloadWithFallback
-} from '../capabilities/pdf-discovery/handler.js';
+  handleDownloadWithFallback,
+} from "../capabilities/pdf-discovery/handler.js";
 import {
   getGenericSearchToolPlatform,
-  isPlatformAlias
-} from '../registry/platformMetadata.js';
+  isPlatformAlias,
+} from "../registry/platformMetadata.js";
 
 function jsonTextResponse(text: string) {
   return {
     content: [
       {
-        type: 'text' as const,
-        text
-      }
-    ]
+        type: "text" as const,
+        text,
+      },
+    ],
   };
 }
 
-type ToolHandler = (args: any, searchers: Searchers) => Promise<ReturnType<typeof jsonTextResponse>>;
+export interface ToolCallDependencies {
+  carsiBackend?: CarsiBackend;
+}
+
+type ToolHandler = (
+  args: any,
+  searchers: Searchers,
+  dependencies: ToolCallDependencies,
+) => Promise<ReturnType<typeof jsonTextResponse>>;
 
 const TOOL_HANDLERS: Record<string, ToolHandler> = {
   search_papers: async (args, searchers) => handleSearchPapers(args, searchers),
 
-  search_arxiv: async (args, searchers) => {
-    const { query, maxResults, category, author, year, sortBy, sortOrder } = args;
-    const results = await searchers.arxiv.search(query, {
-      maxResults,
-      category,
-      author,
-      year,
-      sortBy,
-      sortOrder
-    });
-
-    return jsonTextResponse(
-      `Found ${results.length} arXiv papers.\n\n${JSON.stringify(
-        results.map((paper: Paper) => PaperFactory.toDict(paper)),
-        null,
-        2
-      )}`
-    );
-  },
-
   search_webofscience: async (args, searchers) => {
-    const { query, maxResults, year, author, journal, sortBy, sortOrder } = args;
+    const { query, maxResults, year, author, journal, sortBy, sortOrder } =
+      args;
     if (!process.env.WOS_API_KEY) {
-      throw new Error('Web of Science API key not configured. Please set WOS_API_KEY environment variable.');
+      throw new Error(
+        "Web of Science API key not configured. Please set WOS_API_KEY environment variable.",
+      );
     }
 
     const results = await searchers.webofscience.search(query, {
@@ -71,20 +64,28 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       author,
       journal,
       sortBy,
-      sortOrder
+      sortOrder,
     } as any);
 
     return jsonTextResponse(
       `Found ${results.length} Web of Science papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
   search_pubmed: async (args, searchers) => {
-    const { query, maxResults, year, author, journal, publicationType, sortBy } = args;
+    const {
+      query,
+      maxResults,
+      year,
+      author,
+      journal,
+      publicationType,
+      sortBy,
+    } = args;
 
     const results = await searchers.pubmed.search(query, {
       maxResults,
@@ -92,19 +93,23 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       author,
       journal,
       publicationType,
-      sortBy
+      sortBy,
     });
 
     const rateStatus = searchers.pubmed.getRateLimiterStatus();
-    const apiKeyStatus = searchers.pubmed.hasApiKey() ? 'configured' : 'not configured';
-    const rateLimit = searchers.pubmed.hasApiKey() ? '10 requests/second' : '3 requests/second';
+    const apiKeyStatus = searchers.pubmed.hasApiKey()
+      ? "configured"
+      : "not configured";
+    const rateLimit = searchers.pubmed.hasApiKey()
+      ? "10 requests/second"
+      : "3 requests/second";
 
     return jsonTextResponse(
       `Found ${results.length} PubMed papers.\n\nAPI Status: ${apiKeyStatus} (${rateLimit})\nRate Limiter: ${rateStatus.availableTokens}/${rateStatus.maxTokens} tokens available\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
@@ -113,15 +118,15 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
     const results = await searchers.biorxiv.search(query, {
       maxResults,
       days,
-      category
+      category,
     });
 
     return jsonTextResponse(
       `Found ${results.length} bioRxiv papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
@@ -130,15 +135,15 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
     const results = await searchers.medrxiv.search(query, {
       maxResults,
       days,
-      category
+      category,
     });
 
     return jsonTextResponse(
       `Found ${results.length} medRxiv papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
@@ -147,44 +152,54 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
     const results = await searchers.semantic.search(query, {
       maxResults,
       year,
-      fieldsOfStudy
+      fieldsOfStudy,
     });
 
     const rateStatus = searchers.semantic.getRateLimiterStatus();
     const apiKeyStatus = searchers.semantic.hasApiKey()
-      ? 'configured'
-      : 'not configured (using free tier)';
-    const rateLimit = searchers.semantic.hasApiKey() ? '200 requests/minute' : '20 requests/minute';
+      ? "configured"
+      : "not configured (using free tier)";
+    const rateLimit = searchers.semantic.hasApiKey()
+      ? "200 requests/minute"
+      : "20 requests/minute";
 
     return jsonTextResponse(
       `Found ${results.length} Semantic Scholar papers.\n\nAPI Status: ${apiKeyStatus} (${rateLimit})\nRate Limiter: ${rateStatus.availableTokens}/${rateStatus.maxTokens} tokens available\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
-  search_semantic_snippets: async (args, searchers) => handleSemanticSnippets(args, searchers),
-  get_paper_citations: async args => handleGetPaperCitations(args),
-  get_paper_references: async args => handleGetPaperReferences(args),
+  search_semantic_snippets: async (args, searchers) =>
+    handleSemanticSnippets(args, searchers),
+  get_paper_citations: async (args) => handleGetPaperCitations(args),
+  get_paper_references: async (args) => handleGetPaperReferences(args),
 
   search_iacr: async (args, searchers) => {
     const { query, maxResults, fetchDetails } = args;
-    const results = await searchers.iacr.search(query, { maxResults, fetchDetails });
+    const results = await searchers.iacr.search(query, {
+      maxResults,
+      fetchDetails,
+    });
 
     return jsonTextResponse(
       `Found ${results.length} IACR ePrint papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
-  download_paper: async (args, searchers) => handleDownloadPaper(args, searchers),
-  download_with_fallback: async (args, searchers) => handleDownloadWithFallback(args, searchers),
-  query_journal_metrics: async args => handleJournalMetrics(args),
+  download_paper: async (args, searchers, dependencies) =>
+    handleDownloadPaper(args, searchers, dependencies.carsiBackend),
+  download_with_fallback: async (args, searchers, dependencies) =>
+    handleDownloadWithFallback(args, searchers, dependencies.carsiBackend),
+  download_batch: async (args, searchers, dependencies) =>
+    handleDownloadBatch(args, searchers, dependencies.carsiBackend),
+  query_journal_metrics: async (args) => handleJournalMetrics(args),
 
   search_google_scholar: async (args, searchers) => {
     const { query, maxResults, yearLow, yearHigh, author } = args;
@@ -192,23 +207,24 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       maxResults,
       yearLow,
       yearHigh,
-      author
+      author,
     } as any);
 
     return jsonTextResponse(
       `Found ${results.length} Google Scholar papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
-  get_paper_by_doi: async (args, searchers) => handleGetPaperByDoi(args, searchers),
+  get_paper_by_doi: async (args, searchers) =>
+    handleGetPaperByDoi(args, searchers),
 
   search_scihub: async (args, searchers) => {
     const { doiOrUrl, downloadPdf, savePath } = args;
-    const resolvedSavePath = savePath || './downloads';
+    const resolvedSavePath = savePath || "./downloads";
 
     const results = await searchers.scihub.search(doiOrUrl);
     if (results.length === 0) {
@@ -220,7 +236,9 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
 
     if (downloadPdf && paper.pdfUrl) {
       try {
-        const filePath = await searchers.scihub.downloadPdf(doiOrUrl, { savePath: resolvedSavePath });
+        const filePath = await searchers.scihub.downloadPdf(doiOrUrl, {
+          savePath: resolvedSavePath,
+        });
         responseText += `\n\nPDF downloaded successfully to: ${filePath}`;
       } catch (downloadError: any) {
         responseText += `\n\nFailed to download PDF: ${downloadError.message}`;
@@ -237,35 +255,50 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       await searchers.scihub.forceHealthCheck();
     }
     const mirrorStatus = searchers.scihub.getMirrorStatus();
-    return jsonTextResponse(`Sci-Hub Mirror Status:\n\n${JSON.stringify(mirrorStatus, null, 2)}`);
+    return jsonTextResponse(
+      `Sci-Hub Mirror Status:\n\n${JSON.stringify(mirrorStatus, null, 2)}`,
+    );
   },
 
   search_sciencedirect: async (args, searchers) => {
     const { query, maxResults, year, author, journal, openAccess } = args;
     if (!process.env.ELSEVIER_API_KEY) {
-      throw new Error('Elsevier API key not configured. Please set ELSEVIER_API_KEY environment variable.');
+      throw new Error(
+        "Elsevier API key not configured. Please set ELSEVIER_API_KEY environment variable.",
+      );
     }
     const results = await searchers.sciencedirect.search(query, {
       maxResults,
       year,
       author,
       journal,
-      openAccess
+      openAccess,
     });
 
     return jsonTextResponse(
       `Found ${results.length} ScienceDirect papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
   search_springer: async (args, searchers) => {
-    const { query, maxResults, year, author, journal, subject, openAccess, type } = args;
+    const {
+      query,
+      maxResults,
+      year,
+      author,
+      journal,
+      subject,
+      openAccess,
+      type,
+    } = args;
     if (!process.env.SPRINGER_API_KEY) {
-      throw new Error('Springer API key not configured. Please set SPRINGER_API_KEY environment variable.');
+      throw new Error(
+        "Springer API key not configured. Please set SPRINGER_API_KEY environment variable.",
+      );
     }
 
     const results = await searchers.springer.search(query, {
@@ -275,30 +308,34 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       journal,
       subject,
       openAccess,
-      type
+      type,
     } as any);
 
     return jsonTextResponse(
       `Found ${results.length} Springer papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
-  search_wiley: async () => jsonTextResponse(
-    `DEPRECATED: Wiley TDM API does not support keyword search.\n\n` +
-      `To access Wiley content:\n` +
-      `1. Use search_crossref to find Wiley articles (filter by publisher if needed)\n` +
-      `2. Use download_paper with platform="wiley" and the DOI to download the PDF\n\n` +
-      `Example: download_paper(paperId="10.1111/jtsb.12390", platform="wiley")`
-  ),
-
   search_scopus: async (args, searchers) => {
-    const { query, maxResults, year, author, journal, affiliation, subject, openAccess, documentType } = args;
+    const {
+      query,
+      maxResults,
+      year,
+      author,
+      journal,
+      affiliation,
+      subject,
+      openAccess,
+      documentType,
+    } = args;
     if (!process.env.ELSEVIER_API_KEY) {
-      throw new Error('Elsevier API key not configured. Please set ELSEVIER_API_KEY environment variable.');
+      throw new Error(
+        "Elsevier API key not configured. Please set ELSEVIER_API_KEY environment variable.",
+      );
     }
 
     const results = await searchers.scopus.search(query, {
@@ -309,15 +346,15 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       affiliation,
       subject,
       openAccess,
-      documentType
+      documentType,
     } as any);
 
     return jsonTextResponse(
       `Found ${results.length} Scopus papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
@@ -328,28 +365,31 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       year,
       author,
       sortBy,
-      sortOrder
+      sortOrder,
     });
 
     return jsonTextResponse(
       `Found ${results.length} Crossref papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
   search_openalex: async (args, searchers) => {
     const { query, maxResults, year } = args;
-    const results = await searchers.openalex.search(query, { maxResults, year });
+    const results = await searchers.openalex.search(query, {
+      maxResults,
+      year,
+    });
 
     return jsonTextResponse(
       `Found ${results.length} OpenAlex papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
@@ -361,8 +401,8 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       `Found ${results.length} Unpaywall record(s).\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
@@ -374,21 +414,24 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       `Found ${results.length} PMC papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
   search_europepmc: async (args, searchers) => {
     const { query, maxResults, year } = args;
-    const results = await searchers.europepmc.search(query, { maxResults, year });
+    const results = await searchers.europepmc.search(query, {
+      maxResults,
+      year,
+    });
 
     return jsonTextResponse(
       `Found ${results.length} Europe PMC papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
@@ -400,21 +443,24 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       `Found ${results.length} CORE papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
   search_openaire: async (args, searchers) => {
     const { query, maxResults, year } = args;
-    const results = await searchers.openaire.search(query, { maxResults, year });
+    const results = await searchers.openaire.search(query, {
+      maxResults,
+      year,
+    });
 
     return jsonTextResponse(
       `Found ${results.length} OpenAIRE papers.\n\n${JSON.stringify(
         results.map((paper: Paper) => PaperFactory.toDict(paper)),
         null,
-        2
-      )}`
+        2,
+      )}`,
     );
   },
 
@@ -428,30 +474,31 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       const capabilities = (searcher as PaperSource).getCapabilities();
       const hasApiKey = (searcher as PaperSource).hasApiKey();
 
-      let apiKeyStatus = 'not_required';
+      let apiKeyStatus = "not_required";
       if (capabilities.requiresApiKey) {
         if (hasApiKey) {
           if (validate) {
             try {
               const isValid = await (searcher as PaperSource).validateApiKey();
-              apiKeyStatus = isValid ? 'valid' : 'invalid';
+              apiKeyStatus = isValid ? "valid" : "invalid";
             } catch {
-              apiKeyStatus = 'unknown';
+              apiKeyStatus = "unknown";
             }
           } else {
-            apiKeyStatus = 'configured';
+            apiKeyStatus = "configured";
           }
         } else {
-          apiKeyStatus = 'missing';
+          apiKeyStatus = "missing";
         }
       }
 
       let additionalInfo: any = {};
-      if (platformName === 'scihub') {
+      if (platformName === "scihub") {
         const mirrorStatus = searchers.scihub.getMirrorStatus();
         additionalInfo = {
           mirrorCount: mirrorStatus.length,
-          workingMirrors: mirrorStatus.filter(m => m.status === 'Working').length
+          workingMirrors: mirrorStatus.filter((m) => m.status === "Working")
+            .length,
         };
       }
 
@@ -460,12 +507,14 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
         baseUrl: (searcher as PaperSource).getBaseUrl(),
         capabilities,
         apiKeyStatus,
-        ...additionalInfo
+        ...additionalInfo,
       });
     }
 
-    return jsonTextResponse(`Platform Status:\n\n${JSON.stringify(statusInfo, null, 2)}`);
-  }
+    return jsonTextResponse(
+      `Platform Status:\n\n${JSON.stringify(statusInfo, null, 2)}`,
+    );
+  },
 };
 
 export const TOOL_HANDLER_NAMES = Object.keys(TOOL_HANDLERS).sort();
@@ -473,7 +522,8 @@ export const TOOL_HANDLER_NAMES = Object.keys(TOOL_HANDLERS).sort();
 export async function handleToolCall(
   toolNameRaw: string,
   rawArgs: unknown,
-  searchers: Searchers
+  searchers: Searchers,
+  dependencies: ToolCallDependencies = {},
 ) {
   const toolName = toolNameRaw as ToolName;
   const args = parseToolArgs(toolName, rawArgs);
@@ -488,5 +538,5 @@ export async function handleToolCall(
     throw new Error(`Unknown tool: ${toolNameRaw}`);
   }
 
-  return handler(args, searchers);
+  return handler(args, searchers, dependencies);
 }
