@@ -224,10 +224,12 @@ class LoginWaitProbeTests(unittest.TestCase):
         self.assertIn("no_access_after_login", [e["state"] for e in result.events])
         self.assertLess(waited, 10)
 
-    def test_back_from_the_school_login_with_nothing_conclusive_the_wait_goes_on(self):
+    def test_back_from_the_school_login_with_nothing_conclusive_the_wait_goes_on_for_a_page_wait(self):
         d, result, outcome, waited = self.loop([ARTICLE, IDP, ARTICLE], [None] * 40)
         self.assertIs(outcome, False)
-        self.assertGreaterEqual(waited, 300)  # the article's whole wait
+        # Off the school's login page a wait lasts a page wait (60 s), not the article's whole wait.
+        self.assertGreaterEqual(waited, 60)
+        self.assertLess(waited, 300)
         self.assertNotEqual(result.reason, "institution_pdf_entitlement_missing")
 
     def test_waiting_on_the_article_page_tries_the_pdf_every_15_seconds(self):

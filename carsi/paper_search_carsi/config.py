@@ -100,8 +100,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "fast_retry_delay_sec": 15,
     # 任务启动时自动弹出悬浮进度条（独立进程，已有实例则不重复弹出）。
     "progress_bar_auto": True,
-    # 每篇文章等待用户操作（学校登录、人机验证）的总时长上限，秒；从第一次等待算起。
+    # 每篇文章在学校登录页等待用户输入的总时长上限，秒；从第一次等待算起。
     "browser_login_timeout": 180,
+    # 不在学校登录页时（出版社页面、选机构页、人机验证、取 PDF 时等待处理）最多等多久，秒；
+    # 连续超过就结束这一篇。进度窗口里可以改。
+    "browser_page_wait_timeout": 60,
     # 每个出版社每小时最多打开的文章数，防止学校因下载过多被出版社暂停访问；0 = 不限。
     "publisher_hourly_limit": 100,
     # Turnstile 交互门（如 sci-hub.vg）：无头会话下无法点击，默认跳过并冷却。

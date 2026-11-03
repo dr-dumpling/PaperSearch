@@ -42,7 +42,7 @@ class AsyncPdfChallengeBudgetTests(unittest.TestCase):
              patch.object(d, "_capture_loaded_pdf_viewer", return_value=BODY), \
              patch.object(d, "_page_state_pdf_urls", return_value=[]):
             body, url = d._capture_pdf_via_async_navigation(page, PDF_URL, DownloadResult(doi="10.1053/x", status="failed"))
-        self.assertGreaterEqual(seen["budget"], d.SUSPECT_BLOCK_WAIT_SEC)
+        self.assertGreaterEqual(seen["budget"], d.PAGE_WAIT_SEC)
         self.assertEqual((body, url), (BODY, PDF_URL))
 
 

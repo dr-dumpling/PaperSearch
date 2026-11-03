@@ -29,6 +29,7 @@ from typing import Any
 import os as _os
 import sys as _sys
 
+from . import user_settings
 from .progress_reporter import read_state
 
 # --- Win32 / DWM constants -------------------------------------------------
@@ -43,6 +44,13 @@ DWMSBT_MAINWINDOW = 2  # light Mica
 
 # Palettes: (light, dark). Picked once at start from the OS appearance.
 CONTENT_LABELS = {"main": "正文", "supplements": "附录", "both": "正文+附录"}
+# The step of the main text, as the status line says it ("正文 · 正在获取 PDF").
+STAGE_TEXT = {
+    "starting": "准备中", "opening_article": "正在打开文章", "checking_access": "正在检查访问权限",
+    "waiting_login": "等待机构登录", "waiting_verification": "等待人机验证", "fetching_pdf": "正在获取 PDF",
+    "pdf_captured": "已读到 PDF，正在核对", "saved_pending_verification": "已保存",
+    "route_failed": "这条路没走通，正在换路",
+}
 
 PALETTES = {
     "light": {
@@ -232,6 +240,8 @@ class ProgressWindow:
         self._flash: tuple[str, float, str] | None = None  # (text, until, doi)
         self._chosen: tuple[str, str] | None = None  # (doi, action) pressed for the current paper
         self._hover = ""  # the button under the mouse; kept across redraws
+        self._settings: tk.Toplevel | None = None  # the settings dialog, when open
+        self._last_current = ""  # the paper shown, for a message after the dialog closes
         self.root.after(400, self._tick)
 
     # --- window plumbing ---------------------------------------------------
@@ -294,6 +304,7 @@ class ProgressWindow:
         self.f_count = tkfont.Font(family=ui, size=px(14), weight="bold")
         self.f_body = tkfont.Font(family=ui, size=px(12))
         self.f_small = tkfont.Font(family=ui, size=px(11))
+        self.f_gear = tkfont.Font(family=ui, size=px(15))
         self.f_mono = tkfont.Font(family=mono, size=px(11))
 
     def _anchor_x(self) -> int:
@@ -352,6 +363,21 @@ class ProgressWindow:
         return _fmt_elapsed((datetime.now() - started).total_seconds())
 
     @staticmethod
+    def _status_text(state: dict[str, Any], running: bool) -> str:
+        """The status line: which part of the paper is being fetched and how far,
+        "正文 · 正在获取 PDF" or "附录 · 已保存 2/5"; between papers, the phase."""
+        phase = str(state.get("phase") or ("处理中" if running else ""))
+        part = str(state.get("part") or "")
+        if not running or state.get("awaiting_next") or part not in ("main", "supplements"):
+            return phase
+        if part == "supplements":
+            total = state.get("supplements_total")
+            if not isinstance(total, int):
+                return "附录 · 正在查找附录文件"
+            return f"附录 · 已保存 {int(state.get('supplements_saved') or 0)}/{total}"
+        return "正文 · " + STAGE_TEXT.get(str(state.get("stage") or ""), phase)
+
+    @staticmethod
     def _attention_items(state: dict[str, Any]) -> list[dict[str, Any]]:
         attention = state.get("attention")
         if isinstance(attention, dict):
@@ -370,7 +396,9 @@ class ProgressWindow:
         Hl = max(self.H, c.winfo_height())
         u = lambda n: int(round(n * s))
 
+        gear_left = self._draw_gear(Wl - P, P + u(9))
         if not state:
+            self._last_current = ""
             c.create_text(Wl // 2, Hl // 2 - u(8), text="PaperSearch", fill=col["text"], font=self.f_title)
             c.create_text(Wl // 2, Hl // 2 + u(14), text="暂无下载任务", fill=col["dim"], font=self.f_small)
             return
@@ -401,8 +429,8 @@ class ProgressWindow:
         dot = u(8)
         c.create_oval(P, y1 - dot // 2, P + dot, y1 + dot // 2, fill=tone, outline=tone)
         count = f"{done} / {total}" if total else f"{done}"
-        c.create_text(Wl - P, y1, text=count, fill=col["text"], font=self.f_count, anchor="e")
-        count_w = self.f_count.measure(count)
+        c.create_text(gear_left - u(8), y1, text=count, fill=col["text"], font=self.f_count, anchor="e")
+        count_w = self.f_count.measure(count) + (Wl - P - gear_left) + u(8)
         # What this download fetches, as a small label left of the count.
         content = CONTENT_LABELS.get(str(state.get("content") or "main"), CONTENT_LABELS["main"])
         chip_h = u(18)
@@ -440,13 +468,14 @@ class ProgressWindow:
             self._pill(P - u(2), y2 - u(11), P + self.f_body.measure(text) + u(14), y2 + u(11), col["warn_bg"])
             c.create_text(P + u(6), y2, text=text, fill=col["warn"], font=self.f_body, anchor="w")
         else:
-            phase = str(state.get("phase") or ("处理中" if running else ""))
+            phase = self._status_text(state, running)
             c.create_text(P, y2, anchor="w", fill=col["dim"], font=self.f_body,
                           text=_elide(self.f_body, phase, phase_room))
 
         # Row 3: the paper being worked on
         y3 = y2 + u(22)
         current = str((attention[-1].get("current") if attention else "") or state.get("current") or "")
+        self._last_current = current
         if current:
             c.create_text(P, y3, anchor="w", fill=col["text"] if running else col["dim"], font=self.f_mono,
                           text=_elide(self.f_mono, current, Wl - 2 * P))
@@ -484,7 +513,7 @@ class ProgressWindow:
             x = P
             chosen = self._chosen[1] if self._chosen and self._chosen[0] == current else ""
             for key, label in (("skip_item", "跳过本篇"), ("skip_journal", "本刊无权限"),
-                               ("skip_publisher", "出版社无权限")):
+                               ("skip_publisher", "出版社无权限"), ("stop_batch", "终止任务")):
                 pressed = key == chosen
                 text = ("✓ " + label) if pressed else label
                 w = self.f_small.measure(text) + u(18)
@@ -492,7 +521,8 @@ class ProgressWindow:
                 self._pill(x, y6 - u(11), x + w, y6 + u(11), col["warn"] if pressed else col["track"], tags=(tag,))
                 fill = col["bg"] if pressed else (col["text"] if self._hover == key else col["btn"])
                 label_id = c.create_text(x + w / 2, y6, text=text, fill=fill, font=self.f_small, tags=(tag,))
-                c.tag_bind(tag, "<Button-1>", lambda e, k=key, d=current, s=state: self._decide(k, d, s))
+                c.tag_bind(tag, "<Button-1>", lambda e, k=key, d=current, s=state: (
+                    self._stop(d, s) if k == "stop_batch" else self._decide(k, d, s)))
                 if not pressed:
                     c.tag_bind(tag, "<Enter>", lambda e, k=key, i=label_id: self._hover_button(k, i))
                     c.tag_bind(tag, "<Leave>", lambda e, i=label_id: self._hover_button("", i))
@@ -516,7 +546,8 @@ class ProgressWindow:
             from .entitlements import request_action
 
             request_action(doi, action, str(state.get("run_id") or ""))
-            text = {"skip_item": "已跳过本篇，进入下一篇",
+            text = {"stop_batch": "已终止任务：这一篇结束，剩下的不再下载",
+                    "skip_item": "已跳过本篇，进入下一篇",
                     "skip_journal": "已记住：本刊无权限，以后自动跳过（可用 entitlements 撤销）",
                     "skip_publisher": "已记住：该出版社无权限，以后自动跳过"}[action]
         except Exception as exc:
@@ -524,6 +555,98 @@ class ProgressWindow:
         self._flash = (text, time.time() + 6, doi)
         self._chosen = (doi, action)
         self._draw(state)
+
+    def _stop(self, doi: str, state: dict[str, Any]) -> None:
+        """Stop the whole task, after asking: this paper ends, the rest are not downloaded."""
+        from tkinter import messagebox
+
+        left = max(0, int(state.get("total", 0) or 0) - int(state.get("done", 0) or 0) - 1)
+        question = "终止整个下载任务？这一篇立即结束" + (f"，剩下的 {left} 篇不再下载。" if left else "。")
+        if messagebox.askyesno("终止任务", question, parent=self.root):
+            self._decide("stop_batch", doi, state)
+
+    def _draw_gear(self, right: int, y: int) -> int:
+        """The settings button at the top right, a round button like the others'
+        colours; returns its left edge."""
+        c, col = self.canvas, self.c
+        d = int(round(24 * self.s))
+        x0, y0 = right - d, y - d // 2
+        c.create_oval(x0, y0, right, y0 + d, fill=col["track"], outline=col["track"], tags=("settings",))
+        item = c.create_text(right - d / 2, y, text="\u2699", fill=col["btn"], font=self.f_gear, tags=("settings",))
+        c.tag_bind("settings", "<Button-1>", lambda e: self._open_settings())
+        c.tag_bind("settings", "<Enter>", lambda e: c.itemconfigure(item, fill=col["text"]))
+        c.tag_bind("settings", "<Leave>", lambda e: c.itemconfigure(item, fill=col["btn"]))
+        return x0
+
+    def _open_settings(self) -> None:
+        """The settings dialog: each value typed in and checked; saved values
+        apply from the next paper."""
+        if self._settings is not None and self._settings.winfo_exists():
+            self._settings.lift()
+            return
+        col, pad = self.c, int(round(14 * self.s))
+        top = self._settings = tk.Toplevel(self.root, bg=col["bg"])
+        top.title("设置")
+        top.resizable(False, False)
+        top.attributes("-topmost", True)
+        top.transient(self.root)
+        frame = tk.Frame(top, bg=col["bg"], padx=pad, pady=pad)
+        frame.pack(fill="both", expand=True)
+        tk.Label(frame, text="设置", bg=col["bg"], fg=col["text"], font=self.f_title).grid(
+            row=0, column=0, columnspan=3, sticky="w", pady=(0, pad // 2))
+        values = user_settings.current()
+        entries: dict[str, tk.Entry] = {}
+        errors: dict[str, tk.Label] = {}
+        for i, field in enumerate(user_settings.FIELDS):
+            row = 1 + 2 * i
+            tk.Label(frame, text=field.label, bg=col["bg"], fg=col["text"], font=self.f_body).grid(
+                row=row, column=0, sticky="w", padx=(0, pad))
+            entry = tk.Entry(frame, width=6, justify="right", font=self.f_body)
+            entry.insert(0, str(values[field.name]))
+            entry.grid(row=row, column=1, pady=3)
+            tk.Label(frame, text=field.unit, bg=col["bg"], fg=col["dim"], font=self.f_body).grid(
+                row=row, column=2, sticky="w", padx=(6, 0))
+            error = tk.Label(frame, text="", bg=col["bg"], fg=col["bad"], font=self.f_small)
+            error.grid(row=row + 1, column=0, columnspan=3, sticky="w")
+            error.grid_remove()
+            entries[field.name], errors[field.name] = entry, error
+
+        def reset() -> None:
+            for field in user_settings.FIELDS:
+                entries[field.name].delete(0, "end")
+                entries[field.name].insert(0, str(field.default))
+                errors[field.name].grid_remove()
+
+        def save() -> None:
+            chosen: dict[str, int] = {}
+            for field in user_settings.FIELDS:
+                value, problem = user_settings.check(field, entries[field.name].get())
+                if problem:
+                    errors[field.name].configure(text=problem)
+                    errors[field.name].grid()
+                else:
+                    errors[field.name].grid_remove()
+                    chosen[field.name] = int(value)
+            if len(chosen) < len(user_settings.FIELDS):
+                return
+            try:
+                user_settings.save(chosen)
+                text = "设置已保存，从下一篇起生效"
+            except Exception as exc:
+                text = f"保存失败：{type(exc).__name__}"
+            top.destroy()
+            self._flash = (text, time.time() + 6, self._last_current)
+
+        buttons = tk.Frame(frame, bg=col["bg"])
+        buttons.grid(row=1 + 2 * len(user_settings.FIELDS), column=0, columnspan=3, sticky="e", pady=(pad // 2, 0))
+        for text, command in (("恢复默认", reset), ("取消", top.destroy), ("保存", save)):
+            tk.Button(buttons, text=text, command=command, font=self.f_small).pack(side="left", padx=(6, 0))
+        top.bind("<Return>", lambda e: save())
+        top.bind("<Escape>", lambda e: top.destroy())
+        top.update_idletasks()
+        x = self.root.winfo_rootx()
+        y = max(0, self.root.winfo_rooty() - top.winfo_height() - 8)
+        top.geometry(f"+{x}+{y}")
 
     def _hover_button(self, key: str, label_id: int) -> None:
         self._hover = key

@@ -35,7 +35,16 @@ class UserWaitMixin:
             return self._wait_for_challenge(page, result, deadline=deadline)
         return self._wait_for_challenge(page, result)
 
-    SUSPECT_BLOCK_WAIT_SEC = 180
+    # A wait off the school's login page (verification, the publisher's pages and
+    # choosers, the PDF step): config ``browser_page_wait_timeout``, else this.
+    PAGE_WAIT_SEC = 60
+
+    @property
+    def page_wait_sec(self) -> float:
+        """How long a wait that is not the user's own login step may last; the
+        school's login page has ``login_timeout_sec`` (user's choice, 2026-11-03)."""
+        value = (getattr(self, "config", None) or {}).get("browser_page_wait_timeout")
+        return self.PAGE_WAIT_SEC if value is None else max(10.0, float(value))
 
     @staticmethod
     def _visible_text_excerpt(body: str | bytes | None, limit: int = 600) -> str:
@@ -103,7 +112,7 @@ class UserWaitMixin:
 
     def _wait_out_suspect_block(self, page: Any, result: DownloadResult, captured: dict[str, Any], suspect: str,
                                 suspect_host: str, started: float) -> bool:
-        deadline = started + min(max(self.login_timeout_sec, 30), self.SUSPECT_BLOCK_WAIT_SEC)
+        deadline = started + self.page_wait_sec
         reporter = None
         attention_key = f"pdf-step:{id(self)}:{result.doi}"
         try:
@@ -302,9 +311,10 @@ class UserWaitMixin:
         return deadline
 
     def _wait_deadline(self, result: DownloadResult, deadline: float | None = None) -> float:
-        """End of a wait on the user that starts now: the caller's bound, the
-        article's total, and when the user seems away the short wait."""
-        bounds = [self._user_wait_deadline(result)]
+        """End of a wait on the user that starts now, off the school's login page
+        (verification pages): the caller's bound, the article's total, the page
+        wait, and when the user seems away the short wait."""
+        bounds = [self._user_wait_deadline(result), time.time() + self.page_wait_sec]
         if deadline is not None:
             bounds.append(deadline)
         if self._user_away:

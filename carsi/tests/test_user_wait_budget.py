@@ -70,11 +70,11 @@ class UserWaitBudgetTests(unittest.TestCase):
         d._is_challenge_page = Mock(return_value=True)
         page, clock = self.verification_page()
         result = DownloadResult(doi="10.1016/x", status="failed")
-        self.assertFalse(d._wait_for_challenge(page, result))
-        self.assertEqual(clock[0], 1180)
-        # A second verification in the same article (e.g. after the school login) gets what is left: nothing.
-        self.assertFalse(d._wait_for_challenge(page, result))
-        self.assertEqual(clock[0], 1180)
+        # A verification page waits a page wait (60 s); later ones in the same article
+        # (e.g. after the school login) each get one, within the article's 180 s.
+        for end in (1060, 1120, 1180, 1180):
+            self.assertFalse(d._wait_for_challenge(page, result))
+            self.assertEqual(clock[0], end)
         self.assertTrue(result._user_wait_expired)
 
     def test_when_the_user_seems_away_each_wait_is_short(self):

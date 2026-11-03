@@ -260,6 +260,7 @@ class LoginMixin:
         last_auto_action_at = 0.0
         visited_idp = False
         page_since, page_inputs = time.time(), ()
+        outside_since = time.time()  # last seen on the user's own login step
         article_returns = 0
         session_returns = 0
         away_from_publisher = False  # on an IdP, federation or chooser page since the last probe
@@ -272,6 +273,14 @@ class LoginMixin:
                 # The publisher's institution search has no entry for the school.
                 result.reason = "institution_federation_unavailable"
                 self._event(result, result.reason, "the school is not in the publisher's institution list")
+                return False
+            over, outside_since = self._page_wait_over(page, outside_since)
+            if over:
+                # Off the school's login page for a whole page wait (a publisher
+                # page, a chooser, a redirect that goes nowhere): nobody is typing.
+                self._event(result, "page_wait_ended",
+                            f"{self._login_wait_page(page)} after {self.page_wait_sec:.0f} s")
+                self._wait_ran_out(result)
                 return False
             marker = f"{self._title(page)} | {getattr(page, 'url', '')[:160]}"
             here = urlparse(str(getattr(page, "url", "") or ""))
@@ -1143,6 +1152,26 @@ class LoginMixin:
             return True
         return self.adapter.is_article_page_url(url) is True
 
+    def _page_wait_over(self, page: Any, outside_since: float) -> tuple[bool, float]:
+        """Whether a login wait has been off the user's own login step for a whole
+        page wait, and when that step was last seen (now, when on it)."""
+        now = time.time()
+        if self._users_login_step(page):
+            return False, now
+        return now - outside_since >= self.page_wait_sec, outside_since
+
+    def _users_login_step(self, page: Any) -> bool:
+        """The user's own step of the login, which may take the long wait
+        (``login_timeout_sec``): the school's login page (a password field, or the
+        school's identity provider), or a school chooser when no school is
+        configured or the user chooses by hand. Any other page off the publisher's
+        site is not: Atypon's iam.atypon.com hub, where AHA's login stopped on
+        2026-11-03, was taken for the school's page and waited three minutes."""
+        url = str(getattr(page, "url", "") or "")
+        if self._school_password_box(page, url) or self._is_idp_host(urlparse(url).netloc):
+            return True
+        return self._is_auth_page(url) and (not self.institution_query or bool(getattr(self, "_manual_school", False)))
+
     def _login_wait_page(self, page: Any) -> str:
         """Where a login that waited on the user ended (ADR 0012):
 
@@ -1155,7 +1184,9 @@ class LoginMixin:
         if page.is_closed() is True:
             return "closed"
         url = str(getattr(page, "url", "") or "")
-        if self._is_human_login_page(page):
+        # The school's own page, by the same test as the long wait: a publisher's
+        # SSO hub (iam.atypon.com) is no school login (2026-11-03).
+        if self._school_password_box(page, url) or self._is_idp_host(urlparse(url).netloc):
             return "school_login"
         if self._is_auth_page(url):
             return "institution_chooser" if self.institution_query else "school_choice"
@@ -1165,12 +1196,16 @@ class LoginMixin:
         current_url = str(getattr(page, "url", "") or "")
         host = (urlparse(current_url).netloc or "").lower()
         if self.config.get("publisher_institution_federation") == "carsi":
-            if (page.locator('input[type="password"]:visible, input[autocomplete="one-time-code"]:visible').count()
-                    and not self._personal_login_box(page, current_url)):
+            if self._school_password_box(page, current_url):
                 return True
             if not self._on_publisher_host(current_url):
                 return not self._is_federation_chooser(current_url)
         return self._is_idp_host(host)
+
+    def _school_password_box(self, page: Any, url: str) -> bool:
+        """A password or one-time-code field that is not a personal account's box on the publisher's site."""
+        return bool(page.locator('input[type="password"]:visible, input[autocomplete="one-time-code"]:visible').count()
+                    and not self._personal_login_box(page, url))
 
     def _personal_login_box(self, page: Any, url: str) -> bool:
         """The password field is a personal account's login box on the publisher's

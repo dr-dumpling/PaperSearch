@@ -87,12 +87,14 @@ def _get(request: Any, url: str, entry: dict[str, Any], sleep) -> Any:
 
 def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi: str, *,
             clock=time.monotonic, sleep=time.sleep,
-            download: Callable[[str], tuple[bytes, str]] | None = None) -> list[dict[str, Any]]:
+            download: Callable[[str], tuple[bytes, str]] | None = None,
+            progress: Callable[[int], None] | None = None) -> list[dict[str, Any]]:
     """Fetch ``links`` with ``request`` (a Playwright APIRequestContext). A file
     refused with 403 is taken through ``download`` when given: the browser
     opens it and downloads it itself (Taylor & Francis behind Cloudflare
     refused every scripted request with ego, the page's own fetch included,
-    and let the browser's own navigation through, 2026-11-01)."""
+    and let the browser's own navigation through, 2026-11-01). ``progress`` is
+    told how many files are saved after each one (the progress window)."""
     unique: list[SupplementLink] = []
     for link in links:
         if link.url and link.url not in {u.url for u in unique}:
@@ -139,6 +141,8 @@ def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi
             except Exception as exc:
                 entry.update(status="failed", reason=f"{type(exc).__name__}: {str(exc)[:160]}")
         files.append(entry)
+        if progress is not None:
+            progress(sum(1 for f in files if f.get("status") == "saved"))
     (target / "manifest.json").write_text(
         json.dumps({"doi": doi, "files": files}, ensure_ascii=False, indent=2), encoding="utf-8")
     return files

@@ -86,7 +86,7 @@ from .batch_pdf_urls import PdfUrlsMixin
 from .batch_runs import RunsMixin
 from .batch_diagnostics import DiagnosticsMixin
 from .batch_user import PdfFoundWhileWaiting, UserProvidedPdf, UserRequestsMixin
-from ..entitlements import UserSkippedArticle
+from ..entitlements import UserSkippedArticle, UserStoppedBatch
 
 
 class PublisherBatchDownloader(
@@ -153,6 +153,7 @@ class PublisherBatchDownloader(
         from . import supplements
 
         self._phase(result, "supplements")
+        progress_reporter.update(part="supplements", supplements_saved=0, supplements_total=None)
         try:
             page = context.new_page()
         except Exception as exc:
@@ -185,8 +186,10 @@ class PublisherBatchDownloader(
                 if links or url in own_page:
                     break
             self._event(result, "supplements_found", str(len(links)))
+            progress_reporter.update(supplements_total=len(links))
             files = supplements.collect(page.context.request, links, Path(output_dir), doi,
-                                        download=lambda url: self._download_in_new_tab(page, url))
+                                        download=lambda url: self._download_in_new_tab(page, url),
+                                        progress=lambda saved: progress_reporter.update(supplements_saved=saved))
             saved = sum(1 for f in files if f.get("status") == "saved")
             self._event(result, "supplements_saved", f"{saved}/{len(files)}")
             return files
@@ -346,6 +349,7 @@ class PublisherBatchDownloader(
         from ..browser import watchdog
 
         self._phase(result, "open")
+        progress_reporter.update(part="main", supplements_saved=0, supplements_total=None)
         self._run_dir = run_dir
         watchdog.on_slow_call = lambda name, seconds, ended, where: self._event(
             result, "wait", f"browser call {name}: {seconds:.0f} s, ended: {ended} ({where})")
@@ -512,6 +516,12 @@ class PublisherBatchDownloader(
             self._event(result, "pdf_found_while_waiting" if isinstance(provided, PdfFoundWhileWaiting)
                         else "pdf_from_user_report", provided.url)
             return self._save_captured_pdf(page, record, result, run_dir, provided.body, provided.url)
+        except UserStoppedBatch as decision:
+            watchdog.clear_interrupt()
+            result.reason = result.state = "batch_stopped"
+            self._event(result, "batch_stopped", str(decision))
+            self._write_diagnostic(page, result, run_dir)
+            return result
         except UserSkippedArticle as decision:
             watchdog.clear_interrupt()
             result.reason = result.state = "user_skipped"

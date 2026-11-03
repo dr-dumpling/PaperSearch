@@ -121,6 +121,15 @@ async function pastHourlyLimit(run, log, pause) {
 /** The journal's site blocked the current network (state L): a protection page,
  * or the school paused for downloading too much. The backend answers the
  * journal's later items at once; every other item goes on (the user, 2026-11-02). */
+/** The user pressed "终止任务" in the progress window: the batch ends after this item. */
+function stoppedByUser(result) {
+    return result.attempts.some((attempt) => attempt.code === "batch_stopped");
+}
+const STOP_NOTICE = "[批量] 已在进度窗口终止任务，剩下的篇目不再下载";
+/** The attempt recorded for an item the batch did not reach because the user stopped it. */
+function notReached() {
+    return { stage: "entitled_access", status: "skipped", message: "已终止任务，未下载", code: "batch_stopped" };
+}
 function publisherBlocked(result) {
     return (result.status !== "ok" &&
         result.attempts.some((a) => a.stage === "entitled_access" && a.code === "access_blocked"));
@@ -244,11 +253,24 @@ async function downloadPerItem(searchers, options, backend, log, createTiers, pa
             log(AWAY_NOTICE);
         }
         const finished = itemResult(result, index, request);
-        await supplementsForOpenItem(finished, recorded(request, ledger, entry), backend);
+        if (!stoppedByUser(result))
+            await supplementsForOpenItem(finished, recorded(request, ledger, entry), backend);
         ledger?.item(entry, finished);
         items.push(finished);
         if (publisherBlocked(result))
             log(blockedNotice(request.doi || request.paperId));
+        if (stoppedByUser(result)) {
+            for (const [rest, restItem] of options.items.entries()) {
+                if (rest <= offset)
+                    continue;
+                const restRequest = itemOptions(restItem, options);
+                const restFinished = itemResult({ status: "error", attempts: [notReached()] }, rest + 1, restRequest);
+                ledger?.item(runItem(rest + 1, restRequest), restFinished);
+                items.push(restFinished);
+            }
+            log(STOP_NOTICE);
+            break;
+        }
     }
     ledger?.close();
     return summary("per_item", batchId, items, {
@@ -294,6 +316,7 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
     let succeeded = 0;
     let failed = 0;
     let away = false;
+    let stopped = false;
     for (const [step, offset] of pending.entries()) {
         const request = requests[offset];
         log(`[批量] 机构下载 ${step + 1}/${remaining}：${request.doi || request.paperId}`);
@@ -316,9 +339,18 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
         ledger?.item(entries[offset], items[offset]);
         if (publisherBlocked(result))
             log(blockedNotice(request.doi || request.paperId));
+        if (stoppedByUser(result)) {
+            stopped = true;
+            for (const rest of pending.slice(step + 1)) {
+                items[rest] = itemResult({ ...items[rest], status: "error", attempts: [...items[rest].attempts, notReached()] }, rest + 1, requests[rest]);
+                ledger?.item(entries[rest], items[rest]);
+            }
+            log(STOP_NOTICE);
+            break;
+        }
     }
     // Phase 3: supplementary files for the items the open stages already got.
-    if (options.content === "both") {
+    if (options.content === "both" && !stopped) {
         const open = requests.map((_, offset) => offset).filter((offset) => !pending.includes(offset));
         if (open.length)
             ledger?.phase(`补充材料 ${open.length} 篇`);

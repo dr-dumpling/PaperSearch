@@ -103,10 +103,10 @@ class SuspectBlockResolutionTests(unittest.TestCase):
         self.assertIsNone(self.captured["block_reason"])
 
     def test_unfinished_verification_is_a_timeout_not_a_block(self):
-        self.d.SUSPECT_BLOCK_WAIT_SEC = 0.05
+        self.d.PAGE_WAIT_SEC = 0.05
         self.d.login_timeout_sec = 0
         self.d._is_challenge_page = lambda p: p is self.pdf_tab
-        with unittest.mock.patch.object(PublisherBatchDownloader, "SUSPECT_BLOCK_WAIT_SEC", 0.05):
+        with unittest.mock.patch.object(PublisherBatchDownloader, "PAGE_WAIT_SEC", 0.05):
             self.article.wait_for_timeout.side_effect = lambda ms: __import__("time").sleep(0.03)
             self.assertFalse(self.d._resolve_suspect_block(self.article, self.result, self.captured))
         self.assertEqual(self.captured["block_reason"], "challenge_or_viewer_timeout")
@@ -116,7 +116,7 @@ class SuspectBlockResolutionTests(unittest.TestCase):
     def test_only_after_the_bounded_wait_is_an_unexplained_403_an_ip_block(self):
         self.d.login_timeout_sec = 0
         self.d._is_challenge_page = lambda p: False
-        with unittest.mock.patch.object(PublisherBatchDownloader, "SUSPECT_BLOCK_WAIT_SEC", 0.05), \
+        with unittest.mock.patch.object(PublisherBatchDownloader, "PAGE_WAIT_SEC", 0.05), \
                 unittest.mock.patch.object(PublisherBatchDownloader, "SUSPECT_UNKNOWN_GRACE_SEC", 60):
             self.article.wait_for_timeout.side_effect = lambda ms: __import__("time").sleep(0.03)
             self.assertFalse(self.d._resolve_suspect_block(self.article, self.result, self.captured))

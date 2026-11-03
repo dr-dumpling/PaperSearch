@@ -8,7 +8,7 @@ It is the open version by default: once installed it searches and downloads open
 
 ![Node.js](https://img.shields.io/badge/node.js->=18.0.0-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.4.1-blue.svg)
 [![LinuxDo](https://img.shields.io/badge/LinuxDo-community-1f6feb)](https://linux.do)
 
 [How it works](#how-it-works) | [Quick start](#quick-start) | [Two ways to download](#two-ways-to-download) | [Search sources](#search-sources) | [Configuration](#configuration) | [Agent Skill](#agent-skill) | [Commands](#commands) | [Troubleshooting](#troubleshooting)
@@ -102,6 +102,7 @@ paper-search carsi status --format text
 
 - Installing asks for your school (a CARSI member school, by Chinese name, English name or domain) and downloads the dedicated Camoufox browser, about 3 GB in all; on macOS, `--browser ego` uses ego lite instead, about 0.5 GB. `--skip-school` leaves the school for later.
 - Schools sign in through CARSI (the Chinese university identity federation). When a publisher's institution list has no CARSI or no entry for your school, the program says so at once; download on campus or through your school's VPN instead.
+- Downloads show a progress window: skip this paper, mark the journal or publisher as no access, stop the whole task, or change how long waits last (the gear at the top right). On the school's login page a paper waits up to 3 minutes by default; anywhere else (human checks, publisher pages, ...) it ends after 1 minute.
 - `paper-search carsi update` updates the extension after a PaperSearch upgrade; `paper-search carsi uninstall` removes it (keeping the browser and the school settings by default).
 - Windows: if PowerShell blocks `npm.ps1`, use `npm.cmd` or Command Prompt; downloads must run in a desktop session, as a browser window cannot open from SSH or a system service.
 

@@ -292,6 +292,37 @@ describe("serial download batch", () => {
     }
   });
 
+  it("stops the batch when the user presses 终止任务 in the progress window", async () => {
+    for (const mode of ["entitled_only", "per_item"] as const) {
+      const seen: string[] = [];
+      const lines: string[] = [];
+      const tiers = (): DownloadTier[] => [
+        {
+          id: "entitled_access",
+          stage: "entitled_access",
+          run: async (context) => {
+            seen.push(context.doi ?? "");
+            return context.doi === "10.1016/stop"
+              ? { status: "error", message: "stopped", code: "batch_stopped" }
+              : { status: "ok", verified: true, path: `/tmp/${context.doi}.pdf`, message: "ok" };
+          },
+        },
+      ];
+      const result = await downloadBatch(
+        {} as never,
+        { items: [{ doi: "10.1016/a" }, { doi: "10.1016/stop" }, { doi: "10.1016/c" }, { doi: "10.1016/d" }], mode },
+        fakeBackend([]),
+        (line) => lines.push(line),
+        tiers,
+      );
+      expect(seen).toEqual(["10.1016/a", "10.1016/stop"]);
+      expect(result).toEqual(expect.objectContaining({ total: 4, succeeded: 1, failed: 3 }));
+      const codes = result.items.map((item) => item.attempts[item.attempts.length - 1]?.code);
+      expect(codes).toEqual([undefined, "batch_stopped", "batch_stopped", "batch_stopped"]);
+      expect(lines).toContain("[批量] 已在进度窗口终止任务，剩下的篇目不再下载");
+    }
+  });
+
   it("works without a backend progress method", async () => {
     const backend = fakeBackend([]);
     delete backend.reportBatchProgress;

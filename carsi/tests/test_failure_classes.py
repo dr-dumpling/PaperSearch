@@ -19,6 +19,7 @@ class LoginWaitPageTests(unittest.TestCase):
         d = PublisherBatchDownloader({"publisher_institution_federation": "carsi"},
                                      profile=get_publisher_profile("taylor & francis"), institution_query=school)
         d._is_human_login_page = Mock(return_value=False)
+        d._school_password_box = Mock(return_value=False)
         return d
 
     def test_the_kinds_of_page_a_wait_can_end_on(self):
@@ -29,7 +30,7 @@ class LoginWaitPageTests(unittest.TestCase):
         chooser = page("https://www.tandfonline.com/action/ssostart?redirectUri=%2Fdoi%2Ffull%2F10.1080%2Fx")
         self.assertEqual(d._login_wait_page(chooser), "institution_chooser")
         self.assertEqual(self.downloader(school="")._login_wait_page(chooser), "school_choice")
-        d._is_human_login_page = Mock(return_value=True)
+        d._school_password_box = Mock(return_value=True)
         self.assertEqual(d._login_wait_page(page("https://cas.example.edu.cn/esc-sso/login/page")), "school_login")
         closed = page("about:blank")
         closed.is_closed.return_value = True

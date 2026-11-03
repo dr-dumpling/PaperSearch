@@ -34,6 +34,14 @@ class UserSkippedArticle(UserMarkedNoEntitlement):
     """The user pressed "skip this paper": it ends, nothing is remembered."""
 
 
+class UserStoppedBatch(UserMarkedNoEntitlement):
+    """The user pressed "stop the task": this paper ends and the batch stops."""
+
+
+# Not an entitlement decision: nothing is recorded, the batch ends.
+STOP_BATCH = "stop_batch"
+
+
 SKIP = "skip"
 ALLOW = "allow"
 _ACTIONS = {
@@ -183,7 +191,7 @@ def clear(key: str) -> bool:
 
 def request_action(current: str, action: str, run_id: str = "") -> None:
     """Written by the progress window when the user presses a button."""
-    if action not in _ACTIONS:
+    if action not in _ACTIONS and action != STOP_BATCH:
         raise ValueError("unknown action")
     _write_json(control_path(), {"current": current, "action": action, "run_id": run_id, "at": time.time()})
 
@@ -204,7 +212,7 @@ def take_action(doi: str, since: float) -> str | None:
     except OSError:
         pass
     action = data.get("action")
-    return action if action in _ACTIONS else None
+    return action if action in _ACTIONS or action == STOP_BATCH else None
 
 
 def apply_user_decision(doi: str, publisher: str, since: float) -> str | None:
@@ -212,6 +220,8 @@ def apply_user_decision(doi: str, publisher: str, since: float) -> str | None:
     action = take_action(doi, since)
     if not action:
         return None
+    if action == STOP_BATCH:
+        raise UserStoppedBatch(action)
     if action == "skip_item":
         raise UserSkippedArticle(action)
     try:

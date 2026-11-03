@@ -28,9 +28,9 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-# The longest legitimate call is a page load or PDF wait (60-90 s); waits for
-# the user are made of short calls.
-LIMIT_SEC = 240
+# The longest legitimate call is a page load (60 s, the engine's longest
+# timeout); waits for the user are made of short calls.
+LIMIT_SEC = 90
 
 _inflight: dict[int, tuple[float, str, list[str], Any, Any]] = {}
 _installed = False

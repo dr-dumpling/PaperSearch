@@ -1256,7 +1256,7 @@ class CaptureMixin:
                 # Human verification gets its own budget: the user's time must
                 # not use up the PDF step, and once the check clears the PDF
                 # gets its full time again.
-                challenge_deadline = time.time() + max(self.SUSPECT_BLOCK_WAIT_SEC, timeout_sec)
+                challenge_deadline = time.time() + max(self.page_wait_sec, timeout_sec)
                 if not self._wait_for_challenge_with_deadline(page, result, challenge_deadline):
                     return None, str(getattr(page, "url", "") or "")
                 deadline = time.time() + timeout_sec

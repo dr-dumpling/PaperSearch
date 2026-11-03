@@ -45,6 +45,7 @@ _FAILURE_KINDS = {
     "unexpected_error": ("source_exception", ""),
     "user_marked_no_entitlement": ("no_entitlement", "skipped_by_user"),
     "user_skipped": ("user_skipped", "skipped_by_user"),
+    "batch_stopped": ("batch_stopped", "stopped_by_user"),
     "pdf_wrong_article": ("pdf_wrong_article", "review_browser"),
     "supplements_only": ("supplements_only", "supplements_only"),
     # The DOI resolves to no site to sign in on (publishers/site.py): no driver can run.

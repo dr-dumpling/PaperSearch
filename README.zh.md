@@ -8,7 +8,7 @@ PaperSearch 是给 AI 工具和终端用的学术文献命令 `paper-search`，�
 
 ![Node.js](https://img.shields.io/badge/node.js->=18.0.0-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-0.4.1-blue.svg)
 [![LinuxDo](https://img.shields.io/badge/LinuxDo-community-1f6feb)](https://linux.do)
 
 [整体逻辑](#整体逻辑) | [快速开始](#快速开始) | [两种下载方式](#两种下载方式) | [检索来源](#检索来源) | [配置](#配置) | [Agent Skill](#agent-skill) | [命令](#命令) | [排障](#排障)
@@ -102,6 +102,7 @@ paper-search carsi status --format text
 
 - 安装时会问你的学校（CARSI 成员学校，中文名、英文名或域名都可以），并下载专用浏览器 Camoufox，共约 3 GB；macOS 上 `--browser ego` 改用 ego lite，约 0.5 GB。`--skip-school` 可以以后再选学校。
 - 目前用 CARSI（中国高校身份联盟）登录学校；出版社的机构列表里没有 CARSI 或你的学校时，程序会立即说明，建议在校园网或学校 VPN 下下载。
+- 下载时会出现进度窗口：可以跳过本篇、标记本刊或出版社无权限、终止整个任务，右上角齿轮可以调整等待时间。停在学校登录页默认最多等 3 分钟，停在其他页面（人机验证、出版社页面等）默认 1 分钟后结束这一篇。
 - `paper-search carsi update` 在 PaperSearch 升级后更新扩展，`paper-search carsi uninstall` 卸载（默认保留浏览器和学校配置）。
 - Windows：PowerShell 拦住 `npm.ps1` 时改用 `npm.cmd` 或命令提示符；下载要在桌面会话里运行，经 SSH 或系统服务启动时浏览器窗口打不开。
 
