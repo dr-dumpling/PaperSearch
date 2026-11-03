@@ -1,0 +1,64 @@
+name: Publish
+
+# Pushing a version tag (v1.2.3) publishes that version to npm and creates its
+# GitHub Release. npm accepts the publish through trusted publishing (OIDC), so
+# no npm token is stored anywhere; the trusted publisher is set once on
+# npmjs.com: papersearch -> Settings -> Trusted publishing (GitHub Actions,
+# dr-dumpling / PaperSearch / publish.yml). The release notes are the tag's
+# annotation (git tag -a vX.Y.Z -F notes.md). A version already on npm, or a
+# release that already exists, is left as it is, so a failed run can be rerun.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  id-token: write # npm trusted publishing
+  contents: write # the GitHub Release
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false # never use caching in release builds
+
+      - name: The tag names the version in package.json
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+          echo "PACKAGE=$name" >> "$GITHUB_ENV"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - run: npm ci
+
+      - name: Publish to npm (prepublishOnly runs the tests and the build)
+        run: |
+          if npm view "$PACKAGE@$VERSION" version > /dev/null 2>&1; then
+            echo "$PACKAGE@$VERSION is already on npm"
+          else
+            npm publish --access public
+          fi
+
+      - name: GitHub Release from the tag's annotation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists"
+            exit 0
+          fi
+          # checkout keeps only the commit; fetch the annotated tag itself.
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          git tag --list --format='%(contents)' "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" --title "PaperSearch $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" --verify-tag --latest
