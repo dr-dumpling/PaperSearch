@@ -150,7 +150,7 @@ paper-search carsi status --format text
 ```
 
 - 安装时会问你的学校（CARSI 成员学校，中文名、英文名或域名都可以），并下载专用浏览器 Camoufox，共约 3 GB；macOS 上 `--browser ego` 改用 ego lite，约 0.5 GB。`--skip-school` 可以以后再选学校。
-- 目前用 CARSI（中国高校身份联盟）登录学校；出版社的机构列表里没有 CARSI 或你的学校时，程序会立即说明，建议在校园网或学校 VPN 下下载。
+- 目前用 CARSI（中国高校身份联盟）登录学校；出版社的机构列表里没有 CARSI 或你的学校时，程序会立即说明。
 - 自动过验证：程序自动定位并点击验证框，网站放行后继续下载。每次验证等待最多尝试 3 次，两次至少间隔 3 秒；自动阶段结束后仍未放行时，进度窗口会提示人工接管。
 - 下载时会出现进度窗口：可以跳过本篇、标记本刊或出版社无权限、终止整个任务，右上角齿轮可以调整等待时间。停在学校登录页默认最多等 3 分钟，停在其他页面（人机验证、出版社页面等）默认 1 分钟后结束这一篇。
 - 能取哪些出版社的正文和补充材料，见 [出版社支持表](skills/paper-search/references/publisher-support.md)。正文和补充材料都实测取得的有 Elsevier、Wiley、Springer Nature、OUP、Wolters Kluwer、Taylor & Francis、Sage、ACS、NEJM、ASCE、Dove 等，另支持 MDPI、Frontiers 的补充材料和论文关联的 Figshare 附件；IEEE、Thieme 等目前只取正文；表里没有的网站按通用规则尝试。
