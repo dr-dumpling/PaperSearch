@@ -1,3 +1,4 @@
+import { getConfigPath } from "../../../config/ConfigService.js";
 import type { ChildProcess } from "node:child_process";
 import {
   mkdirSync,
@@ -523,6 +524,7 @@ export class CarsiMcpClient implements CarsiBackend {
         args: this.args,
         env: {
           CARSI_DATA_DIR: this.profileDir,
+          PAPER_SEARCH_CONFIG_FILE: getConfigPath(),
         },
         stderr: "pipe",
       },

@@ -1,6 +1,7 @@
 """One rule for "this article's PDF" (batch_pdf_urls.py): the citation PDF bound by
 its DOI, the page's own PDF links that name the article, the profile's formulas;
 never a sharing, login, password or advertising link (2026-11-02)."""
+import os
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
@@ -53,6 +54,29 @@ class CandidateTests(unittest.TestCase):
                                 ({"dois": [DOI], "pdfs": [ARTICLE]}, [])):
             self.assertEqual(self.d._citation_pdf_urls(page(**found), DOI), expected, found)
 
+    def test_extensionless_citation_pdf_uses_existing_adapter_rule(self):
+        d = PublisherBatchDownloader({}, profile=get_publisher_profile("dove medical press"))
+        doi = "10.2147/copd.s426050"
+        pdf = "https://www.dovepress.com/article/download/90121"
+        p = page("https://www.dovepress.com/example-fulltext-article-COPD",
+                 dois=[doi], pdfs=[pdf])
+        self.assertEqual(d._citation_pdf_urls(p, doi), [pdf])
+        self.assertEqual(d._metadata_pdf_urls(p, doi), [pdf])
+        self.assertIn(pdf, d._pdf_candidates(p, doi))
+        p.evaluate.return_value = {"dois": ["10.2147/copd.s999999"], "pdfs": [pdf]}
+        self.assertEqual(d._citation_pdf_urls(p, doi), [])
+
+    def test_copernicus_figure_pdf_is_neither_clicked_nor_downloaded_as_article(self):
+        d = PublisherBatchDownloader({}, profile=get_publisher_profile("copernicus"))
+        doi = "10.5194/acp-25-5857-2025"
+        article = "https://acp.copernicus.org/articles/25/5857/2025/"
+        pdf = article + "acp-25-5857-2025.pdf"
+        figure = article + "acp-25-5857-2025-f01-high-res.pdf"
+        self.assertFalse(d._article_pdf_link(figure, d._article_keys(article, doi), article))
+        self.assertFalse(d._is_pdf_candidate_url(article))
+        self.assertTrue(d._is_pdf_candidate_url(pdf.replace("/articles/", "/")))
+        self.assertEqual(d._pdf_candidates(page(article, dois=[doi], pdfs=[pdf], links=[figure]), doi), [pdf])
+
     def test_the_article_is_named_by_its_doi_its_pii_or_the_pages_own_id(self):
         keys = self.d._article_keys("https://www.sciencedirect.com/science/article/pii/S0140673675900011", "10.1016/S0140-6736(75)90001-1")
         self.assertIn("s0140673675900011", keys)
@@ -76,7 +100,14 @@ class ClickTests(unittest.TestCase):
         self.page = MagicMock()
         self.page.url = ARTICLE
         self.page.evaluate.side_effect = self.evaluate
-        self.page.locator.side_effect = lambda selector: SimpleLocator(self.controls)
+        self.page.locator.side_effect = self.locator
+
+    def locator(self, selector):
+        if selector.startswith('a[href="'):
+            href = selector[len('a[href="'):-2]
+            return SimpleLocator([control for link, control in zip(self.links, self.controls)
+                                  if link["href"] == href])
+        return SimpleLocator([])
 
     def evaluate(self, script, *args):
         if script == self.d._LINKS_JS:
@@ -86,6 +117,7 @@ class ClickTests(unittest.TestCase):
     def link(self, href, label="PDF"):
         control = Mock()
         control.is_visible.return_value = True
+        control.evaluate.return_value = False
         self.controls.append(control)
         self.links.append({"href": href, "label": label, "visible": True, "in_references": False})
         return control
@@ -134,7 +166,43 @@ class SimpleLocator:
         return self.controls[index]
 
     def all(self):
-        return []
+        return self.controls
+
+
+@unittest.skipUnless(os.environ.get("CARSI_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
+class DynamicLinkBrowserTests(unittest.TestCase):
+    def test_dom_reordering_does_not_change_the_clicked_pdf(self):
+        from playwright.sync_api import sync_playwright
+        d = PublisherBatchDownloader({}, profile=get_publisher_profile("taylor & francis"))
+        with sync_playwright() as driver:
+            browser = driver.chromium.launch(channel="chrome", headless=True)
+            try:
+                p = browser.new_page()
+                p.route("**/*", lambda route: route.fulfill(content_type="text/html", body=
+                    '<a href="/doi/pdf/' + DOI + '" id="pdf">Download PDF</a>'
+                    '<a href="/gateway" id="gateway">Citations</a>'
+                    '<script>document.addEventListener("click", e=>{e.preventDefault();'
+                    'document.body.dataset.clicked=e.target.id;});</script>'))
+                p.goto(ARTICLE)
+                class ReorderingPage:
+                    def __getattr__(self, name):
+                        return getattr(p, name)
+                    def evaluate(self, script, *args):
+                        result = p.evaluate(script, *args)
+                        if script == d._LINKS_JS:
+                            p.evaluate("""() => {
+                                document.body.prepend(document.querySelector('#gateway'));
+                                const duplicate = document.querySelector('#pdf').cloneNode(true);
+                                duplicate.id = 'attachment'; duplicate.textContent = 'Supplementary PDF';
+                                document.body.prepend(duplicate);
+                            }""")
+                        return result
+                result = DownloadResult(doi=DOI, status="failed")
+                self.assertTrue(d._click_article_link(ReorderingPage(), result, lambda url: url == PDF,
+                                                       "current-doi-pdf-link", drop_download=False))
+                self.assertEqual(p.locator("body").get_attribute("data-clicked"), "pdf")
+            finally:
+                browser.close()
 
 
 if __name__ == "__main__":

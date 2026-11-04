@@ -86,10 +86,12 @@ paper-search setup EASYSCHOLAR_KEY
 `pdf_discovery` 用于获取已核验论文的 PDF。开放式的文献任务不要一开始就批量下载。
 
 ```bash
-paper-search download PMC11466435 --platform pmc --save-path ./downloads --pretty
-paper-search run download_paper --arg paperId="10.xxxx/xxxxx" --arg platform=springer --arg savePath="./downloads" --pretty
-paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"10.xxxx/xxxxx","doi":"10.xxxx/xxxxx","title":"Paper title","savePath":"./downloads"}' --pretty
+paper-search download PMC11466435 --platform pmc --pretty
+paper-search run download_paper --arg paperId="10.xxxx/xxxxx" --arg platform=springer --pretty
+paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"10.xxxx/xxxxx","doi":"10.xxxx/xxxxx","title":"Paper title"}' --pretty
 ```
+
+不传 `savePath` 时存到 `DEFAULT_DOWNLOAD_PATH`（见 SKILL.md 的“默认下载文件夹”）；用户这一次指定了别的文件夹才传 `savePath` / `--save-path`。
 
 下载分两种：第 1–6 步是开放下载（默认就有），第 7 步是机构下载（可选扩展，`entitled_access`，默认没装）。`download_with_fallback` 的顺序：
 
@@ -107,13 +109,13 @@ paper-search run download_with_fallback --json-args '{"source":"crossref","paper
 机构下载后端（CARSI）是唯一可选的授权下载后端。除非 `PAPER_SEARCH_CARSI_ENABLED` 恰好是 `true`，它全局关闭；请求里的 `useEntitledAccess` 默认是 `true`，只能关掉这一层，不能绕过全局关闭。单次请求关掉它：
 
 ```bash
-paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"10.xxxx/xxxxx","doi":"10.xxxx/xxxxx","title":"Paper title","savePath":"./downloads","useEntitledAccess":false}' --pretty
+paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"10.xxxx/xxxxx","doi":"10.xxxx/xxxxx","title":"Paper title","useEntitledAccess":false}' --pretty
 ```
 
 Sci-Hub 兜底默认开启。单次请求跳过 Sci-Hub、直接进入可选的机构下载：
 
 ```bash
-paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"10.xxxx/xxxxx","doi":"10.xxxx/xxxxx","title":"Paper title","savePath":"./downloads","useSciHub":false}' --pretty
+paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"10.xxxx/xxxxx","doi":"10.xxxx/xxxxx","title":"Paper title","useSciHub":false}' --pretty
 ```
 
 补充材料用 `content` 选择（`main`、`supplements`、`both`），只经机构下载后端获取；哪些出版社能取见 `publisher-support.md`，细节见 `browser-download.md`。

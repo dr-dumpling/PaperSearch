@@ -154,8 +154,8 @@ export declare const DownloadBatchSchema: z.ZodObject<{
         doi?: string | undefined;
         savePath?: string | undefined;
     }[];
-    content: "main" | "supplements" | "both";
     mode: "two_phase" | "per_item" | "entitled_only";
+    content: "main" | "supplements" | "both";
     useEntitledAccess: boolean;
     useSciHub: boolean;
     savePath?: string | undefined;
@@ -167,8 +167,8 @@ export declare const DownloadBatchSchema: z.ZodObject<{
         doi?: string | undefined;
         savePath?: string | undefined;
     }[];
-    content?: "main" | "supplements" | "both" | undefined;
     mode?: "two_phase" | "per_item" | "entitled_only" | undefined;
+    content?: "main" | "supplements" | "both" | undefined;
     savePath?: string | undefined;
     useEntitledAccess?: boolean | undefined;
     useSciHub?: boolean | undefined;

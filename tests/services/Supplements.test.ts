@@ -6,10 +6,54 @@ import type { DownloadTier } from "../../src/capabilities/pdf-discovery/Download
 import { normalizeDownloadResult } from "../../src/capabilities/pdf-discovery/carsi/CarsiResultNormalizer.js";
 import { selectCarsiBatchSupport } from "../../src/capabilities/pdf-discovery/carsi/CarsiReadiness.js";
 import type { CarsiBackend, CarsiDownloadRequest } from "../../src/capabilities/pdf-discovery/carsi/index.js";
+import { fetchSupplementsOnly } from "../../src/capabilities/pdf-discovery/tiers/entitledAccess.js";
+import { decodeCarsiProgress } from "../../src/capabilities/pdf-discovery/carsi/CarsiProgress.js";
 
 const toolResult = (payload: unknown) => ({ content: [{ type: "text", text: JSON.stringify(payload) }] });
 
 describe("supplementary files", () => {
+  it("reports a completed attachment check without claiming a PDF was saved", () => {
+    expect(decodeCarsiProgress({ message: "carsi.stage:supplements_checked" }, "10.1000/example")).toEqual({
+      identifier: "10.1000/example", stage: "supplements_checked",
+      message: "补充材料检查已完成，正在整理文件结果。",
+    });
+  });
+  it("keeps a confirmed empty discovery through normalization and the supplements-only flow", async () => {
+    const outcome = normalizeDownloadResult(toolResult({
+      success: false, error_type: "supplements_only", supplements: [],
+    }), "10.3389/fbioe.2022.905869", "/out");
+    const backend: CarsiBackend = {
+      probe: async () => ({ state: "available", code: "ok", message: "", missing: [] }),
+      downloadLegalDoi: async () => outcome,
+    };
+    expect(await fetchSupplementsOnly(backend, { identifier: "10.3389/fbioe.2022.905869", outputDir: "/out" })).toEqual([]);
+    for (const invalid of [undefined, [{ status: "saved", file: "/elsewhere/s.pdf" }], [{ status: "invalid" }]]) {
+      const unknown = normalizeDownloadResult(toolResult({
+        success: false, error_type: "source_exception", supplements: invalid,
+      }), "10.1000/unknown", "/out");
+      expect(unknown).not.toHaveProperty("supplements");
+      expect(await fetchSupplementsOnly({ ...backend, downloadLegalDoi: async () => unknown },
+        { identifier: "10.1000/unknown", outputDir: "/out" })).toEqual([
+          { label: "", status: "failed", reason: "source_exception" },
+        ]);
+    }
+  });
+
+  it("does not turn an unrelated backend error or an absent list into a successful empty check", async () => {
+    for (const payload of [
+      { success: false, error_type: "source_exception", supplements: [] },
+      { success: true, file: "/out/main.pdf" },
+    ]) {
+      const outcome = normalizeDownloadResult(toolResult(payload), "10.1000/unknown", "/out");
+      const backend: CarsiBackend = {
+        probe: async () => ({ state: "available", code: "ok", message: "", missing: [] }),
+        downloadLegalDoi: async () => outcome,
+      };
+      expect(await fetchSupplementsOnly(backend, { identifier: "10.1000/unknown", outputDir: "/out" }))
+        .toEqual([{ label: "", status: "failed", reason: payload.success ? "supplements_not_reported" : "source_exception" }]);
+    }
+  });
+
   it("keeps saved files inside the output directory and code-like reasons only", () => {
     const outcome = normalizeDownloadResult(
       toolResult({
@@ -132,7 +176,7 @@ describe("content switch", () => {
     reportBatchProgress: async () => true,
   });
 
-  it("supplements: no main-text stage runs; ok only when a file was saved", async () => {
+  it("supplements: an empty completed check is not counted as a failure", async () => {
     const requests: CarsiDownloadRequest[] = [];
     const tiers = (): DownloadTier[] => [{ id: "oa", stage: "unpaywall", run: async () => { throw new Error("main text must not be fetched"); } }];
     const result = await downloadBatch(
@@ -141,7 +185,10 @@ describe("content switch", () => {
       backendWith(requests), () => {}, tiers,
     );
     expect(result.content).toBe("supplements");
-    expect(result.items.map((i) => [i.status, i.attempts.map((a) => a.stage)])).toEqual([["ok", ["supplements"]], ["error", ["supplements"]]]);
+    expect(result.items.map((i) => [i.status, i.attempts.map((a) => a.stage)])).toEqual([["ok", ["supplements"]], ["ok", ["supplements"]]]);
+    expect(result.succeeded).toBe(2);
+    expect(result.failed).toBe(0);
+    expect(result.items[1].attempts[0].status).toBe("skipped");
     expect(result.items[1].attempts[0].code).toBe("no_supplements");
     expect(requests.map((r) => r.supplements)).toEqual(["only", "only"]);
   });

@@ -1,43 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <!-- PaperSearch app icon: a paper sheet under a magnifier on a blue tile.
+  <!-- PaperSearch app icon: a paper sheet under a magnifier whose rim is a
+       progress ring, flat like the progress capsule.
        Tile follows the macOS icon grid (824 px tile, 100 px margin). -->
-  <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#4f8ff7"/>
-      <stop offset="1" stop-color="#1d4ed8"/>
-    </linearGradient>
-    <linearGradient id="sheet" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#eef3fd"/>
-    </linearGradient>
-    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#fbbf24"/>
-      <stop offset="1" stop-color="#f59e0b"/>
-    </linearGradient>
-    <filter id="lift" x="-25%" y="-25%" width="150%" height="150%">
-      <feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#0b1b4d" flood-opacity="0.32"/>
-    </filter>
-    <clipPath id="lens"><circle cx="618" cy="604" r="118"/></clipPath>
-  </defs>
-  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)"/>
-  <g filter="url(#lift)">
-    <path d="M322 214 H606 L726 334 V786 Q726 810 702 810 H322 Q298 810 298 786 V238 Q298 214 322 214 Z" fill="url(#sheet)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#2563eb"/>
+  <rect x="250" y="214" width="392" height="512" rx="48" fill="#ffffff"/>
+  <g fill="#bfd3fb">
+    <rect x="314" y="300" width="190" height="34" rx="17"/>
+    <rect x="314" y="376" width="264" height="34" rx="17"/>
+    <rect x="314" y="452" width="214" height="34" rx="17"/>
   </g>
-  <path d="M606 214 V310 Q606 334 630 334 H726 Z" fill="#c9d8f8"/>
-  <g fill="#c3d3f6">
-    <rect x="352" y="300" width="196" height="30" rx="15"/>
-    <rect x="352" y="384" width="318" height="30" rx="15"/>
-    <rect x="352" y="458" width="318" height="30" rx="15"/>
-    <rect x="352" y="532" width="250" height="30" rx="15"/>
-    <rect x="352" y="606" width="150" height="30" rx="15"/>
-  </g>
-  <g filter="url(#lift)">
-    <line x1="706" y1="692" x2="800" y2="786" stroke="url(#ring)" stroke-width="68" stroke-linecap="round"/>
-    <circle cx="618" cy="604" r="118" fill="#e3edff"/>
-    <g clip-path="url(#lens)" fill="#3b6fe0">
-      <rect x="470" y="526" width="300" height="44" rx="22"/>
-      <rect x="470" y="618" width="200" height="44" rx="22"/>
-    </g>
-    <circle cx="618" cy="604" r="118" fill="none" stroke="url(#ring)" stroke-width="46"/>
-  </g>
+  <line x1="752" y1="722" x2="826" y2="796" stroke="#f59e0b" stroke-width="66" stroke-linecap="round"/>
+  <circle cx="640" cy="610" r="132" fill="#eaf1ff"/>
+  <circle cx="640" cy="610" r="132" fill="none" stroke="#fde7b0" stroke-width="46"/>
+  <circle cx="640" cy="610" r="132" fill="none" stroke="#f59e0b" stroke-width="46" stroke-linecap="round"
+          stroke-dasharray="600 830" transform="rotate(-90 640 610)"/>
+  <rect x="562" y="590" width="156" height="42" rx="21" fill="#2563eb"/>
 </svg>

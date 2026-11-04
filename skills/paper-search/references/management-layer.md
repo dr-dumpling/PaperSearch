@@ -100,7 +100,7 @@ paper-search setup
 paper-search smoke --mock --pretty
 ```
 
-`setup` 前后都可以用 `doctor` 看能力概况。缺少、不可用或降级的能力会写明用户需要配置哪个 key、email、来源或环境项。
+`setup` 前后都可以用 `doctor` 看能力概况。缺少、不可用或降级的能力会写明用户需要配置哪个 key、email、来源或环境项。第一次配置还要问用户下载的论文默认放到哪个文件夹，设到 `DEFAULT_DOWNLOAD_PATH`，见 SKILL.md 的“默认下载文件夹”。
 
 维护者或本地开发版的更新步骤：
 

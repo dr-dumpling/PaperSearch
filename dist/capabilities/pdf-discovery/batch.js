@@ -1,3 +1,4 @@
+import { resolveDownloadPath } from "../../config/ConfigService.js";
 import { dirname, relative, resolve } from "node:path";
 import { createOutputLayout, lookupOutputMetadata, organizeFiles } from "./outputLayout.js";
 import { randomUUID } from "node:crypto";
@@ -57,14 +58,15 @@ function itemOptions(item, options) {
 }
 /**
  * Supplementary files only: the entitled-access backend visits the article
- * page for them. ok when at least one file was saved. Reported to the run
+ * page for them. An empty completed check is also ok; it is not a failed download. Reported to the run
  * ledger through ``request.onStage`` as the "supplements" stage.
  */
 export async function downloadSupplementsOnly(request, backend, searchers, paperDir) {
+    request = { ...request, savePath: resolveDownloadPath(request.savePath) };
     const startedAt = Date.now();
     const metadata = searchers ? await lookupOutputMetadata(searchers, request.doi ? "crossref" : request.source, request.doi || request.paperId) : {};
-    const layout = createOutputLayout(request.savePath || "./downloads", request.doi || request.paperId, { ...metadata, title: request.title || metadata.title });
-    if (paperDir && !relative(resolve(request.savePath || "./downloads", "papers"), paperDir).startsWith(".."))
+    const layout = createOutputLayout(request.savePath, request.doi || request.paperId, { ...metadata, title: request.title || metadata.title });
+    if (paperDir && !relative(resolve(request.savePath, "papers"), paperDir).startsWith(".."))
         layout.paperDir = paperDir;
     let trace;
     const files = await fetchSupplementsOnly(backend, {
@@ -81,17 +83,21 @@ export async function downloadSupplementsOnly(request, backend, searchers, paper
         filingFailed = true;
     } // Preserve saved files and report filing separately below.
     const saved = files?.filter((f) => f.status === "saved").length ?? 0;
+    const noneListed = files?.length === 0;
     const attempt = files === undefined
         ? { stage: "supplements", status: "skipped", message: "No entitled-access backend for supplementary files." }
-        : {
-            stage: "supplements",
-            status: saved ? "ok" : "error",
-            message: `${saved}/${files.length} supplementary files saved.`,
-            ...(saved ? {} : { code: files.length ? "supplements_failed" : "no_supplements" }),
-        };
+        : noneListed
+            ? { stage: "supplements", status: "skipped", code: "no_supplements",
+                message: "Article page checked; no supplementary files were listed." }
+            : {
+                stage: "supplements",
+                status: saved ? "ok" : "error",
+                message: `${saved}/${files.length} supplementary files saved.`,
+                ...(saved ? {} : { code: "supplements_failed" }),
+            };
     request.onStage?.({ ...attempt, ...(trace ? { trace } : {}), startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt });
     return {
-        status: saved ? "ok" : "error",
+        status: saved || noneListed ? "ok" : "error",
         attempts: [attempt, ...(filingFailed ? [{ stage: "output_layout", status: "error",
                     code: "output_layout_failed", message: "File organization failed; use the returned file paths." }] : [])],
         ...(files ? { supplements: files } : {}),
@@ -216,6 +222,7 @@ function summary(mode, batchId, items, extra = {}) {
 }
 /** Download a list serially; one batch id ties it to one progress window. */
 export async function downloadBatch(searchers, options, backend, log = (line) => process.stderr.write(`${line}\n`), createTiers = createDefaultDownloadTiers, pause = wait) {
+    options = { ...options, savePath: resolveDownloadPath(options.savePath) };
     const result = options.content === "supplements"
         ? await downloadSupplementsBatch(options, backend, log, searchers)
         : options.mode === "per_item"

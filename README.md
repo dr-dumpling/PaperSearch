@@ -63,7 +63,7 @@ Kimi Code、Qwen Code 使用 `--targets agents`，将 Skill 安装到共享目�
 也可以把下面这段话发给你的 AI 工具，让它帮你装：
 
 ```text
-请帮我安装 PaperSearch：运行 npm install -g papersearch，再按 README 的 Agent Skill 说明为你自己安装随包 Skill（Kimi Code、Qwen Code 用 agents，Claude Code 用 claude，Codex 用 codex，Cursor 用 cursor；TRAE、CodeBuddy 使用各自的 Skill 目录），最后运行 paper-search doctor --format text，告诉我哪些功能能用、还缺哪些 key。API key 我会自己在终端运行 paper-search setup 输入，不要让我发到聊天里。
+请帮我安装 PaperSearch：运行 npm install -g papersearch，再按 README 的 Agent Skill 说明为你自己安装随包 Skill（Kimi Code、Qwen Code 用 agents，Claude Code 用 claude，Codex 用 codex，Cursor 用 cursor；TRAE、CodeBuddy 使用各自的 Skill 目录），最后运行 paper-search doctor --format text，告诉我哪些功能能用、还缺哪些 key；再问我下载的论文默认放在哪个文件夹，用 paper-search config set DEFAULT_DOWNLOAD_PATH 保存。API key 我会自己在终端运行 paper-search setup 输入，不要让我发到聊天里。
 ```
 
 **从旧包 `paper-search-cli` 升级**：先运行 `npm uninstall -g paper-search-cli`，再 `npm install -g papersearch`。两个包提供同一个 `paper-search` 命令，不能同时装；配置、Skill、学校登录和下载记录都会保留。
@@ -92,10 +92,10 @@ paper-search journal-metrics "Nature" "BMJ" --pretty
 paper-search run search_semantic_snippets --arg query="propensity score matching" --arg limit=3 --pretty
 
 # 下载一篇
-paper-search download "<DOI>" --platform crossref --save-path ./downloads
+paper-search download "<DOI>" --platform crossref
 
 # 批量下载正文和补充材料（只要正文去掉 content；只要补充材料用 "supplements"）
-paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>"},{"doi":"<DOI-2>"}],"savePath":"./downloads","content":"both"}'
+paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>"},{"doi":"<DOI-2>"}],"content":"both"}'
 
 # 没下到的篇目和原因
 paper-search failures --format text
@@ -152,7 +152,9 @@ paper-search carsi status --format text
 - 安装时会问你的学校（CARSI 成员学校，中文名、英文名或域名都可以），并下载专用浏览器 Camoufox，共约 3 GB；macOS 上 `--browser ego` 改用 ego lite，约 0.5 GB。`--skip-school` 可以以后再选学校。
 - 目前用 CARSI（中国高校身份联盟）登录学校；出版社的机构列表里没有 CARSI 或你的学校时，程序会立即说明。
 - 自动过验证：程序自动定位并点击验证框，网站放行后继续下载。每次验证等待最多尝试 3 次，两次至少间隔 3 秒；自动阶段结束后仍未放行时，进度窗口会提示人工接管。
-- 下载时会出现进度窗口：可以跳过本篇、标记本刊或出版社无权限、终止整个任务，右上角齿轮可以调整等待时间。停在学校登录页默认最多等 3 分钟，停在其他页面（人机验证、出版社页面等）默认 1 分钟后结束这一篇。
+- 下载时屏幕角落会出现进度胶囊：显示进度、正在下正文还是附录、哪家出版社；需要你登录或验证时变成琥珀色并发系统通知。鼠标指上去展开，可以跳过本篇、标记本刊或出版社无权限、终止整个任务、报告问题，右上角齿轮调整等待时间和默认下载文件夹，“–”最小化。停在学校登录页默认最多等 3 分钟，停在其他页面（人机验证、出版社页面等）默认 1 分钟后结束这一篇。
+- 默认下载浏览器在后台继续运行，启动和跳转时不主动抢前台；需要登录或验证时由胶囊提示，你再切换到浏览器处理。完成检查但页面未列出附件会显示“已检查，页面未列出补充材料”，不计为失败；登录未完成、暂不支持发现附件或下载失败会分别说明。
+- 默认下载文件夹可在胶囊设置中选择或输入，也可运行 `paper-search config set DEFAULT_DOWNLOAD_PATH "/完整路径/论文"`。保存后用于新任务；`--save-path` 或 `savePath` 可为单次任务指定其他目录，正在运行的批次保持原目录。
 - 能取哪些出版社的正文和补充材料，见 [出版社支持表](skills/paper-search/references/publisher-support.md)。正文和补充材料都实测取得的有 Elsevier、Wiley、Springer Nature、OUP、Wolters Kluwer、Taylor & Francis、Sage、ACS、NEJM、ASCE、Dove 等，另支持 MDPI、Frontiers 的补充材料和论文关联的 Figshare 附件；IEEE、Thieme 等目前只取正文；表里没有的网站按通用规则尝试。
 - `paper-search carsi update` 在 PaperSearch 升级后更新扩展，`paper-search carsi uninstall` 卸载（默认保留浏览器和学校配置）。
 - Windows：PowerShell 拦住 `npm.ps1` 时改用 `npm.cmd` 或命令提示符；下载要在桌面会话里运行，经 SSH 或系统服务启动时浏览器窗口打不开。
@@ -199,6 +201,7 @@ paper-search config set SEMANTIC_SCHOLAR_API_KEY <你的 key>
 
 | 配置项 | 用途 | 什么时候配置 |
 |---|---|---|
+| `DEFAULT_DOWNLOAD_PATH` | 下载的论文默认存放的文件夹；不设置时存到命令当前目录下的 `./downloads` | 第一次配置时；也可以在进度胶囊的设置里改 |
 | `SEMANTIC_SCHOLAR_API_KEY` | 正文片段检索，更稳定的 Semantic Scholar 请求 | 要查方法细节，或经常用 Semantic Scholar |
 | `UNPAYWALL_EMAIL` | 按 DOI 找开放获取 PDF | 推荐配置；填邮箱即可 |
 | `CROSSREF_MAILTO` | Crossref 优先通道 | 长任务或高频检索 |

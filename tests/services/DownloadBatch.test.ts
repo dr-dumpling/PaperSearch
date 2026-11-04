@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "@jest/globals";
 import { downloadBatch } from "../../src/capabilities/pdf-discovery/batch.js";
@@ -53,6 +54,39 @@ function fakeBackend(updates: CarsiBatchUpdate[]): CarsiBackend {
 }
 
 describe("serial download batch", () => {
+  it("freezes the configured directory per batch and reads GUI edits for the next batch", async () => {
+    const root = mkdtempSync(join(tmpdir(), "capsule-download-path-"));
+    const oldFile = process.env.PAPER_SEARCH_CONFIG_FILE;
+    const oldPath = process.env.DEFAULT_DOWNLOAD_PATH;
+    const config = join(root, "config.json");
+    const first = join(root, "first");
+    const second = join(root, "second");
+    const seen: string[] = [];
+    try {
+      process.env.PAPER_SEARCH_CONFIG_FILE = config;
+      delete process.env.DEFAULT_DOWNLOAD_PATH;
+      writeFileSync(config, JSON.stringify({ DEFAULT_DOWNLOAD_PATH: first }));
+      const tiers = (): DownloadTier[] => [{ id: "fixture", stage: "unpaywall", run: async (context) => {
+        seen.push(context.savePath);
+        writeFileSync(config, JSON.stringify({ DEFAULT_DOWNLOAD_PATH: second }));
+        return { status: "skipped", message: "fixture" };
+      }}];
+      await downloadBatch({} as any, { mode: "per_item", items: [{ doi: "10.1000/a" }, { doi: "10.1000/b" }] },
+        undefined, () => {}, tiers);
+      expect(seen).toHaveLength(2);
+      expect(seen.every(path => path.startsWith(join(first, "papers")))).toBe(true);
+      await downloadBatch({} as any, { mode: "per_item", items: [{ doi: "10.1000/c" }] },
+        undefined, () => {}, tiers);
+      expect(seen[2]).toContain(join(second, "papers"));
+    } finally {
+      if (oldFile === undefined) delete process.env.PAPER_SEARCH_CONFIG_FILE;
+      else process.env.PAPER_SEARCH_CONFIG_FILE = oldFile;
+      if (oldPath === undefined) delete process.env.DEFAULT_DOWNLOAD_PATH;
+      else process.env.DEFAULT_DOWNLOAD_PATH = oldPath;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("per_item: passes each item its batch position and keeps the window's totals right", async () => {
     const contexts: DownloadTierContext[] = [];
     const updates: CarsiBatchUpdate[] = [];

@@ -110,7 +110,8 @@ carsi/paper_search_carsi/
 ├── browser/            浏览器启动、登录状态保存、验证识别与点击、卡死保护
 ├── publishers/         出版社配置（builtin/*.json）和通用网站规则
 ├── adapters/           出版社适配器
-└── progress_bar.py     进度窗口
+├── progress_capsule.py 进度胶囊（页面在 assets/capsule.html）
+└── progress_bar.py     旧版进度窗口（胶囊用不了时）
 skills/paper-search/    随包 Skill 和参考文件
 tests/、carsi/tests/    两侧的自动化测试
 ```

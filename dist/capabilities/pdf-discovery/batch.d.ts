@@ -65,7 +65,7 @@ export declare function downloadBatchItem(searchers: Searchers, options: Downloa
 }, tiers: DownloadTier[], backend?: CarsiBackend): Promise<DownloadWithFallbackResult>;
 /**
  * Supplementary files only: the entitled-access backend visits the article
- * page for them. ok when at least one file was saved. Reported to the run
+ * page for them. An empty completed check is also ok; it is not a failed download. Reported to the run
  * ledger through ``request.onStage`` as the "supplements" stage.
  */
 export declare function downloadSupplementsOnly(request: DownloadWithFallbackOptions, backend: CarsiBackend | undefined, searchers?: Searchers, paperDir?: string): Promise<DownloadWithFallbackResult>;

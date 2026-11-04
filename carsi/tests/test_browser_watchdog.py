@@ -193,6 +193,26 @@ class BridgeTests(unittest.TestCase):
                                             "detail": "RuntimeError: ego relay closed the connection"}])
         self.assertIn("RuntimeError", saved["traceback"])
 
+    def test_startup_watchdog_keeps_its_specific_failure_class(self):
+        import json
+        import tempfile
+        for error, code in ((watchdog.BrowserUnresponsive("browser launch stalled"), "browser_unresponsive"),
+                            (watchdog.BrowserOperationTimeout("launch budget"), "browser_operation_timeout")):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as tmp:
+                downloader = MagicMock()
+                downloader._launch_context.side_effect = error
+                with patch("paper_search_carsi.engine.batch.PublisherBatchDownloader", return_value=downloader), \
+                        patch("paper_search_carsi.browser.backend.is_available", return_value=True):
+                    out = bridge._try_browser_batch_download("10.1175/jcli-d-22-0924.1", Path(tmp) / "x.pdf",
+                                                             {"supplements": "with"}, get_publisher_profile("ams"))
+                self.assertEqual((out["error_type"], out["artifacts"]["state"]), (code, code))
+                self.assertEqual(out["action"], "review_browser")
+                saved = json.loads(Path(out["artifacts"]["diagnostic"]).read_text())
+                self.assertEqual((saved["state"], saved["reason"]), (code, code))
+                self.assertIn(type(error).__name__, saved["traceback"])
+                downloader.fetch_one.assert_not_called()
+                downloader.collect_supplements.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

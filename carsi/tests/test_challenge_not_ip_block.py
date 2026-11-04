@@ -81,6 +81,7 @@ class SuspectBlockResolutionTests(unittest.TestCase):
         ticks = []
         def user_completes(ms):
             ticks.append(ms)
+            self.assertTrue(self.attention)  # capsule requests intervention without foregrounding
             if len(ticks) == 2:
                 self.pdf_tab.url = "https://www.sciencedirect.com/science/article/pii/S1"  # verification done, tab moved on
         self.article.wait_for_timeout.side_effect = user_completes
@@ -88,7 +89,7 @@ class SuspectBlockResolutionTests(unittest.TestCase):
         self.assertTrue(self.d._resolve_suspect_block(self.article, self.result, self.captured))
         self.assertIsNone(self.captured["block_reason"])
         self.assertEqual(len(ticks), 2)
-        self.pdf_tab.bring_to_front.assert_called_once()
+        self.pdf_tab.bring_to_front.assert_not_called()
         states = [e["state"] for e in self.result.events]
         self.assertIn("pdf_step_unknown_wait", states)
         self.assertIn("challenge_resolved", states)

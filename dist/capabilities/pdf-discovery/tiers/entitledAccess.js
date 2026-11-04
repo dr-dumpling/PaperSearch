@@ -111,11 +111,12 @@ export async function fetchSupplementsOnly(backend, request, onTrace) {
             return undefined;
         if (outcome.trace)
             onTrace?.({ ...outcome.trace });
-        if (outcome.kind === "attempt_error" && !outcome.supplements) {
+        if (outcome.kind === "attempt_error" && (!outcome.supplements ||
+            (outcome.supplements.length === 0 && outcome.code !== "supplements_only"))) {
             const { code } = carsiAttemptDetails(outcome.code);
             return [{ label: "", status: code === "batch_stopped" || code === "user_skipped" ? "skipped" : "failed", reason: code }];
         }
-        return outcome.supplements ?? [];
+        return outcome.supplements ?? [{ label: "", status: "failed", reason: "supplements_not_reported" }];
     }
     catch (error) {
         return [

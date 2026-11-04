@@ -1,3 +1,4 @@
+import { getConfigPath } from "../../../config/ConfigService.js";
 import { mkdirSync, openSync, closeSync, writeFileSync, unlinkSync, existsSync, readFileSync, readdirSync, readlinkSync, } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -379,6 +380,7 @@ export class CarsiMcpClient {
             args: this.args,
             env: {
                 CARSI_DATA_DIR: this.profileDir,
+                PAPER_SEARCH_CONFIG_FILE: getConfigPath(),
             },
             stderr: "pipe",
         }, startupDeadline, signal);

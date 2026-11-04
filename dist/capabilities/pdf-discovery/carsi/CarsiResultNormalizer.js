@@ -66,6 +66,10 @@ export function normalizeDownloadResult(result, identifier, outputDir, diagnosti
 function backendSupplements(value, outputDir) {
     if (!Array.isArray(value))
         return undefined;
+    // An explicit empty list means discovery completed without attachments.
+    // A malformed/nonempty list that is entirely rejected must remain unknown.
+    if (value.length === 0)
+        return [];
     const files = [];
     for (const raw of value.slice(0, 200)) {
         if (!raw || typeof raw !== "object" || Array.isArray(raw))

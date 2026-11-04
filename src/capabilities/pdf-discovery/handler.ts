@@ -1,3 +1,4 @@
+import { resolveDownloadPath } from "../../config/ConfigService.js";
 import { dirname } from "node:path";
 import type { Searchers } from "../../core/searchers.js";
 import { resolvePlatformId } from "../../registry/platformMetadata.js";
@@ -35,6 +36,7 @@ async function recordedDownload(
   options: DownloadWithFallbackOptions,
   download: (options: DownloadWithFallbackOptions) => Promise<DownloadWithFallbackResult>,
 ): Promise<DownloadWithFallbackResult> {
+  options = { ...options, savePath: resolveDownloadPath(options.savePath) };
   const ledger = RunLedger.open({
     kind: "download",
     total: 1,
@@ -65,7 +67,7 @@ export async function handleDownloadPaper(
   carsiBackend?: CarsiBackend,
 ) {
   const { paperId, platform, savePath, useEntitledAccess } = args;
-  const resolvedSavePath = savePath || "./downloads";
+  const resolvedSavePath = resolveDownloadPath(savePath);
   const resolvedPlatform = resolvePlatformId(platform);
 
   const result = await recordedDownload(

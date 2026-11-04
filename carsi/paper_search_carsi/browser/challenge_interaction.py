@@ -111,6 +111,20 @@ def click_checkbox(page: Any, *, timeout_ms: int, checkpoint: Callable[[], None]
                 target = element
                 position = {"x": 28, "y": box["height"] / 2}
             checkpoint()
+            remaining_ms = int((until - time.monotonic()) * 1000)
+            if remaining_ms <= 0:
+                return "unavailable"
+            if position:
+                # A covered/moving widget has not received an input action.
+                # Keep its readiness until native actionability checks pass.
+                # Trial clicks on an iframe can reach its child document in
+                # Playwright. Hover checks visibility/stability/hit targeting
+                # without ever dispatching a checkbox click.
+                target.hover(timeout=remaining_ms, position=position, trial=True)
+                checkpoint()
+                remaining_ms = int((until - time.monotonic()) * 1000)
+                if remaining_ms <= 0:
+                    return "unavailable"
             # One readiness signal permits only one closed-shadow click. Wait
             # for a fresh interactiveBegin before retrying; otherwise a stale
             # signal could toggle an already checked or processing widget.
@@ -121,7 +135,10 @@ def click_checkbox(page: Any, *, timeout_ms: int, checkpoint: Callable[[], None]
             remaining_ms = int((until - time.monotonic()) * 1000)
             if remaining_ms <= 0:
                 return "unavailable"
-            target.click(timeout=remaining_ms, **({"position": position} if position else {}))
+            # The engine observes the navigation separately. A dispatched click
+            # must not be reported as unavailable while waiting for that load.
+            target.click(timeout=remaining_ms, no_wait_after=True,
+                         **({"position": position} if position else {}))
             return "clicked"
         except TimeoutError:
             return "unavailable"  # hidden/covered/stale; no repeated forced clicks

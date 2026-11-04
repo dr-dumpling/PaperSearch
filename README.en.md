@@ -63,7 +63,7 @@ For Kimi Code and Qwen Code, use `--targets agents` to install into the shared d
 You can also send this to your AI tool and let it do the install:
 
 ```text
-Please install PaperSearch for me: run npm install -g papersearch, then install the bundled Skill for yourself using the README's Agent Skill instructions (agents for Kimi Code and Qwen Code, claude for Claude Code, codex for Codex, cursor for Cursor; TRAE and CodeBuddy use their own Skill directories), then run paper-search doctor --format text and tell me which features work and which keys are missing. I will enter API keys myself with paper-search setup in a terminal; do not ask me to paste them into the chat.
+Please install PaperSearch for me: run npm install -g papersearch, then install the bundled Skill for yourself using the README's Agent Skill instructions (agents for Kimi Code and Qwen Code, claude for Claude Code, codex for Codex, cursor for Cursor; TRAE and CodeBuddy use their own Skill directories), then run paper-search doctor --format text and tell me which features work and which keys are missing; then ask me which folder downloaded papers should go to by default and save it with paper-search config set DEFAULT_DOWNLOAD_PATH. I will enter API keys myself with paper-search setup in a terminal; do not ask me to paste them into the chat.
 ```
 
 **Coming from the old package `paper-search-cli`**: run `npm uninstall -g paper-search-cli`, then `npm install -g papersearch`. Both provide the same `paper-search` command and cannot be installed together; your configuration, Skill, school login and download records stay.
@@ -92,10 +92,10 @@ paper-search journal-metrics "Nature" "BMJ" --pretty
 paper-search run search_semantic_snippets --arg query="propensity score matching" --arg limit=3 --pretty
 
 # Download one paper
-paper-search download "<DOI>" --platform crossref --save-path ./downloads
+paper-search download "<DOI>" --platform crossref
 
 # Download main texts and supplementary files in a batch (omit content for main text only; "supplements" for supplementary files only)
-paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>"},{"doi":"<DOI-2>"}],"savePath":"./downloads","content":"both"}'
+paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>"},{"doi":"<DOI-2>"}],"content":"both"}'
 
 # Papers not downloaded, and why
 paper-search failures --format text
@@ -152,7 +152,9 @@ paper-search carsi status --format text
 - Installing asks for your school (a CARSI member school, by Chinese name, English name or domain) and downloads the dedicated Camoufox browser, about 3 GB in all; on macOS, `--browser ego` uses ego lite instead, about 0.5 GB. `--skip-school` leaves the school for later.
 - Schools sign in through CARSI (the Chinese university identity federation). When a publisher's institution list has no CARSI or no entry for your school, the program says so at once.
 - Automatic verification: verification checkboxes are located and clicked automatically, and downloads resume when the site grants access. Each verification wait allows up to three attempts, at least three seconds apart. If verification remains unresolved after the automatic phase, the progress window prompts for manual action.
-- Downloads show a progress window: skip this paper, mark the journal or publisher as no access, stop the whole task, or change how long waits last (the gear at the top right). On the school's login page a paper waits up to 3 minutes by default; anywhere else (human checks, publisher pages, ...) it ends after 1 minute.
+- Downloads show a small progress capsule in a corner of the screen: progress, whether the main text or the supplementary files are being fetched, and the publisher; it turns amber and raises a system notification when you need to sign in or complete a verification. Hover to open it: skip this paper, mark the journal or publisher as no access, stop the whole task, report a problem, change wait times and the default download folder (the gear at the top right), or minimize it (–). On the school's login page a paper waits up to 3 minutes by default; anywhere else (human checks, publisher pages, ...) it ends after 1 minute.
+- The default download browser keeps running in the background without requesting foreground focus on startup or navigation. The capsule alerts you when intervention is needed; switch to the browser when ready. A completed check with no listed supplementary files is not a failure. Incomplete sign-in, unsupported discovery, and download failures remain distinct results.
+- Choose or type the default download folder in capsule settings, or run `paper-search config set DEFAULT_DOWNLOAD_PATH "/absolute/path/papers"`. New tasks use the saved folder; `--save-path` or `savePath` overrides it for one task. A running batch keeps its original folder.
 - Which publishers' main texts and supplementary files it can fetch is in the [publisher support table](skills/paper-search/references/publisher-support.md) (Chinese). Both have been fetched from Elsevier, Wiley, Springer Nature, OUP, Wolters Kluwer, Taylor & Francis, Sage, ACS, NEJM, ASCE, Dove and others; supplementary files from MDPI and Frontiers and Figshare files linked to a paper are also supported; IEEE, Thieme and others give the main text only; sites not in the table are tried with the shared rules.
 - `paper-search carsi update` updates the extension after a PaperSearch upgrade; `paper-search carsi uninstall` removes it (keeping the browser and the school settings by default).
 - Windows: if PowerShell blocks `npm.ps1`, use `npm.cmd` or Command Prompt; downloads must run in a desktop session, as a browser window cannot open from SSH or a system service.
@@ -199,6 +201,7 @@ The configuration file is `~/.config/paper-search-cli/config.json` (mode `0600`;
 
 | Key | Use | When |
 |---|---|---|
+| `DEFAULT_DOWNLOAD_PATH` | Folder downloaded papers go to by default; unset, they go to `./downloads` under the command's current directory | At first setup; also in the progress capsule's settings |
 | `SEMANTIC_SCHOLAR_API_KEY` | Body snippet search; steadier Semantic Scholar requests | For Methods details, or frequent Semantic Scholar use |
 | `UNPAYWALL_EMAIL` | Open-access PDFs by DOI | Recommended; an email is enough |
 | `CROSSREF_MAILTO` | Crossref's polite pool | Long or frequent searches |

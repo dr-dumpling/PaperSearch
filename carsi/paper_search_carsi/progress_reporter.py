@@ -33,7 +33,7 @@ _STAGE_LISTENER: ContextVar[tuple[str, Callable[[str], None]] | None] = ContextV
 STAGES = frozenset({
     "starting", "opening_article", "waiting_login", "waiting_verification",
     "checking_access", "fetching_pdf", "pdf_captured",
-    "saved_pending_verification", "route_failed", "failed", "cancelled", "interrupted", "unknown",
+    "saved_pending_verification", "supplements_checked", "route_failed", "failed", "cancelled", "interrupted", "unknown",
 })
 _IDENTITY_FIELDS = frozenset({"schema_version", "run_id", "revision", "owner_pid"})
 
@@ -68,7 +68,7 @@ def _atomic_write(payload: dict[str, Any]) -> None:
         raise
 
 
-def _pid_alive(pid: int) -> bool:
+def _pid_alive(pid: int, *, created_before: float | None = None) -> bool:
     """Windows-safe liveness probe. NEVER use os.kill(pid, 0) on Windows —
     any signal value there calls TerminateProcess and would murder the bar."""
     if pid <= 0:
@@ -78,14 +78,36 @@ def _pid_alive(pid: int) -> bool:
             os.kill(pid, 0)
             return True
         import ctypes
+        from ctypes import wintypes
 
-        SYNCHRONIZE = 0x00100000
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.OpenProcess(SYNCHRONIZE, False, int(pid))
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel32.WaitForSingleObject.restype = wintypes.DWORD
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        access = 0x00100000 | (0x1000 if created_before is not None else 0)
+        handle = kernel32.OpenProcess(access, False, int(pid))
         if not handle:
             return False
-        kernel32.CloseHandle(int(handle))
-        return True
+        try:
+            # A terminated process can remain openable while another process
+            # retains a handle. Only WAIT_TIMEOUT means it is still running.
+            if kernel32.WaitForSingleObject(handle, 0) != 258:
+                return False
+            if created_before is not None:
+                kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE, *([ctypes.POINTER(wintypes.FILETIME)] * 4)]
+                kernel32.GetProcessTimes.restype = wintypes.BOOL
+                times = [wintypes.FILETIME() for _ in range(4)]
+                if not kernel32.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+                    return False
+                created = ((times[0].dwHighDateTime << 32) | times[0].dwLowDateTime) / 10_000_000 - 11644473600
+                if created > created_before:
+                    return False  # the old window's PID was reused
+            return True
+        finally:
+            kernel32.CloseHandle(handle)
     except Exception:
         return False
 
@@ -114,7 +136,7 @@ def ensure_progress_bar(config: dict[str, Any] | None = None) -> None:
     try:
         if lock.exists():
             pid = int(lock.read_text(encoding="utf-8").strip() or 0)
-            if _pid_alive(pid):
+            if _pid_alive(pid, created_before=lock.stat().st_mtime + 1):
                 return  # a window is already up
             # else: stale lock (window died) - reclaim below
     except (ValueError, OSError):
@@ -126,7 +148,7 @@ def ensure_progress_bar(config: dict[str, Any] | None = None) -> None:
         kwargs = {"creationflags": 0x08000000} if os.name == "nt" else {}
         env = {**os.environ, "CARSI_PROGRESS_BAR_CHILD": "1"}
         subprocess.Popen(
-            [sys.executable, "-m", "paper_search_carsi.progress_bar"],
+            [sys.executable, "-m", "paper_search_carsi.progress_capsule"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
             env=env, start_new_session=(os.name != "nt"), **kwargs,
         )
@@ -278,20 +300,30 @@ def tracked_download(current: str, output_dir: Any = None, batch: BatchContext |
                     _STATE.update(awaiting_next=True, phase=str(outcome["paused"]))
                     _write_state()
         else:
-            _finish_download(outcome, current, batch)
+            _finish_download(outcome, current, batch, content)
 
 
-def _finish_download(outcome: dict[str, Any], current: str, batch: BatchContext | None) -> None:
+def _finish_download(outcome: dict[str, Any], current: str, batch: BatchContext | None,
+                     content: str = "main") -> None:
     """Count the download and show how it ended (end of ``tracked_download``)."""
     succeeded = (outcome.get("result") or {}).get("success") is True
     phase = "PDF 已保存，待内容核验" if succeeded else outcome.get("failure_phase", "下载未完成")
-    report_stage("saved_pending_verification" if succeeded else "failed", current=current)
+    stage = "saved_pending_verification" if succeeded else "failed"
+    files = (outcome.get("result") or {}).get("supplements")
+    checked = (content == "supplements" and isinstance(files, list)
+               and (files or succeeded or (outcome.get("result") or {}).get("error_type") == "supplements_only")
+               and all(isinstance(f, dict) and f.get("status") == "saved" for f in files))
+    if checked:
+        succeeded = True  # A completed empty check is not a failed download.
+        stage = "supplements_checked"
+        phase = f"补充材料已保存 {len(files)} 个" if files else "已检查，页面未列出补充材料"
+    report_stage(stage, current=current)
     advance(succeeded, current=current, phase=phase)
     if batch is not None and batch.index < batch.total:
         with _LOCK:
             if _STATE:
                 _STATE.update(awaiting_next=True,
-                              phase=f"第 {batch.index}/{batch.total} 篇{'已保存' if succeeded else '未完成'}，等待下一篇")
+                              phase=f"第 {batch.index}/{batch.total} 篇{'已检查' if checked else '已保存' if succeeded else '未完成'}，等待下一篇")
                 _write_state()
     else:
         finish()
@@ -425,8 +457,10 @@ def advance(ok: bool, current: str = "", phase: str = "") -> None:
         _write_state()
 
 
-def set_attention(key: str, message: str, *, current: str = "", phase: str = "") -> None:
-    """Show a manual-action reminder without stopping other workers."""
+def set_attention(key: str, message: str, *, current: str = "", phase: str = "",
+                  deadline: float | None = None) -> None:
+    """Show a manual-action reminder without stopping other workers; ``deadline``
+    (epoch seconds) is when the wait ends, for the window's countdown."""
     with _LOCK:
         if not _STATE:
             return
@@ -440,11 +474,13 @@ def set_attention(key: str, message: str, *, current: str = "", phase: str = "")
             "phase": str(phase or ""),
             "since": datetime.now().isoformat(timespec="seconds"),
         }
+        if deadline is not None:
+            attention[str(key)]["deadline"] = float(deadline)
         _write_state()
 
 
 def set_output_dir(path) -> None:
-    """Record the output folder for task diagnostics; omit it from the widget."""
+    """Record the actual task folder for diagnostics and the window folder button."""
     with _LOCK:
         if not _STATE:
             return

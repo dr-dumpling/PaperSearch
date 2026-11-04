@@ -10,6 +10,8 @@ export declare function getConfigPath(): string;
 export declare function readUserConfig(): Record<string, string>;
 export declare function isConfigTrue(key: ConfigKey): boolean;
 export declare function getConfigValue(key: ConfigKey): string;
+/** Resolve once at task start; GUI edits share the CLI config, not a second preference. */
+export declare function resolveDownloadPath(explicit?: string): string;
 export declare function writeUserConfig(config: Record<string, string>): string;
 export declare function initUserConfig(force?: boolean): {
     path: string;

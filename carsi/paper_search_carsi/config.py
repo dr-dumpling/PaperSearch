@@ -100,6 +100,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "fast_retry_delay_sec": 15,
     # 任务启动时自动弹出悬浮进度条（独立进程，已有实例则不重复弹出）。
     "progress_bar_auto": True,
+    # 需要登录学校或完成验证时，除了进度胶囊变色，再发一条系统通知；进度窗口的设置里可以关。
+    "progress_notify": True,
     # 每篇文章在学校登录页等待用户输入的总时长上限，秒；从第一次等待算起。
     "browser_login_timeout": 180,
     # 不在学校登录页时（出版社页面、选机构页、人机验证、取 PDF 时等待处理）最多等多久，秒；

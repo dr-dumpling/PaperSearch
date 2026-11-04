@@ -254,11 +254,13 @@ def test_retry_that_clears_verification_stops_clicking(wait_case, monkeypatch, e
 
 
 @pytest.mark.parametrize("entry", ["article", "pdf"])
-def test_a_widget_becoming_interactive_after_fourteen_seconds_is_still_handled(wait_case, monkeypatch, entry):
+@pytest.mark.parametrize("ready_after", [14, 25, 50])
+def test_late_widget_is_handled_within_the_existing_wait(wait_case, monkeypatch, entry, ready_after):
     c = wait_case
+    c.d.config["browser_page_wait_timeout"] = 60
     captured = {"suspect_block": "403 https://journal.example/pdf", "bytes": None, "block_reason": None}
     def click(*args, **kwargs):
-        if c.clock[0] < 1014:
+        if c.clock[0] < 1000 + ready_after:
             return "absent"
         c.d._challenge_shell.return_value = c.d._is_challenge_page.return_value = False
         captured["bytes"] = b"%PDF-fixture"
@@ -268,7 +270,7 @@ def test_a_widget_becoming_interactive_after_fourteen_seconds_is_still_handled(w
         assert c.d._wait_for_challenge(c.page, c.result)
     else:
         assert c.d._resolve_suspect_block(c.page, c.result, captured)
-    assert c.clock[0] == 1015
+    assert c.clock[0] == 1001 + ready_after
     c.attention.assert_not_called()
 
 

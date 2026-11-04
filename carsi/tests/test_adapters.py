@@ -47,6 +47,30 @@ class SelectionTests(unittest.TestCase):
 
 
 class GenericPublisherTests(unittest.TestCase):
+    def test_optica_pdf_uses_article_uri_and_excludes_html_and_figures(self):
+        from paper_search_carsi.engine.router import build_pdf_candidates, is_pdf_candidate_url
+        profile = get_publisher_profile("optica")
+        source = "https://opg.optica.org/oe/fulltext.cfm?uri=oe-32-4-5582"
+        pdf = "https://opg.optica.org/oe/viewmedia.cfm?uri=oe-32-4-5582&seq=0"
+        compressed = pdf + "&compressed=1"
+        wrong = pdf.replace("5582", "5583")
+        excluded = [pdf + "&html=true", pdf + "&figure=oe-32-4-5582-g001&imagetype=pdf"]
+        for url in excluded:
+            with self.subTest(url=url):
+                self.assertFalse(is_pdf_candidate_url(profile, url))
+        candidates = build_pdf_candidates(profile, "10.1364/oe.506519", source_url=source,
+                                          discovered_urls=[*excluded, wrong, compressed])
+        self.assertEqual(candidates[0], pdf)
+        self.assertIn(compressed, candidates)
+        for url in [*excluded, wrong]:
+            self.assertNotIn(url, candidates)
+        adapter = PublisherBatchDownloader({}, profile=profile).adapter
+        self.assertEqual(adapter.profile_pdf_candidates("10.1364/ol.500000",
+            "https://opg.optica.org/ol/abstract.cfm?uri=ol-49-1-100"),
+            ["https://opg.optica.org/ol/viewmedia.cfm?uri=ol-49-1-100&seq=0"])
+        self.assertEqual(adapter.profile_pdf_candidates("10.1364/oe.506519",
+            source.replace("opg.optica.org", "example.org")), [])
+
     def test_publishers_without_adapter_keep_generic_behaviour(self):
         d = PublisherBatchDownloader({}, profile=get_publisher_profile("aip"))
         self.assertIs(type(d.adapter), PublisherAdapter)
@@ -79,6 +103,18 @@ class GenericPublisherTests(unittest.TestCase):
         self.assertEqual(aps._article_url("10.1103/Unknown.1"), get_publisher_profile("aps").article_url("10.1103/Unknown.1"))
         wiley = PublisherBatchDownloader({}, profile=get_publisher_profile("wiley"))
         self.assertEqual(wiley._article_url("10.1002/x"), get_publisher_profile("wiley").article_url("10.1002/x"))
+
+    def test_aps_normalized_doi_uses_the_publishers_case_sensitive_article_path(self):
+        aps = PublisherBatchDownloader({}, profile=get_publisher_profile("aps"))
+        for suffix, journal in (("PhysRevLett.132.191602", "prl"),
+                                ("PhysRevResearch.6.013001", "prresearch"),
+                                ("PRXQuantum.5.010001", "prxquantum")):
+            for value in (suffix.lower(), suffix.upper(), suffix):
+                with self.subTest(doi=value):
+                    url = aps._article_url("10.1103/" + value)
+                    self.assertEqual(url, f"https://journals.aps.org/{journal}/abstract/10.1103/{suffix}")
+                    self.assertIn(url.replace("/abstract/", "/pdf/"),
+                                  aps.adapter.profile_pdf_candidates("10.1103/" + value, url))
 
     def test_the_shared_login_page_comes_from_the_adapter_not_the_name(self):
         # Parallel login over a proxy pool opens this page once (batch_runs.py).

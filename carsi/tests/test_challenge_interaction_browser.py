@@ -110,6 +110,32 @@ class InteractionFixture:
         self.assertEqual(click_checkbox(self.page, timeout_ms=500, checkpoint=lambda: None), "unavailable")
         self.assertEqual(self.page.title(), "Just a moment...")
 
+    def test_closed_widget_can_retry_after_overlay_clears_without_new_readiness(self):
+        self.frame_body = checkbox_html(closed=True)
+        self.body = check_page(overlay=True)
+        self.open_widget()
+        self.page.wait_for_function("document.documentElement.dataset.fixtureReady === 'true'")
+        click = lambda: click_checkbox(self.page, timeout_ms=750, checkpoint=lambda: None)
+        self.assertEqual(click(), "unavailable")
+        self.page.get_by_text("Overlay", exact=True).evaluate("element => element.remove()")
+        self.assertEqual(click(), "clicked")
+        self.page.wait_for_function("document.title === 'Article'", timeout=2000)
+
+    def test_late_closed_widget_is_clicked_after_twenty_seconds(self):
+        self.frame_body = checkbox_html(closed=True, ready_ms=25000)
+        self.body = check_page(outer_closed=True)
+        self.open_widget()
+        d = PublisherBatchDownloader({"browser_page_wait_timeout": 40},
+                                     profile=SPRINGER_PROFILE, require_interactive_browser=True)
+        result = DownloadResult(doi=DOI, status="failed", state="article_loaded")
+        with patch("paper_search_carsi.progress_reporter.set_attention") as attention:
+            self.assertTrue(d._wait_for_challenge(self.page, result))
+        clicks = [e for e in result.events if e["state"] == "challenge_interaction"]
+        self.assertEqual(len(clicks), 1)
+        self.assertIn("checkbox clicked; attempt 1/3", clicks[0]["detail"])
+        self.assertEqual(self.page.title(), "Article")
+        attention.assert_not_called()
+
     def test_checked_checkbox_is_not_toggled(self):
         self.frame_body = checkbox_html(checked=True)
         self.open_widget()

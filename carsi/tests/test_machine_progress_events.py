@@ -106,3 +106,34 @@ class MachineProgressEventsTests(unittest.TestCase):
         self.assertEqual((state['status'], state['stage'], state['failed']), ('done', 'failed', 1))
         self.assertEqual(state['phase'], '网站已阻止当前访问，未取得 PDF')
         self.assertNotIn('private-fixture', json.dumps(state))
+
+    def test_supplements_completion_does_not_report_a_main_pdf_failure(self):
+        for files, stage, succeeded in [([], 'supplements_checked', 1),
+                ([{'status': 'saved', 'file': '/tmp/S1.pdf'}], 'supplements_checked', 1),
+                ([{'status': 'failed', 'reason': 'http_404'}], 'failed', 0),
+                ([{'status': 'skipped', 'reason': 'user_skipped'}], 'failed', 0)]:
+            with self.subTest(files=files):
+                payload = {'success': False, 'error_type': 'supplements_only', 'supplements': files}
+                with patch.object(server, 'download', return_value=payload):
+                    result = json.loads(server.carsi_download(DOI, supplements='only'))
+                state = progress.read_state()
+                self.assertEqual((state['stage'], state['success']), (stage, succeeded))
+                self.assertFalse(result['success'])  # no main PDF was downloaded
+                if stage == 'supplements_checked':
+                    self.assertNotIn('下载未完成', state['phase'])
+                    self.assertNotIn('PDF', state['phase'])
+
+    def test_empty_files_do_not_hide_an_incomplete_check(self):
+        with patch.object(server, 'download', return_value={
+                'success': False, 'error_type': 'source_exception', 'supplements': []}):
+            server.carsi_download(DOI, supplements='only')
+        state = progress.read_state()
+        self.assertEqual((state['stage'], state['success'], state['failed']), ('failed', 0, 1))
+
+    def test_saved_supplements_remain_completed_even_with_a_main_error(self):
+        with patch.object(server, 'download', return_value={
+                'success': False, 'error_type': 'source_exception',
+                'supplements': [{'status': 'saved', 'file': '/tmp/S1.pdf'}]}):
+            server.carsi_download(DOI, supplements='only')
+        state = progress.read_state()
+        self.assertEqual((state['stage'], state['success']), ('supplements_checked', 1))

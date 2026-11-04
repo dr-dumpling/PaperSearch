@@ -28,16 +28,18 @@ def test_manual_attention_lifecycle(tmp_path, monkeypatch):
     assert state["attention"] == {}
 
 
-@pytest.mark.parametrize("waits", [1, 22])
-def test_publisher_challenge_wait_only_asks_for_manual_help_after_automatic_phase(tmp_path, monkeypatch, waits):
+@pytest.mark.parametrize("waits, manual, spent", [(1, False, 0), (22, False, 0), (59, True, 0), (10, True, 55)])
+def test_publisher_challenge_wait_only_asks_for_manual_help_after_automatic_phase(tmp_path, monkeypatch, waits, manual, spent):
     """An automatic pass needs no attention; manual handoff still clears it."""
     monkeypatch.setenv("CARSI_DATA_DIR", str(tmp_path))
     progress_reporter.start_task("出版商下载", total=1)
 
     from paper_search_carsi.engine.batch import DownloadResult, PublisherBatchDownloader
     from paper_search_carsi.engine import batch_waits
+    from paper_search_carsi.browser import watchdog
     clock = [1000.0]
     monkeypatch.setattr(batch_waits.time, "time", lambda: clock[0])
+    monkeypatch.setattr(watchdog.time, "monotonic", lambda: clock[0])
 
     downloader = PublisherBatchDownloader.__new__(PublisherBatchDownloader)
     events = []
@@ -57,6 +59,9 @@ def test_publisher_challenge_wait_only_asks_for_manual_help_after_automatic_phas
             self.waited_ms = []
 
         def wait_for_timeout(self, ms):
+            budgets = getattr(watchdog._local, "budgets", [])
+            if budgets and clock[0] >= min(b[0] for b in budgets):
+                raise watchdog.BrowserOperationTimeout("article preparation exhausted")
             self.waited_ms.append(ms)
             clock[0] += ms / 1000
 
@@ -69,12 +74,14 @@ def test_publisher_challenge_wait_only_asks_for_manual_help_after_automatic_phas
 
     downloader._is_challenge_page = is_challenge
     result = DownloadResult(doi="10.1000/a", status="failed", state="pdf_response_captured")
-    assert downloader._wait_for_challenge(page, result)
+    with watchdog.operation(60, "article preparation"):
+        clock[0] += spent
+        assert downloader._wait_for_challenge(page, result)
     # A completed verification leaves no timeout state behind (the supplements visit ran after it).
     assert result.state == "pdf_response_captured"
 
-    assert page.attention_seen is (waits > 20)
+    assert page.attention_seen is manual
     assert page.waited_ms == [1000] * waits  # checked every second
-    assert ("challenge_manual_wait" in events) is (waits > 20)
+    assert ("challenge_manual_wait" in events) is manual
     assert "challenge_resolved" in events
     assert progress_reporter.read_state()["attention"] == {}

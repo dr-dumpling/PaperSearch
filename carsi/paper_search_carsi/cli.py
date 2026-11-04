@@ -385,11 +385,15 @@ def _cmd_issues(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Fingerprint generation needs no parallel linear algebra. On Windows its
+    # default OpenBLAS worker pool reserves hundreds of MiB in each backend.
+    # Limit only this owned CLI process; keep an explicit caller override.
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] == ["progress"]:
         if len(argv) == 1:
             # Bare `progress` opens the floating progress window.
-            from .progress_bar import main as progress_window
+            from .progress_capsule import main as progress_window
 
             progress_window()
             return 0

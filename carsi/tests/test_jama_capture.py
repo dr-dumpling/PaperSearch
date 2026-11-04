@@ -197,6 +197,23 @@ class JAMANativeTests(unittest.TestCase):
         self.assertEqual(self.downloads, [])
         self.assertIn('browser_pdf_response_captured', [e['state'] for e in self.result.events])
 
+    def test_data_article_url_control_runs_its_access_handler_before_footer_link(self):
+        # Live JAMA uses javascript:; in the toolbar; only data-article-url
+        # identifies its PDF. The footer href can return the article HTML.
+        self.html = (f'<title>{TITLE}</title><meta name="citation_doi" content="{DOI}">'
+            f'<meta name="citation_pdf_url" content="{PDF}">'
+            f'<a class="js-pdfaccess" data-article-url="{OTHER}" href="javascript:;" '
+            'onclick="throw new Error(\'another article\')">PDF</a>'
+            f'<a class="js-pdfaccess" data-article-url="{PDF}" href="javascript:;" '
+            f'onclick="location.href=\'{self.pdf_response_url}\'">PDF</a>'
+            f'<a id="bottomPdfDownload" href="{PDF}">Download PDF</a>')
+        self.page.goto(ARTICLE)
+        self.requests.clear()
+        self.d._fetch_page_state_pdf = Mock(return_value=(None, '', None))
+        body, url, block = self.d._capture_pdf(self.page, DOI, self.result)
+        self.assertEqual((body, url, block), (self.main_body, self.pdf_response_url, None))
+        self.assertEqual(self.requests, [self.pdf_response_url])
+
     def test_main_endpoint_body_naming_this_doi_is_captured_and_supplement_untouched(self):
         self.main_body = synthetic_pdf('Unreadable glyph map', 'JOI999999supp1_srcpdf.pdf')
         self.d._fetch_pdf_url_with_browser_state = Mock(return_value=(None, '', None))

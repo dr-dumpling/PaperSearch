@@ -19,7 +19,7 @@ from . import journals_lww, ovid
 from .journals_lww import JournalsLwwSite
 from .ovid import OvidSite
 
-_PDF = re.compile(r"/jnls/[^/]+/pdf/(10\.\d{4,9}/.+)")
+_PDF = re.compile(r"/jnls/[^/]+/pdf/(10\.\d{4,9}/.+|\d{8}-\d{9}-\d{5})")
 SDC_HOST = "links.lww.com"
 # The article's "Supplemental Digital Content" list (Ovid: .lww-article-sdc).
 _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href*="links.lww.com/"]')].map(a => ({
@@ -53,8 +53,11 @@ class LWWAdapter(PublisherAdapter):
         parsed = urlparse(url)
         path = unquote(parsed.path).lower().split("~", 1)[0].rstrip("/")
         match = _PDF.fullmatch(path)
+        # Older Ovid URLs use the numeric article ID (the DOI suffix), without
+        # its registrant prefix. Still require the exact requested article.
+        identifiers = {doi.lower(), doi.lower().partition("/")[2]} if doi else set()
         return (parsed.scheme == "https" and parsed.hostname in ovid.HOSTS
-                and match is not None and (not doi or match[1] == doi.lower())
+                and match is not None and (not doi or match[1] in identifiers)
                 and not self.d._is_supplementary_url(url))
 
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink] | None:

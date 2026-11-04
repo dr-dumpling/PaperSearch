@@ -90,6 +90,7 @@ class DiagnosticsMixin:
                 "login_stopped": ("机构登录未完成", "route_failed"),
                 "challenge_manual_wait": ("等待人工安全验证", "waiting_verification"),
                 "challenge_wait": ("正在检查安全验证", "checking_access"),
+                "challenge_interaction": ("正在操作安全验证复选框", "checking_access"),
                 "challenge_resolved": ("安全验证已结束，继续检查页面", "checking_access"),
                 "article_access_ready": ("论文页面已就绪，检查正文入口", "checking_access"),
                 "publisher_content_error": ("出版社返回内容服务错误", "route_failed"),

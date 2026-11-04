@@ -29,6 +29,11 @@ def test_lightweight_interstitial_evidence(url, title, expected):
     ("Cloudflare", "Security verification", True),
     ("Cloudflare", "Ray ID: example", True),
     ("Cloudflare", "瀹夊叏楠岃瘉", True),
+    ("Human Verification", "Let's confirm you are human. Complete the security check before continuing. "
+     "This step verifies that you are not a bot", True),
+    ("Human Verification", "Complete the security\ncheck before continuing. You are not a bot", True),
+    ("Human Verification", "A study of automated verification", False),
+    ("Article", "Complete the security check before continuing. You are not a bot", False),
     ("Article", "Powered by Cloudflare", False),
     ("Article", "Access through your institution", False),
     ("Article", "Free Access", False),

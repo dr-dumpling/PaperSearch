@@ -53,3 +53,15 @@ def save(values: dict[str, int]) -> None:
         if problem:
             raise ValueError(f"{field.key}: {problem}")
         _config.update_config(field.key, str(value))
+
+
+NOTIFY_KEY = "progress_notify"
+
+
+def notify_enabled() -> bool:
+    """Whether a step that needs the user also raises a system notification."""
+    return bool(_config.load_config().get(NOTIFY_KEY, True))
+
+
+def set_notify(on: bool) -> None:
+    _config.update_config(NOTIFY_KEY, "true" if on else "false")

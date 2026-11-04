@@ -149,19 +149,19 @@ paper-search carsi install
 paper-search config set PAPER_SEARCH_CARSI_EXECUTABLE /absolute/path/to/paper-search-carsi
 paper-search config set PAPER_SEARCH_CARSI_ENABLED true
 paper-search doctor --pretty
-paper-search download "<DOI>" --platform crossref --save-path ./downloads
-paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"<DOI>","doi":"<DOI>","title":"<paper title>","savePath":"./downloads","useSciHub":false,"useEntitledAccess":true}'
+paper-search download "<DOI>" --platform crossref
+paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"<DOI>","doi":"<DOI>","title":"<paper title>","useSciHub":false,"useEntitledAccess":true}'
 ```
 
 一组论文（几十到几百篇）用一次按顺序执行的 `download_batch`，不要循环调用单篇下载：
 
 - `"mode"`：默认 `"two_phase"`，先对每篇试开放渠道，再只对仍缺的篇目走机构下载，浏览器登录集中在最后一段，进度窗口按这一段计数（k / M）；`"per_item"` 每篇走完整个漏斗；`"entitled_only"` 跳过开放渠道，每篇直接走机构下载（用于测试学校这条路）。
-- 每篇可以带自己的 `savePath`。
+- 不传 `savePath` 时存到 `DEFAULT_DOWNLOAD_PATH`；整批或每篇都可以带自己的 `savePath`，用户指定了别的文件夹时才传。
 - `"content"`：`"main"`（默认，只要正文）、`"supplements"`（只要本文的补充材料，不走正文的各层）、`"both"`。补充材料存在 `<savePath>/papers/<期刊_年份_标题_短标识>/supplements/`，清单与浏览器诊断在 `diagnostics/`，结果的 `supplements` 列出每个文件的状态；只经机构下载后端获取，哪些出版社有规则见 `publisher-support.md`。
 - 每次下载都会写一份本地运行记录，结果里的 `runLog` 是它的目录（`run.json`；`items.jsonl`，含每一层的耗时、代码，以及后端的页面事件和截图；`timeline.log`）。排查失败时读它，不要猜。结果列出每一篇和它的各次尝试。
 
 ```bash
-paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>","title":"<title 1>"},{"doi":"<DOI-2>"}],"savePath":"./downloads","useSciHub":false}'
+paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>","title":"<title 1>"},{"doi":"<DOI-2>"}],"useSciHub":false}'
 ```
 
 必须由外部循环逐篇调用 `download_with_fallback` 时，传 `"batch":{"id":"<同一个 id>","index":k,"total":N,"done":…,"succeeded":…,"failed":…}`，可以得到同样的进度窗口。
@@ -187,6 +187,7 @@ paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>","title":
 
 ```bash
 paper-search setup
+paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 paper-search config set PAPER_SEARCH_CARSI_ENABLED true
 paper-search config set SEMANTIC_SCHOLAR_API_KEY your_key
 paper-search setup EASYSCHOLAR_KEY

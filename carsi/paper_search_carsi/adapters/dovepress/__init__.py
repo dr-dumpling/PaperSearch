@@ -27,6 +27,14 @@ class DovePressAdapter(PublisherAdapter):
     publisher = "dove medical press"
     metadata_pdf_patterns = ("https://www.dovepress.com/article/download/*",)
 
+    @classmethod
+    def profile_pdf_candidate_url(cls, url: str) -> bool | None:
+        target = urlparse(url)
+        if (target.scheme == "https" and target.netloc.lower() in _HOSTS
+                and re.fullmatch(r"/article/download/\d+", target.path)):
+            return True
+        return None
+
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink] | None:
         match = _NUMBER.match((doi or "").strip())
         if not match:

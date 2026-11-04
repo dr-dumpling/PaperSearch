@@ -176,6 +176,7 @@ class PublisherBatchDownloader(
                 final_url = str(getattr(result, "final_url", "") or "")
                 own_page = [final_url] if final_url and self.adapter.is_article_page_url(final_url) else []
                 candidates = self.adapter.supplements_page_urls(doi) or [self._article_url(doi)]
+                incomplete = ""
                 for url in dict.fromkeys(own_page + candidates):
                     open_page(page, url, timeout_ms=60_000)
                     if self._challenge_shell(page) or self._is_challenge_page(page):
@@ -187,9 +188,18 @@ class PublisherBatchDownloader(
                     links = self._settled_supplement_links(page, doi)
                     if links is None:
                         self._event(result, "supplements_not_supported", self.profile.name)
-                        return []
+                        return [{"status": "skipped", "reason": "supplements_not_supported", "url": url, "label": ""}]
+                    # An identity-provider redirect can finish after verification.
+                    # An empty login page is no evidence about the article's files.
+                    if not links and self._is_auth_page(str(getattr(page, "url", "") or "")):
+                        incomplete = "login_required"
+                        continue  # The next journal/platform entry may still work.
+                    incomplete = ""
                     if links or url in own_page:
                         break
+                if incomplete:
+                    self._event(result, "supplements_failed", incomplete)
+                    return [{"status": "failed", "reason": incomplete, "url": "", "label": ""}]
                 self._event(result, "supplements_found", str(len(links)))
                 progress_reporter.update(supplements_total=len(links))
             files = supplements.collect(page.context.request, links, Path(output_dir), doi,
@@ -382,7 +392,8 @@ class PublisherBatchDownloader(
         from ..browser import watchdog
 
         self._phase(result, "open")
-        progress_reporter.update(part="main", supplements_saved=0, supplements_total=None)
+        progress_reporter.update(part="main", supplements_saved=0, supplements_total=None,
+                                 title=record.title or "")
         self._run_dir = run_dir
         watchdog.on_slow_call = lambda name, seconds, ended, where: self._event(
             result, "wait", f"browser call {name}: {seconds:.0f} s, ended: {ended} ({where})")

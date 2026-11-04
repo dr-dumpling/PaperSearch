@@ -26,11 +26,15 @@ import tkinter.font as tkfont
 from pathlib import Path
 from typing import Any
 
-import os as _os
 import sys as _sys
 
 from . import user_settings
+from . import progress_view
 from .progress_reporter import read_state
+# Kept importable from here for tests and older callers.
+from .progress_view import (  # noqa: F401
+    CONTENT_LABELS, DEFAULT_LINGER_SECONDS, STAGE_TEXT, TERMINAL_STATUSES, AutoClose,
+)
 
 # --- Win32 / DWM constants -------------------------------------------------
 DWMWA_USE_IMMERSIVE_DARK_MODE = 20
@@ -43,15 +47,6 @@ DWMWCP_ROUND = 2
 DWMSBT_MAINWINDOW = 2  # light Mica
 
 # Palettes: (light, dark). Picked once at start from the OS appearance.
-CONTENT_LABELS = {"main": "正文", "supplements": "附录", "both": "正文+附录"}
-# The step of the main text, as the status line says it ("正文 · 正在获取 PDF").
-STAGE_TEXT = {
-    "starting": "准备中", "opening_article": "正在打开文章", "checking_access": "正在检查访问权限",
-    "waiting_login": "等待机构登录", "waiting_verification": "等待人机验证", "fetching_pdf": "正在获取 PDF",
-    "pdf_captured": "已读到 PDF，正在核对", "saved_pending_verification": "已保存",
-    "route_failed": "这条路没走通，正在换路",
-}
-
 PALETTES = {
     "light": {
         "bg": "#ffffff", "text": "#111827", "dim": "#6b7280", "faint": "#9ca3af",
@@ -68,69 +63,11 @@ PALETTES = {
 # Window, macOS Dock and Windows taskbar icon, rendered from assets/icon.svg.
 ICON_FILES = ("icon-512.png", "icon-64.png", "icon-32.png")
 
-TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled", "interrupted"})
-DEFAULT_LINGER_SECONDS = 8.0
-
-
-class AutoClose:
-    """Decide when an auto-spawned window should close after its task ends.
-
-    The finished state stays on screen for ``linger`` seconds; a new task in
-    the meantime (different run) keeps the window open. Windows the user
-    opened by hand (``paper-search-carsi progress``) never close.
-    """
-
-    def __init__(self, *, enabled: bool, linger: float) -> None:
-        self.enabled = enabled
-        self.linger = max(0.0, linger)
-        self._run: object = None
-        self._since: float | None = None
-
-    @classmethod
-    def from_env(cls) -> "AutoClose":
-        enabled = _os.environ.get("CARSI_PROGRESS_BAR_CHILD") == "1"
-        try:
-            linger = float(_os.environ.get("CARSI_PROGRESS_BAR_LINGER", DEFAULT_LINGER_SECONDS))
-        except ValueError:
-            linger = DEFAULT_LINGER_SECONDS
-        return cls(enabled=enabled, linger=linger)
-
-    def should_close(self, state: dict[str, Any] | None, now: float) -> bool:
-        if not self.enabled:
-            return False
-        if not state or state.get("status") not in TERMINAL_STATUSES:
-            # running (or nothing to show yet): keep the window
-            self._run, self._since = None, None
-            return False
-        run = state.get("run_id") or state.get("started_at")
-        if run != self._run or self._since is None:
-            self._run, self._since = run, now
-        return now - self._since >= self.linger
-
-
 # Logical layout (scaled by the real DPI factor at runtime)
 W, H, PAD = 420, 172, 18
 
 
-def _dark_mode() -> bool:
-    """Whether the OS uses a dark appearance (macOS / Windows); light otherwise."""
-    import subprocess
-    import sys as _sys
-
-    try:
-        if _sys.platform == "darwin":
-            out = subprocess.run(["defaults", "read", "-g", "AppleInterfaceStyle"],
-                                 capture_output=True, text=True, timeout=2).stdout
-            return out.strip().lower() == "dark"
-        if os.name == "nt":
-            import winreg
-
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                                 r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
-            return winreg.QueryValueEx(key, "AppsUseLightTheme")[0] == 0
-    except Exception:
-        pass
-    return False
+_dark_mode = progress_view.dark_mode
 
 
 def _pick_family(candidates: list[str], fallback: str) -> str:
@@ -144,11 +81,7 @@ def _pick_family(candidates: list[str], fallback: str) -> str:
     return fallback
 
 
-def _fmt_elapsed(seconds: float) -> str:
-    seconds = max(0, int(seconds))
-    h, rem = divmod(seconds, 3600)
-    m, s = divmod(rem, 60)
-    return f"{h}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+_fmt_elapsed = progress_view.fmt_elapsed
 
 
 def _enable_dpi_awareness() -> None:
@@ -322,6 +255,10 @@ class ProgressWindow:
         c = self.canvas
         c.bind("<Button-1>", self._press)
         c.bind("<B1-Motion>", self._move)
+        # A finished window stays while the pointer is on it (AutoClose).
+        self._pointer_in = False
+        c.bind("<Enter>", lambda e: setattr(self, "_pointer_in", True))
+        c.bind("<Leave>", lambda e: setattr(self, "_pointer_in", False))
 
     def _press(self, event: Any) -> None:
         self._drag_dx, self._drag_dy = event.x, event.y
@@ -362,31 +299,8 @@ class ProgressWindow:
             return _fmt_elapsed((end - started).total_seconds())
         return _fmt_elapsed((datetime.now() - started).total_seconds())
 
-    @staticmethod
-    def _status_text(state: dict[str, Any], running: bool) -> str:
-        """The status line: which part of the paper is being fetched and how far,
-        "正文 · 正在获取 PDF" or "附录 · 已保存 2/5"; between papers, the phase."""
-        phase = str(state.get("phase") or ("处理中" if running else ""))
-        part = str(state.get("part") or "")
-        if not running or state.get("awaiting_next") or part not in ("main", "supplements"):
-            return phase
-        if part == "supplements":
-            total = state.get("supplements_total")
-            if not isinstance(total, int):
-                return "附录 · 正在查找附录文件"
-            return f"附录 · 已保存 {int(state.get('supplements_saved') or 0)}/{total}"
-        return "正文 · " + STAGE_TEXT.get(str(state.get("stage") or ""), phase)
-
-    @staticmethod
-    def _attention_items(state: dict[str, Any]) -> list[dict[str, Any]]:
-        attention = state.get("attention")
-        if isinstance(attention, dict):
-            if "message" in attention:
-                return [attention]
-            return [v for v in attention.values() if isinstance(v, dict)]
-        if isinstance(attention, list):
-            return [v for v in attention if isinstance(v, dict)]
-        return []
+    _status_text = staticmethod(progress_view.status_text)
+    _attention_items = staticmethod(progress_view.attention_items)
 
     def _bind_draw(self, tag: str, event: str, callback: Any) -> None:
         """A binding owned by this frame, released before its items are deleted."""
@@ -556,10 +470,7 @@ class ProgressWindow:
             from .entitlements import request_action
 
             request_action(doi, action, str(state.get("run_id") or ""))
-            text = {"stop_batch": "已终止任务：这一篇结束，剩下的不再下载",
-                    "skip_item": "已跳过本篇，进入下一篇",
-                    "skip_journal": "已记住：本刊无权限，以后自动跳过（可用 entitlements 撤销）",
-                    "skip_publisher": "已记住：该出版社无权限，以后自动跳过"}[action]
+            text = progress_view.ACTION_FEEDBACK[action]
         except Exception as exc:
             text = f"记录失败：{type(exc).__name__}"
         self._flash = (text, time.time() + 6, doi)
@@ -704,19 +615,7 @@ class ProgressWindow:
 
     # --- polling ------------------------------------------------------------
     def _open_output_dir(self, state: dict) -> None:
-        d = str(state.get("output_dir") or "")
-        if d and os.path.isdir(d):
-            try:
-                if os.name == "nt":
-                    os.startfile(d)  # Windows: open Explorer at the folder
-                else:
-                    import subprocess
-                    import sys as _sys
-
-                    opener = "open" if _sys.platform == "darwin" else "xdg-open"
-                    subprocess.Popen([opener, d], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception:
-                pass
+        progress_view.open_folder(str(state.get("output_dir") or ""))
 
     def _tick(self) -> None:
         state = None
@@ -728,7 +627,7 @@ class ProgressWindow:
         try:
             import time as _time
 
-            if self._auto_close.should_close(state, _time.monotonic()):
+            if self._auto_close.should_close(state, _time.monotonic(), hovering=self._pointer_in):
                 self._close()
                 return
         except Exception:
@@ -746,24 +645,10 @@ class ProgressWindow:
             pass
 
     def _write_lock(self) -> None:
-        try:
-            from .progress_reporter import progress_path
-
-            lock = progress_path().parent / "bar.pid"
-            lock.parent.mkdir(parents=True, exist_ok=True)
-            lock.write_text(str(_os.getpid()), encoding="utf-8")
-        except Exception:
-            pass
+        progress_view.write_window_lock()
 
     def _release_lock(self) -> None:
-        try:
-            from .progress_reporter import progress_path
-
-            lock = progress_path().parent / "bar.pid"
-            if lock.exists():
-                lock.unlink()
-        except Exception:
-            pass
+        progress_view.release_window_lock()
 
     def run(self) -> None:
         self._write_lock()

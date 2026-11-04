@@ -79,6 +79,12 @@ def operation(seconds: float, label: str):
         stack.pop()
 
 
+def operation_remaining() -> float | None:
+    """Remaining automation time, so a human handoff can happen before expiry."""
+    budgets = getattr(_local, "budgets", [])
+    return max(0.0, min(b[0] for b in budgets) - time.monotonic()) if budgets else None
+
+
 @contextmanager
 def pause_operation():
     """Explicit human interaction does not spend the enclosing automation budget."""

@@ -470,8 +470,17 @@ def _camoufox_options(headless: bool, proxy: Any, args: list[str] | None, humani
     opts["firefox_user_prefs"] = {
         "browser.cache.disk.enable": False,
         "fission.autostart": False,
+        # Keep this owned browser usable while the user works in another app.
+        "focusmanager.testmode": True,
+        "dom.disable_window_flip": True,
+        "browser.tabs.loadDivertedInBackground": True,
         **(opts.get("firefox_user_prefs") or {}),
     }
+    if not headless and opts.get("ignore_default_args") is not True:
+        # Playwright adds -foreground to every headed Firefox launch.
+        opts["ignore_default_args"] = list(dict.fromkeys([
+            *(opts.get("ignore_default_args") or []), "-foreground",
+        ]))
     opts.update(headless=headless, humanize=humanize, proxy=proxy)
     pinned = pinned_camoufox_dir()
     if pinned is not None and "executable_path" not in opts:

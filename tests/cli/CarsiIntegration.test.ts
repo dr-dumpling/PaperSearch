@@ -75,6 +75,7 @@ describe("CARSI CLI integration", () => {
       PAPER_SEARCH_HIDE_SETUP_HINT: "1",
       PAPER_SEARCH_CARSI_ENABLED: "true",
       PAPER_SEARCH_FAKE_PARENT_SECRET: "must-not-cross-process-boundary",
+      PAPER_SEARCH_TEST_PMC_LOG: join(tempDir, "pmc-requests.log"),
     };
     delete env.PAPER_SEARCH_UNPAYWALL_EMAIL;
     delete env.UNPAYWALL_EMAIL;
@@ -83,7 +84,7 @@ describe("CARSI CLI integration", () => {
     const result = spawnSync(
       process.execPath,
       [
-        join(process.cwd(), "node_modules/.bin/tsx"),
+        "--import", "tsx", "--import", join(process.cwd(), "tests/fixtures/carsi/fake/empty-pmc.mjs"),
         "src/cli.ts",
         "run",
         "download_with_fallback",
@@ -96,6 +97,7 @@ describe("CARSI CLI integration", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(0);
+    expect(readFileSync(join(tempDir, "pmc-requests.log"), "utf8").trim()).toBe(canonicalDoi);
     const output = JSON.parse(result.stdout);
     expect(output).toEqual(
       expect.objectContaining({ ok: true, tool: "download_with_fallback" }),
@@ -354,7 +356,7 @@ describe("CARSI CLI integration", () => {
     delete env.UNPAYWALL_EMAIL;
     return spawnSync(
       process.execPath,
-      [join(process.cwd(), "node_modules/.bin/tsx"), "src/cli.ts", ...args],
+      ["--import", "tsx", "--import", join(process.cwd(), "tests/fixtures/carsi/fake/empty-pmc.mjs"), "src/cli.ts", ...args],
       {
         cwd: process.cwd(),
         env,

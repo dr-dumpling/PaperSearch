@@ -198,16 +198,14 @@ class UserWaitMixin:
                         deadline = min(deadline, self._wait_deadline(result))
                     self._event(result, {"verification": "challenge_manual_wait", "login": "pdf_step_login_wait",
                                          "unknown": "pdf_step_unknown_wait"}[state], f"{state}: {suspect}")
-                    try:
-                        tab.bring_to_front()
-                    except Exception:
-                        pass
+                    # The capsule requests attention; leave desktop focus with
+                    # the user until they choose to open the browser themselves.
                     if reporter is not None:
                         text, stage, phase = messages[state]
                         try:
                             if shown:
                                 reporter.clear_attention(attention_key)
-                            reporter.set_attention(attention_key, text, current=result.doi, phase=phase)
+                            reporter.set_attention(attention_key, text, current=result.doi, phase=phase, deadline=deadline)
                             reporter.report_stage(stage, current=result.doi)
                         except Exception:
                             pass
@@ -349,7 +347,7 @@ class UserWaitMixin:
 
     def _automatic_challenge_step(self, page: Any, result: DownloadResult,
                                   attempt: dict[str, Any], deadline: float) -> bool:
-        """A short automatic phase inside the existing wait, shared by both entry points.
+        """Observe for an actionable widget within the existing verification wait.
 
         True means keep observing, never that verification passed. Each wait
         allows at most three interactions, including failed clicks, without a
@@ -359,11 +357,19 @@ class UserWaitMixin:
         if not attempt:
             attempt.update(started=now, attempts=0, retry_at=now + 2)
             self._event(result, "challenge_wait", "automatic verification check")
-        # Live widgets may not ask for a click until ~14 s after navigation.
+        # The spinner can run for more than 20 s before a checkbox appears.
+        # Keep observing inside the caller's deadline; loading spends no click.
         # Reserve up to 2 s for manual handling without extending short waits.
         manual_reserve = min(2, max(0, deadline - attempt["started"]) * 0.2)
-        automatic_end = min(deadline - manual_reserve, attempt["started"] + 20)
-        if now >= automatic_end:
+        # The enclosing page operation can already have spent time opening the
+        # article. Hand off before that earlier bound, retaining the same user
+        # wait deadline. Freeze it so pausing the operation cannot restart auto.
+        if "automatic_end" not in attempt:
+            remaining = watchdog.operation_remaining()
+            bound = min(deadline, now + remaining) if remaining is not None else deadline
+            attempt["automatic_end"] = bound - manual_reserve
+        automatic_end = min(deadline - manual_reserve, attempt["automatic_end"])
+        if now >= automatic_end or (attempt["attempts"] >= 3 and now >= attempt["retry_at"]):
             return False
         if now >= attempt["retry_at"] and attempt["attempts"] < 3:
             # Camoufox's native humanized move can take 1.5 s before mouse-down.
@@ -375,7 +381,7 @@ class UserWaitMixin:
             if outcome != "absent":
                 attempt["attempts"] += 1
                 attempt["retry_at"] = time.time() + 3
-                self._event(result, "challenge_wait",
+                self._event(result, "challenge_interaction",
                             f"checkbox {outcome}; attempt {attempt['attempts']}/3; awaiting verification")
         return time.time() < automatic_end
 
@@ -424,6 +430,7 @@ class UserWaitMixin:
                                 "请在浏览器窗口完成安全验证",
                                 current=result.doi,
                                 phase="人工验证",
+                                deadline=deadline,
                             )
                             attention_open = True
                     checks += 1

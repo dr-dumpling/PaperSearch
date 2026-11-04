@@ -8,8 +8,9 @@ email/password form and the "Institutional Login" link (auth.optica.org's
 """
 from __future__ import annotations
 
+import re
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from ...engine.batch_common import open_page
 from ..base import PublisherAdapter, register
@@ -18,6 +19,40 @@ from ..base import PublisherAdapter, register
 @register
 class OpticaAdapter(PublisherAdapter):
     publisher = "optica"
+
+    @classmethod
+    def profile_pdf_candidates(cls, doi: str, source_url: str) -> list[str]:
+        source = urlparse(source_url)
+        if source.scheme != "https" or source.hostname != "opg.optica.org":
+            return []
+        match = re.fullmatch(r"/([a-z0-9]+)/(?:abstract|fulltext|viewmedia)\.cfm", source.path)
+        uri = parse_qs(source.query).get("uri", [])
+        if not match or len(uri) != 1 or not re.fullmatch(rf"{match[1]}-\d+-[a-z0-9-]+", uri[0]):
+            return []
+        # The page's Get PDF link uses its journal/volume/issue/article URI,
+        # not the DOI. html=true serves the HTML reader at this same endpoint.
+        return [f"https://opg.optica.org/{match[1]}/viewmedia.cfm?" + urlencode({"uri": uri[0], "seq": "0"})]
+
+    @classmethod
+    def profile_pdf_candidate_url(cls, url: str) -> bool | None:
+        target = urlparse(url)
+        if target.hostname != "opg.optica.org" or not target.path.endswith("/viewmedia.cfm"):
+            return None
+        query = parse_qs(target.query, keep_blank_values=True)
+        return (target.scheme == "https" and bool(query.get("uri"))
+                and not any(key in query for key in ("html", "figure", "imagetype")))
+
+    @classmethod
+    def keeps_pdf_candidate(cls, profile: Any, url: str, doi: str) -> bool:
+        return cls.profile_pdf_candidate_url(url) is not False
+
+    @classmethod
+    def belongs_to_article(cls, url: str, doi: str, source_url: str) -> bool | None:
+        if cls.profile_pdf_candidate_url(url) is not True:
+            return None
+        uri = parse_qs(urlparse(url).query).get("uri", [])
+        source_uri = parse_qs(urlparse(source_url).query).get("uri", [])
+        return len(uri) == 1 and (uri == source_uri or uri[0].lower() == doi.lower())
 
     def open_institution_entry(self, page: Any, result: Any) -> bool | None:
         """The modal's "Institutional Login" link, opened directly; the personal form is never used."""

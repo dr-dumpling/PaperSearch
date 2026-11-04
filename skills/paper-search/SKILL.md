@@ -82,6 +82,22 @@ paper-search doctor --pretty
 
 给用户看可读的报告用 `paper-search doctor --format text`。命令缺失时按 `references/management-layer.md` 安装。更新时先区分包本体更新和 Skill 同步，不要只运行 `skills update`；步骤见 `references/management-layer.md` 的“包更新与功能配置”一节。
 
+### 默认下载文件夹
+
+第一次配置时（刚装好，或第一次要下载），先看有没有设好：
+
+```bash
+paper-search config get DEFAULT_DOWNLOAD_PATH
+```
+
+没有设置（返回的 `configured` 为 `false`）时问用户：“下载的论文默认放到哪个文件夹？”用户给出位置后保存为完整路径（`~` 表示用户目录）：
+
+```bash
+paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
+```
+
+之后下载不传 `savePath` / `--save-path`，文件自动存到这个文件夹；只有用户这一次指定了别的位置才传。没有设置时，文件会存到命令当前所在目录下的 `./downloads`，位置不固定，用户很难找到。用户也可以在进度胶囊的设置里改这个文件夹。
+
 ## 功能地图
 
 本 Skill 有五个文献功能；`doctor`、`smoke`、`config`、`skills`、`carsi`、`failures` 是管理和诊断命令。
@@ -151,4 +167,4 @@ paper-search doctor --pretty
 - 不写论文正文，不做语言润色。
 - 不把 API key、token、Cookie 写入 Skill、README 或回复。
 
-下载结果分在 `savePath/papers/` 与 `savePath/diagnostics/`。正文按“期刊_年份_标题”命名，附件保留原名；使用结果返回的实际 `path` / `supplements[].file`，不要自行拼 DOI 文件名。过长名称会截短，完整标题在诊断元数据中。
+下载结果分在下载文件夹（`savePath`，没传时用 `DEFAULT_DOWNLOAD_PATH`）的 `papers/` 与 `diagnostics/`。正文按“期刊_年份_标题”命名，附件保留原名；使用结果返回的实际 `path` / `supplements[].file`，不要自行拼 DOI 文件名。过长名称会截短，完整标题在诊断元数据中。

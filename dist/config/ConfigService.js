@@ -67,6 +67,21 @@ export function isConfigTrue(key) {
 export function getConfigValue(key) {
     return effectiveConfigValue(key, readUserConfig()).value;
 }
+/** Resolve once at task start; GUI edits share the CLI config, not a second preference. */
+export function resolveDownloadPath(explicit) {
+    if (explicit?.trim())
+        return explicit;
+    const config = readUserConfig();
+    const applied = APPLIED_FROM_USER_CONFIG.get("DEFAULT_DOWNLOAD_PATH");
+    const inherited = applied?.configPath === getConfigPath()
+        && applied.value === process.env.DEFAULT_DOWNLOAD_PATH;
+    const value = (inherited ? config.DEFAULT_DOWNLOAD_PATH
+        : process.env.DEFAULT_DOWNLOAD_PATH ?? config.DEFAULT_DOWNLOAD_PATH)?.trim();
+    if (!value)
+        return "./downloads";
+    return value === "~" ? homedir() : value.startsWith("~/") || value.startsWith("~\\")
+        ? join(homedir(), value.slice(2)) : value;
+}
 export function writeUserConfig(config) {
     const filePath = getConfigPath();
     mkdirSync(dirname(filePath), { recursive: true });

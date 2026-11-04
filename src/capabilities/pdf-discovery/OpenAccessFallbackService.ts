@@ -1,3 +1,4 @@
+import { resolveDownloadPath } from "../../config/ConfigService.js";
 import { createOutputLayout, lookupOutputMetadata, organizeFiles } from "./outputLayout.js";
 import { prepareArxiv } from "./arxiv.js";
 import { createPreprintTier } from "./tiers/preprint.js";
@@ -96,7 +97,7 @@ export async function downloadWithFallback(
   verifyIdentity: PdfIdentityCheck = verifyPdfIdentity,
 ): Promise<DownloadWithFallbackResult> {
   const stageTimeoutMs = limits.stageTimeoutMs ?? TIMEOUTS.FALLBACK_STAGE;
-  const savePath = options.savePath || "./downloads";
+  const savePath = resolveDownloadPath(options.savePath);
   const attempts: DownloadWithFallbackResult["attempts"] = [];
   let review: DownloadWithFallbackResult["review"];
   const reviewPaths: string[] = [];

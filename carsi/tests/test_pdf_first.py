@@ -331,10 +331,8 @@ class NoAccessAfterLoginTests(unittest.TestCase):
 
 
 class PdfSentToArticleAfterLoginTests(unittest.TestCase):
-    """After this item's school login a PDF that comes back as the article's web
-    page is no access after login (JAMA 10.1001/jama.2026.20039: articlepdf ->
-    article-abstract -> fullarticle; The Lancet 1975: ScienceDirect's pdfft ->
-    its article page; both ended as "PDF not captured", 2026-11-02)."""
+    """A PDF returning HTML after login requires access-denial evidence before
+    being classified as missing entitlement; unexplained redirects stay unknown."""
 
     downloader, page = PdfFirstTests.downloader, PdfFirstTests.page
     PDF_URL = "https://ascelibrary.org/doi/pdf/10.1061/JSENDH.STENG-16404"
@@ -343,14 +341,25 @@ class PdfSentToArticleAfterLoginTests(unittest.TestCase):
         return {"how": "url", "url": url or self.PDF_URL, "final_url": final, "status": 200,
                 "type": "text/html", "size": "", "outcome": outcome, "seconds": 6.1}
 
-    def judged(self, attempts, signed_in=True, since=0):
+    def judged(self, attempts, signed_in=True, since=0, body="Buy this article"):
         d = self.downloader()
         result = DownloadResult(doi=DOI, status="failed", article_url=ARTICLE)
         result.pdf_attempts.extend(attempts)
         if signed_in:
             result.events.append({"state": "institution_selected", "detail": "Synthetic University A (entityID)"})
         d._item_result = result
-        return d._pdf_sent_to_article_after_login(self.page(), result, since), result
+        page = self.page()
+        page.locator.return_value.inner_text.return_value = body
+        return d._pdf_sent_to_article_after_login(page, result, since), result
+
+    def test_redirect_without_access_denial_is_not_missing_entitlement(self):
+        # A Free JAMA article returned HTML from its PDF endpoint on Windows.
+        # The redirect alone says nothing about an institution's subscription.
+        for body in ("", "Free\nIntroduction\nMethods\nResults\nDiscussion"):
+            with self.subTest(body=body):
+                found, result = self.judged([self.attempt("html page")], body=body)
+                self.assertFalse(found)
+                self.assertNotEqual(result.reason, "institution_pdf_entitlement_missing")
 
     def test_sent_to_the_article_after_the_login_is_no_access(self):
         found, result = self.judged([self.attempt("no pdf", url="current-doi-metadata-pdf"), self.attempt("html page")])
@@ -379,6 +388,8 @@ class PdfSentToArticleAfterLoginTests(unittest.TestCase):
     def capture(self, outcome):
         def run(page, doi, result):
             result.pdf_attempts.append(self.attempt(outcome))
+            if outcome == "paywall":
+                page.locator.return_value.inner_text.return_value = "Buy this article"
             return None, "", None
         return run
 
@@ -388,6 +399,7 @@ class PdfSentToArticleAfterLoginTests(unittest.TestCase):
 
         def login(page, result):
             result.events.append({"state": "institution_selected", "detail": "Synthetic University A (entityID)"})
+            page.locator.return_value.inner_text.return_value = "Buy this article"
             return True
         captures = [self.capture("html page"), self.capture("html page")]
         d._ensure_login = Mock(return_value=True)

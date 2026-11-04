@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import re
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 from ..base import PublisherAdapter, SupplementLink, register
+from ...engine.batch_common import _is_browser_error
 
 # The article's "Supplemental content" files, on JAMA's own CDN: .../<code>supp1_prod_....pdf
 _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('[class*="supplement"] a[href]')].map(a => ({
@@ -37,6 +38,26 @@ class JAMAAdapter(PublisherAdapter):
     @classmethod
     def names_supplement(cls, url: str) -> bool:
         return bool(re.search(r"supp\d+(?:[_\W]|$)", url))  # JAMA's supplement files: supp1, supp2, ...
+
+    def open_pdf_entry(self, page: Any, result: Any) -> bool | None:
+        """The toolbar's access handler uses data-article-url, not its href.
+        Click it only when its address is the current DOI's citation PDF."""
+        bound = self.d._bound_pdf_urls(page, result.doi) or []
+        if not bound:
+            return None
+        for control in page.locator('.js-pdfaccess[data-article-url]').all()[:8]:
+            try:
+                target = urljoin(str(page.url), control.get_attribute('data-article-url') or '')
+                if target.split('?', 1)[0].split('#', 1)[0] not in bound or not control.is_visible():
+                    continue
+                if self.d._click_control(page, control, result, 'jama-article-pdf'):
+                    self.d._event(result, 'pdf_button_clicked', 'jama-data-article-url')
+                    return True
+            except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
+                self.d._event(result, 'pdf_button_error', type(exc).__name__)
+        return None
 
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink] | None:
         """The "Supplemental content" files of the article page, on cdn.jamanetwork.com

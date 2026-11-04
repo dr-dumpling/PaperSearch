@@ -13,6 +13,8 @@ dependencies = [
     "beautifulsoup4>=4.12,<5",
     "mcp[cli]>=1.12,<3.0",
     "pymupdf>=1.24,<3",
+    # The progress capsule (progress_capsule.py): the system web engine through pywebview.
+    "pywebview>=6.2,<7",
 ]
 
 [project.optional-dependencies]
@@ -35,7 +37,7 @@ where = ["."]
 include = ["paper_search_carsi*"]
 
 [tool.setuptools.package-data]
-paper_search_carsi = ["publishers/builtin/*.json", "publishers/schema.json", "data/*.json", "assets/*.png"]
+paper_search_carsi = ["publishers/builtin/*.json", "publishers/schema.json", "data/*.json", "assets/*.png", "assets/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

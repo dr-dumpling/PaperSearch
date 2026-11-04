@@ -11,6 +11,22 @@ FULLTEXT = ARTICLE.replace('/abstract/', '/fulltext/')
 LOGIN = 'https://login.wolterskluwer.com/institution-fixture'
 
 
+class OvidPdfUrlTests(unittest.TestCase):
+    def test_legacy_article_number_is_bound_to_the_requested_doi(self):
+        from paper_search_carsi.adapters.lww import LWWAdapter
+        adapter = LWWAdapter(Mock(_is_supplementary_url=Mock(return_value=False)))
+        doi = '10.2106/00004623-200301000-00002'
+        url = ('https://www.ovid.com/jnls/jbjsjournal/pdf/'
+               '00004623-200301000-00002~the-clinical-importance-of-meniscal-tears')
+        self.assertTrue(adapter.is_article_pdf_url(url, doi))
+        self.assertTrue(adapter.is_article_pdf_url(url.replace('/pdf/', '/pdf/10.2106/'), doi))
+        for wrong in (url.replace('00002', '00003'), url.replace('/pdf/', '/fulltext/'),
+                      url.replace('www.ovid.com', 'www.ovid.com.evil.example'),
+                      url.replace('https:', 'http:'), url.replace('~the-', '/supplement.pdf~the-')):
+            with self.subTest(url=wrong):
+                self.assertFalse(adapter.is_article_pdf_url(wrong, doi))
+
+
 @unittest.skipUnless(os.environ.get('CARSI_LOCAL_BROWSER_TEST') == '1', 'local Chrome fixture opt-in')
 class OvidAccessTests(unittest.TestCase):
     @classmethod
@@ -82,15 +98,24 @@ class OvidAccessTests(unittest.TestCase):
                 self.assertFalse(self.downloader._is_success_article_url(url))
 
     def test_target_blank_main_pdf_is_captured_once_without_extra_tab_or_download(self):
-        import pymupdf
         pdf_url = ARTICLE.replace('/abstract/', '/pdf/')
         wrong_url = pdf_url.replace('10.5435/fixture', '10.5435/another')
+        self.assert_pdf_captured('10.5435/fixture', pdf_url, wrong_url)
+
+    def test_legacy_article_pdf_response_is_saved_instead_of_reported_missing(self):
+        pdf_url = ('https://www.ovid.com/jnls/jbjsjournal/pdf/'
+                   '00004623-200301000-00002~the-clinical-importance-of-meniscal-tears')
+        self.assert_pdf_captured('10.2106/00004623-200301000-00002', pdf_url,
+                                 pdf_url.replace('00002', '00003'))
+
+    def assert_pdf_captured(self, doi, pdf_url, wrong_url):
+        import pymupdf
         self.html = (f'<title>Fixture article</title><body>Logout '
                      f'<a target="_blank" href="{wrong_url}">PDF from references</a>'
                      f'<a target="_blank" download href="{pdf_url}">PDF</a></body>')
         with pymupdf.open() as document:
             for _ in range(8):
-                document.new_page().insert_text((50,60), 'Fixture article DOI: 10.5435/fixture\nMain text')
+                document.new_page().insert_text((50,60), f'Fixture article DOI: {doi}\nMain text')
             data = document.tobytes() + b'\n%' + b'x' * 6000
         self.pdfs[pdf_url] = data
         self.page.goto(FULLTEXT)
@@ -98,7 +123,7 @@ class OvidAccessTests(unittest.TestCase):
         self.page.on('download', lambda event: downloads.append(event))
         self.downloader._pdf_candidates = Mock(return_value=[])
         self.downloader._fetch_page_state_pdf = Mock(side_effect=AssertionError('fallback cannot hide capture failure'))
-        result = DownloadResult(doi='10.5435/fixture', status='failed')
+        result = DownloadResult(doi=doi, status='failed')
         try:
             body, url, blocked = self.downloader._capture_pdf(self.page, result.doi, result)
         except AssertionError:

@@ -123,10 +123,11 @@ class CollectTests(unittest.TestCase):
 
 
 class BridgeTests(unittest.TestCase):
-    def run_bridge(self, mode, result):
+    def run_bridge(self, mode, result, files=None):
         profile = get_publisher_profile("wiley")
         downloader = MagicMock(); downloader.fetch_one.return_value = result
-        downloader.collect_supplements.return_value = [{"status": "saved", "file": "/tmp/out/s/x.pdf", "label": "S1"}]
+        downloader.collect_supplements.return_value = (files if files is not None else
+            [{"status": "saved", "file": "/tmp/out/s/x.pdf", "label": "S1"}])
         with patch("paper_search_carsi.engine.batch.PublisherBatchDownloader", return_value=downloader), \
              patch("paper_search_carsi.browser.backend.is_available", return_value=True):
             out = bridge._try_browser_batch_download(DOI, Path("/tmp/out/x.pdf"), {"supplements": mode}, profile)
@@ -143,6 +144,18 @@ class BridgeTests(unittest.TestCase):
         out, downloader = self.run_bridge("with", DownloadResult(doi=DOI, status="failed", state="sso_required"))
         downloader.fetch_one.assert_called_once()
         self.assertEqual(out["supplements"][0]["status"], "saved")
+
+    def test_no_supplements_keeps_empty_result_and_discovery_evidence(self):
+        out, _ = self.run_bridge("only", None, files=[])
+        self.assertEqual(out["supplements"], [])
+        manifest = json.loads(Path(out["artifacts"]["record"]).read_text(encoding="utf-8"))
+        self.assertEqual(manifest["doi"], DOI)
+        self.assertEqual(manifest["files"], [])
+        with patch.object(bridge, "_try_browser_batch_download", return_value=out):
+            aggregated = bridge.try_institutional(DOI, Path("/tmp/out/x.pdf"), {
+                "publisher_institution_federation": "carsi", "publisher_hourly_limit": 0})
+        self.assertEqual(aggregated["supplements"], [])
+        self.assertEqual(aggregated["artifacts"]["record"], out["artifacts"]["record"])
 
     def test_the_supplements_step_is_added_to_the_articles_record(self):
         import json, tempfile
@@ -282,6 +295,22 @@ class CandidatePagesTests(unittest.TestCase):
         self.assertEqual(files[0]["reason"], "publisher_content_error")
         collect.assert_not_called()
 
+    def test_login_redirect_is_not_reported_as_an_article_without_supplements(self):
+        d = PublisherBatchDownloader({}, profile=get_publisher_profile("elsevier"))
+        page = MagicMock()
+        page.url = "https://id.elsevier.com/as/authorization.oauth2"
+        context = MagicMock(); context.new_page.return_value = page
+        result = DownloadResult(doi=GASTRO_DOI, status="success", state="pdf_response_captured")
+        with patch.object(d, "_challenge_shell", return_value=False), \
+                patch.object(d, "_is_challenge_page", return_value=False), \
+                patch.object(d, "_wait_for_page_text"), \
+                patch.object(d, "_settled_supplement_links", return_value=[]), \
+                patch.object(supplements, "collect") as collect:
+            files = d.collect_supplements(context, GASTRO_DOI, Path("/tmp/out"), result)
+        self.assertEqual(files[0]["reason"], "login_required")
+        self.assertTrue(result.ok)
+        collect.assert_not_called()
+
     def test_the_next_page_is_tried_until_one_lists_files(self):
         d = PublisherBatchDownloader({}, profile=get_publisher_profile("elsevier"))
         page = MagicMock()
@@ -290,6 +319,7 @@ class CandidatePagesTests(unittest.TestCase):
         adapter = MagicMock()
         adapter.supplements_page_urls.return_value = ["https://sd.example/abs", "https://doi.org/" + GASTRO_DOI]
         adapter.supplement_links.side_effect = [[], [link]]
+        adapter.is_institution_chooser.return_value = False
         result = DownloadResult(doi=GASTRO_DOI, status="failed")
         with patch.object(PublisherBatchDownloader, "adapter", new=adapter), \
                 patch.object(d, "_challenge_shell", return_value=False), \
@@ -308,6 +338,7 @@ class CandidatePagesTests(unittest.TestCase):
         link = SupplementLink("https://www.cell.com/cms/10.1016/j.cmet.2025.11.002/attachment/x/mmc1.pdf", "S1")
         adapter = MagicMock()
         adapter.is_article_page_url.side_effect = lambda url: url == own
+        adapter.is_institution_chooser.return_value = False
         adapter.supplements_page_urls.return_value = ["https://www.sciencedirect.com/science/article/pii/S1550413125004863",
                                                        "https://doi.org/10.1016/j.cmet.2025.11.002"]
         adapter.supplement_links.return_value = [link]
@@ -371,7 +402,9 @@ class CandidatePagesTests(unittest.TestCase):
         with patch.object(PublisherBatchDownloader, "adapter", new=adapter), \
                 patch.object(d, "_challenge_shell", return_value=False), \
                 patch.object(d, "_is_challenge_page", return_value=False):
-            self.assertEqual(d.collect_supplements(context, GASTRO_DOI, Path("/tmp/out"), DownloadResult(doi=GASTRO_DOI, status="failed")), [])
+            self.assertEqual(d.collect_supplements(context, GASTRO_DOI, Path("/tmp/out"), DownloadResult(doi=GASTRO_DOI, status="failed")),
+                             [{"status": "skipped", "reason": "supplements_not_supported",
+                               "url": "https://a.example/1", "label": ""}])
         self.assertEqual(page.goto.call_count, 1)
 
 class FourPublishersLinksTests(unittest.TestCase):

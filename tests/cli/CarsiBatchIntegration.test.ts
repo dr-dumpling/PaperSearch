@@ -44,7 +44,7 @@ describe("CARSI serial batch through the CLI", () => {
     delete env.PAPER_SEARCH_CARSI_EXECUTABLE;
     const result = spawnSync(
       process.execPath,
-      [join(process.cwd(), "node_modules/.bin/tsx"), "src/cli.ts", "run", tool, "--json-args", JSON.stringify(args)],
+      ["--import", "tsx", "--import", join(process.cwd(), "tests/fixtures/carsi/fake/empty-pmc.mjs"), "src/cli.ts", "run", tool, "--json-args", JSON.stringify(args)],
       { cwd: process.cwd(), env, encoding: "utf8", timeout: 60_000 },
     );
     const calls = readFileSync(logPath, "utf8")
@@ -57,8 +57,8 @@ describe("CARSI serial batch through the CLI", () => {
 
   it("download_batch sends every item's position and reports the batch end", () => {
     const { result, calls } = run("batch_capable", "download_batch", {
-      // paperId without doi keeps the open-access stages offline (as in the
-      // single-download integration test); entitled access uses the paperId.
+      // The preload gives these synthetic DOIs an empty PMC lookup; the real
+      // CLI still executes the full funnel and the fake backend contract.
       items: [
         { source: "no_searcher", paperId: "10.1000/one" },
         { source: "no_searcher", paperId: "10.1000/two" },

@@ -9,6 +9,7 @@ declare const STAGES: {
     readonly fetching_pdf: "正在获取 PDF。";
     readonly pdf_captured: "已捕获 PDF，正在保存。";
     readonly saved_pending_verification: "PDF 已保存，正在等待产品核验论文身份。";
+    readonly supplements_checked: "补充材料检查已完成，正在整理文件结果。";
     readonly route_failed: "当前下载路径未完成，正在尝试其余可用路径。";
     readonly failed: "本次下载未完成，正在整理结果。";
     readonly cancelled: "本次下载已取消。";

@@ -103,6 +103,9 @@ class WileyCaptureTests(unittest.TestCase):
             return types.SimpleNamespace(inner_text=lambda **kw: self.body)
         if selector == "a[href]":
             return types.SimpleNamespace(all=lambda: self.controls, nth=lambda index: self.controls[index])
+        if selector.startswith('a[href="'):
+            href = selector[len('a[href="'):-2]
+            return types.SimpleNamespace(all=lambda: [c for c in self.controls if c.get_attribute("href") == href])
         return Mock()
 
 
@@ -111,6 +114,7 @@ class WileyCaptureTests(unittest.TestCase):
         element.get_attribute.side_effect = lambda name, **kw: href if name == "href" else ""
         element.inner_text.return_value = text
         element.is_visible.return_value = True
+        element.evaluate.side_effect = lambda script: text if "[el.innerText" in script else False
         return element
 
     def response(self, url, body, origin=None, status=200, disposition=""):
@@ -222,7 +226,7 @@ class WileyCaptureTests(unittest.TestCase):
         for rejected in self.controls[:-1]:
             rejected.click.assert_not_called()
         article.click.assert_called_once()
-        article.evaluate.assert_called_once_with("el => el.setAttribute('target', '_self')")
+        article.evaluate.assert_any_call("el => el.setAttribute('target', '_self')")
 
     def test_only_supplements_do_not_trigger_generic_click(self):
         self.controls = [self.control(SUPPLEMENT), self.control("https://files.example.invalid/form.pdf")]

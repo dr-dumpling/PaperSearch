@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import {
   CONFIG_KEYS,
+  resolveDownloadPath,
   getConfigPath,
   getConfigValue,
   importEnvFile,
@@ -17,6 +18,24 @@ import {
 } from "../../src/config/ConfigService.js";
 
 describe("ConfigService", () => {
+  it("uses one download preference and notices edits made by the capsule", () => {
+    const old = process.env.DEFAULT_DOWNLOAD_PATH;
+    try {
+      delete process.env.DEFAULT_DOWNLOAD_PATH;
+      expect(resolveDownloadPath()).toBe("./downloads");
+      setUserConfigValue("DEFAULT_DOWNLOAD_PATH", "/first");
+      loadUserConfigIntoEnv();
+      expect(resolveDownloadPath()).toBe("/first");
+      writeFileSync(getConfigPath(), JSON.stringify({ DEFAULT_DOWNLOAD_PATH: "/from-capsule" }));
+      expect(resolveDownloadPath()).toBe("/from-capsule");
+      expect(resolveDownloadPath("/explicit")).toBe("/explicit");
+      process.env.DEFAULT_DOWNLOAD_PATH = "/shell-override";
+      expect(resolveDownloadPath()).toBe("/shell-override");
+    } finally {
+      if (old === undefined) delete process.env.DEFAULT_DOWNLOAD_PATH;
+      else process.env.DEFAULT_DOWNLOAD_PATH = old;
+    }
+  });
   it("selects the configured executable with environment precedence", () => {
     const previous = process.env.PAPER_SEARCH_CARSI_EXECUTABLE;
     try {

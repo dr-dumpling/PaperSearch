@@ -87,13 +87,10 @@ class CaptureMixin:
 
     def _pdf_sent_to_article_after_login(self, page: Any, result: DownloadResult, since: int) -> bool:
         """After this item's school login the PDF attempts from ``since`` on were
-        sent to the article's own web page (the article or its abstract, another
-        address than the one asked for), and none brought a PDF, a login, a
-        verification or a block: the school's login does not give the PDF. JAMA's
-        articlepdf answered 302 -> article-abstract -> fullarticle and The Lancet
-        1975's ScienceDirect pdfft its article page; both ended as "PDF not
-        captured" (2026-11-02). Recorded as no access after login, with the page
-        and a snapshot; True when so."""
+        sent to the article's own web page, with no PDF, login, verification or
+        block. Missing entitlement additionally requires the page's denial,
+        purchase offer or abstract-only evidence. A redirect alone can also
+        happen on a freely readable article and does not prove missing access."""
         def plain(url: Any) -> str:
             parsed = urlparse(str(url or ""))
             return f"{parsed.hostname}{parsed.path}".lower().rstrip("/")
@@ -107,11 +104,14 @@ class CaptureMixin:
                 or any(a.get("outcome") not in self._WEB_PAGE_OUTCOMES | {"no pdf"} for a in attempts)
                 or self._is_auth_page(url) or self._is_challenge_page(page)):
             return False
+        evidence = self._no_access_after_login(page, result)
+        if not evidence:
+            return False
         last = sent_back[-1]
         result.reason = "institution_pdf_entitlement_missing"
         self._event(result, "no_access_after_login",
                     f"PDF after the school login sent to the article's web page: {str(last.get('url'))[:120]} -> "
-                    f"{str(last.get('final_url'))[:160]} | {self._title(page)[:80]}")
+                    f"{str(last.get('final_url'))[:160]} | {evidence[:160]}")
         self._snapshot(page, result, "not subscribed")
         return True
 
@@ -148,6 +148,7 @@ class CaptureMixin:
                  getattr(self, "_fallback_pdf", None))
         self._capture_doi = (doi or "").lower()
         self._expected_title = self._citation_title(page) or getattr(self, "_record_title", "")
+        self._show_title()
         try:
             try:
                 tabs = [tab for tab in list(page.context.pages) if not tab.is_closed()]
@@ -204,6 +205,7 @@ class CaptureMixin:
         self._phase(result, "pdf")
         self._capture_doi = (doi or "").lower()
         self._expected_title = self._citation_title(page) or getattr(self, "_record_title", "")
+        self._show_title()
         self._fallback_pdf = None
         tried_before = len(result.pdf_attempts)
         try:
@@ -270,6 +272,19 @@ class CaptureMixin:
         except Exception:
             return ""
         return " ".join(value.split()) if isinstance(value, str) else ""
+
+    def _show_title(self) -> None:
+        """The article's title in the progress window, once its page names it."""
+        title = getattr(self, "_expected_title", "")
+        if not title or title == getattr(self, "_shown_title", ""):
+            return
+        self._shown_title = title
+        try:
+            from .. import progress_reporter
+
+            progress_reporter.update(title=title)
+        except Exception:
+            pass
 
     def _capture_pdf_channels(self, page: Any, doi: str, result: DownloadResult) -> tuple[bytes | None, str, str | None]:
         """Capture the PDF for ``doi`` from ``page``.
@@ -861,7 +876,7 @@ class CaptureMixin:
             if not _is_browser_error(exc):
                 raise
             links = []
-        for index, link in enumerate(links if isinstance(links, list) else []):
+        for link in links if isinstance(links, list) else []:
             try:
                 href = urljoin(str(getattr(page, "url", "") or ""), str(link.get("href") or ""))
                 label = str(link.get("label") or "").lower()
@@ -869,8 +884,23 @@ class CaptureMixin:
                         or any(word in label for word in ("supplement", "supporting", "disclosure", "icmje"))
                         or not matches(href)):
                     continue
-                control = page.locator("a[href]").nth(index)
-                if not control.is_visible(timeout=1_500):
+                # Bind the observed address, not its old position: dynamic pages
+                # may insert/reorder anchors between discovery and clicking.
+                raw_href = str(link.get("href") or "")
+                escaped = "".join(f"\\{ord(char):x} " if char in '\\"\n\r\f\0' else char
+                                  for char in raw_href)
+                control = None
+                for candidate in page.locator(f'a[href="{escaped}"]').all():
+                    if not candidate.is_visible(timeout=1_500) or candidate.evaluate(_IN_REFERENCES_JS):
+                        continue
+                    current_label = str(candidate.evaluate(
+                        "el => [el.innerText, el.getAttribute('title'), el.getAttribute('aria-label')].join(' ')"
+                    ) or "").lower()
+                    if any(word in current_label for word in ("supplement", "supporting", "disclosure", "icmje")):
+                        continue
+                    control = candidate
+                    break
+                if control is None:
                     continue
                 control.evaluate("el => el.setAttribute('target', '_self')")
                 if drop_download:
@@ -1380,6 +1410,14 @@ class CaptureMixin:
                     return null;
                 }
                 const data = await app.pdfDocument.getData();
+                // Crossing the Xray/automation boundary with one large Blob
+                // causes a large transient allocation. Keep the native bytes
+                // here and transfer at most 1 MiB per bridge call instead.
+                if (data.byteLength > 1024 * 1024) {
+                    const token = String(Date.now()) + ":" + String(Math.random());
+                    nativeWindow.__carsiPdfTransfer = {token, data};
+                    return {transfer: token, size: data.byteLength};
+                }
                 // The viewer's own Blob cannot iterate an array handed over the
                 // Xray boundary (Firefox 156: "Permission denied to access
                 // property Symbol.iterator"); this realm's constructors can.
@@ -1404,6 +1442,8 @@ class CaptureMixin:
             encoded = page.evaluate(script, source_url)
         except Exception:
             return None
+        if isinstance(encoded, dict) and isinstance(encoded.get("transfer"), str):
+            return self._read_viewer_chunks(page, encoded["transfer"], encoded.get("size"))
         if not isinstance(encoded, str) or not encoded.startswith("data:"):
             return None
         try:
@@ -1414,6 +1454,49 @@ class CaptureMixin:
         if len(body) > MIN_PDF_BYTES and body.startswith(b"%PDF-"):
             return body
         return None
+
+    @staticmethod
+    def _read_viewer_chunks(page: Any, token: str, size: Any) -> bytes | None:
+        """Bound bridge/Blob allocations while preserving exact bytes and cleanup."""
+        read_chunk = r"""async ({token, offset, length}) => {
+            try {
+                const w = window.wrappedJSObject || window;
+                const transfer = w.__carsiPdfTransfer;
+                if (!transfer || transfer.token !== token) return null;
+                const part = transfer.data.subarray(offset, offset + length);
+                let blob;
+                try { blob = new Blob([part], {type: "application/pdf"}); }
+                catch (_) { blob = new w.Blob([part], {type: "application/pdf"}); }
+                return await new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = () => resolve(null);
+                    reader.readAsDataURL(blob);
+                });
+            } catch (_) { return null; }
+        }"""
+        body = bytearray()
+        try:
+            if type(size) is not int or size <= MIN_PDF_BYTES:
+                return None
+            for offset in range(0, size, 1024 * 1024):
+                length = min(1024 * 1024, size - offset)
+                encoded = page.evaluate(read_chunk, {"token": token, "offset": offset, "length": length})
+                if not isinstance(encoded, str) or not encoded.startswith("data:"):
+                    return None
+                part = base64.b64decode(encoded.split(",", 1)[1], validate=True)
+                if len(part) != length:
+                    return None
+                body.extend(part)
+            return bytes(body) if body.startswith(b"%PDF-") else None
+        except Exception:
+            return None
+        finally:
+            try:
+                page.evaluate("""token => { const w = window.wrappedJSObject || window;
+                    if (w.__carsiPdfTransfer?.token === token) delete w.__carsiPdfTransfer; }""", token)
+            except Exception:
+                pass  # Navigation/closing already discarded the old viewer realm.
 
     def _should_use_async_pdf_navigation(self, url: str) -> bool:
         return self.adapter.async_pdf_navigation and self._is_pdf_candidate_url(url)

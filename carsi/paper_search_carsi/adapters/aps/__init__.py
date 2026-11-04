@@ -35,8 +35,11 @@ def aps_article_url(doi: str) -> str:
         ("PRXQuantum.", "prxquantum"),
     )
     for prefix, journal_code in journal_codes:
-        if suffix.startswith(prefix):
-            return f"https://journals.aps.org/{journal_code}/abstract/{doi}"
+        if suffix.lower().startswith(prefix.lower()):
+            # DOI identity is case-insensitive, but APS's article paths are not.
+            canonical_suffix = prefix + suffix[len(prefix):]
+            canonical_doi = doi[:len(doi) - len(suffix)] + canonical_suffix
+            return f"https://journals.aps.org/{journal_code}/abstract/{canonical_doi}"
     return ""
 
 

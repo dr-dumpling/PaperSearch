@@ -84,8 +84,12 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
     if supplements in ("with", "only"):
         config["supplements"] = supplements
 
-    target_dir = Path(output_dir) if output_dir else Path(config["output_dir"])
+    from .download_directory import configured as configured_download_directory
+
+    target_dir = Path(output_dir) if output_dir else Path(configured_download_directory() or config["output_dir"])
     target_dir.mkdir(parents=True, exist_ok=True)
+    from .progress_reporter import set_output_dir
+    set_output_dir(target_dir)
     if diagnostics_dir:
         config["diagnostics_dir"] = str(Path(diagnostics_dir).resolve())
     output_path = target_dir / f"{safe_filename(doi)}.pdf"
@@ -100,7 +104,7 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
             # The main text is cached; only the supplementary files are fetched.
             config["supplements"] = "only"
             extra = try_institutional(doi, output_path, config) or {}
-            if extra.get("supplements"):
+            if isinstance(extra.get("supplements"), list):
                 cached = {**cached, "supplements": extra["supplements"]}
             return cached
 

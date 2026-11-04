@@ -3,7 +3,8 @@ import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from types import SimpleNamespace
 
 from paper_search_carsi import progress_reporter as pr
 
@@ -26,7 +27,7 @@ class ProgressWindowSpawnTests(unittest.TestCase):
         popen = self.spawn(config={"progress_bar_auto": True})
         popen.assert_called_once()
         args, kwargs = popen.call_args
-        self.assertEqual(args[0][1:], ["-m", "paper_search_carsi.progress_bar"])
+        self.assertEqual(args[0][1:], ["-m", "paper_search_carsi.progress_capsule"])
         self.assertEqual(kwargs["env"]["CARSI_PROGRESS_BAR_CHILD"], "1")
 
     def test_disabled_by_env_config_child_and_pytest(self):
@@ -40,13 +41,50 @@ class ProgressWindowSpawnTests(unittest.TestCase):
         self.lock.write_text(str(os.getpid()))
         self.spawn().assert_not_called()
         self.lock.write_text("999999")
-        with patch.object(pr, "_pid_alive", return_value=False):
+        with patch.object(pr, "_pid_alive", return_value=False) as alive:
             self.spawn().assert_called_once()
+        alive.assert_called_once_with(999999, created_before=self.lock.stat().st_mtime + 1)
 
     def test_window_module_imports_without_opening_a_window(self):
         import importlib
-        module = importlib.import_module("paper_search_carsi.progress_bar")
-        self.assertTrue(callable(module.main))
+        for name in ("paper_search_carsi.progress_capsule", "paper_search_carsi.progress_bar"):
+            module = importlib.import_module(name)
+            self.assertTrue(callable(module.main))
+
+
+class WindowsProcessLivenessTests(unittest.TestCase):
+    def probe(self, wait_result, *, created_before=None, created_at=100):
+        import ctypes
+        from ctypes import wintypes
+        handle = 0x100000001
+        kernel = SimpleNamespace(OpenProcess=Mock(return_value=handle),
+                                 CloseHandle=Mock(return_value=True),
+                                 WaitForSingleObject=Mock(return_value=wait_result),
+                                 GetProcessTimes=Mock(return_value=True))
+        def times(_handle, created, *_rest):
+            ticks = int((created_at + 11644473600) * 10_000_000)
+            value = ctypes.cast(created, ctypes.POINTER(wintypes.FILETIME)).contents
+            value.dwLowDateTime, value.dwHighDateTime = ticks & 0xffffffff, ticks >> 32
+            return True
+        kernel.GetProcessTimes.side_effect = times
+        os_stub = SimpleNamespace(name="nt", kill=Mock())
+        with patch.object(pr, "os", os_stub), patch.object(ctypes, "WinDLL", return_value=kernel, create=True):
+            result = pr._pid_alive(123, created_before=created_before)
+        os_stub.kill.assert_not_called()
+        kernel.WaitForSingleObject.assert_called_once_with(handle, 0)
+        kernel.CloseHandle.assert_called_once_with(handle)
+        return result
+
+    def test_an_openable_terminated_process_is_not_a_live_window(self):
+        self.assertFalse(self.probe(0))
+
+    def test_running_process_is_alive_and_wait_failure_is_not(self):
+        self.assertTrue(self.probe(258))
+        self.assertFalse(self.probe(0xffffffff))
+
+    def test_reused_pid_newer_than_the_window_lock_does_not_block_reopening(self):
+        self.assertFalse(self.probe(258, created_before=150, created_at=200))
+        self.assertTrue(self.probe(258, created_before=150, created_at=100))
 
 
 class AutoCloseTests(unittest.TestCase):
@@ -63,10 +101,11 @@ class AutoCloseTests(unittest.TestCase):
         self.assertFalse(ac.should_close(done, 17.9))
         self.assertTrue(ac.should_close(done, 18))
 
-    def test_every_terminal_status_counts(self):
-        for status in ("done", "failed", "cancelled", "interrupted"):
-            ac = self.ac(linger=0)
-            self.assertTrue(ac.should_close({"status": status, "run_id": "x"}, 1), status)
+    def test_only_a_fully_saved_task_closes_by_itself(self):
+        self.assertTrue(self.ac(linger=0).should_close({"status": "done", "run_id": "x"}, 1))
+        for state in ({"status": "done", "run_id": "x", "failed": 2}, {"status": "failed", "run_id": "x"},
+                      {"status": "cancelled", "run_id": "x"}, {"status": "interrupted", "run_id": "x"}):
+            self.assertFalse(self.ac(linger=0).should_close(state, 99), state)
 
     def test_a_new_task_during_the_linger_keeps_the_window(self):
         ac = self.ac()

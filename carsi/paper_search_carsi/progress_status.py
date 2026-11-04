@@ -30,7 +30,7 @@ else:
 MIN_INTERVAL = 0.1
 MAX_TIMEOUT = 60.0
 _STATUSES = frozenset({"running", "done", "failed", "cancelled", "interrupted"})
-_TERMINAL_STAGES = frozenset({"saved_pending_verification", "failed", "cancelled", "interrupted"})
+_TERMINAL_STAGES = frozenset({"saved_pending_verification", "supplements_checked", "failed", "cancelled", "interrupted"})
 _EXIT_CODES = {
     "unknown": 1, "unavailable": 1, "failed": 1, "cancelled": 1,
     "interrupted": 1, "task_mismatch": 3, "run_changed": 4, "timeout": 124,

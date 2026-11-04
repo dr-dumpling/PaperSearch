@@ -363,8 +363,9 @@ def _try_builtin_institutional(
             (f["artifacts"] for f in reversed(failures) if f.get("artifacts")), None)
         if artifacts:
             result["artifacts"] = artifacts
-        supplements = next((f["supplements"] for f in reversed(failures) if f.get("supplements")), None)
-        if supplements:
+        supplements = next((f["supplements"] for f in reversed(failures)
+                            if isinstance(f.get("supplements"), list)), None)
+        if supplements is not None:
             result["supplements"] = supplements
         return result
     if not profile:
@@ -516,6 +517,8 @@ def _try_browser_batch_download(
 
     log.info(f"   [Institutional] Browser batch download: {doi} via {profile.name}")
 
+    from ..browser import watchdog
+
     supplements_mode = str(config.get("supplements") or "")
     try:
         context = downloader._launch_context()
@@ -534,8 +537,6 @@ def _try_browser_batch_download(
                         pass
                     context = downloader._launch_context(relaunch="the browser closed at the first page")
                     result = downloader.fetch_one(context, record, run_dir)
-            from ..browser import watchdog
-
             if watchdog.fired and not result.ok:
                 # The browser call never returned and the driver was stopped:
                 # whatever the engine reported after that is a consequence.
@@ -558,8 +559,12 @@ def _try_browser_batch_download(
                 else:
                     written = len(result.events)
                     result.supplements = downloader.collect_supplements(context, doi, output_path.parent, result, manifest_dir=run_dir)
-                    if supplements_mode == "only" and (run_dir / "manifest.json").is_file():
-                        result.record_path = str(run_dir / "manifest.json")
+                    if supplements_mode == "only":
+                        manifest = run_dir / "manifest.json"
+                        if not manifest.is_file():
+                            manifest.write_text(json.dumps({"doi": doi, "files": result.supplements},
+                                                           ensure_ascii=False, indent=2), encoding="utf-8")
+                        result.record_path = str(manifest)
                     _note_supplements(result, written)
         finally:
             try:
@@ -568,11 +573,18 @@ def _try_browser_batch_download(
                 pass
     except Exception as e:
         log.info("   [Institutional] Browser batch download error: %s", type(e).__name__)
+        if isinstance(e, watchdog.BrowserOperationTimeout):
+            state = "browser_operation_timeout"
+        elif isinstance(e, watchdog.BrowserUnresponsive):
+            state = "browser_unresponsive"
+        else:
+            state = "unexpected_error"
+        error_type, action = _FAILURE_KINDS[state]
         return {"success": False, "identifier": doi, "source": "institutional:browser",
-                "error_type": "source_exception", "reason": "source_exception",
+                "error_type": error_type, "reason": error_type, "action": action,
                 "artifacts": {"driver": "publisher", "publisher": str(getattr(profile, "name", "") or ""), "record": "",
-                              "diagnostic": _write_exception_diagnostic(run_dir, doi, e),
-                              "state": "unexpected_error"}}
+                              "diagnostic": _write_exception_diagnostic(run_dir, doi, e, state=state, reason=error_type),
+                              "state": state}}
 
     if result.ok and result.pdf_path:
         src = Path(result.pdf_path)
@@ -591,7 +603,7 @@ def _try_browser_batch_download(
                 "source": f"institutional:browser:{profile.name}",
                 "full_text_length": result.text_length,
                 "artifacts": _browser_artifacts(result, profile),
-                **({"supplements": result.supplements} if getattr(result, "supplements", None) else {}),
+                **({"supplements": result.supplements} if supplements_mode in ("with", "only") else {}),
             }
 
     reason_code = _failure_reason_code(result)
@@ -599,7 +611,7 @@ def _try_browser_batch_download(
     failure = {"success": False, "identifier": doi, "source": "institutional:browser",
                "error_type": error_type, "reason": error_type, "action": action,
                "artifacts": _browser_artifacts(result, profile)}
-    if getattr(result, "supplements", None):
+    if supplements_mode in ("with", "only"):
         failure["supplements"] = result.supplements
     if reason_code == "institution_pdf_entitlement_missing":
         failure["reason"] = reason_code
@@ -633,7 +645,8 @@ def _note_supplements(result: Any, written: int) -> None:
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _write_exception_diagnostic(run_dir: Path, doi: str, exc: Exception) -> str:
+def _write_exception_diagnostic(run_dir: Path, doi: str, exc: Exception, *,
+                                state: str = "unexpected_error", reason: str = "source_exception") -> str:
     """A failure outside the article's own steps (starting the browser, the ego
     connection) still leaves what happened, for the failure summary (ADR 0012).
     Records of 2026-10-30 had only "source_exception", nothing to look into."""
@@ -644,7 +657,7 @@ def _write_exception_diagnostic(run_dir: Path, doi: str, exc: Exception) -> str:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({
-            "doi": doi, "status": "failed", "state": "unexpected_error", "reason": "source_exception",
+            "doi": doi, "status": "failed", "state": state, "reason": reason,
             "events": [{"state": "unexpected_exception", "detail": f"{type(exc).__name__}: {str(exc)[:400]}"}],
             "traceback": traceback.format_exc()[-4000:],
         }, ensure_ascii=False, indent=2), encoding="utf-8")

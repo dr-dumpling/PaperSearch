@@ -96,7 +96,10 @@ class PdfUrlsMixin:
         if not doi or dois != {doi.strip().lower()}:
             return []
         return [str(url) for url in dict.fromkeys(found.get("pdfs") or ())
-                if self._on_article_site(str(url), page_url) and _PDF_PATH.search(urlparse(str(url)).path)
+                if self._on_article_site(str(url), page_url)
+                and not _NOT_PDF_LINK.search(urlparse(str(url)).path)
+                and (_PDF_PATH.search(urlparse(str(url)).path)
+                     or self.adapter.profile_pdf_candidate_url(str(url)) is True)
                 and not self._is_supplementary_url(str(url))]
 
     def _bound_pdf_urls(self, page: Any, doi: str) -> list[str] | None:
@@ -143,7 +146,8 @@ class PdfUrlsMixin:
         and no sharing, login, password, purchase or advertising action."""
         path = urlparse(url).path
         if (not self._on_article_site(url, page_url) or _NOT_PDF_LINK.search(path)
-                or not _PDF_PATH.search(path) or self._is_supplementary_url(url)):
+                or not _PDF_PATH.search(path) or self._is_supplementary_url(url)
+                or self.adapter.profile_pdf_candidate_url(url) is False):
             return False
         try:
             decoded = unquote(url).lower()
