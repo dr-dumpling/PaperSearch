@@ -127,6 +127,31 @@ class AccessMenuEntryTests(unittest.TestCase):
         self.assertTrue(self.d._click_sso_entry(self.page, self.result))
         self.assertEqual(self.page.url, CHOOSER)
 
+    def test_a_sign_in_toggle_with_an_accessibility_hint_reveals_institution_login(self):
+        # Emerald's diagnostic names this control "Sign In Open Menu" although
+        # the screenshot shows only "Sign In". Build the entry on expansion so
+        # the hidden-link fallback cannot bypass the toggle in this fixture.
+        self.html = ("<title>Article</title><h1>Article</h1>"
+                     "<button aria-haspopup='true' aria-controls='menu' onclick=\""
+                     "document.getElementById('menu').innerHTML = "
+                     "'&lt;a href=&quot;" + CHOOSER + "&quot;&gt;Institutional Login&lt;/a&gt;';"
+                     "document.getElementById('menu').hidden=false\">"
+                     "Sign In <span>Open Menu</span></button><div id='menu' hidden></div>")
+        self.page.goto(ARTICLE)
+        self.assertTrue(self.d._click_sso_entry(self.page, self.result))
+        self.assertEqual(self.page.url, CHOOSER)
+        self.assertEqual(self.requests, [ARTICLE, CHOOSER])
+        self.assertEqual([e['state'] for e in self.result.events],
+                         ['access_menu_opened', 'sso_entry_clicked'])
+
+    def test_a_personal_login_link_with_an_accessibility_hint_is_left_alone(self):
+        self.html = (f'<title>Article</title><h1>Article</h1><a href="{LOGIN_PAGE}">'
+                     'Sign In <span>Open Menu</span></a>')
+        self.page.goto(ARTICLE)
+        self.assertFalse(self.d._click_sso_entry(self.page, self.result))
+        self.assertEqual(self.requests, [ARTICLE])
+        self.assertEqual(self.result.events, [])
+
     def test_a_hidden_link_named_an_institution_entry_is_opened_by_its_address(self):
         # De Gruyter (2026-11-02): "Add institutional access" (/login, its WAYF) in a closed menu.
         self.html = ("<title>Article</title><h1>Article</h1><div style='display:none'>"

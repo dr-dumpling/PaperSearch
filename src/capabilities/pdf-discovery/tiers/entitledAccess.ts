@@ -56,6 +56,7 @@ async function tryEntitledAccess(
     const outcome = await backend.downloadLegalDoi({
       identifier: context.doi || context.paperId,
       outputDir: context.savePath,
+      ...(context.diagnosticsDir ? { diagnosticsDir: context.diagnosticsDir } : {}),
       ...(context.batch ? { batch: context.batch } : {}),
       ...(context.withSupplements ? { supplements: "with" as const } : {}),
       ...(context.shortUserWait ? { userWait: "short" as const } : {}),
@@ -131,12 +132,18 @@ async function tryEntitledAccess(
  */
 export async function fetchSupplementsOnly(
   backend: CarsiBackend | undefined,
-  request: { identifier: string; outputDir: string },
+  request: { identifier: string; outputDir: string; diagnosticsDir?: string },
+  onTrace?: (trace: Record<string, unknown>) => void,
 ): Promise<SupplementFile[] | undefined> {
   if (!backend) return undefined;
   try {
     const outcome = await backend.downloadLegalDoi({ ...request, supplements: "only" });
     if (outcome.kind === "backend_unavailable") return undefined;
+    if (outcome.trace) onTrace?.({ ...outcome.trace });
+    if (outcome.kind === "attempt_error" && !outcome.supplements) {
+      const { code } = carsiAttemptDetails(outcome.code);
+      return [{ label: "", status: code === "batch_stopped" || code === "user_skipped" ? "skipped" : "failed", reason: code }];
+    }
     return outcome.supplements ?? [];
   } catch (error) {
     return [

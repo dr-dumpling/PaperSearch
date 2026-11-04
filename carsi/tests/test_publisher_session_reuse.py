@@ -51,7 +51,7 @@ class PublisherSessionReuseTests(unittest.TestCase):
             root = Path(directory)
             config = {'cache_dir': str(root/'cache'), 'chrome_profile_dir': str(root/'profile')}
             original = PublisherBatchDownloader(config=config, profile=profile)
-            page = Mock(spec=['context', 'url', 'close', 'wait_for_load_state'])
+            page = Mock(spec=['context', 'url', 'close', 'wait_for_load_state', 'on', 'remove_listener'])
             page.url = 'https://www.sciencedirect.com/science/article/pii/S0000000000000000'
             def cookie(name, value, domain=publisher_domain, expires=-1):
                 return dict(name=name, value=value, domain=domain, path='/', expires=expires,
@@ -82,6 +82,7 @@ class PublisherSessionReuseTests(unittest.TestCase):
 
             restarted = PublisherBatchDownloader(config=config, profile=profile)
             context = Mock()
+            context.pages = []
             context.cookies.return_value = [cookie('live', 'fresh-fixture')]
             with patch('paper_search_carsi.browser.engine.get_persistent_context', return_value=context) as launch:
                 self.assertIs(restarted._launch_context(), context)

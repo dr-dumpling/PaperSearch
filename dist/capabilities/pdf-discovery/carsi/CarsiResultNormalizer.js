@@ -13,9 +13,9 @@ export function normalizeCacheClearResult(result) {
         throw new CarsiToolResultError("cache_clear_failed");
     }
 }
-export function normalizeDownloadResult(result, identifier, outputDir) {
+export function normalizeDownloadResult(result, identifier, outputDir, diagnosticsDir) {
     const payload = parseSingleTextJson(result, "invalid_download_result");
-    const trace = backendTrace(payload.artifacts, outputDir);
+    const trace = backendTrace(payload.artifacts, outputDir, diagnosticsDir);
     const supplements = backendSupplements(payload.supplements, outputDir);
     if (payload.success === true) {
         if (typeof payload.file !== "string" || payload.file.trim().length === 0) {
@@ -111,7 +111,7 @@ function insideOutputDir(file, outputDir) {
  * files and a stopped login's host name. Anything else, and any file outside
  * ``outputDir``, is dropped.
  */
-function backendTrace(value, outputDir) {
+function backendTrace(value, outputDir, diagnosticsDir) {
     if (!value || typeof value !== "object" || Array.isArray(value))
         return undefined;
     const artifacts = value;
@@ -132,7 +132,7 @@ function backendTrace(value, outputDir) {
     if (stoppedHost)
         trace.stoppedHost = stoppedHost;
     for (const key of ["record", "diagnostic"]) {
-        const file = insideOutputDir(artifacts[key], outputDir);
+        const file = insideOutputDir(artifacts[key], diagnosticsDir) || insideOutputDir(artifacts[key], outputDir);
         if (file)
             trace[key] = file;
     }

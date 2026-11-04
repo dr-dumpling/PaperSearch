@@ -39,6 +39,8 @@ export interface DownloadStageRecord {
     trace?: Record<string, unknown>;
 }
 export interface DownloadWithFallbackOptions {
+    /** Internal shared candidates across the two batch phases; not a tool argument. */
+    preprintIds?: string[];
     source: string;
     paperId: string;
     doi?: string;
@@ -61,6 +63,10 @@ export interface DownloadWithFallbackOptions {
     content?: DownloadContent;
 }
 export interface DownloadWithFallbackResult {
+    /** Present when all earlier routes failed and an arXiv preprint was saved. */
+    version?: "preprint";
+    arxivId?: string;
+    publishedDoi?: string;
     status: "ok" | "error";
     path?: string;
     /** Present only when the saved full text is not a PDF (e.g. Springer TDM JATS XML). */

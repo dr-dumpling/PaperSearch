@@ -4,7 +4,7 @@ description: |
   学术文献检索与论文获取调度器，通过本机的 paper-search 命令完成（不是 MCP 服务）。
   用于：检索论文、查找相似研究、文献综述初筛、核验 PMID/DOI、下载论文 PDF 和补充材料
   （默认只有开放下载；需要学校订阅的正文和补充材料，要另装可选的机构下载扩展，用用户学校的权限获取），
-  调用 Crossref、OpenAlex、PubMed、PMC、Europe PMC、bioRxiv、medRxiv、Semantic Scholar、CORE、OpenAIRE、DBLP、ACM、USENIX、OpenReview、IACR 等来源，
+  调用 Crossref、OpenAlex、PubMed、PMC、Europe PMC、arXiv、bioRxiv、medRxiv、Semantic Scholar、CORE、OpenAIRE、DBLP、ACM、USENIX、OpenReview、IACR 等来源，
   在 Semantic Scholar 开放获取正文片段索引里查方法学细节，
   通过 Semantic Scholar Graph API 查已知论文的施引文献和参考文献，
   以及通过 EasyScholar 查期刊影响因子、JCR/SSCI 分区、中科院分区、JCI、ESI、预警和等级。
@@ -46,9 +46,10 @@ description: |
      ├─ ② Sci-Hub 兜底（默认开启，useSciHub=false 关闭）
      ├─ ③ 机构下载（可选扩展，paper-search carsi install 安装后才有）
      │    entitled_access：浏览器打开出版社网站 → 程序选 CARSI 和学校
-     │    → 用户在浏览器里登录学校、完成人机验证 → 程序取 PDF
+     │    → 用户登录学校，后端尝试简单验证、必要时提示人工接管 → 程序取 PDF
      │    补充材料只走这一步：正文已由 ①② 拿到时，content=both 也会单独来这里取
      │
+     ├─ ④ arXiv 预印本最后兜底：正式版路线未成功才尝试，必须告知用户 version=preprint
      ├─ 每一步拿到文件都核对身份（首页的 DOI、题名）；通过就保存，后面的步骤不再试
      └─ 都没拿到 → paper-search failures --format text，按四类失败向用户说明
 
@@ -103,7 +104,7 @@ paper-search doctor --pretty
 |---|---|---|
 | 能不能直接用 | 装好 `paper-search` 就能用 | 默认没装；`paper-search carsi install` 安装（下载约 3 GB，用 ego lite 时约 0.5 GB） |
 | 能拿到什么 | 开放获取的正文 | 用户学校订阅的正文；有规则的出版社还能取补充材料 |
-| 怎么拿 | 程序直接下载，通常几秒，不用登录：来源自带的下载、元数据里的 PDF 地址、PMC、Unpaywall、出版社接口（用户自己的 key）；最后是默认开启的 Sci-Hub 兜底（它不是开放获取，`useSciHub=false` 关闭） | 打开一个浏览器，经 CARSI 登录用户的学校，在出版社网站上取 PDF；账号密码和人机验证由用户在浏览器里完成 |
+| 怎么拿 | 程序直接下载，通常几秒，不用登录：来源自带的下载、元数据里的 PDF 地址、PMC、Unpaywall、出版社接口（用户自己的 key）；最后是默认开启的 Sci-Hub 兜底（它不是开放获取，`useSciHub=false` 关闭） | 打开浏览器，经 CARSI 登录学校，在出版社网站取 PDF；账号密码由用户输入，后端尝试简单验证，必要时提示人工接管 |
 | 补充材料 | 不提供 | 有规则的出版社可以取，见 `references/publisher-support.md` |
 | 结果里怎么看 | `attempts[]` 里成功的一步是 `primary`、`direct_pdf_url`、`repositories`、`unpaywall`、`publisher_api` 或 `scihub` | 成功的一步是 `entitled_access` |
 | 参考文件 | `references/capability-routing.md` 的“PDF 获取” | `references/carsi-setup.md`、`references/browser-download.md`、`references/publisher-support.md` |
@@ -139,7 +140,7 @@ paper-search doctor --pretty
 - 不凭模型记忆编造 PMID、DOI、期刊、年份或作者；关键论文输出前按 `references/capability-routing.md` 核验。
 - 同一篇论文的 PMID、DOI、题名、第一作者和年份应一致；不一致时标为可疑。
 - 不让用户在聊天里发送 API key、密码或验证码；`config`、`doctor` 的输出已脱敏，也不要复述或保存原始密钥。
-- 学校登录、人机验证只由用户在下载浏览器里完成；agent 不代填、不代点、不绕过验证。
+- 学校登录、二次验证及复杂验证码由用户在下载浏览器里完成；后端每次验证等待最多尝试点击可识别的 Turnstile 复选框 3 次，仍需人工时再提示用户。agent 不另开浏览器代填账号密码或操作验证。
 - 下载结果以命令的最终返回和实际保存的文件为准；每个文件都要核对身份（首页的 DOI 和题名）才算成功，交付时给出实际文件路径。
 - “没有权限”必须有依据，原因不明的不说成没有权限。
 - 出版社支持表说明的是程序能不能走通这类网站，不代表用户学校订阅了某本期刊。
@@ -149,3 +150,5 @@ paper-search doctor --pretty
 - 不管理 Zotero、Obsidian 或其他文献库。
 - 不写论文正文，不做语言润色。
 - 不把 API key、token、Cookie 写入 Skill、README 或回复。
+
+下载结果分在 `savePath/papers/` 与 `savePath/diagnostics/`。正文按“期刊_年份_标题”命名，附件保留原名；使用结果返回的实际 `path` / `supplements[].file`，不要自行拼 DOI 文件名。过长名称会截短，完整标题在诊断元数据中。

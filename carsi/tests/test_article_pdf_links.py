@@ -2,7 +2,10 @@
 its DOI, the page's own PDF links that name the article, the profile's formulas;
 never a sharing, login, password or advertising link (2026-11-02)."""
 import unittest
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
+
+from paper_search_carsi.browser.watchdog import BrowserUnresponsive
+from paper_search_carsi.entitlements import UserSkippedArticle, UserStoppedBatch
 
 from paper_search_carsi.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_carsi.publishers.profiles import get_publisher_profile
@@ -96,6 +99,31 @@ class ClickTests(unittest.TestCase):
         share.click.assert_not_called()
         cited.click.assert_not_called()
         self.assertEqual(self.result.events[-1]["detail"], "current-doi-pdf-link")
+
+    def test_terminal_error_from_article_link_stops_before_other_controls(self):
+        for error in (BrowserUnresponsive("first stalled call"), UserSkippedArticle("skip"),
+                      UserStoppedBatch("stop")):
+            with self.subTest(error=type(error).__name__):
+                self.links.clear()
+                self.controls.clear()
+                control = self.link("/doi/pdf/" + DOI)
+                control.evaluate.side_effect = error
+                with self.assertRaises(type(error)) as caught:
+                    self.d._click_pdf_entry(self.page, self.result, doi=DOI)
+                self.assertIs(caught.exception, error)
+                control.click.assert_not_called()
+
+    def test_terminal_error_in_last_script_is_not_a_missing_pdf_button(self):
+        error = BrowserUnresponsive("original PDF script stalled")
+        self.page.evaluate.side_effect = error
+        with patch.object(self.d, "_bound_pdf_urls", return_value=[]), \
+                patch.object(self.d, "_metadata_pdf_urls", return_value=[]), \
+                patch.object(self.d, "_access_gate_visible", return_value=False), \
+                patch.object(self.d, "_click_article_link", return_value=False):
+            with self.assertRaises(BrowserUnresponsive) as caught:
+                self.d._click_pdf_entry(self.page, self.result, doi=DOI)
+        self.assertIs(caught.exception, error)
+        self.page.evaluate.assert_called_once()
 
 
 class SimpleLocator:

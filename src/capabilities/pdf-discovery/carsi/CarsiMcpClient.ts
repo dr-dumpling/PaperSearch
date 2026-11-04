@@ -49,7 +49,7 @@ export const CARSI_CLEANUP_TIMEOUT_MS = 5_000;
 
 const CARSI_BACKEND_SOURCE = "carsi";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.4.2";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.4.3";
 
 interface ActiveSession {
   client: Client;
@@ -451,6 +451,7 @@ export class CarsiMcpClient implements CarsiBackend {
             session.batchSupport.downloadFields ? request.batch : undefined,
             session.batchSupport.supplementsField ? request.supplements : undefined,
             session.batchSupport.userWaitField ? request.userWait : undefined,
+            session.batchSupport.diagnosticsDirField ? request.diagnosticsDir : undefined,
           ),
         },
         undefined,
@@ -479,7 +480,8 @@ export class CarsiMcpClient implements CarsiBackend {
         },
       );
       assertProtocolIntegrity(session.protocolState);
-      return normalizeDownloadResult(downloadResult, identifier, request.outputDir);
+      return normalizeDownloadResult(downloadResult, identifier, request.outputDir,
+        session.batchSupport.diagnosticsDirField ? request.diagnosticsDir : undefined);
     } catch (error) {
       if (isAbortError(error, request.signal)) {
         return attemptError(

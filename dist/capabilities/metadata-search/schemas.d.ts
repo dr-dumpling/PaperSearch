@@ -72,12 +72,12 @@ export declare const SearchPapersSchema: z.ZodEffects<z.ZodObject<{
 }>;
 export declare const GetPaperByDoiSchema: z.ZodObject<{
     doi: z.ZodString;
-    platform: z.ZodDefault<z.ZodOptional<z.ZodEnum<["webofscience", "pubmed", "crossref", "openalex", "unpaywall", "pmc", "europepmc", "core", "all"]>>>;
+    platform: z.ZodDefault<z.ZodOptional<z.ZodEnum<["arxiv", "webofscience", "pubmed", "crossref", "openalex", "unpaywall", "pmc", "europepmc", "core", "all"]>>>;
 }, "strip", z.ZodTypeAny, {
     doi: string;
-    platform: "webofscience" | "pubmed" | "core" | "crossref" | "openalex" | "unpaywall" | "pmc" | "europepmc" | "all";
+    platform: "arxiv" | "webofscience" | "pubmed" | "core" | "crossref" | "openalex" | "unpaywall" | "pmc" | "europepmc" | "all";
 }, {
     doi: string;
-    platform?: "webofscience" | "pubmed" | "core" | "crossref" | "openalex" | "unpaywall" | "pmc" | "europepmc" | "all" | undefined;
+    platform?: "arxiv" | "webofscience" | "pubmed" | "core" | "crossref" | "openalex" | "unpaywall" | "pmc" | "europepmc" | "all" | undefined;
 }>;
 //# sourceMappingURL=schemas.d.ts.map

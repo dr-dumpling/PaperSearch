@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { normalizeArxivId } from '../arxiv.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Readable } from 'stream';
@@ -94,6 +95,9 @@ export async function downloadPdfFromUrl(pdfUrl, savePath, filenameHint, options
     if (pdfUrl.startsWith('ftp://')) {
         throw new Error('FTP PDF links are not supported by the Node downloader.');
     }
+    if (!options.allowPreprint && normalizeArxivId(pdfUrl)) {
+        throw new Error('arXiv PDF deferred until published-version routes finish');
+    }
     fs.mkdirSync(savePath, { recursive: true });
     const outputPath = path.join(savePath, `${safeFilename(filenameHint)}.pdf`);
     let response;
@@ -102,6 +106,11 @@ export async function downloadPdfFromUrl(pdfUrl, savePath, filenameHint, options
             responseType: 'stream',
             timeout: options.timeoutMs ?? TIMEOUTS.DOWNLOAD,
             maxRedirects: 5,
+            beforeRedirect: (redirect) => {
+                if (!options.allowPreprint && normalizeArxivId(`${redirect.protocol}//${redirect.hostname}${redirect.path}`)) {
+                    throw new Error('arXiv PDF deferred until published-version routes finish');
+                }
+            },
             headers: {
                 'User-Agent': USER_AGENT,
                 Accept: 'application/pdf,*/*',
@@ -117,6 +126,11 @@ export async function downloadPdfFromUrl(pdfUrl, savePath, filenameHint, options
             : undefined;
         const detail = status ? ` with HTTP ${status}` : code ? ` (${code})` : '';
         throw new Error(`PDF download request failed${detail}.`);
+    }
+    const finalUrl = response.request?.res?.responseUrl;
+    if (!options.allowPreprint && finalUrl && normalizeArxivId(finalUrl)) {
+        response.data?.destroy?.();
+        throw new Error('arXiv PDF deferred until published-version routes finish');
     }
     if (response.status >= 400) {
         let errStream = response.data;

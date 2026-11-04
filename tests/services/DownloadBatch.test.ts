@@ -183,7 +183,7 @@ describe("serial download batch", () => {
       [1, 2, 0, 0],
       [2, 2, 1, 1],
     ]);
-    expect(entitled[0].savePath).toBe("/tmp/own");
+    expect(entitled[0].savePath).toContain("/tmp/own/papers/");
     expect(updates).toEqual([
       expect.objectContaining({ total: 2, done: 2, succeeded: 1, failed: 1, finished: true }),
     ]);
@@ -223,6 +223,18 @@ describe("serial download batch", () => {
       expect(seen).toEqual(["10.1000/a", "10.1016/login", "10.1000/b:short", "10.1000/c:short"]);
     }
     expect(lines.filter((line) => line.startsWith("[批量] 这一篇等你登录或验证已到时限")).length).toBe(2);
+  });
+
+  it("continues after a page budget timeout without treating the user as absent", async () => {
+    const seen: DownloadTierContext[] = [];
+    const tiers = (): DownloadTier[] => [{ id: "entitled_access", stage: "entitled_access", run: async (c) => {
+      seen.push(c);
+      return { status: "error", code: "browser_operation_timeout", message: "page budget" };
+    } }];
+    await downloadBatch({} as never, { items: [{ doi: "10.1000/a" }, { doi: "10.1000/b" }], mode: "entitled_only" },
+      fakeBackend([]), () => {}, tiers);
+    expect(seen).toHaveLength(2);
+    expect(seen.every((c) => !c.shortUserWait)).toBe(true);
   });
 
   it("waits out the publisher's hourly limit and tries the same article again", async () => {
@@ -380,12 +392,12 @@ describe("backend batch support", () => {
       ],
       "legal_only",
     );
-    expect(declared).toEqual({ downloadFields: true, progressTool: true, supplementsField: false, userWaitField: false });
+    expect(declared).toEqual({ downloadFields: true, progressTool: true, supplementsField: false, userWaitField: false, diagnosticsDirField: false });
     const plain = selectCarsiBatchSupport(
       [{ name: "carsi_download", inputSchema: { type: "object", properties: base } }],
       "legal_only",
     );
-    expect(plain).toEqual({ downloadFields: false, progressTool: false, supplementsField: false, userWaitField: false });
+    expect(plain).toEqual({ downloadFields: false, progressTool: false, supplementsField: false, userWaitField: false, diagnosticsDirField: false });
     const waiting = selectCarsiBatchSupport(
       [{ name: "carsi_download", inputSchema: { type: "object", properties: { ...base, user_wait: { type: "string" } } } }],
       "legal_only",

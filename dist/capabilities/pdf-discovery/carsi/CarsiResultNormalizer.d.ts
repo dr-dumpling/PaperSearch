@@ -4,5 +4,5 @@ export declare class CarsiToolResultError extends Error {
     constructor(code: "cache_clear_failed" | "invalid_download_result");
 }
 export declare function normalizeCacheClearResult(result: unknown): void;
-export declare function normalizeDownloadResult(result: unknown, identifier: string, outputDir?: string): CarsiInvocationOutcome;
+export declare function normalizeDownloadResult(result: unknown, identifier: string, outputDir?: string, diagnosticsDir?: string): CarsiInvocationOutcome;
 //# sourceMappingURL=CarsiResultNormalizer.d.ts.map

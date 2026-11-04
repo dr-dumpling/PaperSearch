@@ -8,6 +8,12 @@ export interface DownloadTier {
 }
 
 export interface DownloadTierContext {
+  arxivId?: string;
+  arxivPaper?: import('../../models/Paper.js').Paper;
+  arxivOnly?: boolean;
+  arxivConflict?: boolean;
+  arxivLookupError?: string;
+  preprintIds?: string[];
   /** Set once the funnel has asked Crossref for a missing title. */
   titleLookedUp?: boolean;
   searchers: Searchers;
@@ -16,6 +22,8 @@ export interface DownloadTierContext {
   doi?: string;
   title?: string;
   savePath: string;
+  diagnosticsDir?: string;
+  outputMetadata?: import("./outputLayout.js").OutputMetadata;
   useEntitledAccess: boolean;
   useSciHub: boolean;
   batch?: DownloadBatchPosition;
@@ -25,6 +33,9 @@ export interface DownloadTierContext {
 }
 
 export interface DownloadTierResult {
+  version?: "preprint";
+  arxivId?: string;
+  publishedDoi?: string;
   status: "ok" | "error" | "skipped";
   path?: string;
   message: string;

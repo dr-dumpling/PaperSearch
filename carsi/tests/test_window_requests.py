@@ -4,7 +4,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from paper_search_carsi import entitlements, issues, progress_reporter
 from paper_search_carsi.browser import watchdog
@@ -31,6 +31,11 @@ class FakePage:
 
     def title(self):
         return "Some page"
+
+    def locator(self, selector):
+        if selector != "head > title":
+            raise AssertionError(selector)
+        return Mock(first=Mock(text_content=Mock(return_value=self.title())))
 
     def evaluate(self, script, *args):
         return "page text"

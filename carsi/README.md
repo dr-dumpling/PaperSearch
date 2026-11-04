@@ -1,6 +1,6 @@
 # paper-search-carsi
 
-PaperSearch 的机构授权 PDF 下载后端，从 scansci-pdf 裁出，只保留"机构访问"这一段：CARSI 等联盟入口、出版社浏览器抓取、会话复用、PDF 捕获。公开/OA 来源、灰色来源、搜索、批量、Tor、Zotero 都不在这里，那些由 PaperSearch 自己负责。WebVPN、EZProxy（经学校的网关或代理用学校 IP）也不在这里：代码暂存在仓库根目录 `campus-proxy/`，未接入。
+PaperSearch 的机构授权下载后端，负责 CARSI 等联盟登录、出版社页面交互、会话复用、正文 PDF 与补充材料获取。公开来源、检索和批量编排由 PaperSearch CLI 负责。WebVPN、EZProxy（经学校的网关或代理用学校 IP）也不在这里：代码暂存在仓库根目录 `campus-proxy/`，未接入。
 
 状态：**MCP server、编排和 CLI 已接通，PaperSearch `doctor` 握手通过；真实机构下载尚待逐出版社验收。**
 
@@ -22,6 +22,8 @@ python3 -m venv .venv
 旧值 `patchright`、`cloakbrowser` 会记一条警告并按 `camoufox` 处理。
 
 ## 使用
+
+遇到 Cloudflare/Turnstile 验证框时，程序先等待网站自动检查，再自动定位并点击复选框，网站放行后继续下载。每次验证等待最多尝试 3 次，两次至少间隔 3 秒，复用当前浏览器和原等待时限；自动阶段结束后仍未放行时提示人工接管。学校登录及二次验证由本人在浏览器完成。浏览器兼容设置随机构下载扩展安装，在新电脑上同样生效。
 
 等待用户操作：停在学校登录页（以及没配置学校时的选校页）每篇最多 3 分钟（配置键 `browser_login_timeout`，秒，默认 180）；停在其他页面（人机验证、出版社页面、选机构页、取 PDF 时等待处理）连续超过 1 分钟就结束这一篇（`browser_page_wait_timeout`，默认 60）。两项和每家出版社每小时最多下载篇数都能在进度窗口右上角的设置（齿轮）里改。浏览器某一步 90 秒没有响应时，这一篇以 `browser_unresponsive` 结束。进度窗口的按钮：跳过本篇、本刊无权限、出版社无权限、终止任务（整批停下，剩余篇目记为 `batch_stopped`）、⚑ 报告问题。
 
@@ -53,6 +55,8 @@ paper-search-carsi publisher-check --doi 10.1016/...
 
 ## 三级结构
 
+目录保留两层外壳：`carsi/` 是后端构建根（安装声明、测试和工具），`paper_search_carsi/` 是可导入、可安装的 Python 包。出版社各自保留独立文件夹，便于增加网站类型和专有规则；不因暂时只有一个 `__init__.py` 就改成单文件。目录是否精简按实际职责和明确扩展用途判断，核对记录见 `目录层级核对`。
+
 ```text
 paper_search_carsi/
 ├── publishers/      tier 1  声明式出版社规则：builtin/*.json + schema.json + 用户 publisher_profiles_file
@@ -72,4 +76,6 @@ paper_search_carsi/
 | tier 2 `adapters/<name>/` | Python，`PublisherAdapter` 子类 | 离线夹具测试；`publisher-check` 报告贴在 PR |
 | tier 3 `engine/` | 熟悉学校认证流程 | 维护者审核 |
 
-详见 CONTRIBUTING.md。
+详见 CONTRIBUTING.md。后端在契约之外的行为（浏览器预览、出版社规则扩展文件）见仓库的 `docs/dependencies/carsi-backend-notes.zh.md`。当前模块职责见同一后端说明中的“浏览器内部模块边界”。
+
+PaperSearch 调用后端时可以传入独立的 `diagnostics_dir`：浏览器记录、截图和附件清单放在该目录；正文及 `supplements/` 附件仍写入 `output_dir`。期刊、年份、标题命名由 CLI 的统一输出模块完成。

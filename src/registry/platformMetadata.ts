@@ -15,6 +15,7 @@ export type CapabilityProfileSourceGroup =
   | 'pdf_scihub';
 export type PlatformSchemaKind =
   | 'generic'
+  | 'arxiv'
   | 'webofscience'
   | 'pubmed'
   | 'biorxiv'
@@ -135,6 +136,22 @@ export const PLATFORM_METADATA: PlatformMetadata[] = [
     capabilityProfileSources: [
       { group: 'metadata_free', order: 50 },
       { group: 'pdf_open_access', order: 50 }
+    ],
+    capabilityGroups: ['metadata_search', 'pdf_discovery']
+  },
+  {
+    id: 'arxiv',
+    displayName: 'arXiv',
+    sourceKind: 'official-api',
+    defaultInAll: true,
+    noKeyDefault: true,
+    supportedOptions: ['maxResults', 'year', 'author', 'category', 'sortBy', 'sortOrder'],
+    schemaKind: 'arxiv',
+    supportsDoiLookup: true,
+    doiLookupOrder: 90,
+    capabilityProfileSources: [
+      { group: 'metadata_free', order: 60 },
+      { group: 'pdf_open_access', order: 10 }
     ],
     capabilityGroups: ['metadata_search', 'pdf_discovery']
   },

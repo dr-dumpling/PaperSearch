@@ -8,11 +8,15 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field
+from functools import wraps
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlencode
 
 import requests
+
+from ..browser import watchdog
+from ..browser.challenges import looks_like_challenge
 
 
 EST_ISSN = "1520-5851"
@@ -21,6 +25,15 @@ MAX_BROWSER_CONCURRENCY = 4
 PDF_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
 
 logger = logging.getLogger(__package__ + ".batch")  # the engine's one channel
+
+
+def page_operation(method):
+    """Bound an engine page operation by its existing page-wait setting."""
+    @wraps(method)
+    def bounded(self, *args, **kwargs):
+        with watchdog.operation(self.page_wait_sec, method.__name__):
+            return method(self, *args, **kwargs)
+    return bounded
 
 
 def _resolve_profile_dir(config: dict[str, Any], explicit: str | Path | None = None) -> Path:
@@ -121,6 +134,19 @@ def _is_browser_error(exc: BaseException, name: str = "") -> bool:
             and (not name or type(exc).__name__ == name))
 
 
+def page_title(page: Any) -> str:
+    """Read optional title text without consuming the whole page budget."""
+    try:
+        # Page.title has no timeout. A busy renderer held it for 30 s
+        # after access was ready, before the first PDF attempt (2026-11-04).
+        value = page.locator("head > title").first.text_content(timeout=1_000)
+        return re.sub(r"\s+", " ", str(value or "")).strip()
+    except Exception as exc:
+        if not _is_browser_error(exc):
+            raise
+        return ""
+
+
 # A browser call cut off by the page navigating: its document replaced, its frame gone.
 _NAVIGATION_CUT = ("Execution context was destroyed", "Cannot find context with specified id",
                    "Frame was detached", "because of a navigation")
@@ -181,19 +207,6 @@ def pump_until(page: Any, done: Callable[[], bool], timeout_ms: int, step_ms: in
     return bool(done())
 
 
-# A Cloudflare interstitial, recognised from its URL and title alone: scripts
-# reading the page (innerText, DOM queries) can make the check fail and come
-# back in a loop; an untouched page passes. "Attention Required! | Cloudflare" is
-# Cloudflare's block page, not a check.
-CHALLENGE_TITLES = ("just a moment", "请稍候")
-
-
-def looks_like_challenge(url: str, title: str) -> bool:
-    url = str(url or "").lower()
-    return ("__cf_chl" in url or "/cdn-cgi/challenge-platform/" in url
-            or str(title or "").strip().lower().startswith(CHALLENGE_TITLES))
-
-
 # The page's document can be read: parsed (DOMContentLoaded), or its body text has
 # stopped growing. pubs.acs.org showed its article and citation metadata 4.5 s
 # after the request and held DOMContentLoaded back until 33 s on an ad script
@@ -213,7 +226,7 @@ def open_page(page: Any, url: str, *, timeout_ms: int = 60_000, ready_ms: int = 
 
     def readable() -> bool:
         try:
-            if looks_like_challenge(str(getattr(page, "url", "") or ""), str(page.title() or "")):
+            if looks_like_challenge(str(getattr(page, "url", "") or ""), page_title(page)):
                 return True
             state = page.evaluate(_DOCUMENT_STATE_JS)
         except Exception as exc:

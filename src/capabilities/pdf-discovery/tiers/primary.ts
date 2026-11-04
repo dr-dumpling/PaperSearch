@@ -10,6 +10,7 @@ export function createPrimaryTier(): DownloadTier {
 }
 
 async function tryPrimaryDownload(context: DownloadTierContext): Promise<DownloadTierResult> {
+  if (context.source === 'arxiv') return { status: 'skipped', message: 'arXiv is deferred until published-version routes finish.' };
   const primary = (context.searchers as any)[context.source] as PaperSource | undefined;
   if (!primary?.getCapabilities().download) {
     return { status: 'skipped', message: `No primary downloader for ${context.source}` };

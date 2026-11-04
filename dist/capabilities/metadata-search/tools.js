@@ -13,7 +13,7 @@ export const SEARCH_PAPERS_TOOL = {
             },
             sources: {
                 type: 'string',
-                description: 'Comma-separated source list for multi-source search. Use all for the broad registered set, or no-key (aliases: free, no_key) for Crossref, PubMed, Europe PMC, and OpenReview without user API keys. Failed or unconfigured sources are reported in failed_sources/errors. Example: crossref,openalex,pubmed,pmc'
+                description: 'Comma-separated source list for multi-source search. Use all for the broad registered set, or no-key (aliases: free, no_key) for Crossref, PubMed, Europe PMC, arXiv, and OpenReview without user API keys. Failed or unconfigured sources are reported in failed_sources/errors. Example: crossref,openalex,pubmed,pmc'
             },
             maxResults: {
                 type: 'number',

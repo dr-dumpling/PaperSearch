@@ -101,14 +101,18 @@ class GenericSiteFixtureTests(unittest.TestCase):
         self.addCleanup(self.context.close)
         self.requests, self.signed_in, self.entry, self.body = [], False, True, synthetic_pdf()
         self.reader = False
+        self.article_delay_ms = 0
 
         def respond(route):
             url = route.request.url
             self.requests.append(url)
             plain = url.split("?", 1)[0]
             if plain == ARTICLE:
-                route.fulfill(status=200, content_type="text/html",
-                              body=article_html(self.signed_in, self.entry, self.reader))
+                html = article_html(self.signed_in, self.entry, self.reader)
+                if self.article_delay_ms:
+                    html = ("<title>Loading article</title><body><script>setTimeout(() => {document.body.innerHTML = "
+                            + json.dumps(html) + ";}, " + str(self.article_delay_ms) + ");</script></body>")
+                route.fulfill(status=200, content_type="text/html", body=html)
             elif plain == READER:
                 route.fulfill(status=200, content_type="text/html",
                               body=f"<title>{TITLE} | Reader</title><div id='viewer'>EPUB reader</div>")
@@ -171,6 +175,83 @@ class GenericSiteFixtureTests(unittest.TestCase):
         self.assertTrue(result.ok, (result.state, result.reason, result.events[-12:]))
         self.assertEqual(result.pdf_url.split("?", 1)[0], PDF)
         self.assertLess(self.requests.index(READER), self.requests.index(PDF))
+
+    def test_a_captcha_route_waits_for_completion_before_fetching_the_article(self):
+        self.signed_in = True
+        captcha = HOST + "/captcha/(S(fixture))/"
+        self.context.route(ARTICLE, lambda route: route.fulfill(
+            status=200, content_type="text/html", body=moved(captcha)), times=1)
+        self.context.route(captcha, lambda route: route.fulfill(
+            status=200, content_type="text/html",
+            body='<title>Captcha</title><p>Enter the displayed code.</p><script>'
+                 f'setTimeout(() => location.replace({json.dumps(ARTICLE)}), 4000);</script>'))
+        result = self.d.fetch_one(self.page, PaperRecord(doi=DOI, title=TITLE), self.root / "run")
+        self.assertTrue(result.ok, (result.state, result.reason, result.events[-12:]))
+        self.assertTrue(result.verified_match)
+        self.assertEqual(Path(result.pdf_path).read_bytes(), self.body)
+        states = [event["state"] for event in result.events]
+        self.assertIn("challenge_manual_wait", states)
+        self.assertIn("challenge_resolved", states)
+        self.assertNotIn("sso_start", states)
+        self.assertNotIn("login_entry_missing", states)
+
+    def test_a_pdf_captcha_route_waits_and_keeps_the_verified_pdf(self):
+        self.signed_in = True
+        self.d.login_timeout_sec = 20
+        captcha = HOST + "/captcha/(S(fixture))/"
+        completed_url = HOST + "/fixture/verification-completed"
+        completed = [False]
+
+        def pdf(route):
+            if completed[0]:
+                route.fallback()
+            else:
+                route.fulfill(status=200, content_type="text/html", body=moved(captcha))
+
+        def complete(route):
+            completed[0] = True
+            route.fulfill(status=200, content_type="text/html", body=moved(PDF))
+
+        self.context.route(PDF, pdf)
+        self.context.route(completed_url, complete)
+        self.context.route(captcha, lambda route: route.fulfill(
+            status=200, content_type="text/html",
+            body='<title>Captcha</title><p>Enter the displayed code.</p><script>'
+                 f'setTimeout(() => location.replace({json.dumps(completed_url)}), 8000);</script>'))
+        # Browser routes do not intercept the separate HTTP transport. Model
+        # the same gate there; it cannot return the PDF before verification.
+        from requests import Response
+        http_calls = []
+
+        def reply(url, **kwargs):
+            http_calls.append((url, completed[0]))
+            response = Response()
+            response.status_code = 200
+            response.url = PDF if completed[0] else captcha
+            response.headers["Content-Type"] = "application/pdf" if completed[0] else "text/html"
+            response._content = self.body if completed[0] else b"<title>Captcha</title>"
+            return response
+
+        with patch("paper_search_carsi.engine.batch_capture.requests.get", side_effect=reply):
+            result = self.d.fetch_one(self.page, PaperRecord(doi=DOI, title=TITLE), self.root / "run")
+        self.assertTrue(result.ok, (result.state, result.reason, result.events[-12:]))
+        self.assertTrue(result.verified_match)
+        self.assertEqual(Path(result.pdf_path).read_bytes(), self.body)
+        self.assertTrue(all(url == PDF for url, _ in http_calls), http_calls)
+        states = [event["state"] for event in result.events]
+        self.assertIn("challenge_manual_wait", states)
+        self.assertIn("challenge_resolved", states)
+        self.assertNotIn("sso_start", states)
+        self.assertNotIn("login_entry_missing", states)
+
+    def test_a_slowly_drawn_article_reaches_its_pdf_without_an_unnecessary_login(self):
+        self.signed_in, self.article_delay_ms = True, 25_000
+        result = self.d.fetch_one(self.page, PaperRecord(doi=DOI, title=TITLE), self.root / "run")
+        self.assertTrue(result.ok, (result.state, result.reason, result.events[-12:]))
+        self.assertTrue(result.verified_match)
+        self.assertEqual(Path(result.pdf_path).read_bytes(), self.body)
+        self.assertNotIn(CHOOSER, self.requests)
+        self.assertIn("pdf_capture_started", [event["state"] for event in result.events])
 
     def test_without_an_institution_entry_the_site_ends_saying_so(self):
         self.entry = False

@@ -18,7 +18,7 @@ export const ACCEPTED_SERVER_NAMES = new Set([
 const SCHEMA_VALIDATOR = new AjvJsonSchemaValidator();
 const COMPATIBILITY_DOI = "10.1000/paper-search-compatibility";
 /** The probe and real invocation must validate and send the same policy. */
-export function createCarsiDownloadArguments(identifier, outputDir, strategy = "legal_only", batch, supplements, userWait) {
+export function createCarsiDownloadArguments(identifier, outputDir, strategy = "legal_only", batch, supplements, userWait, diagnosticsDir) {
     return {
         identifier,
         output_dir: resolve(outputDir),
@@ -38,6 +38,7 @@ export function createCarsiDownloadArguments(identifier, outputDir, strategy = "
             : {}),
         ...(supplements ? { supplements } : {}),
         ...(userWait ? { user_wait: userWait } : {}),
+        ...(diagnosticsDir ? { diagnostics_dir: resolve(diagnosticsDir) } : {}),
     };
 }
 export function selectCarsiBatchSupport(tools, strategy) {
@@ -50,6 +51,7 @@ export function selectCarsiBatchSupport(tools, strategy) {
             acceptsDeclaredArguments(download.inputSchema, createCarsiDownloadArguments(COMPATIBILITY_DOI, "paper-search-carsi-output", strategy, undefined, "with")),
         userWaitField: !!download &&
             acceptsDeclaredArguments(download.inputSchema, createCarsiDownloadArguments(COMPATIBILITY_DOI, "paper-search-carsi-output", strategy, undefined, undefined, "short")),
+        diagnosticsDirField: !!download && acceptsDeclaredArguments(download.inputSchema, createCarsiDownloadArguments(COMPATIBILITY_DOI, "output", strategy, undefined, undefined, undefined, "diagnostics")),
         progressTool: progress.length === 1 &&
             acceptsDeclaredArguments(progress[0].inputSchema, {
                 batch_id: COMPATIBILITY_BATCH.id,

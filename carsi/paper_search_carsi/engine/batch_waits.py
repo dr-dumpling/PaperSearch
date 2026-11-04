@@ -7,12 +7,13 @@ from __future__ import annotations
 import inspect
 import re
 import time
+from contextlib import ExitStack
 from typing import Any
 from urllib.parse import urlparse
 
 from ..entitlements import UserMarkedNoEntitlement
-from .batch_common import (AWAY_WAIT_SEC, DownloadResult, _IP_BLOCK_STATUS_CODES, _observe_preview,
-                           looks_like_challenge)
+from ..browser import challenge_interaction, challenges, watchdog
+from .batch_common import (AWAY_WAIT_SEC, DownloadResult, _IP_BLOCK_STATUS_CODES, _observe_preview)
 
 
 class UserWaitMixin:
@@ -113,6 +114,10 @@ class UserWaitMixin:
     def _wait_out_suspect_block(self, page: Any, result: DownloadResult, captured: dict[str, Any], suspect: str,
                                 suspect_host: str, started: float) -> bool:
         deadline = started + self.page_wait_sec
+        automatic: dict[str, Any] = {}
+        interaction = ExitStack()
+        manual = False
+        state = ""
         reporter = None
         attention_key = f"pdf-step:{id(self)}:{result.doi}"
         try:
@@ -156,6 +161,8 @@ class UserWaitMixin:
                         if self._pdf_step_needs_login(candidate):
                             state, tab = "login", candidate
                             break
+                    except (watchdog.BrowserUnresponsive, UserMarkedNoEntitlement):
+                        raise
                     except Exception:
                         continue
                 if not state and time.time() - started < self.SUSPECT_UNKNOWN_GRACE_SEC:
@@ -167,8 +174,8 @@ class UserWaitMixin:
                         except Exception:
                             continue
                 if not state:
-                    if shown:
-                        self._event(result, "challenge_resolved", f"{shown} page gone")
+                    if shown or automatic:
+                        self._event(result, "challenge_resolved", f"{shown or 'verification'} page gone")
                     captured["suspect_block"] = None
                     return True  # the capture loop retries the PDF now
                 if state == "login" and tab == page:
@@ -179,6 +186,13 @@ class UserWaitMixin:
                     self._event(result, "pdf_step_login_required", str(getattr(page, "url", "") or ""))
                     captured["suspect_block"] = None
                     return False
+                if state == "verification":
+                    self._raise_on_publisher_access_blocked(tab)
+                    if not automatic:
+                        deadline = min(deadline, self._wait_deadline(result))
+                    if self._automatic_challenge_step(tab, result, automatic, deadline):
+                        page.wait_for_timeout(min(1000, max(0, (deadline - time.time()) * 1000)))
+                        continue
                 if state != shown:
                     if state in ("verification", "login"):
                         deadline = min(deadline, self._wait_deadline(result))
@@ -198,14 +212,19 @@ class UserWaitMixin:
                         except Exception:
                             pass
                     shown = state
+                if not manual:
+                    interaction.enter_context(watchdog.pause_operation())
+                    manual = True
                 try:
                     _observe_preview(page)  # what the user is asked to act on
-                    page.wait_for_timeout(1000)  # pump browser events while the user acts
+                    page.wait_for_timeout(min(1000, max(0, (deadline - time.time()) * 1000)))
+                except (watchdog.BrowserUnresponsive, UserMarkedNoEntitlement):
+                    raise
                 except Exception:
-                    time.sleep(1)
-            if shown in ("verification", "login"):
+                    time.sleep(min(1, max(0, deadline - time.time())))
+            if state in ("verification", "login"):
                 self._wait_ran_out(result)
-            if shown == "verification":
+            if state == "verification":
                 # The verification page stayed up: nobody completed it. That
                 # is a timeout, not evidence that the publisher blocked us.
                 captured["block_reason"] = "challenge_or_viewer_timeout"
@@ -215,6 +234,7 @@ class UserWaitMixin:
             self._event(result, "ip_blocked_response", f"{suspect} | no PDF after waiting ({shown or 'nothing shown'})")
             return False
         finally:
+            interaction.close()
             if shown and reporter is not None:
                 try:
                     reporter.clear_attention(attention_key)
@@ -327,8 +347,43 @@ class UserWaitMixin:
             result._user_wait_expired = True
             self._event(result, "user_wait_expired", "short wait" if self._user_away else "")
 
+    def _automatic_challenge_step(self, page: Any, result: DownloadResult,
+                                  attempt: dict[str, Any], deadline: float) -> bool:
+        """A short automatic phase inside the existing wait, shared by both entry points.
+
+        True means keep observing, never that verification passed. Each wait
+        allows at most three interactions, including failed clicks, without a
+        new budget. Observe for at least three seconds after each attempt.
+        """
+        now = time.time()
+        if not attempt:
+            attempt.update(started=now, attempts=0, retry_at=now + 2)
+            self._event(result, "challenge_wait", "automatic verification check")
+        # Live widgets may not ask for a click until ~14 s after navigation.
+        # Reserve up to 2 s for manual handling without extending short waits.
+        manual_reserve = min(2, max(0, deadline - attempt["started"]) * 0.2)
+        automatic_end = min(deadline - manual_reserve, attempt["started"] + 20)
+        if now >= automatic_end:
+            return False
+        if now >= attempt["retry_at"] and attempt["attempts"] < 3:
+            # Camoufox's native humanized move can take 1.5 s before mouse-down.
+            # Leave time for that action, still inside the original wait budget.
+            outcome = challenge_interaction.click_checkbox(
+                page, timeout_ms=min(2500, max(1, int((automatic_end - now) * 1000))),
+                checkpoint=lambda: self._check_user_decision(result, page),
+            )
+            if outcome != "absent":
+                attempt["attempts"] += 1
+                attempt["retry_at"] = time.time() + 3
+                self._event(result, "challenge_wait",
+                            f"checkbox {outcome}; attempt {attempt['attempts']}/3; awaiting verification")
+        return time.time() < automatic_end
+
     def _wait_for_challenge(self, page: Any, result: DownloadResult, *, deadline: float | None = None) -> bool:
         """Wait while a verification page is up, until ``_wait_deadline``."""
+        interaction = ExitStack()
+        automatic: dict[str, Any] = {}
+        manual = False
         wait_interval_sec = 1  # a cleared verification goes on within a second
         reporter = None
         attention_key = f"publisher-challenge:{id(self)}:{result.doi}"
@@ -352,6 +407,14 @@ class UserWaitMixin:
                     if not waited:
                         deadline = self._wait_deadline(result, deadline)
                         started, phase_before = time.time(), self._phase(result, "verification")
+                    waited = True
+                    result.state = "challenge_or_viewer_timeout"
+                    if time.time() >= deadline:
+                        break
+                    auto_pending = self._automatic_challenge_step(page, result, automatic, deadline)
+                    if not auto_pending and not manual:
+                        interaction.enter_context(watchdog.pause_operation())
+                        manual = True
                         self._event(result, "challenge_manual_wait", "complete verification in visible browser")
                         if not any(s["why"] == "waiting for the user: verification" for s in result.snapshots):
                             self._snapshot(page, result, "waiting for the user: verification")
@@ -363,10 +426,8 @@ class UserWaitMixin:
                                 phase="人工验证",
                             )
                             attention_open = True
-                    waited = True
-                    result.state = "challenge_or_viewer_timeout"
                     checks += 1
-                    self._event(result, "challenge_wait", str(checks))
+                    self._event(result, "challenge_wait", f"{'manual' if manual else 'automatic'} {checks}")
                     # Pump browser events while the user completes verification.
                     # Plain sleep can leave sync-API navigation state stale.
                     wait_ms = min(wait_interval_sec * 1000, max(0, (deadline - time.time()) * 1000))
@@ -389,6 +450,7 @@ class UserWaitMixin:
                 self._wait_ran_out(result)
             return passed
         finally:
+            interaction.close()
             if waited:
                 self._phase(result, phase_before or "open")
                 self._note_wait(result, "verification", started, "passed" if result.state != "challenge_or_viewer_timeout"
@@ -397,45 +459,23 @@ class UserWaitMixin:
                 reporter.clear_attention(attention_key)
 
     def _challenge_shell(self, page: Any) -> bool:
-        """A Cloudflare interstitial recognised from title and URL alone.
-
-        Scripts reading the challenge page (innerText, DOM queries) can make
-        Cloudflare fail and re-issue the check (``__cf_chl_rt_tk``) in a loop;
-        an untouched page passes. Callers waiting on a challenge use this and
-        nothing else.
-        """
+        """Read only URL/title while a verification interstitial is active."""
         try:
             url = str(getattr(page, "url", "") or "")
         except Exception:
             url = ""
-        return looks_like_challenge(url, self._title(page))
+        return challenges.looks_like_challenge(url, self._title(page))
 
     def _is_challenge_page(self, page: Any) -> bool:
+        """Apply engine block precedence before the independent recogniser.
+
+        Read lazily: an interstitial or crawl-prevention URL needs no body read;
+        an explicit publisher block must never turn into a verification wait.
+        """
         if self._challenge_shell(page):
             return True
         if self._publisher_access_blocked(page):
             return False
-        # Silverchair sites (OUP and others) send unusual traffic to their own
-        # reCAPTCHA page, /crawlprevention/governor?content=<the article> ("Validate
-        # User", 2026-11-01); it leads back to the article once the user passes it.
-        if "/crawlprevention/" in urlparse(str(getattr(page, "url", "") or "")).path.lower():
+        if challenges.is_challenge_path(str(getattr(page, "url", "") or "")):
             return True
-        haystack = f"{self._title(page)} {self._body_text(page, 1_200)}".lower()
-        direct_markers = (
-            "just a moment",
-            "attention required",
-            "verify you are human",
-            "checking your browser",
-            "are you a robot",
-            "please confirm you are a human",
-            "confirm that you are not a robot",
-        )
-        if any(marker in haystack for marker in direct_markers):
-            return True
-        return "cloudflare" in haystack and (
-            "ray id:" in haystack
-            or "security verification" in haystack
-            or "security service" in haystack
-            or "not a robot" in haystack
-            or "瀹夊叏楠岃瘉" in haystack
-        )
+        return challenges.has_challenge_text(self._title(page), self._body_text(page, 1_200))

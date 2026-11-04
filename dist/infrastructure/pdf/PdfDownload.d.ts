@@ -1,4 +1,6 @@
 export interface PdfDownloadOptions {
+    /** Only the final preprint tier may fetch arXiv PDFs. */
+    allowPreprint?: boolean;
     headers?: Record<string, string>;
     /** Overall request timeout; defaults to TIMEOUTS.DOWNLOAD. */
     timeoutMs?: number;

@@ -161,6 +161,33 @@ class DenialTests(unittest.TestCase):
             self.assertFalse(rules.has_denial_line(text), text)
         self.assertTrue(rules.has_denial_line("Abstract\nYou do not currently have access to this content."))
 
+    def test_snapshot_without_denial_needs_no_more_browser_reads(self):
+        d = self.d()
+        p = page(self.ARTICLE.replace("article-abstract", "article"), "Open Access\nFull text", badges=["Open Access"])
+        snapshot = d._access_snapshot(p)
+        p.title.side_effect = AssertionError("unnecessary live title read")
+        p.evaluate.side_effect = AssertionError("unnecessary live DOM read")
+        p.locator.side_effect = AssertionError("unnecessary live text read")
+        self.assertFalse(d._institution_pdf_entitlement_missing(p, snapshot=snapshot))
+
+    def test_denial_snapshot_still_checks_for_a_verification_page(self):
+        d = self.d()
+        p = page(self.ARTICLE, "You do not currently have access to this article.")
+        snapshot = d._access_snapshot(p)
+        d._school_login_done = MagicMock(return_value=True)
+        for challenge in (True, False):
+            with self.subTest(challenge=challenge):
+                d._is_challenge_page = MagicMock(return_value=challenge)
+                self.assertEqual(d._institution_pdf_entitlement_missing(p, snapshot=snapshot), not challenge)
+                d._is_challenge_page.assert_called_once_with(p)
+
+    def test_without_snapshot_verification_precedes_reading_the_document(self):
+        d = self.d()
+        p = page(self.ARTICLE)
+        d._is_challenge_page = MagicMock(return_value=True)
+        d._access_snapshot = MagicMock(side_effect=AssertionError("do not inspect a verification page"))
+        self.assertFalse(d._institution_pdf_entitlement_missing(p))
+
 
 if __name__ == "__main__":
     unittest.main()

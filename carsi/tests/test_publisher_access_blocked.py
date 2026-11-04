@@ -18,7 +18,9 @@ class PublisherAccessBlockedTests(unittest.TestCase):
         self.d = self.batch.PublisherBatchDownloader({},profile=h.profiles.SCIENCE_PROFILE)
         self.d._title = Mock(return_value='Attention Required! | Cloudflare')
         self.d._body_text = Mock(return_value=BODY)
-        self.page = SimpleNamespace(url='https://journals.fixture.example/article',wait_for_load_state=Mock(),goto=Mock(),close=Mock(),is_closed=Mock(return_value=False),evaluate=Mock(return_value=None),title=Mock(return_value='Attention Required! | Cloudflare'))
+        self.page = SimpleNamespace(on=Mock(), remove_listener=Mock(), url='https://journals.fixture.example/article',wait_for_load_state=Mock(),goto=Mock(),close=Mock(),is_closed=Mock(return_value=False),evaluate=Mock(return_value=None),title=Mock(return_value='Attention Required! | Cloudflare'))
+        self.page.locator = Mock(return_value=SimpleNamespace(
+            first=SimpleNamespace(text_content=Mock(return_value='Attention Required! | Cloudflare'))))
         self.result = self.batch.DownloadResult(doi='10.1000/fixture',status='failed')
 
     def test_explicit_block_is_not_a_verification_wait(self):
@@ -63,7 +65,7 @@ class PublisherAccessBlockedTests(unittest.TestCase):
              patch.object(self.batch.time, 'time', side_effect=lambda: clock[0]), \
              self.assertRaises(self.batch.PublisherAccessBlocked):
             self.d._wait_for_challenge(self.page, self.result, deadline=0.25)
-        clear.assert_called_once()
+        clear.assert_not_called()  # the short automatic phase never opened an attention
         self.page.wait_for_timeout.assert_called_once_with(250.0)
         self.assertNotIn('challenge_resolved', [e['state'] for e in self.result.events])
 
@@ -75,7 +77,7 @@ class PublisherAccessBlockedTests(unittest.TestCase):
              patch.object(self.batch.progress_reporter, 'clear_attention', create=True) as clear, \
              patch.object(self.batch.time, 'time', return_value=1.0):
             self.assertFalse(self.d._wait_for_challenge(self.page, self.result, deadline=1.0))
-        clear.assert_called_once()
+        clear.assert_not_called()  # an expired wait must not ask for manual interaction
         self.page.wait_for_timeout.assert_not_called()
         self.assertNotIn('challenge_resolved', [e['state'] for e in self.result.events])
 
@@ -119,7 +121,8 @@ class PublisherSideFailureTests(unittest.TestCase):
 
     def test_a_block_met_while_fetching_supplements_ends_that_step(self):
         tab = SimpleNamespace(url="https://journals.fixture.example/article", goto=Mock(), close=Mock(),
-                              context=None)
+                              context=None, locator=Mock(return_value=SimpleNamespace(
+                                  first=SimpleNamespace(text_content=Mock(return_value="Just a moment...")))))
         context = SimpleNamespace(new_page=Mock(return_value=tab))
         self.d._challenge_shell = Mock(return_value=True)
         self.d._wait_for_challenge = Mock(side_effect=self.batch.PublisherAccessBlocked("publisher_access_blocked"))

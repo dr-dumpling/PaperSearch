@@ -24,6 +24,36 @@ export interface CliTool {
 const BASE_TOOLS: CliTool[] = [
   SEARCH_PAPERS_TOOL,
   {
+    name: 'search_arxiv',
+    description: 'Search academic papers specifically from arXiv preprint server',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query string' },
+        maxResults: {
+          type: 'number',
+          minimum: 1,
+          maximum: 50,
+          description: 'Maximum number of results to return'
+        },
+        category: { type: 'string', description: 'arXiv category filter (e.g., cs.AI, physics.gen-ph)' },
+        author: { type: 'string', description: 'Author name filter' },
+        year: { type: 'string', description: 'Year filter (e.g., "2023", "2020-2023")' },
+        sortBy: {
+          type: 'string',
+          enum: ['relevance', 'date', 'citations'],
+          description: 'Sort results by field'
+        },
+        sortOrder: {
+          type: 'string',
+          enum: ['asc', 'desc'],
+          description: 'Sort order: ascending or descending'
+        }
+      },
+      required: ['query']
+    }
+  },
+  {
     name: 'search_webofscience',
     description: 'Search academic papers from Web of Science database',
     inputSchema: {

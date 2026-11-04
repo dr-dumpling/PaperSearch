@@ -1,3 +1,5 @@
+import { dirname, relative, resolve } from "node:path";
+import { createOutputLayout, lookupOutputMetadata, organizeFiles } from "./outputLayout.js";
 import { randomUUID } from "node:crypto";
 import type { Searchers } from "../../core/searchers.js";
 import { RunLedger, type RunItem } from "../../infrastructure/runlog/RunLedger.js";
@@ -130,6 +132,7 @@ function itemOptions(
 ): DownloadWithFallbackOptions & { doi: string } {
   const doi = item.doi?.trim() || "";
   return {
+    preprintIds: [],
     source: item.source?.trim() || "crossref",
     paperId: item.paperId?.trim() || doi,
     doi,
@@ -149,12 +152,23 @@ function itemOptions(
 export async function downloadSupplementsOnly(
   request: DownloadWithFallbackOptions,
   backend: CarsiBackend | undefined,
+  searchers?: Searchers,
+  paperDir?: string,
 ): Promise<DownloadWithFallbackResult> {
   const startedAt = Date.now();
+  const metadata = searchers ? await lookupOutputMetadata(searchers, request.doi ? "crossref" : request.source, request.doi || request.paperId) : {};
+  const layout = createOutputLayout(request.savePath || "./downloads", request.doi || request.paperId,
+    { ...metadata, title: request.title || metadata.title });
+  if (paperDir && !relative(resolve(request.savePath || "./downloads", "papers"), paperDir).startsWith("..")) layout.paperDir = paperDir;
+  let trace: Record<string, unknown> | undefined;
   const files = await fetchSupplementsOnly(backend, {
     identifier: request.doi || request.paperId,
-    outputDir: request.savePath || "./downloads",
-  });
+    outputDir: layout.paperDir,
+    diagnosticsDir: layout.diagnosticsDir,
+  }, value => { trace = value; });
+  let filingFailed = false;
+  try { if (files) organizeFiles({ supplements: files, trace }, layout, layout.paperDir); }
+  catch { filingFailed = true; } // Preserve saved files and report filing separately below.
   const saved = files?.filter((f) => f.status === "saved").length ?? 0;
   const attempt: DownloadWithFallbackResult["attempts"][number] =
     files === undefined
@@ -165,10 +179,11 @@ export async function downloadSupplementsOnly(
           message: `${saved}/${files.length} supplementary files saved.`,
           ...(saved ? {} : { code: files.length ? "supplements_failed" : "no_supplements" }),
         };
-  request.onStage?.({ ...attempt, startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt });
+  request.onStage?.({ ...attempt, ...(trace ? { trace } : {}), startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt });
   return {
     status: saved ? "ok" : "error",
-    attempts: [attempt],
+    attempts: [attempt, ...(filingFailed ? [{ stage: "output_layout", status: "error" as const,
+      code: "output_layout_failed", message: "File organization failed; use the returned file paths." }] : [])],
     ...(files ? { supplements: files } : {}),
   };
 }
@@ -178,9 +193,10 @@ async function supplementsForOpenItem(
   result: DownloadBatchItemResult,
   request: DownloadWithFallbackOptions,
   backend: CarsiBackend | undefined,
+  searchers: Searchers,
 ): Promise<void> {
   if (request.content !== "both" || result.status !== "ok" || result.supplements) return;
-  const extra = await downloadSupplementsOnly(request, backend);
+  const extra = await downloadSupplementsOnly({ ...request, ...(result.publishedDoi ? { doi: result.publishedDoi } : {}) }, backend, searchers, result.path && !result.version ? dirname(result.path) : undefined);
   if (extra.supplements) result.supplements = extra.supplements;
 }
 
@@ -235,7 +251,8 @@ async function pastHourlyLimit(
  * journal's later items at once; every other item goes on (the user, 2026-11-02). */
 /** The user pressed "终止任务" in the progress window: the batch ends after this item. */
 function stoppedByUser(result: DownloadWithFallbackResult): boolean {
-  return result.attempts.some((attempt) => attempt.code === "batch_stopped");
+  return result.attempts.some((attempt) => attempt.code === "batch_stopped") ||
+    !!result.supplements?.some((file) => file.reason === "batch_stopped");
 }
 
 const STOP_NOTICE = "[批量] 已在进度窗口终止任务，剩下的篇目不再下载";
@@ -349,7 +366,7 @@ export async function downloadBatch(
 ): Promise<DownloadBatchResult> {
   const result =
     options.content === "supplements"
-      ? await downloadSupplementsBatch(options, backend, log)
+      ? await downloadSupplementsBatch(options, backend, log, searchers)
       : options.mode === "per_item"
         ? await downloadPerItem(searchers, options, backend, log, createTiers, pause)
         : await downloadTwoPhase(searchers, options, backend, log, createTiers,
@@ -367,6 +384,7 @@ async function downloadSupplementsBatch(
   options: DownloadBatchOptions,
   backend: CarsiBackend | undefined,
   log: (line: string) => void,
+  searchers: Searchers,
 ): Promise<DownloadBatchResult> {
   const batchId = randomUUID();
   const total = options.items.length;
@@ -376,9 +394,21 @@ async function downloadSupplementsBatch(
     const request = itemOptions(item, options);
     const entry = runItem(offset + 1, request);
     log(`[批量] 补充材料 ${offset + 1}/${total}：${request.doi || request.paperId}`);
-    const result = await downloadSupplementsOnly(recorded(request, ledger, entry), backend);
+    const result = await downloadSupplementsOnly(recorded(request, ledger, entry), backend, searchers);
     ledger?.item(entry, result);
     items.push(itemResult(result, offset + 1, request));
+    if (stoppedByUser(result)) {
+      for (const [rest, item] of options.items.entries()) {
+        if (rest <= offset) continue;
+        const request = itemOptions(item, options);
+        const skipped = itemResult({ status: "error", attempts: [notReached()],
+          supplements: [{ status: "skipped", label: "", reason: "batch_stopped" }] }, rest + 1, request);
+        items.push(skipped);
+        ledger?.item(runItem(rest + 1, request), skipped);
+      }
+      log(STOP_NOTICE);
+      break;
+    }
   }
   ledger?.close();
   return summary(options.mode ?? "two_phase", batchId, items, {
@@ -426,11 +456,11 @@ async function downloadPerItem(
       log(AWAY_NOTICE);
     }
     const finished = itemResult(result, index, request);
-    if (!stoppedByUser(result)) await supplementsForOpenItem(finished, recorded(request, ledger, entry), backend);
+    if (!stoppedByUser(result)) await supplementsForOpenItem(finished, recorded(request, ledger, entry), backend, searchers);
     ledger?.item(entry, finished);
     items.push(finished);
     if (publisherBlocked(result)) log(blockedNotice(request.doi || request.paperId));
-    if (stoppedByUser(result)) {
+    if (stoppedByUser(finished)) {
       for (const [rest, restItem] of options.items.entries()) {
         if (rest <= offset) continue;
         const restRequest = itemOptions(restItem, options);
@@ -475,7 +505,7 @@ async function downloadTwoPhase(
   } else ledger?.phase(`开放来源 ${total} 篇`);
   for (const [offset, request] of mode === "entitled_only" ? [] : requests.entries()) {
     log(`[批量] 开放来源 ${offset + 1}/${total}：${request.doi || request.paperId}`);
-    const tiers = createTiers(backend).filter((tier) => tier.stage !== "entitled_access");
+    const tiers = createTiers(backend).filter((tier) => tier.stage !== "entitled_access" && tier.stage !== "preprint");
     const result = await downloadWithFallback(searchers, recorded(request, ledger, entries[offset]), tiers);
     items[offset] = itemResult(result, offset + 1, request);
     if (result.status !== "ok") pending.push(offset);
@@ -505,7 +535,7 @@ async function downloadTwoPhase(
         downloadBatchItem(
           searchers,
           recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entries[offset]),
-          createTiers(backend).filter((tier) => tier.stage === "entitled_access"),
+          createTiers(backend).filter((tier) => tier.stage === "entitled_access" || mode !== "entitled_only" && tier.stage === "preprint"),
           backend,
         ),
       log,
@@ -550,8 +580,16 @@ async function downloadTwoPhase(
     if (open.length) ledger?.phase(`补充材料 ${open.length} 篇`);
     for (const [step, offset] of open.entries()) {
       log(`[批量] 补充材料 ${step + 1}/${open.length}：${requests[offset].doi || requests[offset].paperId}`);
-      await supplementsForOpenItem(items[offset], recorded(requests[offset], ledger, entries[offset]), backend);
+      await supplementsForOpenItem(items[offset], recorded(requests[offset], ledger, entries[offset]), backend, searchers);
       ledger?.item(entries[offset], items[offset]);
+      if (stoppedByUser(items[offset])) {
+        for (const rest of open.slice(step + 1)) {
+          items[rest].supplements = [{ status: "skipped", label: "", reason: "batch_stopped" }];
+          ledger?.item(entries[rest], items[rest]);
+        }
+        log(STOP_NOTICE);
+        break;
+      }
     }
   }
   ledger?.close({ entitledAccessItems: remaining });

@@ -11,11 +11,17 @@
 
 ## 加一个出版社适配器（tier 2）
 
-通用流程判断不了的出版社专用行为写成适配器钩子：`adapters/<name>/__init__.py` 里继承 `PublisherAdapter`（出版社在某个网站平台上时继承 `adapters/platforms/<平台>/` 的适配器，只写自己不同的），`@register`，再在 `adapters/__init__.py` 里导入。钩子和默认值见 `adapters/base.py`，规则加在哪一层见仓库的 `docs/dependencies/institutional-publisher-adapters.zh.md`。
+通用流程判断不了的出版社专用行为写成适配器钩子：`adapters/<name>/__init__.py` 里继承 `PublisherAdapter`（出版社在某个网站平台上时继承 `adapters/platforms/<平台>/` 的适配器，只写自己不同的），`@register`，再在 `adapters/__init__.py` 里导入。钩子和默认值见 `adapters/base.py`，规则加在哪一层见 [架构说明](../docs/ARCHITECTURE.zh.md#机构下载这一侧)。
+
+## 验证框自动交互
+
+支持通过浏览器自动定位并点击 Cloudflare/Turnstile 验证复选框，网站放行后继续下载。新适配器复用 `browser/challenges.py` 的验证识别和 `browser/challenge_interaction.py` 的原生点击，由 `engine/batch_waits.py` 统一调度：每次验证等待最多尝试 3 次，两次至少间隔 3 秒，沿用原等待时限；自动阶段结束后仍未放行时提示人工接管。
+
+验证是否通过以网站实际放行为依据，点击后继续检查页面状态；取得 PDF 后照常核对论文身份。相关改动需覆盖控件定位、重试次数、等待时限和验证后继续下载的测试。
 
 ## 不接受的改动
 
-- 任何绕过网站安全验证的代码。
+- 伪造验证通过状态或绕过论文访问权限的代码。
 - 把维护者或任何人的学校、IdP、账号写进规则。
 - 灰色来源。
 

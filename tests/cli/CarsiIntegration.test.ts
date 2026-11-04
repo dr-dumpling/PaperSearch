@@ -103,7 +103,7 @@ describe("CARSI CLI integration", () => {
     expect(output.data).toEqual(
       expect.objectContaining({
         status: "ok",
-        path: pdfPath,
+        path: expect.stringContaining(`${outputDir}/papers/`),
         attempts: [
           expect.objectContaining({ stage: "primary", status: "skipped" }),
           expect.objectContaining({
@@ -144,7 +144,7 @@ describe("CARSI CLI integration", () => {
         tool: "carsi_download",
         arguments: {
           identifier: canonicalDoi,
-          output_dir: outputDir,
+          output_dir: expect.stringContaining(`${outputDir}/papers/`),
           scihub_enabled: false,
           use_tor: false,
           bibtex: false,
@@ -288,13 +288,14 @@ describe("CARSI CLI integration", () => {
       const output = JSON.parse(result.stdout);
       expect(output.data.status).toBe("error");
       expect(output.data.path).toBeUndefined();
-      expect(output.data.attempts.at(-1)).toMatchObject({
+      expect(output.data.attempts.find((attempt: any) => attempt.stage === "entitled_access")).toMatchObject({
         stage: "entitled_access",
         status: "error",
         code,
       });
       if (scenario === "success") {
-        expect(output.data.review).toEqual({ path: pdfPath, reason: code });
+        expect(output.data.review).toEqual({ path: expect.stringContaining("/diagnostics/"), reason: code });
+        expect(readFileSync(output.data.review.path)).toEqual(readFileSync(pdfPath));
         expect(existsSync(pdfPath)).toBe(true);
       }
       expect(result.stdout).not.toMatch(/do-not-leak|session-secret|cookie=/);

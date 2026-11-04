@@ -27,7 +27,7 @@ class LandedOnHtmlTests(unittest.TestCase):
     def setUp(self):
         self.d = PublisherBatchDownloader({}, profile=get_publisher_profile("elsevier"))
         self.page = Mock(url=ARTICLE)
-        self.page.title.return_value = "Article"
+        self.page.locator.return_value.first.text_content.return_value = "Article"
 
     def test_a_finished_html_page_fails_after_its_grace(self):
         self.page.evaluate.return_value = "text/html"
@@ -45,7 +45,7 @@ class LandedOnHtmlTests(unittest.TestCase):
                 self.assertEqual(self.d._landed_on_html(self.page, landing), "")
                 self.assertEqual(landing, {})
         self.page.evaluate.return_value = "text/html"
-        self.page.title.return_value = "Just a moment..."
+        self.page.locator.return_value.first.text_content.return_value = "Just a moment..."
         self.assertEqual(self.d._landed_on_html(self.page, {"url": ARTICLE, "since": 0.0}), "")
 
     def test_a_page_at_a_pdf_address_gets_longer(self):

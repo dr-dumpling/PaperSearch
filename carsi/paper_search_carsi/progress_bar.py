@@ -235,6 +235,7 @@ class ProgressWindow:
         self._apply_backdrop()
         self._fonts()
         self._bind_mouse()
+        self._draw_bindings: list[tuple[str, str, str]] = []
         self._finished_elapsed: float | None = None
         self._finished_run: object = None
         self._flash: tuple[str, float, str] | None = None  # (text, until, doi)
@@ -304,7 +305,6 @@ class ProgressWindow:
         self.f_count = tkfont.Font(family=ui, size=px(14), weight="bold")
         self.f_body = tkfont.Font(family=ui, size=px(12))
         self.f_small = tkfont.Font(family=ui, size=px(11))
-        self.f_gear = tkfont.Font(family=ui, size=px(15))
         self.f_mono = tkfont.Font(family=mono, size=px(11))
 
     def _anchor_x(self) -> int:
@@ -388,8 +388,18 @@ class ProgressWindow:
             return [v for v in attention if isinstance(v, dict)]
         return []
 
+    def _bind_draw(self, tag: str, event: str, callback: Any) -> None:
+        """A binding owned by this frame, released before its items are deleted."""
+        command = self.canvas.tag_bind(tag, event, callback)
+        self._draw_bindings.append((tag, event, command))
+
     def _draw(self, state: dict[str, Any] | None) -> None:
         c, col, s = self.canvas, self.c, self.s
+        # Canvas.delete removes items, not tag_bind's registered Tcl/Python
+        # commands. Keep neither old state nor callbacks across the 500 ms redraws.
+        for tag, event, command in self._draw_bindings:
+            c.tag_unbind(tag, event, command)
+        self._draw_bindings.clear()
         c.delete("all")
         P = self.P
         Wl = max(self.W, c.winfo_width())
@@ -521,24 +531,24 @@ class ProgressWindow:
                 self._pill(x, y6 - u(11), x + w, y6 + u(11), col["warn"] if pressed else col["track"], tags=(tag,))
                 fill = col["bg"] if pressed else (col["text"] if self._hover == key else col["btn"])
                 label_id = c.create_text(x + w / 2, y6, text=text, fill=fill, font=self.f_small, tags=(tag,))
-                c.tag_bind(tag, "<Button-1>", lambda e, k=key, d=current, s=state: (
+                self._bind_draw(tag, "<Button-1>", lambda e, k=key, d=current, s=state: (
                     self._stop(d, s) if k == "stop_batch" else self._decide(k, d, s)))
                 if not pressed:
-                    c.tag_bind(tag, "<Enter>", lambda e, k=key, i=label_id: self._hover_button(k, i))
-                    c.tag_bind(tag, "<Leave>", lambda e, i=label_id: self._hover_button("", i))
+                    self._bind_draw(tag, "<Enter>", lambda e, k=key, i=label_id: self._hover_button(k, i))
+                    self._bind_draw(tag, "<Leave>", lambda e, i=label_id: self._hover_button("", i))
                 x += w + u(8)
             # Problem report for the agent to review: a small flag icon, right-aligned.
             c.create_text(Wl - P, y6, text="\u2691", fill=col["faint"], font=self.f_body,
                           anchor="e", tags=("report",))
-            c.tag_bind("report", "<Button-1>", lambda e, d=current, s=state: self._report_menu(e, d, s))
+            self._bind_draw("report", "<Button-1>", lambda e, d=current, s=state: self._report_menu(e, d, s))
 
         output_dir = str(state.get("output_dir") or "")
         if output_dir:
             link = c.create_text(Wl - P, y5, text="打开文件夹", fill=col["link"], font=self.f_small,
                                  anchor="e", tags=("outdir",))
-            c.tag_bind("outdir", "<Button-1>", lambda e: self._open_output_dir(state))
-            c.tag_bind("outdir", "<Enter>", lambda e: c.itemconfigure(link, font=self._underlined()))
-            c.tag_bind("outdir", "<Leave>", lambda e: c.itemconfigure(link, font=self.f_small))
+            self._bind_draw("outdir", "<Button-1>", lambda e: self._open_output_dir(state))
+            self._bind_draw("outdir", "<Enter>", lambda e: c.itemconfigure(link, font=self._underlined()))
+            self._bind_draw("outdir", "<Leave>", lambda e: c.itemconfigure(link, font=self.f_small))
 
     def _decide(self, action: str, doi: str, state: dict[str, Any]) -> None:
         """Ask the running download to apply the user's entitlement decision."""
@@ -566,16 +576,27 @@ class ProgressWindow:
             self._decide("stop_batch", doi, state)
 
     def _draw_gear(self, right: int, y: int) -> int:
-        """The settings button at the top right, a round button like the others'
-        colours; returns its left edge."""
-        c, col = self.canvas, self.c
-        d = int(round(24 * self.s))
-        x0, y0 = right - d, y - d // 2
-        c.create_oval(x0, y0, right, y0 + d, fill=col["track"], outline=col["track"], tags=("settings",))
-        item = c.create_text(right - d / 2, y, text="\u2699", fill=col["btn"], font=self.f_gear, tags=("settings",))
-        c.tag_bind("settings", "<Button-1>", lambda e: self._open_settings())
-        c.tag_bind("settings", "<Enter>", lambda e: c.itemconfigure(item, fill=col["text"]))
-        c.tag_bind("settings", "<Leave>", lambda e: c.itemconfigure(item, fill=col["btn"]))
+        """Round settings button with a small, font-independent gear."""
+        import math
+
+        c, col, s = self.canvas, self.c, self.s
+        d = 17.6 * s
+        x0, cx = right - d, right - d / 2
+        c.create_oval(x0, y - d / 2, right, y + d / 2,
+                      fill=col["track"], outline=col["track"], tags=("settings",))
+        # 11.2 px = 70% of the previous 16 px icon. Angular teeth keep the
+        # original gear appearance without platform-specific font rendering.
+        points = []
+        for tooth in range(8):
+            for offset, radius in ((-0.5, 4.1), (-0.28, 5.6), (0.28, 5.6), (0.5, 4.1)):
+                angle = (tooth + offset) * math.pi / 4
+                points.extend((cx + radius * s * math.cos(angle), y + radius * s * math.sin(angle)))
+        gear = c.create_polygon(*points, fill=col["btn"], outline="", tags=("settings",))
+        r = 2.1 * s
+        c.create_oval(cx - r, y - r, cx + r, y + r, fill=col["track"], outline="", tags=("settings",))
+        self._bind_draw("settings", "<Button-1>", lambda e: self._open_settings())
+        self._bind_draw("settings", "<Enter>", lambda e: c.itemconfigure(gear, fill=col["text"]))
+        self._bind_draw("settings", "<Leave>", lambda e: c.itemconfigure(gear, fill=col["btn"]))
         return x0
 
     def _open_settings(self) -> None:

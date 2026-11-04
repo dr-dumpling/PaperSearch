@@ -76,6 +76,22 @@ export const PLATFORM_METADATA = [
         capabilityGroups: ['metadata_search', 'pdf_discovery']
     },
     {
+        id: 'arxiv',
+        displayName: 'arXiv',
+        sourceKind: 'official-api',
+        defaultInAll: true,
+        noKeyDefault: true,
+        supportedOptions: ['maxResults', 'year', 'author', 'category', 'sortBy', 'sortOrder'],
+        schemaKind: 'arxiv',
+        supportsDoiLookup: true,
+        doiLookupOrder: 90,
+        capabilityProfileSources: [
+            { group: 'metadata_free', order: 60 },
+            { group: 'pdf_open_access', order: 10 }
+        ],
+        capabilityGroups: ['metadata_search', 'pdf_discovery']
+    },
+    {
         id: 'biorxiv',
         displayName: 'bioRxiv',
         sourceKind: 'official-api',

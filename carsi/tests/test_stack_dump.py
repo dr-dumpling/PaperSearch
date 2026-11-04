@@ -6,9 +6,27 @@ import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from types import SimpleNamespace
 import tempfile
 
 from paper_search_carsi import log
+
+
+class PortableStackDumpTests(unittest.TestCase):
+    def test_watchdog_can_dump_without_posix_signals(self):
+        with tempfile.TemporaryDirectory() as data_dir, \
+                patch.dict(os.environ, {"CARSI_DATA_DIR": data_dir, "CARSI_FILE_LOG": "1"}), \
+                patch.dict("sys.modules", {"signal": SimpleNamespace()}), \
+                patch.object(log, "_stack_file", None):
+            log.enable_stack_dump()
+            try:
+                self.assertTrue(log.dump_stacks("Windows watchdog fixture"))
+                text = "".join(p.read_text() for p in (Path(data_dir) / "logs").glob("stacks-*.txt"))
+                self.assertIn("Windows watchdog fixture", text)
+                self.assertIn("test_watchdog_can_dump_without_posix_signals", text)
+            finally:
+                if log._stack_file is not None:
+                    log._stack_file.close()
 
 
 @unittest.skipUnless(hasattr(signal, "SIGUSR1"), "POSIX signal")

@@ -18,7 +18,12 @@ class BlankPageTests(unittest.TestCase):
     def page(self, lengths):
         clock = [1000.0]
         page = Mock(url="https://www.degruyterbrill.com/document/doi/10.1515/x/html")
-        page.evaluate.side_effect = lambda script: lengths.pop(0) if lengths else 0
+        def read_text(script):
+            value = lengths.pop(0) if lengths else 0
+            if isinstance(value, BaseException):
+                raise value
+            return value
+        page.evaluate.side_effect = read_text
         page.wait_for_timeout.side_effect = lambda ms: clock.__setitem__(0, clock[0] + ms / 1000)
         clock_patch = patch.object(batch.time, "time", lambda: clock[0])
         clock_patch.start()
@@ -39,12 +44,37 @@ class BlankPageTests(unittest.TestCase):
             d._wait_for_page_text(page, result)
             self.assertEqual((clock[0], result.events), (1000.0, []))
 
+    def test_a_page_drawing_after_twenty_seconds_is_still_allowed_to_load(self):
+        # AIP passed verification but was discarded before its article appeared.
+        d = PublisherBatchDownloader(config={}, profile=ELSEVIER_PROFILE)
+        result = DownloadResult(doi="10.1515/x", status="failed")
+        page, clock = self.page([0] * 51 + [11521])
+        d._wait_for_page_text(page, result)
+        self.assertEqual(clock[0], 1025)
+        self.assertEqual(result.events[-1]["detail"], "blank page: 25 s, ended: text shown")
+
+    def test_navigation_during_the_text_probe_does_not_mean_the_page_is_ready(self):
+        from playwright.sync_api import Error
+        d = PublisherBatchDownloader(config={}, profile=ELSEVIER_PROFILE)
+        result = DownloadResult(doi="10.1515/x", status="failed")
+        page, clock = self.page([Error("Execution context was destroyed, most likely because of a navigation"), 0, 120])
+        d._wait_for_page_text(page, result)
+        self.assertEqual(clock[0], 1000.5)
+
     def test_a_page_still_blank_is_the_publisher_s_page_not_loading(self):
         d, result = PublisherBatchDownloader(config={}, profile=ELSEVIER_PROFILE), DownloadResult(doi="10.1515/x", status="failed")
         page, clock = self.page([])
-        with self.assertRaisesRegex(PublisherContentError, r"publisher_page_blank: .*degruyterbrill.* no text for 20 s"):
+        with self.assertRaisesRegex(PublisherContentError, r"publisher_page_blank: .*degruyterbrill.* no text for 60 s"):
             d._wait_for_page_text(page, result)
-        self.assertEqual(clock[0], 1020)
+        self.assertEqual(clock[0], 1060)
+
+    def test_a_permanently_blank_page_obeys_the_configured_page_wait(self):
+        d = PublisherBatchDownloader(config={"browser_page_wait_timeout": 15}, profile=ELSEVIER_PROFILE)
+        result = DownloadResult(doi="10.1515/x", status="failed")
+        page, clock = self.page([])
+        with self.assertRaisesRegex(PublisherContentError, r"no text for 15 s"):
+            d._wait_for_page_text(page, result)
+        self.assertEqual(clock[0], 1015)
 
 
 class UserWaitBudgetTests(unittest.TestCase):
@@ -58,6 +88,7 @@ class UserWaitBudgetTests(unittest.TestCase):
         """A page that stays on a verification check; waiting advances a fake clock."""
         clock = [1000.0]
         page = Mock(url=ARTICLE)
+        page.frames = []
         page.wait_for_timeout.side_effect = lambda ms: clock.__setitem__(0, clock[0] + ms / 1000)
         clock_patch = patch.object(batch.time, "time", lambda: clock[0])
         clock_patch.start()

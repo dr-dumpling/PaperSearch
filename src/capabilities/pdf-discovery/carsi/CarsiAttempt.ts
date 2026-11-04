@@ -21,6 +21,8 @@ const MESSAGES: Record<string, string> = {
     "学校统一身份认证提示密码已过期。请先到学校的统一身份认证修改密码，再重试。",
   user_skipped:
     "已按你的操作跳过这一篇；没有记住期刊，以后会照常下载。",
+  batch_stopped:
+    "已按你的操作终止任务，后续篇目不再下载；已保存的文件保留。",
   no_entitlement:
     "已按你的记录跳过：该期刊或出版社标记为无权限，未打开浏览器。查看或撤销记录：paper-search-carsi entitlements。",
   institution_federation_unavailable:
@@ -47,6 +49,8 @@ const MESSAGES: Record<string, string> = {
     "出版社返回内容服务错误或没有这篇文章的页面，未取得 PDF。请核查出版社页面；此错误不代表需要重新登录。",
   publisher_unreachable:
     "出版社网站没有应答（连接被断开或打开超时），未取得 PDF。这不代表没有权限；稍后重试，或换一个网络再试。",
+  browser_operation_timeout:
+    "页面处理超过设定的等待时间，已停止这一篇的浏览器步骤；这不代表没有全文权限。可在下载窗口设置中调整其他页面等待时间后重试。",
   browser_unresponsive:
     "下载浏览器长时间没有响应，已结束这一篇，批量中的其他文章照常继续；可稍后单独重试这一篇。",
   unsupported_platform:

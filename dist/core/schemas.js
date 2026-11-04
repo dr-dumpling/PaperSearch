@@ -13,6 +13,17 @@ export { QueryJournalMetricsSchema };
 export { SearchSemanticSnippetsSchema };
 const SortBySchema = z.enum(['relevance', 'date', 'citations']);
 const SortOrderSchema = z.enum(['asc', 'desc']);
+export const SearchArxivSchema = z
+    .object({
+    query: z.string().min(1),
+    maxResults: z.number().int().min(1).max(50).optional().default(10),
+    category: z.string().optional(),
+    author: z.string().optional(),
+    year: z.string().optional(),
+    sortBy: SortBySchema.optional(),
+    sortOrder: SortOrderSchema.optional()
+})
+    .strip();
 export const SearchWebOfScienceSchema = z
     .object({
     query: z.string().min(1),
@@ -183,6 +194,8 @@ export function parseToolArgs(toolName, args) {
     switch (toolName) {
         case 'search_papers':
             return SearchPapersSchema.parse(args);
+        case 'search_arxiv':
+            return SearchArxivSchema.parse(args);
         case 'search_webofscience':
             return SearchWebOfScienceSchema.parse(args);
         case 'search_pubmed':

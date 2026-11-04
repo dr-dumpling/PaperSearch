@@ -15,6 +15,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from paper_search_carsi.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_carsi.publishers.model import PublisherProfile
+from paper_search_carsi.publishers.profiles import get_publisher_profile
 
 DOI = "10.1136/bmj-2026-101299"
 ARTICLE = "https://www.fixture-press.example/content/395/bmj-2026-101299"
@@ -31,6 +32,15 @@ def result():
 
 
 class CookieBannerAnswerTests(unittest.TestCase):
+    def test_a_publisher_chooser_cookie_prompt_is_answered(self):
+        d = PublisherBatchDownloader(config={}, profile=get_publisher_profile("thieme"))
+        page = Mock(frames=[], url="https://profile.thieme.de/HTML/sso/ejournals/shibboleth.htm")
+        page.evaluate.return_value = {"kind": "reject", "label": "Reject", "banner": "#cookie-consent"}
+        r = result()
+        self.assertTrue(d._dismiss_cookie_banners(page, r))
+        page.evaluate.assert_called_once_with(d._COOKIE_BANNER_JS, {"blocking": False, "skip": []})
+        self.assertEqual(r.events[-1]["state"], "cookie_banner_dismissed")
+
     def test_the_answer_is_recorded_with_its_kind_and_banner(self):
         page = Mock(frames=[])
         page.evaluate.return_value = {"kind": "reject", "label": "Reject All", "banner": "#onetrust-banner-sdk"}
@@ -52,12 +62,23 @@ class CookieBannerAnswerTests(unittest.TestCase):
 
     def test_no_banner_and_a_broken_frame_change_nothing(self):
         frame = Mock(url="https://cmp.example/m")
-        frame.evaluate.side_effect = RuntimeError("frame was detached")
+        frame.evaluate.side_effect = PlaywrightError("frame was detached")
         page = Mock(frames=[Mock(url="https://x.example/"), frame])
         page.evaluate.return_value = None
         d, r = PublisherBatchDownloader(config={}), result()
         self.assertFalse(d._dismiss_cookie_banners(page, r))
         self.assertEqual(r.events, [])
+
+    def test_cookie_reads_do_not_hide_program_or_watchdog_errors(self):
+        from paper_search_carsi.browser.watchdog import BrowserOperationTimeout
+        for error in (KeyError("program error"), BrowserOperationTimeout("operation expired")):
+            with self.subTest(error=type(error).__name__):
+                d = PublisherBatchDownloader(config={}, profile=PROFILE)
+                d._close_advertisement_overlay = Mock(return_value=False)
+                page = Mock(frames=[], url=ARTICLE)
+                page.evaluate.side_effect = error
+                with self.assertRaises(type(error)):
+                    d._dismiss_cookie_banners(page, result())
 
 
     def test_a_banner_still_shown_is_answered_twice_then_left_once(self):

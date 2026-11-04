@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import type { Searchers } from "../../core/searchers.js";
 import { resolvePlatformId } from "../../registry/platformMetadata.js";
 import {
@@ -90,13 +91,13 @@ export async function handleDownloadWithFallback(
 ) {
   const tiers = createDefaultDownloadTiers(carsiBackend);
   const result = await recordedDownload(args, async (options) => {
-    if (options.content === "supplements") return downloadSupplementsOnly(options, carsiBackend);
+    if (options.content === "supplements") return downloadSupplementsOnly(options, carsiBackend, searchers);
     const outcome = options.batch
       ? await downloadBatchItem(searchers, { ...options, batch: options.batch }, tiers, carsiBackend)
       : await downloadWithFallback(searchers, options, tiers);
     if (options.content === "both" && outcome.status === "ok" && !outcome.supplements) {
       // The main text came from an open stage: supplementary files only.
-      const extra = await downloadSupplementsOnly(options, carsiBackend);
+      const extra = await downloadSupplementsOnly({ ...options, ...(outcome.publishedDoi ? { doi: outcome.publishedDoi } : {}) }, carsiBackend, searchers, outcome.path && !outcome.version ? dirname(outcome.path) : undefined);
       if (extra.supplements) return { ...outcome, supplements: extra.supplements };
     }
     return outcome;

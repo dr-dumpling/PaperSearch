@@ -66,6 +66,7 @@ describe('platformMetadata', () => {
       'crossref',
       'pubmed',
       'europepmc',
+      'arxiv',
       'openreview'
     ]);
     expect(getNoKeySources()).not.toContain('googlescholar');
@@ -103,7 +104,8 @@ describe('platformMetadata', () => {
       'pmc',
       'europepmc',
       'core',
-      'webofscience'
+      'webofscience',
+      'arxiv'
     ]);
     expect(getDoiLookupSources()).not.toEqual(expect.arrayContaining(['semantic', 'wiley']));
   });
@@ -115,6 +117,7 @@ describe('platformMetadata', () => {
       'pubmed',
       'pmc',
       'europepmc',
+      'arxiv',
       'biorxiv',
       'medrxiv',
       'semantic',
@@ -135,6 +138,7 @@ describe('platformMetadata', () => {
       'ieee'
     ]);
     expect(getCapabilityProfileSources('pdf_open_access')).toEqual([
+      'arxiv',
       'biorxiv',
       'medrxiv',
       'pmc',

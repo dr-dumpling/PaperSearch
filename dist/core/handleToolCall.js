@@ -18,6 +18,18 @@ function jsonTextResponse(text) {
 }
 const TOOL_HANDLERS = {
     search_papers: async (args, searchers) => handleSearchPapers(args, searchers),
+    search_arxiv: async (args, searchers) => {
+        const { query, maxResults, category, author, year, sortBy, sortOrder } = args;
+        const results = await searchers.arxiv.search(query, {
+            maxResults,
+            category,
+            author,
+            year,
+            sortBy,
+            sortOrder,
+        });
+        return jsonTextResponse(`Found ${results.length} arXiv papers.\n\n${JSON.stringify(results.map((paper) => PaperFactory.toDict(paper)), null, 2)}`);
+    },
     search_webofscience: async (args, searchers) => {
         const { query, maxResults, year, author, journal, sortBy, sortOrder } = args;
         if (!process.env.WOS_API_KEY) {

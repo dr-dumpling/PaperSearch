@@ -44,7 +44,8 @@ from .router import (
 from ..publishers.profiles import ACS_PROFILE, PublisherProfile
 from ..entitlements import UserMarkedNoEntitlement  # noqa: E402  (re-exported)
 from ..adapters import PublisherAdapter, adapter_class  # noqa: E402
-from .batch_common import (  # re-exported: other modules import these from batch
+from .batch_common import (
+    page_operation,  # re-exported: other modules import these from batch
     open_page,
     settle,
     _is_network_failure,
@@ -86,6 +87,7 @@ from .batch_pdf_urls import PdfUrlsMixin
 from .batch_runs import RunsMixin
 from .batch_diagnostics import DiagnosticsMixin
 from .batch_user import PdfFoundWhileWaiting, UserProvidedPdf, UserRequestsMixin
+from ..browser import watchdog
 from ..entitlements import UserSkippedArticle, UserStoppedBatch
 
 
@@ -147,7 +149,7 @@ class PublisherBatchDownloader(
             tab.close()
 
     def collect_supplements(self, context: Any, doi: str, output_dir: Path,
-                            result: "DownloadResult") -> list[dict[str, Any]]:
+                            result: "DownloadResult", *, manifest_dir: Path | None = None) -> list[dict[str, Any]]:
         """Open the article page in a new tab of ``context`` (already logged in)
         and download every supplementary file the adapter lists there."""
         from . import supplements
@@ -163,36 +165,56 @@ class PublisherBatchDownloader(
             # Digest 2026-11-02): no supplements, and the article keeps its result.
             self._event(result, "supplements_skipped", f"browser closed: {type(exc).__name__}")
             return [{"status": "skipped", "reason": "browser_closed", "url": "", "label": ""}]
+        user_watch = self._start_user_watch(page, result)
         try:
-            self._track_article_for_adapter(page, doi)
-            links: list = []
-            # The journal's own article page the main text came from (cell.com,
-            # journal-of-hepatology.eu) lists every file it has: no detour to the
-            # platform, also when it lists none.
-            final_url = str(getattr(result, "final_url", "") or "")
-            own_page = [final_url] if final_url and self.adapter.is_article_page_url(final_url) else []
-            candidates = self.adapter.supplements_page_urls(doi) or [self._article_url(doi)]
-            for url in dict.fromkeys(own_page + candidates):
-                page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-                if self._challenge_shell(page) or self._is_challenge_page(page):
-                    if not self._wait_for_challenge(page, result):
-                        self._event(result, "supplements_failed", "verification not completed")
-                        return [{"status": "failed", "reason": "challenge_timeout", "url": url, "label": ""}]
-                settle(page, 2_000)
-                links = self._settled_supplement_links(page, doi)
-                if links is None:
-                    self._event(result, "supplements_not_supported", self.profile.name)
-                    return []
-                if links or url in own_page:
-                    break
-            self._event(result, "supplements_found", str(len(links)))
-            progress_reporter.update(supplements_total=len(links))
+            with watchdog.operation(self.page_wait_sec, "supplement_discovery"):
+                self._track_article_for_adapter(page, doi)
+                links: list = []
+                # The journal's own article page the main text came from (cell.com,
+                # journal-of-hepatology.eu) lists every file it has: no detour to the
+                # platform, also when it lists none.
+                final_url = str(getattr(result, "final_url", "") or "")
+                own_page = [final_url] if final_url and self.adapter.is_article_page_url(final_url) else []
+                candidates = self.adapter.supplements_page_urls(doi) or [self._article_url(doi)]
+                for url in dict.fromkeys(own_page + candidates):
+                    open_page(page, url, timeout_ms=60_000)
+                    if self._challenge_shell(page) or self._is_challenge_page(page):
+                        if not self._wait_for_challenge(page, result):
+                            self._event(result, "supplements_failed", "verification not completed")
+                            return [{"status": "failed", "reason": "challenge_timeout", "url": url, "label": ""}]
+                    settle(page, 2_000)
+                    self._wait_for_page_text(page, result)
+                    links = self._settled_supplement_links(page, doi)
+                    if links is None:
+                        self._event(result, "supplements_not_supported", self.profile.name)
+                        return []
+                    if links or url in own_page:
+                        break
+                self._event(result, "supplements_found", str(len(links)))
+                progress_reporter.update(supplements_total=len(links))
             files = supplements.collect(page.context.request, links, Path(output_dir), doi,
+                                        manifest_dir=manifest_dir,
+                                        target_dir=Path(output_dir) / "supplements" if self.config.get("diagnostics_dir") else None,
                                         download=lambda url: self._download_in_new_tab(page, url),
                                         progress=lambda saved: progress_reporter.update(supplements_saved=saved))
             saved = sum(1 for f in files if f.get("status") == "saved")
             self._event(result, "supplements_saved", f"{saved}/{len(files)}")
             return files
+        except PublisherContentError as exc:
+            self._event(result, "supplements_failed", str(exc))
+            return [{"status": "failed", "reason": "publisher_content_error", "url": "", "label": ""}]
+        except watchdog.BrowserUnresponsive as exc:
+            reason = ("browser_operation_timeout" if isinstance(exc, watchdog.BrowserOperationTimeout)
+                      else "browser_unresponsive")
+            self._event(result, "supplements_failed", reason)
+            return [{"status": "failed", "reason": reason, "url": "", "label": ""}]
+        except UserMarkedNoEntitlement as exc:
+            reason = ("batch_stopped" if isinstance(exc, UserStoppedBatch) else
+                      "user_skipped" if isinstance(exc, UserSkippedArticle) else "user_marked_no_entitlement")
+            self._event(result, "supplements_skipped", reason)
+            if not result.ok:
+                result.reason = result.state = reason
+            return [{"status": "skipped", "reason": reason, "url": "", "label": ""}]
         except PublisherAccessBlocked:
             # The publisher paused access (BJSM, 2026-11-01): the article ends as
             # blocked when its main text failed, so the batch stops as for any block.
@@ -206,6 +228,8 @@ class PublisherBatchDownloader(
             self._event(result, "supplements_failed", f"{type(exc).__name__}: {str(exc)[:160]}")
             return [{"status": "failed", "reason": type(exc).__name__, "url": "", "label": ""}]
         finally:
+            user_watch.set()
+            watchdog.clear_interrupt()
             self._close_phase(result)
             try:
                 page.close()
@@ -217,7 +241,13 @@ class PublisherBatchDownloader(
         moves /pii/ to /abs/pii/ by script after the document has loaded)."""
         for attempt in range(3):
             try:
-                return self.adapter.supplement_links(page, doi)
+                from ..adapters.platforms.figshare import supplement_links as external_links
+
+                own = self.adapter.supplement_links(page, doi)
+                external = external_links(page, doi)
+                if own is None and external is None:
+                    return None
+                return list(dict.fromkeys([*(own or []), *(external or [])]))
             except Exception as exc:
                 if (attempt == 2 or not _is_browser_error(exc)
                         or "Execution context was destroyed" not in str(exc)):
@@ -307,6 +337,8 @@ class PublisherBatchDownloader(
             config["browser_headless"] = False
         started = time.time()
         ctx = get_persistent_context(profile_path, config)
+        from ..browser.challenge_interaction import prepare_context
+        prepare_context(ctx)
         self._browser_start = {**dict(getattr(browser_backend, "LAST_LAUNCH", {}) or {}),
                                "seconds": round(time.time() - started, 1), **({"relaunch": relaunch} if relaunch else {})}
         from ..browser.backend import browser_info
@@ -344,6 +376,7 @@ class PublisherBatchDownloader(
         self._item_started = time.time()
         self._item_result = result
         self._record_title = record.title
+        self._expected_title = ""
         self._manual_school = False
         self._track_article_for_adapter(page, record.doi)
         from ..browser import watchdog
@@ -360,46 +393,17 @@ class PublisherBatchDownloader(
             result.browser_start = dict(start)
             self._event(result, "browser_start", self._browser_start_line(start))
         user_watch = self._start_user_watch(page, result)
+        # Reuse confirmed public access only for this document's initial PDF
+        # attempt. A redirect or reload (even at the same URL) invalidates it.
+        def invalidate_open_access(frame: Any) -> None:
+            if frame == page.main_frame:
+                result._open_access_current = False
+
+        page.on("framenavigated", invalidate_open_access)
         try:
-            self._event(result, "article_open", result.article_url)
-            if not self._ensure_login(page, result):
-                if self._article_access_available(page):
-                    self._event(result, "login_completed_after_timeout", getattr(page, "url", ""))
-                else:
-                    return self._login_failed(page, result, run_dir)
-
-            self._return_from_other_article(page, result)
-            settle(page, 2_000)
-            if not self._pdf_first_unless_signed_out(page, result):
-                self._event(result, "auth_wall_after_article_load", self._decision_text(page))
-                # This item has been through the school's login and the article still
-                # denies it, shows only its abstract or offers it: the school has no
-                # access, and a second login would only wait out the user's time
-                # (JAMA Oncology back from the store page, 2026-11-02).
-                evidence = self._no_access_after_login(page, result)
-                if evidence:
-                    result.reason = result.state = "institution_pdf_entitlement_missing"
-                    self._event(result, "no_access_after_login", evidence[:300])
-                    self._snapshot(page, result, "not subscribed")
-                    result.final_url = page.url
-                    result.title = self._title(page)
-                    self._write_diagnostic(page, result, run_dir)
-                    return result
-                if not self._complete_login_from_current_page(page, result):
-                    if self._article_access_available(page):
-                        self._event(result, "login_completed_after_timeout", getattr(page, "url", ""))
-                    else:
-                        return self._login_failed(page, result, run_dir)
-                settle(page, 2_000)
-                if not self._pdf_first_unless_signed_out(page, result):
-                    return self._login_failed(page, result, run_dir)
-
-            self._return_from_other_article(page, result)
-            result.final_url = page.url
-            result.title = self._title(page)
-            result.state = "article_loaded"
-            self._event(result, "article_access_ready")
-            self._hold_after_login(page, result)
+            preparation = self._prepare_article(page, result, run_dir)
+            if preparation is not None:
+                return preparation
             ip_block: str | None = None
             # Whether this capture comes after the school's login, and its first attempt.
             signed_in, attempts_from = self._school_login_done(), len(result.pdf_attempts)
@@ -552,6 +556,12 @@ class PublisherBatchDownloader(
             progress_reporter.update(phase="出版社内容服务错误，当前路径已停止")
             self._write_diagnostic(page, result, run_dir)
             return result
+        except watchdog.BrowserUnresponsive as exc:
+            result.reason = result.state = ("browser_operation_timeout" if isinstance(exc, watchdog.BrowserOperationTimeout)
+                                            else "browser_unresponsive")
+            self._event(result, result.state, str(exc))
+            self._write_diagnostic(page, result, run_dir)
+            return result
         except Exception as exc:
             import traceback
 
@@ -573,21 +583,71 @@ class PublisherBatchDownloader(
             self._write_diagnostic(page, result, run_dir)
             return result
         finally:
+            page.remove_listener("framenavigated", invalidate_open_access)
             user_watch.set()
             watchdog.on_slow_call = None
             if isinstance(watchdog.interrupted, UserMarkedNoEntitlement) and result.ok:
                 # The click came while the PDF was being saved.
                 self._tell_user("点击时这一篇已经保存好了，没有跳过", result)
             watchdog.clear_interrupt()
-            self._capture_reported_issues(page, result, act=False)
+            stopped = bool(watchdog.fired) or result.state in {
+                "browser_unresponsive", "browser_operation_timeout", "user_skipped", "batch_stopped", "user_marked_no_entitlement"}
+            if not stopped:
+                self._capture_reported_issues(page, result, act=False)
             if not result.ok:
                 progress_reporter.report_stage("route_failed", current=record.doi)
-            self._hold_after_run(page, result)
+            if not stopped:
+                self._hold_after_run(page, result)
             if _owns_page:
                 try:
                     page.close()
                 except Exception:
                     pass
+
+    @page_operation
+    def _prepare_article(self, page: Any, result: DownloadResult, run_dir: Path) -> DownloadResult | None:
+        """Reach the first PDF attempt within one shared page budget."""
+        self._event(result, "article_open", result.article_url)
+        if not self._ensure_login(page, result):
+            if self._article_access_available(page):
+                self._event(result, "login_completed_after_timeout", getattr(page, "url", ""))
+            else:
+                return self._login_failed(page, result, run_dir)
+
+        self._return_from_other_article(page, result)
+        settle(page, 2_000)
+        if not (getattr(result, "_open_access_current", False)
+                or self._pdf_first_unless_signed_out(page, result)):
+            self._event(result, "auth_wall_after_article_load", self._decision_text(page))
+            # This item has been through the school's login and the article still
+            # denies it, shows only its abstract or offers it: the school has no
+            # access, and a second login would only wait out the user's time
+            # (JAMA Oncology back from the store page, 2026-11-02).
+            evidence = self._no_access_after_login(page, result)
+            if evidence:
+                result.reason = result.state = "institution_pdf_entitlement_missing"
+                self._event(result, "no_access_after_login", evidence[:300])
+                self._snapshot(page, result, "not subscribed")
+                result.final_url = page.url
+                result.title = self._title(page)
+                self._write_diagnostic(page, result, run_dir)
+                return result
+            if not self._complete_login_from_current_page(page, result):
+                if self._article_access_available(page):
+                    self._event(result, "login_completed_after_timeout", getattr(page, "url", ""))
+                else:
+                    return self._login_failed(page, result, run_dir)
+            settle(page, 2_000)
+            if not self._pdf_first_unless_signed_out(page, result):
+                return self._login_failed(page, result, run_dir)
+
+        self._return_from_other_article(page, result)
+        result.final_url = page.url
+        result.title = self._title(page)
+        result.state = "article_loaded"
+        self._event(result, "article_access_ready")
+        self._hold_after_login(page, result)
+        return None
 
     @staticmethod
     def _browser_start_line(start: dict) -> str:
@@ -668,7 +728,8 @@ class PublisherBatchDownloader(
         result.pdf_path = str(pdf_path)
         result.size_bytes = len(pdf_bytes)
         result.text_length = len(text or "")
-        result.verified_match = self._text_matches_record(text, record, fallback_title=result.title)
+        result.verified_match = self._text_matches_record(
+            text, record, fallback_title=self._identity_title() or result.title)
         self._save_publisher_session(page, result)
         if not any(e["state"] == "pdf_saved_unconfirmed" for e in result.events):
             from ..browser.preview import discard_frames

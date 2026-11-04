@@ -267,18 +267,23 @@ class AccessMixin:
         return result is not None and (getattr(result, "_visited_idp", False) or getattr(result, "_login_round_trip", False)
                                        or any(e.get("state") in self._SCHOOL_CHOSEN for e in result.events))
 
-    def _institution_pdf_entitlement_missing(self, page: Any) -> bool:
+    def _institution_pdf_entitlement_missing(self, page: Any, snapshot: SimpleNamespace | None = None) -> bool:
         """The article page denies access (access_rules.denial_evidence) to a
         reader who is the institution: its session shows, this item has been
         through the school's login, or the denial names the configured school."""
         url = str(getattr(page, "url", "") or "")
         if not self._is_success_article_url(url) or self._is_auth_page(url):
             return False
-        if self._is_challenge_page(page):
+        if snapshot is None and self._is_challenge_page(page):
             return False
-        snap = self._access_snapshot(page)
+        snap = snapshot or self._access_snapshot(page)
         evidence, named = access_rules.denial_evidence(url, snap.lines, snap.probe)
         if not evidence:
+            return False
+        # A supplied snapshot already rules out a denial without live reads.
+        # Only a possible denial needs the verification guard; re-reading a
+        # slow article here otherwise delays even confirmed public access.
+        if snapshot is not None and self._is_challenge_page(page):
             return False
         if self._school_login_done() or self._institution_session(page, snap) == "ours":
             return True

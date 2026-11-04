@@ -33,6 +33,8 @@ export interface CarsiBatchUpdate {
 export interface CarsiDownloadRequest {
   identifier: string;
   outputDir: string;
+  /** Optional separate directory for records and screenshots. */
+  diagnosticsDir?: string;
   signal?: AbortSignal;
   onProgress?: (progress: CarsiProgress) => void;
   /** Sent only to backends whose download schema declares the batch fields. */

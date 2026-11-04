@@ -38,6 +38,7 @@ export function createCarsiDownloadArguments(
   batch?: CarsiBatchPosition,
   supplements?: "with" | "only",
   userWait?: "short",
+  diagnosticsDir?: string,
 ): Record<string, string | boolean | number> {
   return {
     identifier,
@@ -58,6 +59,7 @@ export function createCarsiDownloadArguments(
       : {}),
     ...(supplements ? { supplements } : {}),
     ...(userWait ? { user_wait: userWait } : {}),
+    ...(diagnosticsDir ? { diagnostics_dir: resolve(diagnosticsDir) } : {}),
   };
 }
 
@@ -71,6 +73,7 @@ export interface CarsiBatchSupport {
   supplementsField: boolean;
   /** The download tool declares the user_wait field. */
   userWaitField: boolean;
+  diagnosticsDirField?: boolean;
 }
 
 export function selectCarsiBatchSupport(
@@ -116,6 +119,8 @@ export function selectCarsiBatchSupport(
           "short",
         ),
       ),
+    diagnosticsDirField: !!download && acceptsDeclaredArguments(download.inputSchema,
+      createCarsiDownloadArguments(COMPATIBILITY_DOI, "output", strategy, undefined, undefined, undefined, "diagnostics")),
     progressTool:
       progress.length === 1 &&
       acceptsDeclaredArguments(progress[0].inputSchema, {

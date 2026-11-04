@@ -610,13 +610,8 @@ class RunsMixin:
         if not any(kw in url_lower for kw in ("login", "cas", "sso", "signin", "sign-in")):
             return True
         # Check for SSO-specific indicators
-        try:
-            title = (page.title() or "").lower()
-            if any(kw in title for kw in ("登录成功", "welcome", "dashboard")):
-                return True
-        except Exception:
-            pass
-        return False
+        title = self._title(page).lower()
+        return any(kw in title for kw in ("登录成功", "welcome", "dashboard"))
 
     def _save_publisher_session(self, page: Any, result: DownloadResult) -> None:
         if not self.profile.base_domains:

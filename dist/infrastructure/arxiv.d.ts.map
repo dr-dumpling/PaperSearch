@@ -1,0 +1,1 @@
+{"version":3,"file":"arxiv.d.ts","sourceRoot":"","sources":["../../src/infrastructure/arxiv.ts"],"names":[],"mappings":"AAAA,oFAAoF;AACpF,wBAAgB,gBAAgB,CAAC,KAAK,EAAE,MAAM,GAAG,SAAS,GAAG,MAAM,GAAG,SAAS,CAiB9E;AAED,wBAAgB,WAAW,CAAC,KAAK,EAAE,MAAM,GAAG,MAAM,GAAG,SAAS,CAG7D;AAED,wBAAgB,YAAY,CAAC,KAAK,EAAE,MAAM,GAAG,SAAS,GAAG,MAAM,GAAG,SAAS,CAG1E"}

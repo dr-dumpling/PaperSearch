@@ -85,12 +85,19 @@ class ClickedPdfInViewerTests(unittest.TestCase):
         pdf_url = "https://pdf.sciencedirectassets.com/example/main.pdf"
         d = PublisherBatchDownloader(config={}, profile=ELSEVIER_PROFILE)
         d._return_to_record_article_if_needed = Mock()
-        d._click_pdf_entry = Mock(return_value=True)
-        d._pdf_candidates = Mock(return_value=[])
+        # The article has no extra candidates. Once the PDF is captured the
+        # viewer must never be queried for candidates again.
+        d._pdf_candidates = Mock(side_effect=[[], AssertionError("viewer DOM must not be read after capture")])
         d._fetch_page_state_pdf = Mock(return_value=(body, pdf_url, None))
         d._pdf_viewer_present = Mock(return_value=viewer)
         d._capture_native_viewer_pdf = Mock(return_value=(body, pdf_url))
-        page = Mock(); page.url = pdf_url
+        page = Mock(); page.url = "https://www.sciencedirect.com/science/article/pii/S0000000000000000"
+        page.evaluate.return_value = None
+        page.locator.return_value.inner_text.return_value = ""
+        def click(*args, **kwargs):
+            page.url = pdf_url
+            return True
+        d._click_pdf_entry = Mock(side_effect=click)
         page.context.browser.browser_type.name = "firefox"
         result = DownloadResult(doi="10.0000/example", status="failed")
         return d._capture_pdf(page, result.doi, result), d, body, pdf_url

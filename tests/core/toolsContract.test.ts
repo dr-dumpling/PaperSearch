@@ -3,6 +3,7 @@ import { TOOLS } from "../../src/core/tools.js";
 
 const EXPECTED_TOOL_NAMES = [
   "search_papers",
+  "search_arxiv",
   "search_webofscience",
   "search_pubmed",
   "search_biorxiv",
@@ -43,6 +44,10 @@ const EXPECTED_SCHEMA_SUMMARY: Record<
   string,
   { required: string[]; properties: string[] }
 > = {
+  search_arxiv: {
+    required: ["query"],
+    properties: ["query", "maxResults", "category", "author", "year", "sortBy", "sortOrder"],
+  },
   search_papers: {
     required: ["query"],
     properties: [

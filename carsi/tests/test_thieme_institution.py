@@ -101,6 +101,37 @@ class ThiemeInstitutionTests(unittest.TestCase):
         self.assertTrue(self.downloader._select_institution(self.page, self.result))
         self.page.wait_for_url("**/fixture/next**")
 
+    def test_a_cookie_overlay_is_rejected_before_the_federation_continue(self):
+        self.chooser_html = '''<form action="/fixture/next"><select id="federation">
+            <option>Other federation</option><option>China (CARSI)</option></select>
+            <button>Continue</button></form>
+            <div id="cookie-consent" style="position:fixed;inset:0;z-index:9999;background:#888">
+              <section><h2>We kindly request your consent</h2><p>Our website uses cookies.</p>
+              <button onclick="this.closest('#cookie-consent').remove()">Accept</button>
+              <button onclick="this.closest('#cookie-consent').remove()">Reject</button>
+              <button>Settings</button></section></div>'''
+        self.page.goto(CHOOSER)
+        self.assertTrue(self.downloader._select_institution(self.page, self.result))
+        states = [e["state"] for e in self.result.events]
+        self.assertIn("cookie_banner_dismissed", states)
+        answer = next(e for e in self.result.events if e["state"] == "cookie_banner_dismissed")
+        self.assertIn('reject "Reject"', answer["detail"])
+        self.assertIn("institution_federation_continue", states)
+        self.page.wait_for_url("**/fixture/next**", timeout=3_000)
+
+    def test_federation_continue_errors_are_not_hidden(self):
+        from paper_search_carsi.browser.watchdog import BrowserOperationTimeout
+        for error in (KeyError("program error"), BrowserOperationTimeout("operation expired")):
+            with self.subTest(error=type(error).__name__):
+                self.chooser_html = '''<form action="/fixture/next"><select id="federation">
+                    <option>Other federation</option><option selected>China (CARSI)</option></select>
+                    <button>Continue</button></form>'''
+                self.page.goto(CHOOSER)
+                self.result = DownloadResult(doi=DOI, status="failed", article_url=ARTICLE)
+                with patch.object(self.downloader, "_click_control", side_effect=error):
+                    with self.assertRaises(type(error)):
+                        self.downloader._select_institution(self.page, self.result)
+
     def test_the_continue_is_pressed_again_while_the_page_stays_on_this_step(self):
         # The page came back on the federation step with CARSI chosen: Continue again,
         # three times at most (a second one brought the school list, 2026-11-02).

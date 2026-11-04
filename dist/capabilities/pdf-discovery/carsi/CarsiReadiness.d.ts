@@ -4,7 +4,7 @@ export declare const ACCEPTED_SERVER_NAMES: Set<string>;
 /** Request policy sent to the backend. legal_only is the baseline every backend must accept. */
 export type CarsiDownloadStrategy = "legal_only" | "institutional_only";
 /** The probe and real invocation must validate and send the same policy. */
-export declare function createCarsiDownloadArguments(identifier: string, outputDir: string, strategy?: CarsiDownloadStrategy, batch?: CarsiBatchPosition, supplements?: "with" | "only", userWait?: "short"): Record<string, string | boolean | number>;
+export declare function createCarsiDownloadArguments(identifier: string, outputDir: string, strategy?: CarsiDownloadStrategy, batch?: CarsiBatchPosition, supplements?: "with" | "only", userWait?: "short", diagnosticsDir?: string): Record<string, string | boolean | number>;
 /** Batch progress support advertised by the backend (both optional extensions). */
 export interface CarsiBatchSupport {
     /** The download tool declares and accepts the batch_* fields. */
@@ -15,6 +15,7 @@ export interface CarsiBatchSupport {
     supplementsField: boolean;
     /** The download tool declares the user_wait field. */
     userWaitField: boolean;
+    diagnosticsDirField?: boolean;
 }
 export declare function selectCarsiBatchSupport(tools: readonly CarsiToolDefinition[], strategy: CarsiDownloadStrategy): CarsiBatchSupport;
 export declare function validateCarsiContract(serverName: string | undefined, tools: readonly CarsiToolDefinition[]): CarsiReadiness;

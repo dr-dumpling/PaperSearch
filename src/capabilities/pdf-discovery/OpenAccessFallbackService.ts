@@ -1,3 +1,6 @@
+import { createOutputLayout, lookupOutputMetadata, organizeFiles } from "./outputLayout.js";
+import { prepareArxiv } from "./arxiv.js";
+import { createPreprintTier } from "./tiers/preprint.js";
 import type { Searchers } from "../../core/searchers.js";
 import { TIMEOUTS } from "../../config/constants.js";
 import { unlinkSync } from "node:fs";
@@ -43,6 +46,7 @@ export function createDefaultDownloadTiers(
     createPublisherApiTier(),
     createSciHubTier(),
     createEntitledAccessTier(carsiBackend),
+    createPreprintTier(),
   ];
 }
 
@@ -96,8 +100,9 @@ export async function downloadWithFallback(
   const attempts: DownloadWithFallbackResult["attempts"] = [];
   let review: DownloadWithFallbackResult["review"];
   const reviewPaths: string[] = [];
-  const context = {
+  const context: DownloadTierContext = {
     searchers,
+    preprintIds: options.preprintIds || [],
     source: normalizeSource(options.source),
     paperId: options.paperId,
     doi: options.doi,
@@ -110,6 +115,15 @@ export async function downloadWithFallback(
     ...(options.shortUserWait ? { shortUserWait: true } : {}),
   };
   let supplements: DownloadWithFallbackResult["supplements"];
+  await prepareArxiv(context);
+  context.outputMetadata = context.arxivOnly ? context.arxivPaper || {} : await lookupOutputMetadata(
+    searchers, context.doi ? "crossref" : context.source, context.doi || context.paperId);
+  context.title ||= context.outputMetadata.title;
+  context.titleLookedUp = true;
+  const layout = createOutputLayout(savePath, context.doi || context.paperId,
+    { ...context.outputMetadata, title: context.title }, !!context.arxivOnly);
+  context.savePath = layout.paperDir;
+  context.diagnosticsDir = layout.diagnosticsDir;
 
   for (const tier of tiers) {
     const startedAt = Date.now();
@@ -120,7 +134,11 @@ export async function downloadWithFallback(
       if (doi) await fillTitle(context, doi);
     }
     try {
-      result = await runStage(tier, context, stageTimeoutMs);
+      result = context.arxivOnly && tier.stage !== "preprint"
+        ? { status: "skipped", message: context.arxivLookupError
+            ? "arXiv publication metadata unavailable; published DOI could not be resolved."
+            : "No published DOI is linked to this arXiv identifier." }
+        : await runStage(tier, context, stageTimeoutMs);
     } catch (error) {
       notifyStage(options, tier.stage, startedAt, {
         status: "error",
@@ -130,6 +148,15 @@ export async function downloadWithFallback(
       throw error;
     }
     result = await identityGate(result, context, verifyIdentity);
+    try {
+      const destination = result.version === "preprint"
+        ? createOutputLayout(savePath, `arxiv:${result.arxivId}`, context.arxivPaper || {}, true) : layout;
+      organizeFiles(result, destination, context.savePath);
+    } catch (error) {
+      // Keep the retrieved file and report a concrete filing failure.
+      attempts.push({ stage: "output_layout", status: "error", code: "output_layout_failed",
+        message: `File organization failed (${error instanceof Error ? error.name : "Error"}); use the returned file paths.` });
+    }
     notifyStage(options, tier.stage, startedAt, result);
     attempts.push({
       stage: tier.stage,
@@ -143,11 +170,14 @@ export async function downloadWithFallback(
       reviewPaths.push(result.review.path);
     }
     if (result.supplements?.length) supplements = result.supplements;
+    if (["batch_stopped", "user_skipped"].includes(result.code || "")) break;
     if (result.status === "ok" && result.path) {
       discardReviews(reviewPaths, result.path);
       return {
         status: "ok",
         path: result.path,
+        ...(result.version ? { version: result.version, arxivId: result.arxivId } : {}),
+        ...(result.publishedDoi || context.arxivId && context.doi ? { publishedDoi: result.publishedDoi || context.doi } : {}),
         ...(result.format && result.format !== "pdf"
           ? { format: result.format }
           : {}),

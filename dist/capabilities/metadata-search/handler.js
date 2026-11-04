@@ -1,3 +1,4 @@
+import { normalizeArxivId } from '../../infrastructure/arxiv.js';
 import { TIMEOUTS } from '../../config/constants.js';
 import { PaperFactory } from '../../models/Paper.js';
 import { logDebug } from '../../utils/Logger.js';
@@ -21,6 +22,11 @@ function normalizeDoi(value) {
         .toLowerCase();
 }
 function paperMatchesDoi(paper, doi) {
+    const id = normalizeArxivId(doi);
+    if (id && paper.source === 'arxiv') {
+        const found = normalizeArxivId(paper.paperId);
+        return !!found && (/v\d+$/.test(id) ? found === id : found.replace(/v\d+$/, '') === id);
+    }
     return normalizeDoi(paper.doi || '') === normalizeDoi(doi);
 }
 export async function handleGenericSearch(platform, args, searchers) {

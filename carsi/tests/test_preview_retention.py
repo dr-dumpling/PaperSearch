@@ -3,7 +3,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from paper_search_carsi.browser import preview
 
@@ -61,6 +61,27 @@ class RetentionTests(unittest.TestCase):
             self.view.observe(force=True)
         self.assertEqual(len(self.frames()), preview.MAX_KEPT_FRAMES + 1)  # history + newest
 
+    def test_navigation_only_marks_dirty_and_never_reads_the_browser_in_a_callback(self):
+        page = MagicMock()
+        self.view._attach_page(page)
+        callback = page.on.call_args.args[1]
+        with patch.object(self.view, "observe") as observe:
+            callback()
+        observe.assert_not_called()
+        page.title.assert_not_called()
+        page.screenshot.assert_not_called()
+        self.assertEqual(self.view.page_revisions[page], 1)
+        self.assertEqual(self.view.last_observed, 0)
+
+    def test_preview_propagates_stops_instead_of_hiding_them(self):
+        from paper_search_carsi.browser.watchdog import BrowserOperationTimeout
+        from paper_search_carsi.entitlements import UserStoppedBatch
+        for error in (BrowserOperationTimeout("page budget"), UserStoppedBatch("stop")):
+            with self.subTest(error=type(error).__name__), \
+                    patch.object(self.view, "_capture", side_effect=error):
+                with self.assertRaises(type(error)):
+                    preview.observe_page(self.page, force=True)
+
     def test_a_successful_download_drops_its_frames(self):
         self.view.observe(force=True)
         self.page.url = "https://journal.example/fulltext/1"
@@ -68,6 +89,42 @@ class RetentionTests(unittest.TestCase):
         preview.discard_frames(self.context)
         self.assertEqual(self.frames(), [])
         self.assertEqual(self.view.pages[0]["screenshot_status"], "unavailable")
+
+    def test_pdf_capture_does_not_wait_for_an_optional_preview(self):
+        from paper_search_carsi.engine.batch import DownloadResult, PublisherBatchDownloader
+        from paper_search_carsi.browser.watchdog import BrowserOperationTimeout
+
+        downloader = PublisherBatchDownloader(config={})
+        downloader._citation_title = MagicMock(return_value="Expected article")
+        body = MagicMock()
+        body.inner_text.return_value = "Current article evidence"
+        self.page.locator = MagicMock(return_value=body)
+
+        def capture(page, doi, result):
+            self.assertEqual(downloader._body_text(page), "Current article evidence")
+            return b"pdf bytes", "https://journal.example/current.pdf", None
+
+        downloader._capture_pdf_channels = capture
+        result = DownloadResult(doi="10.1000/x", status="error")
+        with patch.object(self.view, "_capture", side_effect=BrowserOperationTimeout("stalled preview")) as shot:
+            self.assertEqual(downloader._capture_pdf(self.page, result.doi, result)[0], b"pdf bytes")
+            shot.assert_not_called()
+            # This only suppresses incidental previews during capture. A later
+            # observation must still propagate browser/user interruption.
+            with self.assertRaises(BrowserOperationTimeout):
+                self.view.observe(force=True)
+
+    def test_pdf_capture_failure_restores_preview_observation(self):
+        from paper_search_carsi.engine.batch import DownloadResult, PublisherBatchDownloader
+        from paper_search_carsi.entitlements import UserStoppedBatch
+
+        downloader = PublisherBatchDownloader(config={})
+        downloader._citation_title = MagicMock(return_value="Expected article")
+        downloader._capture_pdf_channels = MagicMock(side_effect=UserStoppedBatch("stop"))
+        with self.assertRaises(UserStoppedBatch):
+            downloader._capture_pdf(self.page, "10.1000/x", DownloadResult(doi="10.1000/x", status="error"))
+        self.view.observe(force=True)
+        self.assertEqual(self.view.pages[0]["screenshot_status"], "available")
 
 
 if __name__ == "__main__":

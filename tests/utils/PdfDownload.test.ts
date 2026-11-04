@@ -46,6 +46,18 @@ describe('PdfDownload', () => {
     } as any);
   }
 
+  it('defers arXiv requests and redirects unless the final tier opts in', async () => {
+    const get = mockDownload(pdfBuffer());
+    const dir = tempDir();
+    await expect(downloadPdfFromUrl('https://arxiv.org/pdf/1706.03762', dir, 'preprint')).rejects.toThrow('deferred');
+    expect(get).not.toHaveBeenCalled();
+    const saved = await downloadPdfFromUrl('https://arxiv.org/pdf/1706.03762', dir, 'allowed', {allowPreprint: true});
+    expect(isValidPdfFile(saved)).toBe(true);
+    await downloadPdfFromUrl('https://repo.example/paper.pdf', dir, 'formal');
+    const config = get.mock.calls.at(-1)![1]!;
+    expect(() => config.beforeRedirect!({protocol: 'https:', hostname: 'arxiv.org', path: '/pdf/1706.03762'} as any, {} as any, {} as any)).toThrow('deferred');
+  });
+
   it('recognizes an initial PDF signature without treating it as full-file validation', () => {
     expect(isPdfBuffer(Buffer.from('%PDF-1.7'), 'application/octet-stream')).toBe(true);
     expect(isPdfBuffer(Buffer.from('<html>'), 'text/html')).toBe(false);

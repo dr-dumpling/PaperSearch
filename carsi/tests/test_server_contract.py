@@ -63,6 +63,12 @@ class ServerContractTests(unittest.TestCase):
         progress = self.out["tools"]["carsi_batch_progress"]
         self.assertEqual(set(progress["required"]), {"batch_id", "total", "done", "succeeded", "failed"})
 
+    def test_diagnostic_directory_is_an_optional_extension(self):
+        schema = self.out["tools"]["carsi_download"]
+        self.assertIn("diagnostics_dir", schema["properties"])
+        self.assertNotIn("diagnostics_dir", schema.get("required", []))
+        self.assertIn("string", json.dumps(schema["properties"]["diagnostics_dir"]))
+
     def test_cache_clear_is_noop_safe(self):
         self.assertEqual(self.out["cache_clear"], {"cleared": 0})
 

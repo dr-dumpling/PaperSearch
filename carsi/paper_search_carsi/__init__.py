@@ -1,6 +1,3 @@
-"""paper-search-carsi: institutional (publisher-authorized) PDF download backend for PaperSearch.
-
-Derived from scansci-pdf (MIT); only the institutional access phase is kept.
-"""
+"""paper-search-carsi: institutional PDF and supplementary-file download backend for PaperSearch."""
 
 __version__ = "0.1.0"

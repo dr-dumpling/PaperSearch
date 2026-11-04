@@ -62,7 +62,7 @@ describe('SemanticScholarSearcher', () => {
   });
 
   describe('PDF URL normalization', () => {
-    it('drops arXiv links (arXiv is not a download source) and DOI landing pages', async () => {
+    it('normalizes arXiv candidates for the final preprint stage and drops DOI landing pages', async () => {
       jest.spyOn(axios, 'get').mockResolvedValue({
         data: {
           data: [
@@ -84,7 +84,7 @@ describe('SemanticScholarSearcher', () => {
 
       const results = await searcher.search('test', { maxResults: 2 });
 
-      expect(results[0].pdfUrl).toBe('');
+      expect(results[0].pdfUrl).toBe('https://arxiv.org/pdf/2501.06425');
       expect(results[1].pdfUrl).toBe('');
     });
   });

@@ -1,3 +1,4 @@
+import { normalizeArxivId } from '../../../infrastructure/arxiv.js';
 import { PaperSource } from '../../../platforms/PaperSource.js';
 import { downloadPdfFromUrl, safeFilename } from '../../../infrastructure/pdf/PdfDownload.js';
 import { getCapabilityProfileSources, resolvePlatformId } from '../../../registry/platformMetadata.js';
@@ -25,6 +26,11 @@ async function tryDirectMetadataUrl(context: DownloadTierContext): Promise<Downl
     const paper = await searcher.getPaperByDoi(lookupId);
     if (!paper?.pdfUrl) {
       return { status: 'skipped', message: 'No pdf_url found in source metadata.' };
+    }
+    const preprintId = normalizeArxivId(paper.pdfUrl);
+    if (preprintId) {
+      (context.preprintIds ||= []).push(preprintId);
+      return { status: 'skipped', message: 'arXiv PDF deferred until published-version routes finish.' };
     }
     if (!hasOpenAccessProvenance(context.source, paper)) {
       return {

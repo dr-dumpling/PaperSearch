@@ -25,6 +25,50 @@ def synthetic_pdf(text):
         return document.tobytes() + b"\n%" + b"x" * 6000
 
 
+class TitleReadTests(unittest.TestCase):
+    def test_a_page_title_does_not_use_an_unbounded_browser_call(self):
+        from paper_search_carsi.browser.watchdog import BrowserOperationTimeout
+        page = MagicMock()
+        page.title.side_effect = BrowserOperationTimeout("Page.title did not return")
+        page.locator.return_value.first.text_content.return_value = "  Article\n title  "
+        self.assertEqual(PublisherBatchDownloader._title(page), "Article title")
+        page.title.assert_not_called()
+
+    def test_navigation_uses_the_same_bounded_title_read(self):
+        from paper_search_carsi.browser.watchdog import BrowserOperationTimeout
+        from paper_search_carsi.engine.batch_common import open_page
+        page = MagicMock(url=ARTICLE)
+        page.title.side_effect = BrowserOperationTimeout("Page.title did not return")
+        page.locator.return_value.first.text_content.return_value = "Article title"
+        page.evaluate.return_value = ["interactive", 1000]
+        open_page(page, ARTICLE)
+        page.title.assert_not_called()
+
+    def test_batch_login_title_checks_preserve_browser_interrupts(self):
+        from paper_search_carsi.browser.watchdog import BrowserOperationTimeout
+        page = MagicMock()
+        page.title.side_effect = BrowserOperationTimeout("Page.title did not return")
+        page.locator.return_value.first.text_content.return_value = "Welcome"
+        d = PublisherBatchDownloader({}, profile=get_publisher_profile("elsevier"))
+        self.assertTrue(d._looks_like_logged_in(page, "https://fixture.example/login"))
+        page.title.assert_not_called()
+        page.locator.return_value.first.text_content.side_effect = BrowserOperationTimeout("page budget exhausted")
+        with self.assertRaises(BrowserOperationTimeout):
+            d._looks_like_logged_in(page, "https://fixture.example/login")
+
+    def test_an_unavailable_title_is_optional_but_browser_interrupts_are_not(self):
+        from playwright.sync_api import TimeoutError
+        from paper_search_carsi.browser.watchdog import BrowserOperationTimeout
+        page = MagicMock()
+        page.locator.return_value.first.text_content.side_effect = TimeoutError("title not readable")
+        self.assertEqual(PublisherBatchDownloader._title(page), "")
+        for exc in (BrowserOperationTimeout("page budget exhausted"), RuntimeError("program error")):
+            with self.subTest(error=type(exc).__name__):
+                page.locator.return_value.first.text_content.side_effect = exc
+                with self.assertRaises(type(exc)):
+                    PublisherBatchDownloader._title(page)
+
+
 class AttemptRecordTests(unittest.TestCase):
     def setUp(self):
         self.d = PublisherBatchDownloader({}, profile=get_publisher_profile("elsevier"))
@@ -88,7 +132,7 @@ class SnapshotTests(unittest.TestCase):
         self.result = DownloadResult(doi=DOI, status="failed", article_url=ARTICLE)
         self.page = MagicMock()
         self.page.url = ARTICLE
-        self.page.title.return_value = "Article"
+        self.page.locator.return_value.first.text_content.return_value = "Article"
         self.page.screenshot.side_effect = lambda path, **kwargs: Path(path).write_bytes(b"jpeg")
 
     def test_a_snapshot_keeps_url_title_and_a_masked_picture_five_at_most(self):

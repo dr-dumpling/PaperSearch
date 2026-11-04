@@ -67,6 +67,7 @@ export const GetPaperByDoiSchema = z
     doi: z.coerce.string().min(1),
     platform: z
       .enum([
+        'arxiv',
         'webofscience',
         'pubmed',
         'crossref',

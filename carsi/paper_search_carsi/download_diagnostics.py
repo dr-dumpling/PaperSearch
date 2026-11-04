@@ -26,7 +26,7 @@ challenge_or_viewer_timeout ip_blocked access_blocked pdf_not_captured
 pdf_identity_mismatch pdf_identity_unverified invalid_pdf
 profile_busy cancelled interrupted skipped_cached_attempt target_verified_reached navigation_error
 unsupported_platform unsupported_publisher user_skipped user_marked_no_entitlement pdf_wrong_article
-institution_federation_unavailable browser_unresponsive login_not_reached idp_no_return_to_publisher
+institution_federation_unavailable browser_unresponsive browser_operation_timeout login_not_reached idp_no_return_to_publisher
 generic_institution_entry_missing
 """.split())
 _STATES = _FAILURES | _STATUSES | frozenset("""

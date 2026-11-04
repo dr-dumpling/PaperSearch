@@ -1,3 +1,4 @@
+import type { ArxivSearcher } from '../platforms/ArxivSearcher.js';
 import type { BioRxivSearcher, MedRxivSearcher } from '../platforms/BioRxivSearcher.js';
 import type { CORESearcher } from '../platforms/CORESearcher.js';
 import type { CrossrefSearcher } from '../platforms/CrossrefSearcher.js';
@@ -23,6 +24,7 @@ import { logDebug } from '../utils/Logger.js';
 export type SearcherMap = Record<string, PaperSource>;
 
 export interface Searchers extends SearcherMap {
+  arxiv: ArxivSearcher;
   webofscience: WebOfScienceSearcher;
   pubmed: PubMedSearcher;
   biorxiv: BioRxivSearcher;

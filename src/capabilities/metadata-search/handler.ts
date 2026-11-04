@@ -1,3 +1,4 @@
+import { normalizeArxivId } from '../../infrastructure/arxiv.js';
 import type { Searchers } from '../../core/searchers.js';
 import { TIMEOUTS } from '../../config/constants.js';
 import { PaperFactory, type Paper } from '../../models/Paper.js';
@@ -30,6 +31,11 @@ function normalizeDoi(value: string): string {
 }
 
 function paperMatchesDoi(paper: Paper, doi: string): boolean {
+  const id = normalizeArxivId(doi);
+  if (id && paper.source === 'arxiv') {
+    const found = normalizeArxivId(paper.paperId);
+    return !!found && (/v\d+$/.test(id) ? found === id : found.replace(/v\d+$/, '') === id);
+  }
   return normalizeDoi(paper.doi || '') === normalizeDoi(doi);
 }
 

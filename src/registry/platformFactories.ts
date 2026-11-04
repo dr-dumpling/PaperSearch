@@ -1,5 +1,6 @@
 import type { PaperSource } from '../platforms/PaperSource.js';
 import { ACMSearcher } from '../platforms/ACMSearcher.js';
+import { ArxivSearcher } from '../platforms/ArxivSearcher.js';
 import { BioRxivSearcher, MedRxivSearcher } from '../platforms/BioRxivSearcher.js';
 import { CORESearcher } from '../platforms/CORESearcher.js';
 import { CrossrefSearcher } from '../platforms/CrossrefSearcher.js';
@@ -35,6 +36,7 @@ export const PLATFORM_FACTORIES: Record<string, PlatformFactory> = {
   pubmed: ({ env }) => new PubMedSearcher(env.PUBMED_API_KEY),
   pmc: () => new PMCSearcher(),
   europepmc: () => new EuropePMCSearcher(),
+  arxiv: () => new ArxivSearcher(),
   biorxiv: () => new BioRxivSearcher('biorxiv'),
   medrxiv: () => new MedRxivSearcher(),
   semantic: ({ env }) => new SemanticScholarSearcher(env.SEMANTIC_SCHOLAR_API_KEY),

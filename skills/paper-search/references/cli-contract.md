@@ -51,6 +51,7 @@
 下面的名字可以用于 `paper-search run <tool-name>`：
 
 - `search_papers`
+- `search_arxiv`
 - `search_webofscience`
 - `search_pubmed`
 - `search_biorxiv`
@@ -98,7 +99,7 @@
 
 - `paper-search search` 是集成的元数据检索入口。
 - `--platform NAME` 只查一个来源，`--sources a,b,c` 明确指定多个来源。
-- `--sources no-key`（别名 `free`、`no_key`）展开为 Crossref、PubMed、Europe PMC、OpenReview 这一组；不调用 Google Scholar，普通元数据检索不需要用户的 API key。
+- `--sources no-key`（别名 `free`、`no_key`）展开为 Crossref、PubMed、Europe PMC、arXiv、OpenReview 这一组；不调用 Google Scholar，普通元数据检索不需要用户的 API key。
 - `search_google_scholar` 仍是需要明确指定的、尽力而为的网页来源：单一低频客户端（默认 `SCHOLAR_RATE_LIMIT_RPS=0.5`），有限次的临时重试，进程内缓存一小时，能识别验证页；遇到 CAPTCHA 或 `/sorry` 页面时报告，不盲目重试。
 - `--platform all` 或 `--sources all` 只在查全比查准更重要时使用。
 - `search_papers` 是集成 `search` 命令背后的工具。
@@ -125,7 +126,7 @@ paper-search run get_paper_references --arg doi="10.1038/nature12373" --arg limi
 
 `download_paper` 和 `download_with_fallback` 用同一个下载漏斗；来源自带的下载属于 `primary` 层，最多试一次。
 
-固定顺序是 `primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access`。Sci-Hub 成功就不再调用机构下载后端；Sci-Hub 失败或被跳过时进入可选的机构下载。`publisher_api` 在 Sci-Hub 之前，用用户自己的 `ELSEVIER_API_KEY` / `SPRINGER_API_KEY`；Springer 的结果是 JATS XML，这时顶层结果带 `format: "jats-xml"`。
+固定顺序是 `primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access -> preprint`。Sci-Hub 成功就不再调用机构下载后端；Sci-Hub 失败或被跳过时进入可选的机构下载。`publisher_api` 在 Sci-Hub 之前，用用户自己的 `ELSEVIER_API_KEY` / `SPRINGER_API_KEY`；Springer 的结果是 JATS XML，这时顶层结果带 `format: "jats-xml"`。
 
 机构下载后端（CARSI）是唯一可选的授权下载后端，默认关闭，只有 `PAPER_SEARCH_CARSI_ENABLED` 恰好是 `true` 时启用。两个下载工具都有 `useEntitledAccess`，默认 `true`；传 `false` 关掉这一层，传 `true` 不能绕过全局关闭。
 
@@ -156,7 +157,7 @@ paper-search run download_with_fallback --json-args '{"source":"crossref","paper
 
 - `"mode"`：默认 `"two_phase"`，先对每篇试开放渠道，再只对仍缺的篇目走机构下载，浏览器登录集中在最后一段，进度窗口按这一段计数（k / M）；`"per_item"` 每篇走完整个漏斗；`"entitled_only"` 跳过开放渠道，每篇直接走机构下载（用于测试学校这条路）。
 - 每篇可以带自己的 `savePath`。
-- `"content"`：`"main"`（默认，只要正文）、`"supplements"`（只要本文的补充材料，不走正文的各层）、`"both"`。补充材料存在 `<savePath>/<DOI>_supplements/`，结果的 `supplements` 列出每个文件的状态；只经机构下载后端获取，哪些出版社有规则见 `publisher-support.md`。
+- `"content"`：`"main"`（默认，只要正文）、`"supplements"`（只要本文的补充材料，不走正文的各层）、`"both"`。补充材料存在 `<savePath>/papers/<期刊_年份_标题_短标识>/supplements/`，清单与浏览器诊断在 `diagnostics/`，结果的 `supplements` 列出每个文件的状态；只经机构下载后端获取，哪些出版社有规则见 `publisher-support.md`。
 - 每次下载都会写一份本地运行记录，结果里的 `runLog` 是它的目录（`run.json`；`items.jsonl`，含每一层的耗时、代码，以及后端的页面事件和截图；`timeline.log`）。排查失败时读它，不要猜。结果列出每一篇和它的各次尝试。
 
 ```bash
@@ -198,3 +199,9 @@ paper-search doctor --pretty
 `PAPER_SEARCH_CARSI_ENABLED` 是不保密的严格开关：只有字符串 `true` 启用；`TRUE`、`1`、`yes` 或前后带空格的写法都算关闭。
 
 用户的学校用 `paper-search-carsi setup --carsi --institution "<学校>"` 配置，数据目录要和下载用的相同，见 `carsi-setup.md`。agent 不得写入维护者的学校，也不得换成记忆里的其他登录方；`doctor=available` 不能说成学校会话有效或对某篇有权限的证明。
+
+### arXiv
+
+`search_arxiv`：`query` 必填，可选 `maxResults`、`category`、`author`、`year`、`sortBy`、`sortOrder`。例如：`paper-search run search_arxiv --arg query="transformer" --arg maxResults=3 --pretty`。
+
+`paper-search download 1706.03762 --platform arxiv` 同样遵守正式版优先策略；返回 `version: "preprint"` 时必须明确说明拿到预印本。`publishedDoi` 是元数据关联，不表示已下载正式版。`entitled_only` 批量模式不尝试预印本。

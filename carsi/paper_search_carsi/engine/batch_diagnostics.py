@@ -17,7 +17,7 @@ from ..extractors import pdf_extractor
 from ..download_diagnostics import serialize_download_result
 from .. import progress_reporter
 from . import access_rules
-from .batch_common import DownloadResult, PaperRecord, safe_name
+from .batch_common import DownloadResult, PaperRecord, safe_name, _is_browser_error, page_title
 
 
 class DiagnosticsMixin:
@@ -41,12 +41,7 @@ class DiagnosticsMixin:
         finally:
             self._handling_reports = False
 
-    @staticmethod
-    def _title(page: Any) -> str:
-        try:
-            return str(page.title() or "")
-        except Exception:
-            return ""
+    _title = staticmethod(page_title)
 
     @staticmethod
     def _body_text(page: Any, limit: int = 2_000) -> str:
@@ -54,7 +49,9 @@ class DiagnosticsMixin:
         observe_page(page)
         try:
             text = page.locator("body").inner_text(timeout=3_000)
-        except Exception:
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
             return ""
         return re.sub(r"\s+", " ", text).strip()[:limit]
 
@@ -92,7 +89,7 @@ class DiagnosticsMixin:
                 "login_navigation_interrupted": ("登录跳转中断，检查是否可重试", "waiting_login"),
                 "login_stopped": ("机构登录未完成", "route_failed"),
                 "challenge_manual_wait": ("等待人工安全验证", "waiting_verification"),
-                "challenge_wait": ("等待人工安全验证", "waiting_verification"),
+                "challenge_wait": ("正在检查安全验证", "checking_access"),
                 "challenge_resolved": ("安全验证已结束，继续检查页面", "checking_access"),
                 "article_access_ready": ("论文页面已就绪，检查正文入口", "checking_access"),
                 "publisher_content_error": ("出版社返回内容服务错误", "route_failed"),
@@ -101,11 +98,13 @@ class DiagnosticsMixin:
                 "browser_pdf_response_captured": ("PDF 已捕获，正在保存", "pdf_captured"),
                 "pdf_saved": ("PDF 已保存，待内容核验", "saved_pending_verification"),
             }.get(state)
+            if state == "challenge_wait" and detail.startswith("manual "):
+                report = ("等待人工安全验证", "waiting_verification")
             if state == "login_attempt_started" and detail in {"1/3", "2/3", "3/3"}:
                 report = (f"机构登录：第 {detail[0]} 次尝试，共 3 次", "waiting_login")
             if state == "login_observed":
                 if detail == "verification":
-                    report = ("等待人工安全验证", "waiting_verification")
+                    report = ("正在检查安全验证", "checking_access")
                 elif detail == "human_login":
                     report = ("等待在浏览器完成机构登录", "waiting_login")
                 else:
@@ -189,13 +188,19 @@ class DiagnosticsMixin:
             "final_url": getattr(page, "url", result.final_url)}, diagnostic=True)
         packet["adapter"] = type(self.adapter).__name__
         packet["browser"] = getattr(self, "browser", {})
-        try:
-            packet["access_state"], packet["access_evidence"] = self._access_state(page)
-        except Exception as exc:
-            packet["access_state"], packet["access_evidence"] = "unknown", [f"probe failed: {type(exc).__name__}"]
+        from ..browser import watchdog
+        stopped = bool(watchdog.fired) or result.state in {
+            "browser_unresponsive", "browser_operation_timeout", "user_skipped", "batch_stopped", "user_marked_no_entitlement"}
+        if stopped:
+            packet["access_state"], packet["access_evidence"] = "unknown", ["probe skipped: item stopped"]
+        else:
+            try:
+                packet["access_state"], packet["access_evidence"] = self._access_state(page)
+            except Exception as exc:
+                packet["access_state"], packet["access_evidence"] = "unknown", [f"probe failed: {type(exc).__name__}"]
         packet_path = diag_dir / "diagnostic.json"
         packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2), encoding="utf-8")
-        if self.adapter.diagnostic_screenshots and result.reason != "publisher_access_blocked":
+        if not stopped and self.adapter.diagnostic_screenshots and result.reason != "publisher_access_blocked":
             try:
                 page.screenshot(path=str(diag_dir / "screenshot.png"), full_page=True)
             except Exception:

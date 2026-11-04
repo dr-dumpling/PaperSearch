@@ -23,7 +23,7 @@ import {
 
 /**
  * `paper-search carsi install / status` (ADR 0013, plan in
- * docs/dev/institutional-installer.zh.md). Every step is recorded in
+ * docs/history/institutional-installer-2026-11-03.zh.md). Every step is recorded in
  * install.json as it completes; running install again continues from the
  * step that failed. Everything outside the process goes through the host, so
  * tests run the steps without network, downloads or windows.

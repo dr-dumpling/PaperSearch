@@ -36,6 +36,7 @@ _FAILURE_KINDS = {
     "publisher_content_error": ("publisher_content_error", "review_publisher_error"),
     "unsupported_platform": ("unsupported_platform", "review_publisher_error"),
     "browser_unresponsive": ("browser_unresponsive", "review_browser"),
+    "browser_operation_timeout": ("browser_operation_timeout", "review_browser"),
     "publisher_access_blocked": ("access_blocked", "review_access"),
     "publisher_unreachable": ("publisher_unreachable", "review_publisher_error"),
     "sso_required": ("paywall", "login_required"),
@@ -509,7 +510,8 @@ def _try_browser_batch_download(
         require_interactive_browser=True,
     )
 
-    run_dir = output_path.parent / ".browser_runs"
+    from uuid import uuid4
+    run_dir = Path(config.get("diagnostics_dir") or output_path.parent / "diagnostics") / uuid4().hex[:12]
     run_dir.mkdir(parents=True, exist_ok=True)
 
     log.info(f"   [Institutional] Browser batch download: {doi} via {profile.name}")
@@ -537,10 +539,10 @@ def _try_browser_batch_download(
             if watchdog.fired and not result.ok:
                 # The browser call never returned and the driver was stopped:
                 # whatever the engine reported after that is a consequence.
-                result.reason = result.state = "browser_unresponsive"
+                result.reason = result.state = watchdog.failure_code()
             if supplements_mode in ("with", "only"):
-                if result.state == "browser_unresponsive":
-                    result.supplements = [{"status": "skipped", "reason": "browser_unresponsive",
+                if result.state in ("browser_unresponsive", "browser_operation_timeout"):
+                    result.supplements = [{"status": "skipped", "reason": result.state,
                                            "url": "", "label": ""}]
                 elif result.state == "challenge_or_viewer_timeout":
                     # The verification page was never completed: the article
@@ -548,13 +550,16 @@ def _try_browser_batch_download(
                     result.supplements = [{"status": "skipped", "reason": "challenge_timeout",
                                            "url": "", "label": ""}]
                 elif result.state in ("unsupported_platform", "publisher_access_blocked", "publisher_unreachable",
-                                      "login_page_closed"):
+                                      "login_page_closed", "user_skipped", "batch_stopped",
+                                      "user_marked_no_entitlement"):
                     # Nothing more to fetch there now.
                     result.supplements = [{"status": "skipped", "reason": result.state,
                                            "url": "", "label": ""}]
                 else:
                     written = len(result.events)
-                    result.supplements = downloader.collect_supplements(context, doi, output_path.parent, result)
+                    result.supplements = downloader.collect_supplements(context, doi, output_path.parent, result, manifest_dir=run_dir)
+                    if supplements_mode == "only" and (run_dir / "manifest.json").is_file():
+                        result.record_path = str(run_dir / "manifest.json")
                     _note_supplements(result, written)
         finally:
             try:
@@ -577,6 +582,8 @@ def _try_browser_batch_download(
                 if output_path.exists():
                     output_path.unlink()
                 src.rename(output_path)
+            result.pdf_path = str(output_path)
+            _note_supplements(result, len(getattr(result, "events", [])))
             log.info(f"   [Institutional] Browser download succeeded: {result.size_bytes:,} bytes")
             return {
                 "success": True, "identifier": doi, "doi": doi,
@@ -618,8 +625,9 @@ def _note_supplements(result: Any, written: int) -> None:
         if not path.is_file():
             continue
         data = json.loads(path.read_text(encoding="utf-8"))
-        data["events"] = list(data.get("events") or []) + list(result.events[written:])
-        data["supplements"] = result.supplements
+        data["events"] = list(data.get("events") or []) + list(getattr(result, "events", [])[written:])
+        data["supplements"] = getattr(result, "supplements", [])
+        data["pdf_path"] = str(getattr(result, "pdf_path", "") or "")
         if getattr(result, "phases", None):
             data["phases"] = {k: round(float(v), 1) for k, v in result.phases.items()}
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

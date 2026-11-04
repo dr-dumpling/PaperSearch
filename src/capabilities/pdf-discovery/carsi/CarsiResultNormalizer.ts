@@ -19,9 +19,10 @@ export function normalizeDownloadResult(
   result: unknown,
   identifier: string,
   outputDir?: string,
+  diagnosticsDir?: string,
 ): CarsiInvocationOutcome {
   const payload = parseSingleTextJson(result, "invalid_download_result");
-  const trace = backendTrace(payload.artifacts, outputDir);
+  const trace = backendTrace(payload.artifacts, outputDir, diagnosticsDir);
   const supplements = backendSupplements(payload.supplements, outputDir);
 
   if (payload.success === true) {
@@ -116,7 +117,7 @@ function insideOutputDir(file: unknown, outputDir?: string): string | undefined 
  * files and a stopped login's host name. Anything else, and any file outside
  * ``outputDir``, is dropped.
  */
-function backendTrace(value: unknown, outputDir?: string): CarsiTrace | undefined {
+function backendTrace(value: unknown, outputDir?: string, diagnosticsDir?: string): CarsiTrace | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const artifacts = value as Record<string, unknown>;
   const trace: CarsiTrace = {};
@@ -132,7 +133,7 @@ function backendTrace(value: unknown, outputDir?: string): CarsiTrace | undefine
   if (state) trace.state = state;
   if (stoppedHost) trace.stoppedHost = stoppedHost;
   for (const key of ["record", "diagnostic"] as const) {
-    const file = insideOutputDir(artifacts[key], outputDir);
+    const file = insideOutputDir(artifacts[key], diagnosticsDir) || insideOutputDir(artifacts[key], outputDir);
     if (file) trace[key] = file;
   }
   return Object.keys(trace).length ? trace : undefined;

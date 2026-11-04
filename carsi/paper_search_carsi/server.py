@@ -64,6 +64,7 @@ def carsi_download(
     batch_failed: int | None = None,
     supplements: str | None = None,
     user_wait: str | None = None,
+    diagnostics_dir: str | None = None,
 ) -> str:
     """Synchronous download entry; ``download`` is module-level so tests can stub it.
 
@@ -79,6 +80,8 @@ def carsi_download(
         kwargs = {"supplements": supplements} if supplements in ("with", "only") else {}
         if user_wait == "short":
             kwargs["user_wait"] = user_wait
+        if diagnostics_dir:
+            kwargs["diagnostics_dir"] = diagnostics_dir
         result = download(identifier, output_dir, strategy=strategy, **kwargs)
         outcome["result"] = result
         if not result.get("success"):
@@ -113,6 +116,7 @@ async def _carsi_download_with_progress(
     batch_failed: int | None = None,
     supplements: Literal["with", "only"] | None = None,
     user_wait: Literal["short"] | None = None,
+    diagnostics_dir: str | None = None,
     ctx: Context = None,
 ) -> str:
     """Download one paper by DOI through institutional access only.
@@ -129,6 +133,9 @@ async def _carsi_download_with_progress(
     (``<output_dir>/<DOI>_supplements/``, listed in the result's ``supplements``); "only"
     downloads just those, for an article whose main text is already at hand.
 
+    diagnostics_dir: optional separate directory for browser records, screenshots and
+    attachment manifests. When set, attachments go in output_dir/supplements/.
+
     user_wait: "short" when the user seems away (an earlier article of the batch waited on them
     until its time was up): each wait on the user (school login, human verification) lasts at
     most 60 s, unless someone starts typing on the login page.
@@ -140,7 +147,7 @@ async def _carsi_download_with_progress(
                                  use_vpnsci, bibtex, strategy, batch_id=batch_id, batch_index=batch_index,
                                  batch_total=batch_total, batch_done=batch_done,
                                  batch_succeeded=batch_succeeded, batch_failed=batch_failed,
-                                 supplements=supplements, user_wait=user_wait)
+                                 supplements=supplements, user_wait=user_wait, diagnostics_dir=diagnostics_dir)
     )
 
 

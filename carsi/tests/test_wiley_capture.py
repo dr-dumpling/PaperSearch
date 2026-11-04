@@ -97,6 +97,8 @@ class WileyCaptureTests(unittest.TestCase):
         self.d._capture_doi = DOI  # set by _capture_pdf; direct helper calls need it too
 
     def locator(self, selector):
+        if selector == "head > title":
+            return types.SimpleNamespace(first=types.SimpleNamespace(text_content=self.page.title))
         if selector == "body":
             return types.SimpleNamespace(inner_text=lambda **kw: self.body)
         if selector == "a[href]":

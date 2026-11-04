@@ -1,10 +1,10 @@
 """Live previews of the download browser, written by the owning thread (no debug port).
 
 On by default for institutional downloads: every page of the download context
-is screenshotted on navigation and whenever the workflow reads the page (login
+is screenshotted when the workflow reads the page after navigation (login
 and verification waits included, at most every 4 s). Frames go to
 ``<data dir>/previews/<run_id>/`` (or ``browser_preview_dir``) as JPEG. A page
-that has not changed (same URL and title) keeps only its newest frame, earlier
+that has not changed (same URL and document revision) keeps only its newest frame, earlier
 page states are kept up to ``MAX_KEPT_FRAMES`` per download, a successful
 download's frames are removed, and only the most recent runs are kept. ``browser_preview: false`` turns it off. Readers
 (``paper-search-carsi preview``) inspect artifacts only and report the
@@ -12,6 +12,7 @@ frame age explicitly. Screenshots are unmasked and stay on this machine.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 import logging
 import os
@@ -21,6 +22,9 @@ import time
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 from weakref import WeakKeyDictionary
+
+from .watchdog import BrowserUnresponsive
+from ..entitlements import UserMarkedNoEntitlement
 
 _OBSERVERS = WeakKeyDictionary()
 _ACTIVE = {}
@@ -49,12 +53,14 @@ class BrowserPreview:
         self.revision = 0
         self.last_observed = 0.0
         self.page_ids = {}
-        self.last_frame = {}  # page_id -> ((url, title), image name)
+        self.page_revisions = {}
+        self.last_frame = {}  # page_id -> ((url, document revision), image name)
         self.kept = []  # frames of earlier page states, oldest first
         self.pages = []
         self.observed_at = time.time()
         self.closed = False
         self.observing = False
+        self.paused = 0
         self._cdp = WeakKeyDictionary()
         context.on('close', self.close)
         self._write([])
@@ -63,13 +69,12 @@ class BrowserPreview:
             self._attach_page(page)
 
     def _attach_page(self, page):
-        page.on('domcontentloaded', lambda *_args: self._refresh())
-
-    def _refresh(self):
-        try:
-            self.observe()
-        except Exception:
-            logging.getLogger(__name__).warning('browser_preview_unavailable')
+        def changed(*_args):
+            # A Playwright event callback must not make nested synchronous
+            # browser calls. Capture at the next workflow observation instead.
+            self.page_revisions[page] = self.page_revisions.get(page, 0) + 1
+            self.last_observed = 0.0
+        page.on('domcontentloaded', changed)
 
     def close(self, *_args):
         self.closed = True
@@ -98,14 +103,8 @@ class BrowserPreview:
         _atomic(self.directory / 'current.json', json.dumps(packet).encode())
 
     def observe(self, *, force=False):
-        if force and self.observing and not self.closed:
-            # A navigation callback can still be finishing its screenshot when
-            # goto() returns. Pump the owning loop for that bounded operation.
-            deadline = time.monotonic() + 2
-            pages = list(self.context.pages)
-            while self.observing and pages and not self.closed and time.monotonic() < deadline:
-                pages[0].wait_for_timeout(50)
-        if self.closed or not self._is_current() or self.observing or (not force and time.monotonic() - self.last_observed < OBSERVE_INTERVAL_SEC):
+        if self.closed or not self._is_current() or self.observing or (not force and (
+                self.paused or time.monotonic() - self.last_observed < OBSERVE_INTERVAL_SEC)):
             return
         self.observing = True
         try:
@@ -127,6 +126,8 @@ class BrowserPreview:
             try:
                 session = page.context.new_cdp_session(page)
                 self._cdp[page] = session
+            except (BrowserUnresponsive, UserMarkedNoEntitlement):
+                raise
             except Exception:
                 session = False
                 self._cdp[page] = session
@@ -169,12 +170,14 @@ class BrowserPreview:
                 _atomic(self.directory / image_name, frame)
                 row.update(image_name=image_name, captured_at=captured_at)
                 row['screenshot_status'] = 'available'
-                key = (captured_url, self._page_title(page))
+                key = (captured_url, self.page_revisions.get(page, 0))
                 previous = self.last_frame.get(page_id)
                 if previous:
                     # The same page again replaces its frame; a changed page keeps the old one.
                     (superseded if previous[0] == key else self.kept).append(previous[1])
                 self.last_frame[page_id] = (key, image_name)
+            except (BrowserUnresponsive, UserMarkedNoEntitlement):
+                raise
             except Exception:
                 # Preview failure is explicit and cannot change download success.
                 pass
@@ -186,13 +189,6 @@ class BrowserPreview:
             superseded.append(self.kept.pop(0))
         for name in superseded:
             (self.directory / name).unlink(missing_ok=True)
-
-    @staticmethod
-    def _page_title(page) -> str:
-        try:
-            return str(page.title() or "")
-        except Exception:
-            return ""
 
     def discard_frames(self):
         """Remove this download's frames; a successful download needs no record."""
@@ -238,8 +234,30 @@ def observe_page(page, *, force=False) -> None:
     if observer is not None:
         try:
             observer.observe(force=force)
+        except (BrowserUnresponsive, UserMarkedNoEntitlement):
+            raise
         except Exception:
             logging.getLogger(__name__).warning('browser_preview_unavailable')
+
+
+@contextmanager
+def pause(context):
+    """Keep the last frame while a download operation needs the browser.
+
+    Optional screenshots must not spend a PDF operation's budget. Explicit
+    force observations still run; browser and user interrupts are not caught.
+    """
+    try:
+        observer = _OBSERVERS.get(context)
+    except TypeError:
+        observer = None
+    if observer is not None:
+        observer.paused += 1
+    try:
+        yield
+    finally:
+        if observer is not None:
+            observer.paused -= 1
 
 
 def snapshot(directory: str | Path, run_id: str, identifier: str) -> dict:

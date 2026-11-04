@@ -70,6 +70,7 @@ describe("publisher_api tier", () => {
       "publisher_api",
       "scihub",
       "entitled_access",
+      "preprint",
     ]);
   });
 

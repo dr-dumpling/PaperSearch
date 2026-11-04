@@ -25,6 +25,7 @@ const FREE_METADATA_SOURCES = [
   "pubmed",
   "pmc",
   "europepmc",
+  "arxiv",
   "biorxiv",
   "medrxiv",
   "semantic",
@@ -39,6 +40,7 @@ const FREE_METADATA_SOURCES = [
 ];
 
 const OPEN_ACCESS_SOURCES = [
+  "arxiv",
   "biorxiv",
   "medrxiv",
   "pmc",

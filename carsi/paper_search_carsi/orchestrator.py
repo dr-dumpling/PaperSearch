@@ -32,6 +32,7 @@ def download_institutional(
     strategy: str | None = None,
     supplements: str | None = None,
     user_wait: str | None = None,
+    diagnostics_dir: str | None = None,
 ) -> dict[str, Any]:
     """Download one DOI through institutional access only.
 
@@ -66,6 +67,8 @@ def download_institutional(
         extra = {"supplements": supplements} if supplements in ("with", "only") else {}
         if user_wait == "short":
             extra["user_wait"] = user_wait
+        if diagnostics_dir:
+            extra["diagnostics_dir"] = diagnostics_dir
         return _download_impl(doi, output_dir, **extra)
     finally:
         with _INFLIGHT_LOCK:
@@ -73,7 +76,8 @@ def download_institutional(
 
 
 def _download_impl(doi: str, output_dir: str | Path | None, *,
-                   supplements: str | None = None, user_wait: str | None = None) -> dict[str, Any]:
+                   supplements: str | None = None, user_wait: str | None = None,
+                   diagnostics_dir: str | None = None) -> dict[str, Any]:
     config = load_config()
     if user_wait == "short":
         config["user_wait"] = "short"
@@ -82,6 +86,8 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
 
     target_dir = Path(output_dir) if output_dir else Path(config["output_dir"])
     target_dir.mkdir(parents=True, exist_ok=True)
+    if diagnostics_dir:
+        config["diagnostics_dir"] = str(Path(diagnostics_dir).resolve())
     output_path = target_dir / f"{safe_filename(doi)}.pdf"
 
     cached = cache_get(doi, config)

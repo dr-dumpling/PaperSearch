@@ -57,14 +57,25 @@ export async function searchMultipleSources(searchers, query, sources, options, 
     };
 }
 export function dedupePapers(papers) {
-    const seen = new Set();
+    const positions = new Map();
     const out = [];
+    const preprint = (paper) => paper.source === 'arxiv' || /^10\.48550\/arxiv\./i.test(paper.doi);
     for (const paper of papers) {
         const key = paperKey(paper);
-        if (seen.has(key))
+        const index = positions.get(key);
+        if (index === undefined) {
+            positions.set(key, out.length);
+            out.push(paper);
             continue;
-        seen.add(key);
-        out.push(paper);
+        }
+        const previous = out[index];
+        // A known shared DOI links these versions; title resemblance alone does not.
+        if (preprint(previous) !== preprint(paper)) {
+            const formal = preprint(previous) ? paper : previous;
+            const early = preprint(previous) ? previous : paper;
+            out[index] = { ...formal, extra: { ...formal.extra,
+                    arxivId: early.extra?.arxivId || early.paperId, preprintUrl: early.pdfUrl } };
+        }
     }
     return out;
 }
@@ -74,6 +85,8 @@ function paperKey(paper) {
         return `doi:${doi}`;
     const title = (paper.title || '').trim().toLowerCase();
     const authors = (paper.authors || []).join(';').trim().toLowerCase();
+    if (paper.source === 'arxiv')
+        return `arxiv:${paper.paperId.replace(/v\d+$/, '')}`;
     if (title)
         return `title:${title}|authors:${authors}`;
     return `id:${paper.source || 'unknown'}:${paper.paperId || 'unknown'}`;

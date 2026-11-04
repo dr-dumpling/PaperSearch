@@ -77,10 +77,40 @@ describe("supplementary files", () => {
       backend, () => {}, tiers,
     );
     expect(result.items.map((i) => i.supplements?.[0]?.label)).toEqual(["S1", "E1"]);
-    expect(requests).toEqual([expect.objectContaining({ identifier: "10.1000/oa", supplements: "only", outputDir: "/tmp/out" })]);
+    expect(requests).toEqual([expect.objectContaining({ identifier: "10.1000/oa", supplements: "only", outputDir: expect.stringContaining("/tmp/out/papers/") })]);
     const ledger = readFileSync(join(result.runLog!, "items.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(ledger.find((i) => i.doi === "10.1000/oa").supplements[0].label).toBe("S1");
     expect(ledger.find((i) => i.doi === "10.1000/oa").stages.map((s: { stage: string }) => s.stage)).toContain("supplements");
+  });
+
+  it("stops during supplements without losing saved main texts or visiting later items", async () => {
+    for (const mode of ["two_phase", "per_item"] as const) {
+      for (const content of ["both", "supplements"] as const) {
+        const visited: string[] = [];
+        const backend: CarsiBackend = {
+          probe: async () => ({ state: "available", code: "ready", message: "", missing: [] }),
+          downloadLegalDoi: async (request) => {
+            visited.push(request.identifier);
+            return { kind: "attempt_error", identifier: request.identifier, code: "batch_stopped", message: "stopped" };
+          },
+        };
+        const tiers = (): DownloadTier[] => [{ id: "oa", stage: "unpaywall",
+          run: async (c) => ({ status: "ok", verified: true, path: `/tmp/${c.doi}.pdf`, message: "ok" }) }];
+        const result = await downloadBatch({} as never, {
+          items: [{ doi: "10.1000/a" }, { doi: "10.1000/b" }], content, mode,
+        }, backend, () => {}, tiers);
+        expect(visited).toEqual(["10.1000/a"]);
+        expect(result.items[0].supplements?.[0]?.reason).toBe("batch_stopped");
+        if (content === "both") {
+          expect(result.items[0].status).toBe("ok");
+          expect(result.items[0].path).toBe("/tmp/10.1000/a.pdf");
+          if (mode === "two_phase") {
+            expect(result.items[1].status).toBe("ok");
+            expect(result.items[1].supplements?.[0]?.reason).toBe("batch_stopped");
+          } else expect(result.items[1].status).toBe("error");
+        } else expect(result.items.every((item) => item.status === "error")).toBe(true);
+      }
+    }
   });
 
   it("does nothing extra when supplements are not requested", async () => {

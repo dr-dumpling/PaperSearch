@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import {
   appendFileSync,
+  copyFileSync,
+  existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -175,6 +177,8 @@ export class RunLedger {
       status: result.status,
       ...(result.path ? { path: result.path } : {}),
       ...(result.format ? { format: result.format } : {}),
+      ...(result.version ? { version: result.version, arxivId: result.arxivId } : {}),
+      ...(result.publishedDoi ? { publishedDoi: result.publishedDoi } : {}),
       ...(result.review ? { review: result.review } : {}),
       ...(result.supplements ? { supplements: result.supplements } : {}),
       startedAt: new Date(startedAt).toISOString(),
@@ -203,6 +207,16 @@ export class RunLedger {
     });
     this.writeRun();
     this.line(`end succeeded=${this.succeeded} failed=${this.failed}`);
+    // Keep the global index for `runs`/`failures`, and a portable packet beside this download.
+    const root = typeof this.run.savePath === "string" ? this.run.savePath : "./downloads";
+    const packet = resolve(root, "diagnostics", "runs", String(this.run.runId));
+    try {
+      mkdirSync(packet, { recursive: true });
+      for (const name of ["run.json", "items.jsonl", "timeline.log"]) {
+        const source = join(this.dir, name);
+        if (existsSync(source) && resolve(source) !== join(packet, name)) copyFileSync(source, join(packet, name));
+      }
+    } catch (error) { this.warn(error); }
   }
 
   private writeRun(): void {

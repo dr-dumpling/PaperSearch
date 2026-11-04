@@ -38,6 +38,7 @@ async function tryEntitledAccess(context, backend) {
         const outcome = await backend.downloadLegalDoi({
             identifier: context.doi || context.paperId,
             outputDir: context.savePath,
+            ...(context.diagnosticsDir ? { diagnosticsDir: context.diagnosticsDir } : {}),
             ...(context.batch ? { batch: context.batch } : {}),
             ...(context.withSupplements ? { supplements: "with" } : {}),
             ...(context.shortUserWait ? { userWait: "short" } : {}),
@@ -101,13 +102,19 @@ async function tryEntitledAccess(context, backend) {
  * Supplementary files only, for an article whose main text came from another
  * stage. Undefined when no backend can do it.
  */
-export async function fetchSupplementsOnly(backend, request) {
+export async function fetchSupplementsOnly(backend, request, onTrace) {
     if (!backend)
         return undefined;
     try {
         const outcome = await backend.downloadLegalDoi({ ...request, supplements: "only" });
         if (outcome.kind === "backend_unavailable")
             return undefined;
+        if (outcome.trace)
+            onTrace?.({ ...outcome.trace });
+        if (outcome.kind === "attempt_error" && !outcome.supplements) {
+            const { code } = carsiAttemptDetails(outcome.code);
+            return [{ label: "", status: code === "batch_stopped" || code === "user_skipped" ? "skipped" : "failed", reason: code }];
+        }
         return outcome.supplements ?? [];
     }
     catch (error) {

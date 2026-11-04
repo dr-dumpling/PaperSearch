@@ -1,3 +1,4 @@
+import { normalizeArxivId } from '../../../infrastructure/arxiv.js';
 import { downloadPdfFromUrl, safeFilename } from '../../../infrastructure/pdf/PdfDownload.js';
 import { oaHostPolicy } from '../oaHosts.js';
 const CANDIDATE_TIMEOUT_MS = 30_000;
@@ -12,7 +13,7 @@ export function createUnpaywallTier() {
 /**
  * Tries Unpaywall's OA locations in order. Copies on hosts that refuse plain
  * HTTP are not attempted here: they are reported as browser_only and left to
- * the browser stage. arXiv copies are not used.
+ * the browser stage. arXiv copies are deferred to the final preprint stage.
  */
 async function tryUnpaywall(context) {
     if (!context.doi) {
@@ -32,7 +33,15 @@ async function tryUnpaywall(context) {
         let tried = 0;
         // A published copy, even one only a browser can fetch, beats an accepted or
         // submitted manuscript: earlier versions are used only when none exists.
-        const usable = candidates.filter((candidate) => oaHostPolicy(candidate.url) !== 'excluded');
+        const usable = candidates.filter((candidate) => {
+            const policy = oaHostPolicy(candidate.url);
+            if (policy === 'preprint') {
+                const id = normalizeArxivId(candidate.url);
+                if (id)
+                    (context.preprintIds ||= []).push(id);
+            }
+            return policy !== 'excluded' && policy !== 'preprint';
+        });
         const publishedOnly = usable.some((candidate) => candidate.version === 'publishedVersion');
         for (const candidate of usable) {
             const policy = oaHostPolicy(candidate.url);
@@ -67,7 +76,7 @@ async function tryUnpaywall(context) {
         if (errors.length > 0) {
             return { status: 'error', message: errors.join('; ') };
         }
-        return { status: 'skipped', message: 'No usable OA PDF location (arXiv copies are not used).' };
+        return { status: 'skipped', message: 'No usable published OA PDF location; arXiv is deferred to the final preprint stage.' };
     }
     catch (error) {
         return { status: 'error', message: error?.message || String(error) };

@@ -16,7 +16,7 @@ export const CARSI_DOWNLOAD_TIMEOUT_MS = 1_200_000;
 export const CARSI_CLEANUP_TIMEOUT_MS = 5_000;
 const CARSI_BACKEND_SOURCE = "carsi";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.4.2";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.4.3";
 const NO_BATCH_SUPPORT = {
     downloadFields: false,
     supplementsField: false,
@@ -326,7 +326,7 @@ export class CarsiMcpClient {
             assertProtocolIntegrity(session.protocolState);
             const downloadResult = await session.client.callTool({
                 name: "carsi_download",
-                arguments: createCarsiDownloadArguments(identifier, request.outputDir, session.downloadStrategy, session.batchSupport.downloadFields ? request.batch : undefined, session.batchSupport.supplementsField ? request.supplements : undefined, session.batchSupport.userWaitField ? request.userWait : undefined),
+                arguments: createCarsiDownloadArguments(identifier, request.outputDir, session.downloadStrategy, session.batchSupport.downloadFields ? request.batch : undefined, session.batchSupport.supplementsField ? request.supplements : undefined, session.batchSupport.userWaitField ? request.userWait : undefined, session.batchSupport.diagnosticsDirField ? request.diagnosticsDir : undefined),
             }, undefined, {
                 ...requestOptions(this.downloadTimeoutMs, request.signal),
                 // The SDK supplies a request-specific _meta.progressToken, outside
@@ -353,7 +353,7 @@ export class CarsiMcpClient {
                 },
             });
             assertProtocolIntegrity(session.protocolState);
-            return normalizeDownloadResult(downloadResult, identifier, request.outputDir);
+            return normalizeDownloadResult(downloadResult, identifier, request.outputDir, session.batchSupport.diagnosticsDirField ? request.diagnosticsDir : undefined);
         }
         catch (error) {
             if (isAbortError(error, request.signal)) {

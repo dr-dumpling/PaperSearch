@@ -68,7 +68,7 @@ export declare function downloadBatchItem(searchers: Searchers, options: Downloa
  * page for them. ok when at least one file was saved. Reported to the run
  * ledger through ``request.onStage`` as the "supplements" stage.
  */
-export declare function downloadSupplementsOnly(request: DownloadWithFallbackOptions, backend: CarsiBackend | undefined): Promise<DownloadWithFallbackResult>;
+export declare function downloadSupplementsOnly(request: DownloadWithFallbackOptions, backend: CarsiBackend | undefined, searchers?: Searchers, paperDir?: string): Promise<DownloadWithFallbackResult>;
 /** Download a list serially; one batch id ties it to one progress window. */
 export declare function downloadBatch(searchers: Searchers, options: DownloadBatchOptions, backend?: CarsiBackend, log?: (line: string) => void, createTiers?: (backend?: CarsiBackend) => DownloadTier[], pause?: (ms: number) => Promise<void>): Promise<DownloadBatchResult>;
 //# sourceMappingURL=batch.d.ts.map

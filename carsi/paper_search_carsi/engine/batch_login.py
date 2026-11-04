@@ -8,6 +8,7 @@ import json
 import re
 import time
 from typing import Any
+from types import SimpleNamespace
 from urllib.parse import unquote, urljoin, urlparse
 
 from . import access_rules
@@ -65,20 +66,23 @@ class LoginMixin:
         self._wait_past_redirect_page(page, result)
         self._raise_on_publisher_content_error(page)
         self._dismiss_cookie_banners(page, result)
-        if self._institution_pdf_entitlement_missing(page):
+        snapshot = self._access_snapshot(page) if not self._is_auth_page(str(page.url)) else None
+        if self._institution_pdf_entitlement_missing(page, snapshot=snapshot):
             return False
-        if self._pdf_first_unless_signed_out(page, result):
+        if self._pdf_first_unless_signed_out(page, result, snapshot=snapshot):
             return True
         return self._complete_login_from_current_page(page, result)
 
-    def _pdf_first_unless_signed_out(self, page: Any, result: DownloadResult) -> bool:
+    def _pdf_first_unless_signed_out(self, page: Any, result: DownloadResult,
+                                   snapshot: SimpleNamespace | None = None) -> bool:
         """True unless the page says the reader is signed out (access_rules OUT).
 
         With the institution's session, or an open-access article, the PDF is
         taken. With nothing either way, or with only the reader's access (also
         a personal account's or ClinicalKey's, J Hepatol 2026-10-31), the PDF is
         tried first and the school's login follows once if it fails (batch.py)."""
-        verdict, basis, evidence = self._access_decision(page)
+        result._open_access_current = False
+        verdict, basis, evidence = self._access_decision(page, snapshot) if snapshot is not None else self._access_decision(page)
         if verdict != access_rules.UNKNOWN:
             detail = f"{verdict} ({basis}): {evidence}"[:240]
             if next((e["detail"] for e in reversed(result.events) if e["state"] == "access_decision"), None) != detail:
@@ -86,6 +90,7 @@ class LoginMixin:
         if verdict == access_rules.OUT:
             return False
         open_to_all = basis == "reader" and access_rules.OPEN_TO_ALL.search(evidence.split("badge: ", 1)[-1])
+        result._open_access_current = bool(open_to_all)
         if (basis != "session" and not open_to_all and not getattr(result, "_pdf_first", False)
                 and not self._school_login_done()):
             result._pdf_first = True
@@ -122,32 +127,33 @@ class LoginMixin:
             return url[:200]
         return f"{url[:200]} | {verdict} ({basis or 'no rule'}): {evidence[:160]}"
 
-    # How long a page that shows no text yet is given to draw it.
-    PAGE_TEXT_WAIT_SEC = 20
     _PAGE_TEXT_JS = "() => document.contentType !== 'text/html' ? -1 : (document.body ? document.body.innerText.trim().length : 0)"
 
     def _wait_for_page_text(self, page: Any, result: DownloadResult) -> None:
-        """Let a page without any text yet draw it before it is judged: De Gruyter's
-        article page stayed blank for 9 s and was taken for one without an
-        institution entry (2026-11-02). Still blank after ``PAGE_TEXT_WAIT_SEC``:
-        the publisher's page did not load (``PublisherContentError``)."""
+        """Wait for the document before judging access, within the page budget.
+
+        A verification can disappear before the article draws. The old fixed
+        20 s cut this wait short even with automation time left (AIP,
+        2026-11-04). The enclosing page operation still bounds the whole step.
+        """
         def shown() -> bool:
             try:
                 return page.evaluate(self._PAGE_TEXT_JS) != 0
             except Exception as exc:
                 if not _is_browser_error(exc):
                     raise
-                return True  # a page navigating meanwhile is judged by the steps after
+                return False  # a document being replaced has not been read yet
         started = time.time()
         if shown():
             return
-        drawn = pump_until(page, shown, self.PAGE_TEXT_WAIT_SEC * 1000, step_ms=500)
+        timeout_sec = self.page_wait_sec
+        drawn = pump_until(page, shown, int(timeout_sec * 1000), step_ms=500)
         # Recorded however short: a blank page is worth knowing about.
         self._event(result, "wait", f"blank page: {time.time() - started:.0f} s, ended: "
-                                    f"{'text shown' if drawn else f'its {self.PAGE_TEXT_WAIT_SEC} s'}")
+                                    f"{'text shown' if drawn else f'its {timeout_sec:g} s'}")
         if not drawn:
             url = str(getattr(page, "url", "") or "")
-            raise PublisherContentError(f"publisher_page_blank: {url[:160]} showed no text for {self.PAGE_TEXT_WAIT_SEC} s")
+            raise PublisherContentError(f"publisher_page_blank: {url[:160]} showed no text for {timeout_sec:g} s")
 
     def _wait_past_redirect_page(self, page: Any, result: DownloadResult, timeout_sec: float = 20) -> None:
         """Let a publisher's script redirect page (linkinghub "Redirecting") move on
@@ -187,9 +193,12 @@ class LoginMixin:
         self._phase(result, "login")
         started, signed_in = time.time(), False
         try:
-            signed_in = self._complete_login_steps(page, result)
-            if signed_in:
-                self._return_to_article_after_login(page, result)
+            from ..browser import watchdog
+            # Human authentication has its own budget, not the automation's.
+            with watchdog.pause_operation():
+                signed_in = self._complete_login_steps(page, result)
+                if signed_in:
+                    self._return_to_article_after_login(page, result)
             return signed_in
         finally:
             last = next((e["state"] for e in reversed(result.events) if e["state"] != "wait"), "")
@@ -631,17 +640,23 @@ class LoginMixin:
         host = urlparse(self._entity_id()).hostname or getattr(result, "_idp_host", "")
         return access_rules.registrable_domain(host) if host else ""
 
-    def _school_or_federation_page(self, url: str, result: DownloadResult | None = None) -> bool:
+    def _school_or_federation_page(self, url: str, result: DownloadResult | None = None, *,
+                                   include_publisher_chooser: bool = True) -> bool:
         """The school's IdP or another page of its own site (its registrable domain),
-        or a federation's or the publisher's school chooser: the user's part of the
-        login, where the engine answers no banner and leaves the page where it is."""
+        or a federation's school chooser. Publisher-owned choosers are included
+        by default; their cookie prompts can be answered separately. The school's
+        own pages remain protected even if an adapter calls one a chooser."""
         host = (urlparse(url).hostname or "").lower()
         if not host:
             return False
-        if self._is_idp_host(host) or self._is_federation_chooser(url):
+        if self._is_idp_host(host):
             return True
         school = self._school_domain(result)
-        return bool(school) and access_rules.registrable_domain(host) == school
+        if school and access_rules.registrable_domain(host) == school:
+            return True
+        if not include_publisher_chooser and self.adapter.is_institution_chooser(url):
+            return False
+        return self._is_federation_chooser(url)
 
     def _stuck_on_school_site(self, page: Any, result: DownloadResult) -> str:
         """The page's URL when the login has stayed on a page of the school's own
@@ -798,7 +813,9 @@ class LoginMixin:
         for (const el of document.querySelectorAll('button, [role="button"], a')) {
             if (!shown(el) || el.closest('form')) continue;
             const label = (el.innerText || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
-            if (!MENU.test(label)) continue;
+            // A screen-reader hint can be part of innerText ("Sign In Open Menu").
+            const menuLabel = label.replace(/\s+open menu$/i, '');
+            if (!MENU.test(menuLabel)) continue;
             const href = (el.getAttribute('href') || '').trim();
             if (el.tagName === 'A' && href && !href.startsWith('#') && !/^javascript:/i.test(href)
                     && !TOGGLES.some(name => el.hasAttribute(name))) continue;
@@ -1374,8 +1391,9 @@ class LoginMixin:
     def _dismiss_cookie_banners(self, page: Any, result: DownloadResult | None = None, *,
                                 blocking: bool = False) -> bool:
         """Answer a cookie banner (``_COOKIE_BANNER_JS``) in the page or one of its
-        frames, at most ``BANNER_ANSWERS`` times per banner and page, never on the
-        school's or a federation's pages (``_school_or_federation_page``);
+        frames, at most ``BANNER_ANSWERS`` times per banner and page. The school's
+        and external federation pages stay protected; a publisher-owned chooser
+        may answer its own cookie prompt (``_school_or_federation_page``).
         ``blocking``: the banner covered a control the engine clicked. An
         advertisement over the page is closed first (``_close_advertisement_overlay``).
         True when either was done."""
@@ -1396,12 +1414,14 @@ class LoginMixin:
             pass
         for target in targets:
             where = str(getattr(target, "url", "") or "").split("#", 1)[0]
-            if self._school_or_federation_page(where, item):
+            if self._school_or_federation_page(where, item, include_publisher_chooser=False):
                 continue
             skip = [key for (url, key), count in answered.items() if url == where and count >= self.BANNER_ANSWERS]
             try:
                 clicked = target.evaluate(self._COOKIE_BANNER_JS, {"blocking": bool(blocking), "skip": skip})
-            except Exception:
+            except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
                 continue  # a frame gone meanwhile; the banner is a convenience, never the item's end
             if not isinstance(clicked, dict):
                 continue

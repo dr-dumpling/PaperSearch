@@ -182,6 +182,20 @@ class DownloadArtifactIntegrationTests(unittest.TestCase):
         self.assertEqual(self.result.title, "CANARY_TITLE")
         self.assertIn("CANARY_TOKEN", self.result.final_url)
 
+    def test_stopped_items_write_existing_evidence_without_more_browser_calls(self):
+        for state in ("user_skipped", "batch_stopped", "user_marked_no_entitlement", "browser_unresponsive"):
+            with self.subTest(state=state):
+                self.result.state = self.result.reason = state
+                page = Mock(url=self.result.final_url)
+                with patch.object(self.downloader, "_access_state") as probe:
+                    self.downloader._write_diagnostic(page, self.result, self.root)
+                probe.assert_not_called()
+                page.screenshot.assert_not_called()
+                packet = json.loads(Path(self.result.diagnostic_path).read_text())
+                self.assertEqual(packet["raw_state"], state)
+                self.assertEqual(packet["access_evidence"], ["probe skipped: item stopped"])
+                self.assertIn("CANARY_DETAIL", packet["events"][0]["detail"])
+
     def test_complete_manifest_preserves_batch_pdf_lookup_and_fixed_csv_columns(self):
         source = self.root / "10.1000_fixture.pdf"
         source.write_bytes(b"%PDF-fixture")
@@ -202,7 +216,7 @@ class DownloadArtifactIntegrationTests(unittest.TestCase):
         self.assertEqual(rows[1]["pdf_path"], manifest[1]["pdf_path"])
 
     def test_success_sidecar_retains_verified_pdf_text_and_unmasked_urls(self):
-        page = Mock(spec=["url", "close", "wait_for_load_state"])
+        page = Mock(spec=["url", "close", "wait_for_load_state", "on", "remove_listener"])
         page.url = "https://www.sciencedirect.com/article/fixture"
         d = self.downloader
         d._ensure_login = Mock(return_value=True)

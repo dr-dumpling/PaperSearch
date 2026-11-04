@@ -1,3 +1,4 @@
+import type { ArxivSearcher } from '../platforms/ArxivSearcher.js';
 import type { BioRxivSearcher, MedRxivSearcher } from '../platforms/BioRxivSearcher.js';
 import type { CORESearcher } from '../platforms/CORESearcher.js';
 import type { CrossrefSearcher } from '../platforms/CrossrefSearcher.js';
@@ -18,6 +19,7 @@ import type { UnpaywallSearcher } from '../platforms/UnpaywallSearcher.js';
 import type { WebOfScienceSearcher } from '../platforms/WebOfScienceSearcher.js';
 export type SearcherMap = Record<string, PaperSource>;
 export interface Searchers extends SearcherMap {
+    arxiv: ArxivSearcher;
     webofscience: WebOfScienceSearcher;
     pubmed: PubMedSearcher;
     biorxiv: BioRxivSearcher;

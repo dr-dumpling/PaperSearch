@@ -27,7 +27,7 @@ class MachineProgressEventsTests(unittest.TestCase):
 
     def downloader(self):
         d = PublisherBatchDownloader(config={}, profile=ELSEVIER_PROFILE)
-        page = Mock(spec=["url", "close", "wait_for_load_state"])
+        page = Mock(spec=["url", "close", "wait_for_load_state", "on", "remove_listener"])
         page.url = "https://www.sciencedirect.com/science/article/pii/fixture"
         d._ensure_login = Mock(return_value=True)
         d._looks_logged_out = Mock(return_value=False)
@@ -74,6 +74,7 @@ class MachineProgressEventsTests(unittest.TestCase):
     def test_login_challenge_resolution_changes_machine_stage_without_secrets(self):
         result = DownloadResult(doi=DOI, status="failed")
         for event, expected in [("sso_start", "waiting_login"),
+                                ("challenge_wait", "checking_access"),
                                 ("challenge_manual_wait", "waiting_verification"),
                                 ("challenge_resolved", "checking_access"),
                                 ("browser_pdf_response_captured", "pdf_captured"),

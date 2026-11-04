@@ -4,6 +4,8 @@ Part of ``PublisherBatchDownloader`` (batch.py), which combines the mixins."""
 
 from __future__ import annotations
 
+from ..browser import watchdog
+
 import base64
 import inspect
 import json
@@ -18,6 +20,7 @@ import requests
 
 from . import access_rules
 from .batch_common import (
+    page_operation,
     POLL_MS,
     pump_until,
     settle,
@@ -194,6 +197,7 @@ class CaptureMixin:
             self._note_wait(result, "a PDF probe", probe_started, "done")
             self._capture_doi, self._expected_title, self._fallback_pdf = saved
 
+    @page_operation
     def _capture_pdf(self, page: Any, doi: str, result: DownloadResult) -> tuple[bytes | None, str, str | None]:
         """Run the capture channels; a PDF without DOI/title evidence is used
         only when nothing better arrived, and is marked unconfirmed."""
@@ -203,7 +207,10 @@ class CaptureMixin:
         self._fallback_pdf = None
         tried_before = len(result.pdf_attempts)
         try:
-            body, url, block = self._capture_pdf_channels(page, doi, result)
+            from ..browser.preview import pause as pause_preview
+
+            with pause_preview(getattr(page, "context", None)):
+                body, url, block = self._capture_pdf_channels(page, doi, result)
             if body is None and not block and self._fallback_pdf is not None:
                 body, url = self._fallback_pdf
                 self._event(result, "pdf_saved_unconfirmed", f"{url} | no DOI or title on the first pages")
@@ -578,6 +585,22 @@ class CaptureMixin:
                         for pattern in native_pdf_patterns
                     ]})
             self._return_to_record_article_if_needed(page, result, doi)
+            # A login can return directly to a PDF before these listeners were
+            # installed. PDF.js has no article button or metadata to discover.
+            current_pdf_url = str(getattr(page, "url", "") or "")
+            if (self._is_pdf_candidate_url(current_pdf_url) and not self._is_supplementary_url(current_pdf_url)
+                    and self._native_viewer_pdf_allowed(current_pdf_url, **fallback_options)):
+                if entitlement_denied():
+                    return None, "", None
+                if not self._is_chromium(page):
+                    begin("url", current_pdf_url, time.time())
+                    body, final_url = self._capture_native_viewer_pdf(page, current_pdf_url, result, **fallback_options)
+                    if body:
+                        captured["bytes"], captured["url"] = body, final_url
+                        return body, final_url, None
+                    finish()
+            else:
+                current_pdf_url = ""
             # The article page's own PDF links, read before the click: the click can
             # end on a reader page that links no PDF (ASM's "PDF/EPUB", while the
             # article page shows "Download PDF", 2026-11-02).
@@ -591,6 +614,8 @@ class CaptureMixin:
                 pump_until(page, lambda: bool(captured["bytes"] or captured["block_reason"]) or (
                     not self._is_chromium(page) and self._pdf_viewer_present(page)
                     and self._native_viewer_pdf_allowed(str(getattr(page, "url", "") or ""), **fallback_options)), 5_000)
+                if captured["bytes"] or captured["block_reason"]:
+                    return captured["bytes"], str(captured["url"]), captured["block_reason"]
                 self._wait_past_redirect_page(page, result)  # e.g. a sign-in round trip first
                 if not self._resolve_suspect_block(page, result, captured):
                     return None, "", captured["block_reason"]
@@ -621,8 +646,13 @@ class CaptureMixin:
                         captured["url"] = final_url
                     if block_reason and not captured["block_reason"]:
                         captured["block_reason"] = block_reason
-            candidates = (list(bound_pdf_urls) if bound_pdf_urls is not None
-                          else [*metadata_pdf_urls, *self._pdf_candidates(page, doi), *before_click])
+            # A validated PDF is already in hand. Reading the viewer DOM for
+            # more links can block (Royal Society, 2026-11-04) and turn this
+            # successful capture into a page-budget timeout.
+            if captured["bytes"] or captured["block_reason"]:
+                return captured["bytes"], str(captured["url"]), captured["block_reason"]
+            candidates = [current_pdf_url, *(list(bound_pdf_urls) if bound_pdf_urls is not None
+                          else [*metadata_pdf_urls, *self._pdf_candidates(page, doi), *before_click])]
             # In-page anchors (#pane-pcw-references, #addtoany …) are the same
             # document; try each URL once.
             candidates = list(dict.fromkeys(str(url).split("#", 1)[0] for url in candidates if url))
@@ -711,14 +741,21 @@ class CaptureMixin:
                     # Chrome's PDF having been kept out of it (a check at the PDF
                     # address, 2026-11-02).
                     break
+                response_before_wait = captured.get("nav")
                 if not self._wait_for_challenge(page, result):
                     return None, str(getattr(page, "url", "") or ""), captured["block_reason"]
                 if entitlement_denied():
                     return None, "", None
                 pump_until(page, lambda: bool(captured["bytes"]), 3_000)
                 if not captured["bytes"]:
+                    # A new PDF during verification can leave the tab on its
+                    # completion page. Only that new response warrants retrying
+                    # the candidate through the existing validated fallback.
+                    response_after_wait = captured.get("nav") or {}
+                    retry = ([pdf_url] if response_after_wait is not response_before_wait
+                             and str(response_after_wait.get("type", "")).lower() == "application/pdf" else [])
                     body, final_url, block_reason = self._fetch_page_state_pdf(
-                        page, extra_urls=[str(captured["deferred_url"])], **fallback_options)
+                        page, extra_urls=[*retry, str(captured["deferred_url"])], **fallback_options)
                     if body:
                         captured["bytes"] = body
                         captured["url"] = final_url
@@ -845,6 +882,8 @@ class CaptureMixin:
                 self._event(result, "pdf_button_clicked", detail)
                 return True
             except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
                 self._event(result, "pdf_button_error", f"{type(exc).__name__}: {str(exc).splitlines()[0][:160] if str(exc) else ''}")
         return False
 
@@ -898,12 +937,14 @@ class CaptureMixin:
                 href = ""
                 try:
                     text = control.inner_text(timeout=1_000)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    if not _is_browser_error(exc):
+                        raise
                 try:
                     href = control.get_attribute("href", timeout=1_000) or ""
-                except Exception:
-                    pass
+                except Exception as exc:
+                    if not _is_browser_error(exc):
+                        raise
                 if (self._is_supplementary_url(href)
                         or re.search(r"\b(?:supplement(?:ary|al)?|supporting information|disclosure form)\b", text, re.I)):
                     continue
@@ -913,6 +954,8 @@ class CaptureMixin:
                 self._event(result, "pdf_button_clicked", json.dumps(detail, ensure_ascii=False))
                 return True
             except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
                 # Kept, not dropped: three such 10 s click timeouts made Sage's silent
                 # 30 s before its PDF (a toolbar copy outside the viewport, 2026-11-02).
                 self._event(result, "pdf_button_error",
@@ -978,6 +1021,8 @@ class CaptureMixin:
                 self._event(result, "pdf_button_clicked", json.dumps(clicked, ensure_ascii=False))
                 return True
         except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
             self._event(result, "pdf_button_error", f"{type(exc).__name__}: {exc}")
         return False
 

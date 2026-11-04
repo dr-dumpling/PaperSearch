@@ -4,7 +4,7 @@
  * "browser": the host refuses plain HTTP PDF downloads behind bot protection
  * (Cloudflare, Akamai, proof-of-work pages; checked 2026-10). Its copies are
  * left to the browser stage (entitled access), which reads them like a reader.
- * "excluded": not used as a source at all (arXiv, maintainer decision).
+ * "preprint": defer arXiv until all published-version routes finish.
  */
 const BROWSER_ONLY_HOSTS = [
     "wiley.com",
@@ -20,7 +20,7 @@ const BROWSER_ONLY_HOSTS = [
     "ncbi.nlm.nih.gov",
     "europepmc.org",
 ];
-const EXCLUDED_HOSTS = ["arxiv.org"];
+const PREPRINT_HOSTS = ["arxiv.org"];
 export function oaHostPolicy(url) {
     let host = "";
     try {
@@ -30,8 +30,8 @@ export function oaHostPolicy(url) {
         return "excluded";
     }
     const within = (domain) => host === domain || host.endsWith(`.${domain}`);
-    if (EXCLUDED_HOSTS.some(within))
-        return "excluded";
+    if (PREPRINT_HOSTS.some(within))
+        return "preprint";
     return BROWSER_ONLY_HOSTS.some(within) ? "browser" : "http";
 }
 //# sourceMappingURL=oaHosts.js.map

@@ -12,14 +12,14 @@
 
 ## 一次调用，等待明确结果
 
-单篇用 `paper-search download` 或 `paper-search run download_with_fallback`，多篇用一次 `paper-search run download_batch`，参数见 `cli-contract.md`。下载顺序固定为 `primary → direct_pdf_url → repositories → unpaywall → publisher_api → scihub → entitled_access`，机构下载在最后。
+单篇用 `paper-search download` 或 `paper-search run download_with_fallback`，多篇用一次 `paper-search run download_batch`，参数见 `cli-contract.md`。下载顺序固定为 `primary → direct_pdf_url → repositories → unpaywall → publisher_api → scihub → entitled_access → preprint`。机构下载失败后才尝试 DOI 明确关联的 arXiv 预印本。
 
-- 只用开放来源和学校权限（不用 Sci-Hub）：`download_with_fallback` / `download_batch` 设 `useSciHub=false`。只测学校权限这一步：`download_batch` 设 `"mode":"entitled_only"`。
+- 只用开放来源和学校权限（不用 Sci-Hub）：`download_with_fallback` / `download_batch` 设 `useSciHub=false`。只有明确只测学校权限这一步时，`download_batch` 才设 `"mode":"entitled_only"`；它会跳过可用的公开副本，普通下载保留默认 `two_phase`。
 - 同一个数据目录同时只跑一个下载。命令没结束时，不因窗口看似停住而重新下载或登录。
-- 批量按顺序逐篇进行。遇到学校登录或人机验证时停在这一篇，提醒用户到下载浏览器操作。等待时限：停在学校登录页（以及没配置学校、要用户自己选学校的页面）最多 3 分钟（后端配置 `browser_login_timeout`，秒）；停在其他页面（人机验证、出版社页面、选机构页、取 PDF 时等待处理）连续超过 1 分钟就结束这一篇（`browser_page_wait_timeout`）。两项都能在进度窗口右上角的设置（齿轮）里改，从下一篇起生效。学校统一认证登录一次后，其余篇目通常自动通过。一篇等满时限后（日志写“这一篇等你登录或验证已到时限”），后面每篇只等 60 秒；用户在登录框输入时照常等。
+- 批量按顺序逐篇进行。遇到学校登录或验证时停在这一篇；出现人工处理提示后，提醒用户到下载浏览器操作。等待时限：停在学校登录页（以及没配置学校、要用户自己选学校的页面）最多 3 分钟（后端配置 `browser_login_timeout`，秒）；停在其他页面（人机验证、出版社页面、选机构页、取 PDF 时等待处理）连续超过 1 分钟就结束这一篇（`browser_page_wait_timeout`）。两项都能在进度窗口右上角的设置（齿轮）里改，从下一篇起生效。学校统一认证登录一次后，其余篇目通常自动通过。一篇等满时限后（日志写“这一篇等你登录或验证已到时限”），后面每篇只等 60 秒；用户在登录框输入时照常等。
 - 每个出版社每小时最多打开 100 篇（后端配置 `publisher_hourly_limit`，0 为不限）。到上限时批量等到可以继续再下这一篇（日志写明时间）；单篇返回 `rate_limited`，稍后再试。
 - 出版社网站拦截了当前网络（`access_blocked`，如 Cloudflare 拦截页）时这一篇结束；同一期刊 30 分钟内的其他文章直接跳过（`journal_blocked_earlier`），其他期刊照常继续。告诉用户可能是当前网络被网站防护拦截，也可能是下载过多被暂停：可换网络或稍后再试，后者请联系学校图书馆。
-- 登录和人机验证只由用户在下载浏览器里完成；不索取账号、密码、验证码，不代替用户通过验证。
+- 后端会先短暂等待自动验证，每次验证等待对可识别的 Turnstile 复选框最多尝试点击 3 次，两次至少间隔 3 秒；程序提示人工处理时，再提醒用户到下载浏览器接管，不因 `checking_access` 就要求用户操作。学校登录、二次验证和复杂验证码由用户完成；不索取账号、密码或验证码，agent 不另开浏览器代操作。
 - 阶段以本次调用的结构化通知为准（命令写在 stderr，stdout 只有最终 JSON）；不凭等待时间猜阶段。
 - PDF 在新标签页打开不等于已保存；以命令的最终结果为准，网页地址不是本地文件。
 - 需要取消时中止当前调用；旧浏览器仍占用数据目录时不启动下一次下载，不自动删除占用锁。
@@ -27,6 +27,7 @@
 ## 进度窗口和问题报告
 
 - “终止任务”：确认后当前这一篇立即结束，整批停下，剩下的篇目记为 `batch_stopped`（未下载）。用户想停下整批时让他点这个，不要另外中止命令。
+- 当前源码（未发布修复）：`browser_operation_timeout` 表示自动页面操作耗尽共享预算，不是无权限，也不是等待用户登录。不要因此反复登录；先检查是否误用了 `entitled_only`。附件阶段终止同样停止后续篇目，保留已保存的正文。
 - 第二行写明正在下哪部分：“正文 · 正在获取 PDF”“附录 · 已保存 2/5”。
 - 右上角齿轮（设置）：手动输入学校登录页、其他页面的最长等待（秒）和每家出版社每小时最多下载篇数，保存后从下一篇起生效。
 - “跳过本篇”：只结束当前这一篇。“本刊无权限”“出版社无权限”：结束这一篇并记住，以后自动跳过；查看或撤销用 `paper-search-carsi entitlements`（`list` / `clear <key>`）。点击后 1–2 秒内生效。
@@ -90,9 +91,9 @@ paper-search failures --format text
 - `download_with_fallback` / `download_batch` 的 `content`：`main`（默认，只要正文）、`supplements`（只要补充材料，不走正文的各层）、`both`（正文和补充材料）。
 - 补充材料只经机构下载扩展的浏览器取得：正文由开放渠道拿到时，`both` 会再请扩展单独取补充材料；扩展没装或没启用时，这一步记为 `skipped`，写明没有可用的后端。
 - 哪些出版社有补充材料规则见 `publisher-support.md`。没有规则的网站返回 `supplements_not_supported`；页面没列出补充材料时为 `no_supplements`。两者都不影响正文；只取补充材料时整体状态是 `error`，意思是没有可取的文件，不是程序故障。
-- 文件存在 `<savePath>/<DOI>_supplements/`，带 `manifest.json`，每个文件有状态（`saved`、`failed`、`skipped`）和原因；结果里的 `supplements` 列出同样内容。
+- 文件存在 `<savePath>/papers/<期刊_年份_标题_短标识>/supplements/`，诊断目录的 `manifest.json` 记录每个文件的状态（`saved`、`failed`、`skipped`）和原因；结果里的 `supplements` 给出实际文件路径。
 - 上限：每篇最多 50 个文件，每个不超过 200 MB，一篇总共 3 分钟；超出的记 `skipped`（原因 `file_limit`、`too_large`、`time_budget`）。`html_page` 表示链接打开的是网页而不是文件，`http_403` 一类是网站拒绝。
-- 只收本文的文件：别的文章的文件、本文的插图、参考文献里的链接都不收。放在 Figshare 等外部网站上的补充材料暂不支持。
+- 只收本文的文件：别的文章的文件、本文的插图、参考文献里的链接都不收。Figshare 公开 article/collection 链接按原文 DOI 关联后解析文件；其他外部附件平台仍需适配。
 - 补充材料、利益冲突声明里也可能印着目标标题和 DOI；不要把补充材料 PDF 当正文交付，正文成功也不代表补充材料齐全。
 - 个别网站（目前 Taylor & Francis）拒绝程序直接下载补充材料时，改由浏览器自己下载，清单里写 `via: browser_download`；浏览器下载列表里会出现以一串编号命名、没有扩展名的记录，文件已按真实文件名保存在 `_supplements` 目录，这些记录可在浏览器下载页清除。
 

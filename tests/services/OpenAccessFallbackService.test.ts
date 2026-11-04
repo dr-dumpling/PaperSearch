@@ -1,6 +1,6 @@
 import axios from "axios";
 import { textPdf } from "../fixtures/textPdf.js";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it, jest } from "@jest/globals";
@@ -79,11 +79,11 @@ describe("OpenAccessFallbackService", () => {
         [tier("repositories", wrong), tier("unpaywall", right)],
       );
       expect(result.status).toBe("ok");
-      expect(result.path).toBe(right);
+      expect(readFileSync(result.path!)).toEqual(readFileSync(right));
       expect(result.attempts[0]).toEqual(
         expect.objectContaining({ stage: "repositories", status: "error", code: "pdf_identity_mismatch" }),
       );
-      expect(existsSync(wrong)).toBe(false);
+      expect(existsSync(wrong)).toBe(true); // a tier fixture outside savePath is never removed
     });
 
     it("reports an unverified PDF for review when no tier proves the article", async () => {
@@ -96,7 +96,8 @@ describe("OpenAccessFallbackService", () => {
         [tier("unpaywall", unlabelled)],
       );
       expect(result.status).toBe("error");
-      expect(result.review).toEqual({ path: unlabelled, reason: "pdf_identity_unverified" });
+      expect(result.review).toEqual({ path: expect.stringContaining("/diagnostics/"), reason: "pdf_identity_unverified" });
+      expect(readFileSync(result.review!.path)).toEqual(readFileSync(unlabelled));
     });
 
     it("looks up the title when only a DOI is given, to corroborate a DOI printed in a sentence", async () => {
@@ -158,9 +159,9 @@ describe("OpenAccessFallbackService", () => {
     );
 
     expect(result.status).toBe("ok");
-    expect(result.path).toBe(paper);
+    expect(readFileSync(result.path!)).toEqual(readFileSync(paper));
     expect(scihubDownload).toHaveBeenCalledWith("10.1000/example", {
-      savePath: "./downloads",
+      savePath: expect.stringContaining("/papers/"),
     });
     expect(result.attempts.map((attempt) => attempt.stage)).toEqual([
       "primary",
@@ -214,6 +215,7 @@ describe("OpenAccessFallbackService", () => {
       "publisher_api",
       "scihub",
       "entitled_access",
+      "preprint",
     ]);
   });
 
@@ -262,6 +264,7 @@ describe("OpenAccessFallbackService", () => {
       "publisher_api",
       "scihub",
       "entitled_access",
+      "preprint",
     ]);
     expect(inserted.map((tier) => tier.stage)).toEqual([
       "primary",
@@ -272,6 +275,7 @@ describe("OpenAccessFallbackService", () => {
       "custom",
       "scihub",
       "entitled_access",
+      "preprint",
     ]);
   });
 
@@ -357,11 +361,12 @@ describe("OpenAccessFallbackService", () => {
 
       expect(downloadLegalDoi).toHaveBeenCalledWith({
         identifier: "10.1000/example",
-        outputDir: tempDir,
+        outputDir: expect.stringContaining(`${tempDir}/papers/`),
+        diagnosticsDir: expect.stringContaining(`${tempDir}/diagnostics/`),
       });
       expect(result).toEqual({
         status: "ok",
-        path: pdfPath,
+        path: expect.stringContaining(`${tempDir}/papers/`),
         attempts: expect.arrayContaining([
           {
             stage: "entitled_access",
@@ -526,7 +531,8 @@ describe("OpenAccessFallbackService", () => {
 
     expect(downloadLegalDoi).toHaveBeenCalledWith({
       identifier: "not-a-doi",
-      outputDir: "./downloads",
+      outputDir: expect.stringContaining("/papers/"),
+      diagnosticsDir: expect.stringContaining("/diagnostics/"),
     });
     expect(result.attempts).toContainEqual({
       stage: "entitled_access",

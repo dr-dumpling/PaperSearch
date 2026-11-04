@@ -4,6 +4,7 @@
  */
 
 import axios from 'axios';
+import { arxivPdfUrl } from '../infrastructure/arxiv.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Paper, PaperFactory } from '../models/Paper.js';
@@ -488,10 +489,8 @@ export class SemanticScholarSearcher extends PaperSource {
 
   private normalizePdfUrl(url: string): string {
     const clean = url.trim();
-    // arXiv is not used as a download source.
-    if (/^https?:\/\/(?:export\.)?arxiv\.org\//i.test(clean)) {
-      return '';
-    }
+    const preprint = arxivPdfUrl(clean);
+    if (preprint) return preprint;
 
     if (/^https?:\/\/api\.unpaywall\.org\//i.test(clean) || /^https?:\/\/(?:dx\.)?doi\.org\//i.test(clean)) {
       return '';

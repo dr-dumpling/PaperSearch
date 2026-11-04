@@ -1,6 +1,8 @@
 """RSC Silverchair entry regression; all browser requests intercepted."""
 import os
+import time
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from paper_search_carsi.engine.batch import DownloadResult, PublisherBatchDownloader
@@ -157,7 +159,7 @@ class RscInstitutionTests(unittest.TestCase):
         self.assertFalse(self.downloader._institution_pdf_entitlement_missing(self.page))
 
     def test_institution_entry_appearing_after_silent_redirect_is_opened_once(self):
-        from paper_search_carsi.engine import batch as batch
+        from paper_search_carsi.engine import batch_login
         # The silent sign-in callback moves on to the article by itself; the
         # article then shows the institution entry.
         self.html=('<a href="'+CHOOSER+'">Sign in via your Institution</a>'
@@ -172,7 +174,10 @@ class RscInstitutionTests(unittest.TestCase):
             if self.page.url==CHOOSER:
                 self.html='<title>Article</title>Full access'
                 self.page.goto(ARTICLE.replace('article-abstract','article'))
-        with patch.object(batch.time,'sleep',side_effect=user_action):
+        # Replacing time.sleep on the shared module also ran user_action on
+        # the browser-watchdog thread, consuming this test's login-loop budget.
+        # Only the login loop simulates the user's action; other threads sleep.
+        with patch.object(batch_login,'time',SimpleNamespace(time=time.time,sleep=user_action)):
             self.assertTrue(self.downloader._complete_login_from_current_page(self.page,self.result))
         self.assertEqual(self.requests.count(CHOOSER),1)
         self.assertEqual(sum(e['state']=='sso_entry_clicked' for e in self.result.events),1)

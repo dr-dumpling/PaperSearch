@@ -61,10 +61,10 @@ describe("Unpaywall OA locations", () => {
     resolvePdfCandidates: async () => urls.map((url) => ({ url, hostType: "repository", version: "publishedVersion" })),
   });
 
-  it("leaves bot-protected publisher copies to the browser and skips arXiv", () => {
+  it("leaves bot-protected publisher copies to the browser and defers arXiv", () => {
     expect(oaHostPolicy("https://onlinelibrary.wiley.com/doi/pdfdirect/10.1/x")).toBe("browser");
     expect(oaHostPolicy("https://www.sciencedirect.com/science/article/pii/S1/pdfft")).toBe("browser");
-    expect(oaHostPolicy("https://arxiv.org/pdf/2401.00001")).toBe("excluded");
+    expect(oaHostPolicy("https://arxiv.org/pdf/2401.00001")).toBe("preprint");
     expect(oaHostPolicy("https://www.nature.com/articles/s41586-024-1.pdf")).toBe("http");
   });
 

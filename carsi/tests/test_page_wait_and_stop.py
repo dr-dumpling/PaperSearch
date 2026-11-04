@@ -5,7 +5,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from paper_search_carsi import config, entitlements, user_settings
 from paper_search_carsi.browser import watchdog
@@ -87,8 +87,8 @@ class PageWaitTests(unittest.TestCase):
         d.PAGE_WAIT_SEC = 0.05
         result = DownloadResult(doi=DOI, status="failed", article_url="https://doi.org/" + DOI)
 
-        class Page:
-            url = "https://www.sciencedirect.com/science/article/pii/S0000000000000002"
+        page = Mock(url="https://www.sciencedirect.com/science/article/pii/S0000000000000002")
+        page.locator.return_value.first.text_content.return_value = ""
 
         real_sleep = time.sleep
         with patch.object(d.adapter, "complete_login", return_value=None), \
@@ -102,7 +102,7 @@ class PageWaitTests(unittest.TestCase):
                 patch.object(batch_login, "settle"), \
                 patch.object(batch_login.time, "sleep", side_effect=lambda s: real_sleep(0.06)):
             started = time.time()
-            self.assertFalse(d._complete_login_steps(Page(), result))
+            self.assertFalse(d._complete_login_steps(page, result))
         self.assertLess(time.time() - started, 5)
         states = [e["state"] for e in result.events]
         self.assertIn("page_wait_ended", states)

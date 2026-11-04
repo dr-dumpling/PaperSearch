@@ -21,6 +21,8 @@ from typing import Any, Callable, Iterable
 from urllib.parse import unquote, urlparse
 
 from ..adapters.base import SupplementLink
+from ..browser.watchdog import BrowserUnresponsive, BrowserOperationTimeout
+from ..entitlements import UserMarkedNoEntitlement, UserSkippedArticle, UserStoppedBatch
 
 MAX_FILES = 50
 MAX_FILE_BYTES = 200 * 1024 * 1024
@@ -87,6 +89,8 @@ def _get(request: Any, url: str, entry: dict[str, Any], sleep) -> Any:
 
 def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi: str, *,
             clock=time.monotonic, sleep=time.sleep,
+            manifest_dir: Path | None = None,
+            target_dir: Path | None = None,
             download: Callable[[str], tuple[bytes, str]] | None = None,
             progress: Callable[[int], None] | None = None) -> list[dict[str, Any]]:
     """Fetch ``links`` with ``request`` (a Playwright APIRequestContext). A file
@@ -101,14 +105,19 @@ def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi
             unique.append(link)
     if not unique:
         return []
-    target = supplements_dir(output_dir, doi)
+    target = target_dir or supplements_dir(output_dir, doi)
     target.mkdir(parents=True, exist_ok=True)
     started = clock()
     taken: set[str] = set()
     files: list[dict[str, Any]] = []
+    stopped_reason = ""
     for index, link in enumerate(unique):
         entry: dict[str, Any] = {"url": link.url, "label": link.label}
-        if index >= MAX_FILES:
+        if stopped_reason:
+            entry.update(status="skipped", reason=stopped_reason)
+        elif link.error:
+            entry.update(status="failed", reason=link.error)
+        elif index >= MAX_FILES:
             entry.update(status="skipped", reason="file_limit")
         elif clock() - started > TIME_BUDGET_SEC:
             entry.update(status="skipped", reason="time_budget")
@@ -138,11 +147,21 @@ def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi
                         path.write_bytes(body)
                         entry.update(status="saved", file=str(path), size=len(body),
                                      content_type=content_type.split(";")[0].strip())
+            except (BrowserUnresponsive, UserMarkedNoEntitlement) as exc:
+                stopped_reason = ("batch_stopped" if isinstance(exc, UserStoppedBatch) else
+                                  "user_skipped" if isinstance(exc, UserSkippedArticle) else
+                                  "user_marked_no_entitlement" if isinstance(exc, UserMarkedNoEntitlement) else
+                                  "browser_operation_timeout" if isinstance(exc, BrowserOperationTimeout) else
+                                  "browser_unresponsive")
+                entry.update(status="skipped" if isinstance(exc, UserMarkedNoEntitlement) else "failed",
+                             reason=stopped_reason)
             except Exception as exc:
                 entry.update(status="failed", reason=f"{type(exc).__name__}: {str(exc)[:160]}")
         files.append(entry)
         if progress is not None:
             progress(sum(1 for f in files if f.get("status") == "saved"))
-    (target / "manifest.json").write_text(
+    manifest_target = manifest_dir or target
+    manifest_target.mkdir(parents=True, exist_ok=True)
+    (manifest_target / "manifest.json").write_text(
         json.dumps({"doi": doi, "files": files}, ensure_ascii=False, indent=2), encoding="utf-8")
     return files

@@ -19,7 +19,7 @@ decorate it with :func:`register`, and import the package below.
 
 from .base import PublisherAdapter, SupplementLink, adapter_class, adapter_for, register
 from . import (  # noqa: F401  (register the adapters)
-    acm, acs, aha_journals, ams, annual_reviews, aps, asce, bmj, copernicus, dovepress, elsevier, ieee, iop,
+    acm, acs, aha_journals, ams, annual_reviews, aps, asce, bmj, copernicus, dovepress, elsevier, frontiers, ieee, iop,
     jama, karger, lww, mdpi, nejm, neurology, optica, oup, plos, pnas, rsc, sage, science, springer,
     taylor_francis, thieme, wiley, world_scientific)
 

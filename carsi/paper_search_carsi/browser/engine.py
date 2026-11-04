@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Browser backend (Camoufox via Playwright; ego-lite has its own driver)
 # ---------------------------------------------------------------------------
-# Everything in this module drives the Playwright sync API, which only the
-# Camoufox backend provides. Backend selection lives in backend.py.
+# Everything in this module drives the Playwright sync API, shared by both
+# Camoufox and ego-lite. Backend selection lives in backend.py.
 # ---------------------------------------------------------------------------
 
 from .backend import (  # noqa: E402

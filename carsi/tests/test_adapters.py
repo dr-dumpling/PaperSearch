@@ -48,7 +48,7 @@ class SelectionTests(unittest.TestCase):
 
 class GenericPublisherTests(unittest.TestCase):
     def test_publishers_without_adapter_keep_generic_behaviour(self):
-        d = PublisherBatchDownloader({}, profile=get_publisher_profile("frontiers"))
+        d = PublisherBatchDownloader({}, profile=get_publisher_profile("aip"))
         self.assertIs(type(d.adapter), PublisherAdapter)
         self.assertIsNone(d.adapter.open_institution_entry(Mock(), None))
         self.assertFalse(d._uses_article_pdf_validation())
@@ -481,6 +481,10 @@ class RedirectPageTests(unittest.TestCase):
 
         class Page:
             url = next(urls)
+
+            def locator(self, selector):
+                assert selector == "head > title"
+                return SimpleNamespace(first=SimpleNamespace(text_content=lambda timeout: ""))
 
             def wait_for_timeout(self, ms):
                 Page.url = next(urls)

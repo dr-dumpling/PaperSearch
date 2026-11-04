@@ -14,6 +14,8 @@ class SupplementLink:
 
     url: str
     label: str = ""
+    # Discovery failures are recorded alongside downloaded files.
+    error: str = ""
 
 
 class PublisherAdapter:

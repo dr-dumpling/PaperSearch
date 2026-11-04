@@ -16,7 +16,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from ...engine.router import is_thieme_article_pdf_url
-from ...engine.batch_common import open_page
+from ...engine.batch_common import _is_browser_error, open_page
 from ..base import PublisherAdapter, register
 
 _HOSTS = frozenset({"thieme-connect.de", "www.thieme-connect.de", "thieme-connect.com", "www.thieme-connect.com"})
@@ -152,13 +152,14 @@ class ThiemeAdapter(PublisherAdapter):
             button = page.locator(
                 "button:has-text('Continue'), input[type='submit'][value='Continue']").first
             try:
-                if button.is_visible(timeout=1_500) is True:
-                    button.click(timeout=5_000, no_wait_after=True)
+                if (button.is_visible(timeout=1_500) is True
+                        and d._click_control(page, button, result, "Thieme federation Continue")):
                     result._federation_continue_at = time.time()
                     d._event(result, "institution_federation_continue", "carsi")
                     return True
-            except Exception:
-                pass
+            except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
         if not any(event["state"] == "institution_selection_required" for event in result.events):
             d._event(result, "institution_selection_required", "carsi")
         return changed

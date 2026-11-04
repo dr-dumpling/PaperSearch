@@ -1,7 +1,7 @@
 [project]
 name = "paper-search-carsi"
 version = "0.1.0"
-description = "Institutional (publisher-authorized) PDF download backend for PaperSearch, carved out of scansci-pdf"
+description = "Institutional (publisher-authorized) PDF and supplementary-file download backend for PaperSearch"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }

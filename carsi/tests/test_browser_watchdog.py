@@ -14,6 +14,7 @@ from paper_search_carsi.publishers.profiles import get_publisher_profile
 class WatchdogTests(unittest.TestCase):
     def setUp(self):
         self.addCleanup(watchdog._inflight.clear)
+        self.addCleanup(watchdog._call_deadlines.clear)
         patcher = patch.object(watchdog, "fired", None)
         patcher.start(); self.addCleanup(patcher.stop)
 
@@ -30,6 +31,57 @@ class WatchdogTests(unittest.TestCase):
         self.assertEqual(watchdog.fired["call"], "Page.title")
         dump.assert_called_once()  # every thread's stack, once
         self.assertIn("Page.title", dump.call_args.args[0])
+
+    def test_operation_deadline_cancels_a_call_shorter_than_the_global_limit(self):
+        now = time.monotonic()
+        loop = MagicMock(); loop.is_closed.return_value = False
+        coro = object()
+        watchdog._inflight[1] = (now - 2, "Page.evaluate", [], loop, coro)
+        watchdog._call_deadlines[1] = (now - 1, "article preparation")
+        with patch("paper_search_carsi.log.dump_stacks"):
+            self.assertTrue(watchdog.check(90))
+        self.assertEqual(watchdog.failure_code(), "browser_operation_timeout")
+        self.assertEqual(watchdog.fired["operation"], "article preparation")
+        loop.call_soon_threadsafe.assert_called_once_with(watchdog._cancel, coro)
+
+    def test_calls_share_one_budget_and_late_candidates_are_not_sent(self):
+        clock, sent = [100.0], []
+
+        class Fake:
+            def _sync(self, coro):
+                sent.append(list(watchdog._call_deadlines.values())[0][0])
+                clock[0] += 4
+                coro.close()
+
+        async def evaluate():
+            return None
+
+        self.install_on(Fake)
+        with patch.object(watchdog.time, "monotonic", side_effect=lambda: clock[0]), \
+                patch("paper_search_carsi.log.dump_stacks"):
+            with watchdog.operation(6, "pdf candidates"):
+                Fake()._sync(evaluate())
+                Fake()._sync(evaluate())
+                late = evaluate()
+                with self.assertRaises(watchdog.BrowserOperationTimeout):
+                    Fake()._sync(late)
+        self.assertEqual(sent, [106, 106])  # candidate two did not renew the deadline
+        self.assertIsNone(late.cr_frame)
+        self.assertEqual(watchdog._call_deadlines, {})
+        self.assertEqual(watchdog._inflight, {})
+
+    def test_human_wait_pauses_automation_and_nested_budgets_do_not_extend_it(self):
+        clock = [100.0]
+        with patch.object(watchdog.time, "monotonic", side_effect=lambda: clock[0]):
+            with watchdog.operation(60, "article"):
+                clock[0] = 110
+                with watchdog.pause_operation(), watchdog.operation(180, "school login"):
+                    self.assertEqual(watchdog._local.budgets, [[290, "school login"]])
+                    clock[0] = 210
+                self.assertEqual(watchdog._local.budgets, [[260, "article"]])
+                with watchdog.operation(600, "nested"):
+                    self.assertEqual(min(b[0] for b in watchdog._local.budgets), 260)
+            self.assertEqual(watchdog._local.budgets, [])
 
     def test_stacks_go_to_the_stack_file(self):
         from paper_search_carsi import log

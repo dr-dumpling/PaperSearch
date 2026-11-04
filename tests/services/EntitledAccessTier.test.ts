@@ -77,6 +77,8 @@ describe("Entitled PDF acceptance", () => {
     "entitlement_missing",
     "cloudflare_blocked",
     "download_timeout",
+    "browser_operation_timeout",
+    "batch_stopped",
     "profile_busy",
     "publisher_content_error",
     "access_blocked",

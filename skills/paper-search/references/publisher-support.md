@@ -1,6 +1,6 @@
 # 机构下载：各出版社支持情况
 
-本表只适用于机构下载（可选扩展），说明它在哪些出版社网站上能走通（截至 2026-11-03）。“能走通”是说：用户学校订阅了这篇文章、出版社有这所学校的登录路线时，程序能自己取到本文的 PDF。学校有没有订阅，看实际的下载结果。开放获取的文章通常先由开放下载拿到，用不到这张表。
+本表只适用于机构下载（可选扩展），说明它在哪些出版社网站上能走通（截至 2026-11-04，含工作区尚未发布的附件适配）。“能走通”是说：用户学校订阅了这篇文章、出版社有这所学校的登录路线时，程序能自己取到本文的 PDF。学校有没有订阅，看实际的下载结果。开放获取的文章通常先由开放下载拿到，用不到这张表。
 
 - 支持按网站算，不按期刊算：同一网站上的期刊都适用；某本期刊有例外时写在“说明”里。
 - 程序按 DOI 实际跳转到的网站判断属于哪一行。DOI 前缀只是线索，期刊换了出版社时前缀不变（例如 ARD 的 `10.1136` 文章现在在 Elsevier）。
@@ -35,15 +35,17 @@
 | IEEE | ieeexplore.ieee.org | `10.1109` | ✓ | — | |
 | Thieme | thieme-connect.com / .de | `10.1055` | ✓ | — | 学校没订阅的文章可能记成 `download_failed`（原因不明一类）；看诊断截图里是否为购买页 |
 | BMJ | bmj.com 及各子刊网站 | `10.1136` | ○ | — | 部分期刊（如 The BMJ、Gut、Heart）的机构列表里没有 CARSI；子刊可能被网站防护拦截（`access_blocked`） |
-| AIP Publishing | pubs.aip.org | `10.1063` | ✓OA | — | 补充材料放在 Figshare，暂不支持 |
-| Royal Society | royalsocietypublishing.org | `10.1098` | ✓OA | — | 补充材料放在 Figshare，暂不支持 |
+| AIP Publishing | pubs.aip.org | `10.1063` | ✓OA | ✓ | 支持 DOI 明确关联的 Figshare 公开附件；正文+附件已通过 CLI/Camoufox 实测 |
+| Royal Society | royalsocietypublishing.org | `10.1098` | ✓OA | ✓ | 支持 DOI 明确关联的 Figshare 公开附件；正文+附件已通过 CLI/Camoufox 实测 |
 | APS（Physical Review） | journals.aps.org | `10.1103` | ✓OA | — | |
 | IOP Publishing | iopscience.iop.org | `10.1088` | ✓OA | — | 登录页只有邮箱和密码，还没找到机构登录路线；订阅文章建议在校园网或学校 VPN 下下载 |
 | Optica | opg.optica.org | `10.1364` | ✓OA | — | 经 OpenAthens 登录；学校没订阅的文章可能记成 `download_failed` |
 | Annual Reviews | annualreviews.org | `10.1146` | ✓OA | — | |
 | AMS（美国气象学会） | journals.ametsoc.org | `10.1175` | ✓OA | — | 订阅文章只有学会会员登录，没有机构登录路线；建议校园网或学校 VPN |
 | Dove Medical Press | dovepress.com | `10.2147` | ✓ | ✓ | 全部开放获取 |
-| MDPI、Frontiers、PLOS、Copernicus | 各自网站 | `10.3390`、`10.3389`、`10.1371`、`10.5194` | ✓ | — | 全部开放获取，通常开放渠道就能拿到 |
+| MDPI | mdpi.com | `10.3390` | ✓OA | ✓ | 已实测正文及 DOI 对应 `/sN` 补充文件入口，保留原始 ZIP/PDF |
+| Frontiers | frontiersin.org | `10.3389` | ✓OA | ✓ | 已实测新版附件面板的官方 CDN 文件；旧式附件未验证；Figshare 复用通用解析（本出版社样本未实测） |
+| PLOS、Copernicus | 各自网站 | `10.1371`、`10.5194` | ✓ | — | 全部开放获取，通常开放渠道就能拿到 |
 
 ## 没有专门规则的网站
 

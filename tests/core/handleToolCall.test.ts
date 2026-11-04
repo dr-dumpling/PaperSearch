@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { readFileSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { textPdf } from "../fixtures/textPdf.js";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -99,7 +99,7 @@ describe("handleToolCall", () => {
 
       expect(text).toContain("Download paper ok");
       expect(data.status).toBe("ok");
-      expect(data.path).toBe(fallbackPdf);
+      expect(readFileSync(data.path)).toEqual(readFileSync(fallbackPdf));
       expect(data.attempts.map((attempt: any) => attempt.stage)).toContain(
         "scihub",
       );
@@ -206,7 +206,7 @@ describe("handleToolCall", () => {
         const data = responseData(response);
 
         expect(data.status).toBe("ok");
-        expect(data.path).toBe(pdfPath);
+        expect(readFileSync(data.path)).toEqual(readFileSync(pdfPath));
         expect(downloadLegalDoi).toHaveBeenCalledTimes(1);
       } finally {
         rmSync(tempDir, { recursive: true, force: true });

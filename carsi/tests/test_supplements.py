@@ -91,6 +91,32 @@ class CollectTests(unittest.TestCase):
         self.assertEqual([f["status"] for f in files], ["saved", "skipped"])
         self.assertEqual(files[1]["reason"], "time_budget")
 
+    def test_stopping_mid_collection_keeps_saved_files_and_skips_the_rest(self):
+        from paper_search_carsi.entitlements import UserStoppedBatch
+        request = MagicMock()
+        request.get.side_effect = [response(b"first"), UserStoppedBatch("stop")]
+        links = [SupplementLink(f"https://fixture.example/{i}.pdf", f"S{i}") for i in range(3)]
+        files = supplements.collect(request, links, self.out, DOI)
+        self.assertEqual(request.get.call_count, 2)
+        self.assertEqual([f["status"] for f in files], ["saved", "skipped", "skipped"])
+        self.assertEqual(Path(files[0]["file"]).read_bytes(), b"first")
+        self.assertEqual([f["reason"] for f in files[1:]], ["batch_stopped", "batch_stopped"])
+        manifest = json.loads((supplements.supplements_dir(self.out, DOI) / "manifest.json").read_text())
+        self.assertEqual(manifest["files"], files)
+
+    def test_separate_manifest_preserves_final_attachment_paths(self):
+        request = MagicMock()
+        request.get.return_value = response(b"supplement bytes")
+        target = self.out / "papers" / "Nature_2026_Article" / "supplements"
+        diagnostic = self.out / "diagnostics" / "article-run"
+        files = supplements.collect(request, [SupplementLink("https://fixture.example/S1.pdf")],
+                                    self.out, DOI, target_dir=target, manifest_dir=diagnostic)
+        self.assertEqual(Path(files[0]["file"]), target / "S1.pdf")
+        self.assertFalse((target / "manifest.json").exists())
+        manifest = json.loads((diagnostic / "manifest.json").read_text())
+        self.assertEqual(manifest["files"], files)
+        self.assertTrue(Path(manifest["files"][0]["file"]).is_file())
+
     def test_no_links_writes_nothing(self):
         self.assertEqual(supplements.collect(MagicMock(), [], self.out, DOI), [])
         self.assertEqual(list(self.out.iterdir()), [])
@@ -128,7 +154,7 @@ class BridgeTests(unittest.TestCase):
             profile = get_publisher_profile("wiley")
             downloader = MagicMock(); downloader.fetch_one.return_value = result
 
-            def collect(context, doi, out, res):
+            def collect(context, doi, out, res, **kwargs):
                 res.events.append({"state": "supplements_found", "detail": "0"})
                 return []
             downloader.collect_supplements.side_effect = collect
@@ -152,10 +178,32 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(out["error_type"], "unsupported_platform")
         self.assertEqual(out["supplements"], [{"status": "skipped", "reason": "unsupported_platform", "url": "", "label": ""}])
 
+    def test_supplement_discovery_timeout_preserves_the_main_pdf_result(self):
+        from paper_search_carsi.browser.watchdog import BrowserOperationTimeout
+        d = PublisherBatchDownloader({}, profile=get_publisher_profile("wiley"))
+        context = MagicMock()
+        result = DownloadResult(doi=DOI, status="success", state="pdf_response_captured", pdf_path="saved.pdf")
+        with patch.object(d, "_challenge_shell", return_value=False), \
+                patch.object(d, "_is_challenge_page", return_value=False), \
+                patch.object(d, "_settled_supplement_links", side_effect=BrowserOperationTimeout("page budget")):
+            files = d.collect_supplements(context, DOI, Path("/tmp/out"), result)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.pdf_path, "saved.pdf")
+        self.assertEqual(files[0]["reason"], "browser_operation_timeout")
+
     def test_default_collects_nothing(self):
         out, downloader = self.run_bridge("", DownloadResult(doi=DOI, status="failed", state="sso_required"))
         downloader.collect_supplements.assert_not_called()
         self.assertNotIn("supplements", out)
+
+    def test_user_actions_stop_the_supplements_too(self):
+        for state in ("user_skipped", "batch_stopped", "user_marked_no_entitlement"):
+            with self.subTest(state=state):
+                out, downloader = self.run_bridge("with", DownloadResult(
+                    doi=DOI, status="failed", state=state, reason=state))
+                downloader.collect_supplements.assert_not_called()
+                self.assertEqual(out["supplements"], [
+                    {"status": "skipped", "reason": state, "url": "", "label": ""}])
 
 
 
@@ -219,6 +267,21 @@ class SpringerLinksTests(unittest.TestCase):
 
 
 class CandidatePagesTests(unittest.TestCase):
+    def test_a_blank_supplement_page_does_not_overwrite_the_saved_main_text(self):
+        from paper_search_carsi.engine.batch_common import PublisherContentError
+        d = PublisherBatchDownloader({}, profile=get_publisher_profile("acs"))
+        page = MagicMock(); context = MagicMock(); context.new_page.return_value = page
+        result = DownloadResult(doi="10.1021/offline", status="success", state="pdf_response_captured")
+        with patch.object(d, "_challenge_shell", return_value=False), \
+                patch.object(d, "_is_challenge_page", return_value=False), \
+                patch.object(d, "_wait_for_page_text", side_effect=PublisherContentError("publisher_page_blank")), \
+                patch.object(supplements, "collect") as collect:
+            files = d.collect_supplements(context, result.doi, Path("/tmp/out"), result)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.state, "pdf_response_captured")
+        self.assertEqual(files[0]["reason"], "publisher_content_error")
+        collect.assert_not_called()
+
     def test_the_next_page_is_tried_until_one_lists_files(self):
         d = PublisherBatchDownloader({}, profile=get_publisher_profile("elsevier"))
         page = MagicMock()

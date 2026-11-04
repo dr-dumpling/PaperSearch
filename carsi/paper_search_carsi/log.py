@@ -29,9 +29,8 @@ def _file_handler() -> logging.Handler | None:
 
 
 def enable_stack_dump() -> None:
-    """``kill -USR1 <pid>`` appends every thread's Python stack to
-    ``<data dir>/logs/stacks-<date>.txt``: a backend waiting forever on a browser
-    call (Camoufox, 2026-10-31) shows where it waits."""
+    """Prepare watchdog dumps on every OS; POSIX also supports ``kill -USR1``.
+    Stacks go to ``<data dir>/logs/stacks-<date>.txt``."""
     global _stack_file
     import faulthandler
     import os
@@ -39,15 +38,22 @@ def enable_stack_dump() -> None:
     from datetime import date
     from pathlib import Path
 
-    if _stack_file is not None or not hasattr(signal, "SIGUSR1") or os.environ.get("CARSI_FILE_LOG") == "0":
+    if _stack_file is not None or os.environ.get("CARSI_FILE_LOG") == "0":
         return
     try:
         log_dir = Path(os.environ.get("CARSI_DATA_DIR", str(Path.home() / ".local" / "share" / "paper-search-cli" / "carsi"))) / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         _stack_file = open(log_dir / f"stacks-{date.today().isoformat()}.txt", "a", encoding="utf-8")
-        faulthandler.register(signal.SIGUSR1, file=_stack_file, all_threads=True)
-    except Exception:
-        _stack_file = None
+    except OSError:
+        get_logger().warning("Could not open the browser watchdog stack log")
+        return
+    # Windows has no SIGUSR1/register, but dump_traceback works there. A failed
+    # optional signal hook must not disable explicit watchdog dumps either.
+    if hasattr(signal, "SIGUSR1"):
+        try:
+            faulthandler.register(signal.SIGUSR1, file=_stack_file, all_threads=True)
+        except (OSError, RuntimeError, ValueError):
+            get_logger().warning("Stack log ready, but the SIGUSR1 hook is unavailable")
 
 
 def dump_stacks(reason: str) -> bool:

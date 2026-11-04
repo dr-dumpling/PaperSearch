@@ -2,7 +2,7 @@ import type { SearchOptions } from '../platforms/PaperSource.js';
 export type PlatformSourceKind = 'official-api' | 'metadata-proxy' | 'html' | 'alias';
 export type CapabilityGroup = 'metadata_search' | 'citation_expansion' | 'body_snippet_search' | 'journal_metrics' | 'pdf_discovery' | 'entitled_access';
 export type CapabilityProfileSourceGroup = 'metadata_free' | 'metadata_entitled' | 'pdf_open_access' | 'pdf_scihub';
-export type PlatformSchemaKind = 'generic' | 'webofscience' | 'pubmed' | 'biorxiv' | 'medrxiv' | 'semantic-scholar' | 'google-scholar' | 'iacr' | 'core' | 'springer' | 'sciencedirect' | 'scopus' | 'crossref' | 'openalex' | 'pmc-style' | 'unpaywall' | 'scihub' | 'custom';
+export type PlatformSchemaKind = 'generic' | 'arxiv' | 'webofscience' | 'pubmed' | 'biorxiv' | 'medrxiv' | 'semantic-scholar' | 'google-scholar' | 'iacr' | 'core' | 'springer' | 'sciencedirect' | 'scopus' | 'crossref' | 'openalex' | 'pmc-style' | 'unpaywall' | 'scihub' | 'custom';
 export interface PlatformMetadata {
     id: string;
     aliases?: string[];

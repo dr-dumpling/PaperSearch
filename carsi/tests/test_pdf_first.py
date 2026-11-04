@@ -88,6 +88,47 @@ class PdfFirstTests(unittest.TestCase):
         states = [e["state"] for e in result.events]
         self.assertLess(states.index("access_unknown_pdf_first"), states.index("access_unknown_pdf_failed"))
 
+    def test_public_access_is_reused_only_until_the_main_document_changes(self):
+        for navigation in (None, "iframe", "reload"):
+            with self.subTest(navigation=navigation):
+                d, page = self.downloader(), self.page()
+                d._access_decision = Mock(return_value=("in", "reader", "badge: Free Access"))
+                d._ensure_login = Mock(side_effect=d._pdf_first_unless_signed_out)
+                d._capture_pdf = Mock(return_value=(pdf(), PDF, None))
+                d._save_captured_pdf = Mock(side_effect=lambda p, rec, result, *args: result)
+
+                def settle(*args):
+                    callback = next(call.args[1] for call in page.on.call_args_list
+                                    if call.args[0] == "framenavigated")
+                    if navigation:
+                        callback(page.main_frame if navigation == "reload" else object())
+
+                with tempfile.TemporaryDirectory() as directory, patch.object(batch, "settle", side_effect=settle):
+                    d.fetch_one(page, PaperRecord(doi=DOI), Path(directory))
+                self.assertEqual(d._access_decision.call_count, 2 if navigation == "reload" else 1)
+                d._capture_pdf.assert_called_once()
+                callback = next(call.args[1] for call in page.on.call_args_list
+                                if call.args[0] == "framenavigated")
+                page.remove_listener.assert_called_once_with("framenavigated", callback)
+
+    def test_browser_timeout_is_preserved_without_running_final_page_work(self):
+        from paper_search_carsi.browser.watchdog import BrowserUnresponsive
+        d = self.downloader()
+        d._ensure_login = Mock(side_effect=BrowserUnresponsive("Page.title timed out"))
+        d._capture_reported_issues = Mock()
+        with tempfile.TemporaryDirectory() as directory:
+            result = d.fetch_one(self.page(), PaperRecord(doi=DOI), Path(directory))
+        self.assertEqual((result.state, result.reason), ("browser_unresponsive", "browser_unresponsive"))
+        d._capture_reported_issues.assert_not_called()
+        d._hold_after_run.assert_not_called()
+
+    def test_a_new_item_does_not_reuse_a_previous_articles_citation_title(self):
+        d = self.downloader()
+        d._expected_title = "The previous article's citation title"
+        d._access_decision = Mock(return_value=("in", "session", ""))
+        self.fetch(d, [(pdf(), PDF, None)])
+        self.assertEqual(d._identity_title(), "")
+
     def test_without_a_login_to_do_the_failed_pdf_stays_the_reason(self):
         d = self.downloader()
         d._access_decision = Mock(return_value=("unknown", "", ""))
@@ -158,7 +199,7 @@ class SaveIdentityTests(unittest.TestCase):
                 (40, 60), f"{TITLE}\nSee the related editorial https://doi.org/10.1000/other.2026.1\nAbstract\nResults.")
             return document.tobytes() + b"\n%" + b"x" * 6000
 
-    def saved(self, title):
+    def saved(self, title, body=None):
         d = self.downloader()
         d._expected_title = title
         result = DownloadResult(doi=DOI, status="failed", article_url=ARTICLE)
@@ -166,12 +207,17 @@ class SaveIdentityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.object(d, "_save_publisher_session", Mock()), \
                 patch.object(d, "_write_diagnostic", Mock()):
             result = d._save_captured_pdf(self.page(), PaperRecord(doi=DOI), result, Path(directory),
-                                          self.body(), ARTICLE.replace("/doi/", "/doi/pdf/"))
+                                          self.body() if body is None else body, ARTICLE.replace("/doi/", "/doi/pdf/"))
         return result
 
     def test_the_title_keeps_a_pdf_that_cites_another_doi(self):
         self.assertNotEqual(self.saved(TITLE).state, "pdf_wrong_article")
         self.assertEqual(self.saved("").state, "pdf_wrong_article")
+
+    def test_citation_identity_is_kept_when_the_page_title_was_unavailable(self):
+        self.assertTrue(self.saved(TITLE, pdf(doi="")).verified_match)
+        self.assertEqual(self.saved("A completely different article about unrelated experiments").state,
+                         "pdf_wrong_article")
 
 
 class LoginWaitProbeTests(unittest.TestCase):

@@ -96,12 +96,13 @@ paper-search run download_with_fallback --json-args '{"source":"crossref","paper
 1. 来源自带的下载；
 2. 元数据里的 PDF 地址；
 3. PubMed Central 的官方渠道：DOI → PMCID（NCBI ID 转换）→ PMC Article Datasets 的 PDF（S3），不行再用 Europe PMC 的 `getPdf`；CORE、OpenAIRE 只作检索来源；
-4. Unpaywall：所有开放获取位置，出版版本优先；放在拒绝普通 HTTP 下载的网站（Wiley、ScienceDirect、Springer、MDPI、PMC 等）上的副本记为 `browser_only`，留给 `entitled_access`；不用 arXiv 副本；
+4. Unpaywall：所有开放获取位置，出版版本优先；放在拒绝普通 HTTP 下载的网站（Wiley、ScienceDirect、Springer、MDPI、PMC 等）上的副本记为 `browser_only`，留给 `entitled_access`；arXiv 副本留到最后的 `preprint` 阶段；
 5. `publisher_api`：用户自己的 `ELSEVIER_API_KEY`（PDF）或 `SPRINGER_API_KEY`（JATS XML 全文），走普通 HTTPS；没有 key 时跳过，网络或 key 没有订阅时为 `not_entitled`；
 6. PaperSearch 的 Sci-Hub，除非 `useSciHub=false`；
-7. 可选的机构下载后端（`entitled_access`），作为最后一层。
+7. 可选的机构下载后端（`entitled_access`）；
+8. arXiv 预印本（`preprint`）：正式版路线均未取得正文时才尝试；成功必须向用户说明 `version: "preprint"`。
 
-固定顺序：`primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access`。`download_paper` 也进入同一个漏斗，来源自带的下载最多试一次。Sci-Hub 成功就不再调用机构下载后端；Sci-Hub 失败或被跳过时，才进入 `entitled_access`。
+固定顺序：`primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access -> preprint`。`download_paper` 也进入同一个漏斗，来源自带的下载最多试一次。Sci-Hub 成功就不再调用机构下载后端；Sci-Hub 失败或被跳过时，才进入 `entitled_access`。
 
 机构下载后端（CARSI）是唯一可选的授权下载后端。除非 `PAPER_SEARCH_CARSI_ENABLED` 恰好是 `true`，它全局关闭；请求里的 `useEntitledAccess` 默认是 `true`，只能关掉这一层，不能绕过全局关闭。单次请求关掉它：
 

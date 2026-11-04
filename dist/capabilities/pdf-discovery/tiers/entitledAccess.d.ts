@@ -9,5 +9,6 @@ export declare function createEntitledAccessTier(backend?: CarsiBackend): Downlo
 export declare function fetchSupplementsOnly(backend: CarsiBackend | undefined, request: {
     identifier: string;
     outputDir: string;
-}): Promise<SupplementFile[] | undefined>;
+    diagnosticsDir?: string;
+}, onTrace?: (trace: Record<string, unknown>) => void): Promise<SupplementFile[] | undefined>;
 //# sourceMappingURL=entitledAccess.d.ts.map
