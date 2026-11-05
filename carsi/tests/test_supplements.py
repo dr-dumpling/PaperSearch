@@ -84,10 +84,11 @@ class CollectTests(unittest.TestCase):
         self.assertEqual((files[0]["status"], files[0]["reason"]), ("failed", "http_403"))
 
     def test_time_budget_skips_the_rest(self):
-        ticks = iter([0, 0, supplements.TIME_BUDGET_SEC + 1, supplements.TIME_BUDGET_SEC + 2])
+        now = [0]
         request = MagicMock(); request.get.return_value = response()
         files = supplements.collect(request, [SupplementLink("https://x/1.pdf"), SupplementLink("https://x/2.pdf")],
-                                    self.out, DOI, clock=lambda: next(ticks))
+                                    self.out, DOI, clock=lambda: now[0],
+                                    progress=lambda saved: now.__setitem__(0, supplements.TIME_BUDGET_SEC + 1))
         self.assertEqual([f["status"] for f in files], ["saved", "skipped"])
         self.assertEqual(files[1]["reason"], "time_budget")
 

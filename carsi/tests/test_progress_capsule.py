@@ -215,6 +215,40 @@ class ApiTests(unittest.TestCase):
         a._window.minimize.assert_called_once()
 
     @unittest.skipUnless(importlib.util.find_spec("webview"), "pywebview not installed")
+    def test_drag_keeps_geometry_stable_and_saves_the_actual_drop(self):
+        a = api()
+        a._window = MagicMock(x=320, y=180, width=260, height=56)
+        a.set_dragging(True)
+        a.resize(350, 320)
+        a._window.resize.assert_not_called()
+        a.moved(320, 180)
+        a._placement.moved.assert_called_once_with(320, 180, 260, 56, persist=False)
+        a.set_dragging(False)
+        a._placement.moved.assert_called_with(320, 180, 260, 56)
+        a.resize(350, 320)
+        a._window.resize.assert_called_once()
+
+    def test_dragging_keeps_a_completed_window_from_auto_closing(self):
+        a = api(close_after=0)
+        a._window = MagicMock()
+        a.set_dragging(True)
+        done = running(status="done", failed=0)
+        with patch.object(capsule, "read_state", return_value=done):
+            a.state(hovering=False)
+        a.watch_once(done, 0)
+        a._window.destroy.assert_not_called()
+
+    def test_drag_uses_pointer_delta_and_ignores_late_moves_after_release(self):
+        a = api()
+        a._window = MagicMock(x=320, y=180, width=260, height=56)
+        a.set_dragging(True, 500, 200)
+        a.move_drag(580, 245)
+        a._window.move.assert_called_once_with(400, 225)
+        a.set_dragging(False)
+        a.move_drag(700, 300)
+        a._window.move.assert_called_once()
+
+    @unittest.skipUnless(importlib.util.find_spec("webview"), "pywebview not installed")
     def test_resize_keeps_the_anchored_corner(self):
         from webview.window import FixPoint
 
@@ -273,6 +307,14 @@ class PlacementTests(unittest.TestCase):
         self.assertEqual(capsule.Placement(self.path, "top").start(1440, 900, (330, 280)), (230, 200))
         self.assertEqual(capsule.Placement(self.path, "top").start(500, 400, (260, 56))[1], 44)
         self.assertEqual(capsule.Placement(self.path, "bottom").start(1440, 900, (260, 56)), (1160, 788))
+
+    def test_intermediate_drag_positions_do_not_write_the_settings_file(self):
+        position = capsule.Placement(self.path, "top")
+        position.moved(300, 200, 260, 56, persist=False)
+        self.assertFalse(self.path.exists())
+        self.assertEqual((position.right, position.edge), (560, 200))
+        position.moved(320, 180, 260, 56)
+        self.assertEqual(capsule.Placement(self.path, "top").start(1440, 900, (260, 56)), (320, 180))
 
 
 class _Now:

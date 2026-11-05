@@ -27,7 +27,8 @@ body {
   font-variant-numeric: tabular-nums;
 }
 body.mac { padding: 10px; }            /* room for the shadow around a transparent window */
-#root { box-sizing: border-box; overflow: hidden; display: inline-block; background: var(--bg); border: 0.5px solid var(--line); }
+#root { box-sizing: border-box; overflow: hidden; display: inline-block; background: var(--bg); border: 0.5px solid var(--line); cursor: grab; }
+#root.dragging, #root.dragging * { cursor: grabbing; }
 body.mac #root { box-shadow: var(--shadow); -webkit-backdrop-filter: blur(20px); }
 #root.pill { border-radius: 999px; }
 #root.card { border-radius: 16px; width: 330px; box-sizing: border-box; }
@@ -114,7 +115,7 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 </style>
 </head>
 <body>
-<div id="root" class="pill"></div>
+<div id="root" class="pill capsule-drag-region"></div>
 <script>
 "use strict";
 const ICONS = {
@@ -166,29 +167,29 @@ function pill() {
   const v = V;
   if (v.mode === "attention") {
     const a = v.attention;
-    return '<div class="pillrow icon-first pywebview-drag-region">' + icon(a.login ? "lock" : "shield")
+    return '<div class="pillrow icon-first capsule-drag-region">' + icon(a.login ? "lock" : "shield")
       + "<b>" + esc(a.short) + "</b>" + (a.remaining ? "<span>" + esc(a.remaining) + "</span>" : "") + "</div>";
   }
   if (v.mode === "done") {
     // "完成 38/40  2 篇失败": papers saved out of all; a check unless nothing was saved.
     const good = v.ok > 0 || !v.total;
-    return '<div class="pillrow icon-first pywebview-drag-region">'
+    return '<div class="pillrow icon-first capsule-drag-region">'
       + icon(good ? "check" : "alert", ' style="color:var(' + (good ? "--ok" : "--bad") + ')"')
       + '<span class="count">' + (v.total ? esc(v.finished) + " " + v.ok + "/" + v.total : esc(v.headline)) + "</span>"
       + (v.bad ? '<span class="dim">' + v.bad + " 篇失败</span>" : "") + "</div>";
   }
   if (v.mode === "running") {
     const where = [v.part, v.publisher].filter(Boolean).join(" · ");
-    return '<div class="pillrow pywebview-drag-region">' + ring(v.pct, 24, 3)
+    return '<div class="pillrow capsule-drag-region">' + ring(v.pct, 24, 3)
       + '<span class="count">' + (v.total ? v.done + "/" + v.total : v.done) + "</span>"
       + (where ? '<span class="dim">' + esc(where) + "</span>" : "") + '<span class="dot"></span></div>';
   }
-  return '<div class="pillrow icon-first pywebview-drag-region"><b>PaperSearch</b><span class="dim">暂无下载任务</span></div>';
+  return '<div class="pillrow icon-first capsule-drag-region"><b>PaperSearch</b><span class="dim">暂无下载任务</span></div>';
 }
 
 function header(title, sub, closable) {
   // Only the ring and the texts drag the window; the buttons stay clickable.
-  return '<div class="head"><div class="drag pywebview-drag-region">'
+  return '<div class="head"><div class="drag capsule-drag-region">'
     + (V.mode === "running" || V.mode === "attention" ? ring(V.pct, 40, 4, V.pct + "%") : "")
     + '<div class="text"><div class="title">' + esc(title) + '</div>' + (sub ? '<div class="sub">' + esc(sub) + "</div>" : "") + "</div></div>"
     + '<button class="iconbtn" data-act="settings" aria-label="设置">' + icon("gear") + "</button>"
@@ -250,7 +251,7 @@ function attentionCard() {
   const a = V.attention;
   const sub = [a.remaining ? "剩 " + a.remaining : "", a.login ? "登录后自动继续" : "通过后自动继续",
                a.more ? "另有 " + a.more + " 项" : ""].filter(Boolean).join(" · ");
-  let html = '<div class="card-body"><div class="prompt pywebview-drag-region">' + icon(a.login ? "lock" : "shield")
+  let html = '<div class="card-body"><div class="prompt capsule-drag-region">' + icon(a.login ? "lock" : "shield")
     + '<div><div class="t">' + esc(a.message) + '</div><div class="s">' + esc(sub) + "</div></div></div>";
   if (panel === "confirm") return html + actionsBlock() + "</div>";
   if (V.actions) {
@@ -275,7 +276,7 @@ function idleCard() {
 
 function settingsCard() {
   let html = '<div class="card-body settings"><div class="head"><button class="iconbtn" data-act="back" aria-label="返回">'
-    + icon("left") + '</button><div class="drag pywebview-drag-region"><div class="text"><div class="title">设置</div></div></div></div>'
+    + icon("left") + '</button><div class="drag capsule-drag-region"><div class="text"><div class="title">设置</div></div></div></div>'
     + '<div class="folder-setting"><label for="download-dir">默认下载文件夹</label><div class="folder-row">'
     + '<input id="download-dir" type="text" value="' + esc(settings.download_dir || '') + '" placeholder="输入完整路径">'
     + '<button class="btn" data-act="choose_folder">选择…</button></div>'
@@ -294,10 +295,11 @@ function settingsCard() {
   return html;
 }
 
-let lastCls = "", hovering = false, closing = false;
+let lastCls = "", hovering = false, closing = false, dragging = false, endingDrag = false;
+let dragReady = Promise.resolve();
 
 function render(force) {
-  if (closing) return;
+  if (closing || dragging) return;
   if (panel === "settings" && !force) return;  // keep what the user is typing
   let html, shape = "card";
   if (panel === "settings") html = settingsCard();
@@ -312,7 +314,7 @@ function render(force) {
   lastPrompt = V.mode === "attention" ? V.attention.message : "";
   const previous = root.getBoundingClientRect();
   root.style.width = ""; root.style.height = "";
-  root.className = cls + (fresh ? " new" : "") + (cls !== lastCls ? " fade" : "");
+  root.className = cls + " capsule-drag-region" + (fresh ? " new" : "") + (cls !== lastCls ? " fade" : "");
   root.innerHTML = '<div class="surface">' + html + "</div>";
   lastHtml = html;
   lastCls = cls;
@@ -331,7 +333,7 @@ async function fit(previous) {
   const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 240;
   const started = performance.now();
   // One outstanding native resize at a time; a newer layout cancels this animation.
-  while (generation === fitGeneration) {
+  while (generation === fitGeneration && !dragging && !closing) {
     const t = duration ? Math.min(1, (performance.now() - started) / duration) : 1;
     const eased = 1 - Math.pow(1 - t, 3);
     const width = Math.round(from[0] + (to[0] - from[0]) * eased);
@@ -346,10 +348,10 @@ async function fit(previous) {
 async function tick() {
   if (closing) return;
   const before = V.mode;
-  try { V = await api().state(hovering); } catch (e) { return; }
+  try { V = await api().state(hovering || dragging); } catch (e) { return; }
   // A prompt only turns the capsule amber (with a system notification); hovering opens it.
   // Once the prompt is handled an open card folds back unless the pointer is on it.
-  if (before === "attention" && V.mode !== "attention" && !hovering && !panel) open = false;
+  if (before === "attention" && V.mode !== "attention" && !hovering && !dragging && !panel) open = false;
   render(false);
 }
 
@@ -396,15 +398,67 @@ async function act(action, target) {
   }
 }
 
+const interactive = (target) => target.closest('button, input, select, textarea, a, [contenteditable="true"], [role="button"]');
+root.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0 || interactive(event.target)) return;
+  dragging = true;
+  ++fitGeneration;
+  clearTimeout(hoverTimer); clearTimeout(leaveTimer);
+  root.classList.add("dragging");
+  root.setPointerCapture(event.pointerId);  // Keep the release even outside the window.
+  dragReady = api().set_dragging(true, event.screenX, event.screenY);
+});
+root.addEventListener("mousedown", (event) => {
+  // One mover owns the drag; do not also start pywebview's body mover.
+  event.stopPropagation();
+});
+let dragMove = Promise.resolve(), nextDragPoint = null, movingDrag = false;
+async function flushDragMoves() {
+  if (movingDrag) return;
+  movingDrag = true;
+  try {
+    await dragReady;
+    while (nextDragPoint && dragging) {
+      const point = nextDragPoint; nextDragPoint = null;
+      await api().move_drag(...point);
+    }
+  } finally { movingDrag = false; }
+}
+window.addEventListener("pointermove", event => {
+  if (!dragging || endingDrag) return;
+  nextDragPoint = [event.screenX, event.screenY];
+  if (!movingDrag) dragMove = flushDragMoves();
+});
+async function finishDrag() {
+  if (!dragging || endingDrag) return;
+  endingDrag = true;
+  try {
+    await dragReady;
+    await dragMove;
+    await api().set_dragging(false);
+  } finally {
+    dragging = false; endingDrag = false;
+    root.classList.remove("dragging");
+    // Events queued by native tracking during a drag must not fold the card.
+    render(true);
+    setHover(root.matches(':hover'), true);
+  }
+}
+window.addEventListener("pointerup", finishDrag);
+window.addEventListener("pointercancel", finishDrag);
+root.addEventListener("lostpointercapture", finishDrag);
+window.addEventListener("blur", finishDrag);
+
 root.addEventListener("click", (event) => {
   const target = event.target.closest("[data-act]");
   if (target) { event.stopPropagation(); act(target.dataset.act, target); }
 });
-function setHover(inside) {
+function setHover(inside, force = false) {
   // Minimize/task transitions can fold the card while the pointer stays inside.
-  if (hovering === inside && (!inside || open)) return;
+  if (!force && hovering === inside && (!inside || open)) return;
   hovering = inside;
   clearTimeout(hoverTimer); clearTimeout(leaveTimer);
+  if (dragging) return;
   if (inside) {
     hoverTimer = setTimeout(() => { if (!open) { open = true; render(true); } }, 100);
   } else {

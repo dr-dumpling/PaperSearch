@@ -72,9 +72,11 @@ class Placement:
         self.right, self.edge = right, edge
         return int(right - w), int(edge if self.corner == "top" else edge - h)
 
-    def moved(self, x: float, y: float, w: float, h: float) -> None:
+    def moved(self, x: float, y: float, w: float, h: float, *, persist: bool = True) -> None:
         self.right = x + w
         self.edge = y if self.corner == "top" else y + h
+        if not persist:
+            return
         try:
             self.path.write_text(json.dumps({"corner": self.corner, "right": self.right, "edge": self.edge}),
                                  encoding="utf-8")
@@ -138,6 +140,10 @@ class Api:
         self._notifier = notifier
         self._auto_close = auto_close
         self._size = START_SIZE
+        self._geometry_lock = threading.RLock()
+        self._dragging = False
+        self._native_geometry = False
+        self._drag_origin: tuple[float, float, float, float] | None = None
         self._hovering = False
         self._closed = False
         self._close_requested: float | None = None
@@ -148,7 +154,7 @@ class Api:
 
     def state(self, hovering: bool = False) -> dict[str, Any]:
         """The capsule's view of the progress file; ``hovering`` keeps a finished window open."""
-        self._hovering = bool(hovering)
+        self._hovering = bool(hovering) or self._dragging
         try:
             return progress_view.view(read_state(), time.time())
         except Exception:
@@ -254,22 +260,54 @@ class Api:
         return str(selected[0]) if selected else None
 
     # --- the window -------------------------------------------------------
+    def set_dragging(self, active: bool, screen_x: float = 0, screen_y: float = 0) -> None:
+        """Freeze resizing while held, then remember the actual drop position."""
+        with self._geometry_lock:
+            self._dragging = bool(active)
+            if self._dragging:
+                self._hovering = True
+                x, y, _, _ = _window_geometry(self._window, self._native_geometry)
+                self._drag_origin = (screen_x, screen_y, x, y)
+            elif self._window is not None:
+                self._drag_origin = None
+                self._placement.moved(*_window_geometry(self._window, self._native_geometry))
+
+    def move_drag(self, screen_x: float, screen_y: float) -> None:
+        """Use pointer deltas, independent of the web engine's screen origin."""
+        with self._geometry_lock:
+            if not self._dragging or self._drag_origin is None:
+                return
+            sx, sy, x, y = self._drag_origin
+            x, y = round(x + screen_x - sx), round(y + screen_y - sy)
+            if sys.platform == "darwin" and self._native_geometry:
+                import AppKit
+
+                def move():
+                    top = AppKit.NSScreen.screens()[0].frame().size.height
+                    self._window.native.setFrameTopLeftPoint_(AppKit.NSPoint(x, top - y))
+                _cocoa_call(move)
+            else:
+                self._window.move(x, y)
+
     def resize(self, width: float, height: float) -> None:
         """The page's new size; the capsule's anchored corner stays put."""
         size = (max(MIN_SIZE[0], int(width)), max(MIN_SIZE[1], int(height)))
-        if size == self._size or self._window is None:
-            return
-        self._size = size
-        try:
-            from webview.window import FixPoint
+        with self._geometry_lock:
+            if self._dragging or size == self._size or self._window is None:
+                return
+            try:
+                from webview.window import FixPoint
 
-            vertical = FixPoint.NORTH if self._placement.corner == "top" else FixPoint.SOUTH
-            self._window.resize(size[0], size[1], fix_point=vertical | FixPoint.EAST)
-        except Exception:
-            pass
+                vertical = FixPoint.NORTH if self._placement.corner == "top" else FixPoint.SOUTH
+                self._window.resize(size[0], size[1], fix_point=vertical | FixPoint.EAST)
+                self._size = size
+            except Exception:
+                pass
 
     def moved(self, x: float, y: float) -> None:
-        self._placement.moved(x, y, *self._size)
+        if self._native_geometry:
+            x, y, _, _ = _window_geometry(self._window, self._native_geometry)
+        self._placement.moved(x, y, *self._size, persist=not self._dragging)
 
     def request_close(self) -> None:
         # Let the JS bridge deliver this call's reply before disposing WebView2.
@@ -323,6 +361,63 @@ def _enable_inactive_hover(window: Any) -> None:
     AppHelper.callAfter(install)
 
 
+def _cocoa_call(action):
+    """Wait for the one native geometry operation instead of queuing frames."""
+    from PyObjCTools import AppHelper
+
+    complete, cancelled = threading.Event(), threading.Event()
+    result, errors = [], []
+
+    def apply():
+        try:
+            if not cancelled.is_set():
+                result.append(action())
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            complete.set()
+
+    AppHelper.callAfter(apply)
+    if not complete.wait(2):
+        cancelled.set()
+        raise TimeoutError("capsule native geometry did not complete")
+    if errors:
+        raise errors[0]
+    return result[0]
+
+
+def _window_geometry(window: Any, native: bool = False) -> tuple[float, float, float, float]:
+    if sys.platform == "darwin" and native:
+        import AppKit
+
+        def read():
+            frame = window.native.frame()
+            top = AppKit.NSScreen.screens()[0].frame().size.height
+            return frame.origin.x, top - frame.origin.y - frame.size.height, frame.size.width, frame.size.height
+        return _cocoa_call(read)
+    return window.x, window.y, window.width, window.height
+
+
+def _serialize_native_resize(window: Any) -> None:
+    """Await actual Cocoa frame changes so queued resizes cannot race a grab."""
+    if sys.platform != "darwin":
+        return
+    from webview.window import FixPoint
+
+    def resize(width, height, fix_point=None):
+        def apply():
+            frame = window.native.frame()
+            if fix_point and fix_point & FixPoint.EAST:
+                frame.origin.x += frame.size.width - width
+            if fix_point and fix_point & FixPoint.NORTH:
+                frame.origin.y += frame.size.height - height
+            frame.size.width, frame.size.height = width, height
+            window.native.setFrame_display_(frame, True)
+        _cocoa_call(apply)
+
+    window.resize = resize
+
+
 def _windows_taskbar_icon(window: Any) -> None:
     """PaperSearch's icon on the window's taskbar button (WinForms through pythonnet)."""
     try:
@@ -365,6 +460,13 @@ def _prepare_nonactivating_start(window: Any) -> None:
     if sys.platform == "darwin":
         from webview.platforms import cocoa
 
+        import objc
+
+        def acceptsFirstMouse_(self, event):
+            # Accept the first grab instead of consuming it just for activation.
+            return self.pywebview_window is window
+
+        objc.classAddMethods(cocoa.BrowserView.WebKitHost, [acceptsFirstMouse_])
         original = cocoa.BrowserView.first_show
 
         def first_show(view):
@@ -427,6 +529,8 @@ def main() -> None:
             background_color="#202124" if dark else "#FFFFFF",
         )
         api._window = window
+        api._native_geometry = sys.platform == "darwin"
+        _serialize_native_resize(window)
         _prepare_nonactivating_start(window)
         window.events.moved += api.moved
         window.events.loaded += lambda: _enable_inactive_hover(window)

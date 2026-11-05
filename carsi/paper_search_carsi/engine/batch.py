@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import threading
+import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -125,7 +126,7 @@ class PublisherBatchDownloader(
             self._adapter = cls(self)
         return self._adapter
 
-    def _download_in_new_tab(self, page: Any, url: str) -> tuple[bytes, str]:
+    def _download_in_new_tab(self, page: Any, url: str) -> tuple[Path, str]:
         """Open the file in a new tab, as typed in the address bar, and take what
         the browser downloads. Clicks on the page were flaky after the first
         file (a later file's download never started); new tabs took 8 of 8
@@ -139,12 +140,17 @@ class PublisherBatchDownloader(
                     if not _is_browser_error(exc):
                         raise  # the navigation ends where the download starts
             download = info.value
-            body = Path(download.path()).read_bytes()
-            name = download.suggested_filename
-            # Playwright keeps the browser's copy under a random id in a temp
-            # folder; the file is saved under its own name, so the copy goes now.
-            download.delete()
-            return body, name
+            with tempfile.NamedTemporaryFile(prefix="papersearch-supplement-", suffix=".part", delete=False) as fh:
+                path = Path(fh.name)
+            try:
+                download.save_as(str(path))
+                name = download.suggested_filename
+                # Keep the browser's temporary copy out of the Python heap.
+                download.delete()
+            except BaseException:
+                path.unlink(missing_ok=True)
+                raise
+            return path, name
         finally:
             tab.close()
 
@@ -153,6 +159,7 @@ class PublisherBatchDownloader(
         """Open the article page in a new tab of ``context`` (already logged in)
         and download every supplementary file the adapter lists there."""
         from . import supplements
+        from .supplement_transfer import browser_request
 
         self._phase(result, "supplements")
         progress_reporter.update(part="supplements", supplements_saved=0, supplements_total=None)
@@ -202,11 +209,14 @@ class PublisherBatchDownloader(
                     return [{"status": "failed", "reason": incomplete, "url": "", "label": ""}]
                 self._event(result, "supplements_found", str(len(links)))
                 progress_reporter.update(supplements_total=len(links))
-            files = supplements.collect(page.context.request, links, Path(output_dir), doi,
-                                        manifest_dir=manifest_dir,
-                                        target_dir=Path(output_dir) / "supplements" if self.config.get("diagnostics_dir") else None,
-                                        download=lambda url: self._download_in_new_tab(page, url),
-                                        progress=lambda saved: progress_reporter.update(supplements_saved=saved))
+            files = []
+            if links:
+                with browser_request(page, self.config, proxy=self._context_proxy.get(id(context))) as request:
+                    files = supplements.collect(request, links, Path(output_dir), doi,
+                                                manifest_dir=manifest_dir,
+                                                target_dir=Path(output_dir) / "supplements" if self.config.get("diagnostics_dir") else None,
+                                                download=lambda url: self._download_in_new_tab(page, url),
+                                                progress=lambda saved: progress_reporter.update(supplements_saved=saved))
             saved = sum(1 for f in files if f.get("status") == "saved")
             self._event(result, "supplements_saved", f"{saved}/{len(files)}")
             return files
