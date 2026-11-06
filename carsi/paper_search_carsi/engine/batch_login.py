@@ -1281,12 +1281,16 @@ class LoginMixin:
                     and not self._personal_login_box(page, url))
 
     def _personal_login_box(self, page: Any, url: str) -> bool:
-        """The password field is a personal account's login box on the publisher's
-        own article page, nobody typing in it: BMJ shows one next to "Log in via
-        institution", and the article page was waited on for 5 minutes as if it
-        were the school's login (2026-11-02)."""
-        return (self._on_publisher_host(url) and self._is_success_article_url(url) and not self._is_auth_page(url)
-                and not self._has_visible_editable_input(page))
+        """A publisher account form can be on an article, login page or SSO host.
+
+        An untouched form next to a separate institutional entry is not the
+        school's credentials step. Preserve a known IdP and any form the user
+        is already filling; return only field presence/activity, never values.
+        """
+        if self._is_idp_host(urlparse(url).netloc) or self._has_visible_editable_input(page):
+            return False
+        return ((self._on_publisher_host(url) and self._is_success_article_url(url) and not self._is_auth_page(url))
+                or isinstance(page.evaluate(self._INSTITUTION_ENTRY_JS), dict))
 
     def _follow_federated_login_option(self, page: Any, result: DownloadResult) -> bool:
         """The publisher's login page offers an institutional option next to the

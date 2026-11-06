@@ -80,20 +80,29 @@ class DiagnosticsMixin:
                 "article_open", "institution_federation_selected", "article_access_ready",
                 "pdf_capture_started", "browser_pdf_response_captured", "pdf_saved",
                 "supplements_found", "supplements_saved", "challenge_resolved",
+                # The login steps the program takes itself: while it is still
+                # choosing the school the page is not waiting for the user (JBJS on
+                # OpenAthens, 2026-11-06: five remembered-school clicks in 25 s, no
+                # main-frame navigation, and a "no progress" reminder in between).
+                "sso_entry_clicked", "openathens_entry", "seamlessaccess_chooser_opened",
+                "auto_remembered_entry", "institution_selected", "auto_institution_search",
+                "institution_search_submitted", "institution_search_retyped",
+                "institution_list_submitted", "institution_continue",
+                "login_round_trip_returned", "redirect_page_passed",
             }:
                 activity.progress()
             # Only publish fixed phase text; event details can contain signed URLs.
             report = {
                 "article_open": ("打开论文页面", "opening_article"),
-                "sso_start": ("机构登录", "waiting_login"),
-                "institution_federation_selected": ("已进入所选机构认证联盟", "waiting_login"),
-                "institution_selection_required": ("请在 CARSI 页面自行选择学校并完成登录", "waiting_login"),
-                "institution_entry_unresolved": ("官方机构入口尚未确认 CARSI", "waiting_login"),
-                "login_state": ("机构登录", "waiting_login"),
+                "sso_start": ("正在查找机构登录入口", "checking_access"),
+                "institution_federation_selected": ("已进入所选机构认证联盟", "checking_access"),
+                "institution_selection_required": ("检查学校选择入口", "checking_access"),
+                "institution_entry_unresolved": ("官方机构入口尚未确认 CARSI", "checking_access"),
+                "login_state": ("检查机构登录页面", "checking_access"),
                 "idp_confirmation_required": ("请在浏览器里确认学校认证页的提示（信息发送同意、使用条款或二次验证）", "waiting_login"),
-                "login_attempt_started": ("正在尝试机构登录", "waiting_login"),
-                "login_retry_wait": ("机构登录暂未完成，准备重试", "waiting_login"),
-                "login_navigation_interrupted": ("登录跳转中断，检查是否可重试", "waiting_login"),
+                "login_attempt_started": ("正在尝试机构登录", "checking_access"),
+                "login_retry_wait": ("机构登录暂未完成，准备重试", "checking_access"),
+                "login_navigation_interrupted": ("登录跳转中断，检查是否可重试", "checking_access"),
                 "login_stopped": ("机构登录未完成", "route_failed"),
                 "challenge_manual_wait": ("等待人工安全验证", "waiting_verification"),
                 "challenge_wait": ("正在检查安全验证", "checking_access"),
@@ -106,17 +115,19 @@ class DiagnosticsMixin:
                 "browser_pdf_response_captured": ("PDF 已捕获，正在保存", "pdf_captured"),
                 "pdf_saved": ("PDF 已保存，待内容核验", "saved_pending_verification"),
             }.get(state)
+            if state == "login_state" and getattr(result, "_login_attention", ""):
+                report = ("等待在浏览器完成机构登录", "waiting_login")
             if state == "challenge_wait" and detail.startswith("manual "):
                 report = ("等待人工安全验证", "waiting_verification")
             if state == "login_attempt_started" and detail in {"1/3", "2/3", "3/3"}:
-                report = (f"机构登录：第 {detail[0]} 次尝试，共 3 次", "waiting_login")
+                report = (f"机构登录：第 {detail[0]} 次尝试，共 3 次", "checking_access")
             if state == "login_observed":
                 if detail == "verification":
                     report = ("正在检查安全验证", "checking_access")
                 elif detail == "human_login":
                     report = ("等待在浏览器完成机构登录", "waiting_login")
                 else:
-                    report = ("检查机构登录页面", "waiting_login")
+                    report = ("检查机构登录页面", "checking_access")
             # A click can finish after a synchronous PDF response was captured;
             # capture_started supplies its stage without moving it backwards.
             if report:

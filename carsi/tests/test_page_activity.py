@@ -84,6 +84,28 @@ def test_progress_clears_reminder_and_restarts_timer(case):
     assert attention()
 
 
+def test_automatic_work_defers_reminders_without_resetting_idle_time(case):
+    a, now = case.activity, case.now
+    a.automatic_for(58)
+    now[0] = 31
+    a.check()
+    assert not attention()
+    a.automatic_for(0)  # automatic attempts finished early, still no progress
+    a.check()
+    assert attention()
+
+
+def test_automatic_work_has_a_finite_bound_even_if_the_caller_never_returns(case):
+    a, now = case.activity, case.now
+    a.automatic_for(58)
+    now[0] = 57
+    a.check()
+    assert not attention()
+    now[0] = 58
+    a.check()
+    assert attention()
+
+
 def test_navigation_and_popup_update_target_but_subframes_do_not(case):
     a, now, page = case.activity, case.now, case.page
     now[0] = 20
@@ -229,6 +251,23 @@ def test_polling_logs_and_countdowns_do_not_count_as_workflow_progress(case):
     assert attention()
     d._event(result, "article_access_ready")
     assert not attention()
+
+
+def test_automatic_school_choice_steps_count_as_progress(case):
+    """JBJS on Windows, 2026-11-06: OpenAthens took the remembered school five
+    times in 25 s without a main-frame navigation. That is the program working,
+    not a page waiting for the user; once it stops, the reminder still comes."""
+    result = DownloadResult(doi="10.1234/fixture", status="failed")
+    result._page_activity = case.activity
+    d = PublisherBatchDownloader({})
+    for second in range(0, 61, 5):
+        case.now[0] = second
+        d._event(result, "auto_remembered_entry", "Example University @ https://wayfinder.example/")
+        case.activity.check()
+        assert not attention()
+    case.now[0] = 60 + 31
+    case.activity.check()
+    assert attention()
 
 
 def test_setting_round_trip_and_invalid_value_do_not_modify_config(tmp_path, monkeypatch):

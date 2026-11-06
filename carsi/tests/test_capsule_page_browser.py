@@ -7,6 +7,55 @@ from paper_search_carsi.progress_capsule import PAGE
 
 @unittest.skipUnless(os.environ.get('CARSI_BROWSER_TESTS') == '1', 'opt-in native Chrome test')
 class CapsulePageTests(unittest.TestCase):
+    def test_browser_request_waits_for_click_activation(self):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'win32')
+            try:
+                page.evaluate("""() => {
+                    testState.mode='attention';
+                    testState.attention={message:'请登录学校', short:'请登录学校', login:true, more:0};
+                    pywebview.api.activate_on_input=()=>new Promise(resolve=>{finishActivation=resolve});
+                    tick();
+                }""")
+                page.wait_for_selector('[data-act=show_browser]')
+                page.locator('[data-act=show_browser]').click()
+                page.wait_for_function("typeof finishActivation === 'function'")
+                page.wait_for_timeout(100)
+                self.assertEqual(page.evaluate('requestedActions'), [])
+                page.evaluate('finishActivation()')
+                page.wait_for_function('requestedActions.length === 1')
+                self.assertEqual(page.evaluate('requestedActions[0][0]'), 'show_browser')
+            finally:
+                browser.close()
+
+    def test_expanded_attention_fits_and_keeps_browser_action(self):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            for platform in ('darwin', 'win32'):
+                browser, page = self.drag_page(p, platform)
+                try:
+                    page.evaluate("""() => {
+                        testState.mode='attention';
+                        testState.attention={message:'页面持续没有进展，请查看浏览器，可能需要手动操作',
+                            short:'页面暂时无进展', login:false, remaining:'2:41', more:0};
+                        open=true; tick();
+                    }""")
+                    page.wait_for_selector('.attention-copy')
+                    page.wait_for_timeout(400)
+                    self.assertEqual(page.locator('.prompt .t').inner_text(), '页面暂时无进展')
+                    for selector in ('.prompt .t', '.prompt .s'):
+                        self.assertTrue(page.locator(selector).evaluate('el => el.scrollWidth <= el.clientWidth'))
+                        self.assertEqual(page.locator(selector).evaluate('el => getComputedStyle(el).whiteSpace'), 'nowrap')
+                    self.assertNotIn('等待你处理', page.locator('#root').inner_text())
+                    self.assertNotIn('当前第', page.locator('#root').inner_text())
+                    page.locator('[data-act=show_browser]').click()
+                    page.wait_for_function('requestedActions.length === 1')
+                    self.assertEqual(page.evaluate('requestedActions[0][0]'), 'show_browser')
+                    self.assertEqual(page.evaluate('dragLocks'), [])
+                finally:
+                    browser.close()
+
     def test_login_reminder_keeps_an_icon_drag_handle(self):
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:

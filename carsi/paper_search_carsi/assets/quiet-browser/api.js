@@ -86,10 +86,29 @@ var papersearchBackground = class extends ExtensionCommon.ExtensionAPI {
           ctypes.voidptr_t, ctypes.int);
         const setStyle = user.declare("SetWindowLongPtrW", ctypes.winapi_abi, ctypes.intptr_t,
           ctypes.voidptr_t, ctypes.int, ctypes.intptr_t);
+        const setPosition = user.declare("SetWindowPos", ctypes.winapi_abi, ctypes.int,
+          ctypes.voidptr_t, ctypes.voidptr_t, ctypes.int, ctypes.int, ctypes.int, ctypes.int, ctypes.uint32_t);
+        const setAlpha = user.declare("SetLayeredWindowAttributes", ctypes.winapi_abi, ctypes.int,
+          ctypes.voidptr_t, ctypes.uint32_t, ctypes.unsigned_char, ctypes.uint32_t);
+        const getAlpha = user.declare("GetLayeredWindowAttributes", ctypes.winapi_abi, ctypes.int,
+          ctypes.voidptr_t, ctypes.uint32_t.ptr, ctypes.unsigned_char.ptr, ctypes.uint32_t.ptr);
         const native = win.docShell.treeOwner.QueryInterface(Ci.nsIBaseWindow);
         const hwnd = ctypes.voidptr_t(ctypes.UInt64(native.nativeHandle));
         const style = Number(getStyle(hwnd, -20).toString());
-        setStyle(hwnd, -20, style | 0x08000000); // WS_EX_NOACTIVATE, before the first ShowWindow.
+        const color = ctypes.uint32_t(), alpha = ctypes.unsigned_char(), alphaFlags = ctypes.uint32_t();
+        if ((style & 0x00080000) && !getAlpha(hwnd, color.address(), alpha.address(), alphaFlags.address())) {
+          user.close();
+          throw new Error("Cannot preserve browser window opacity");
+        }
+        // NOACTIVATE alone still lets Gecko's first ShowWindow cover another
+        // app. Keep only the initial, not-yet-painted window transparent until
+        // it can be placed behind existing windows, then restore normal styles.
+        setStyle(hwnd, -20, style | 0x08080000); // WS_EX_NOACTIVATE | WS_EX_LAYERED
+        if (!setAlpha(hwnd, 0, 0, 2)) {
+          setStyle(hwnd, -20, style);
+          user.close();
+          throw new Error("Cannot prepare the browser's background display");
+        }
         let observer, timer;
         try {
           await new Promise((resolve, reject) => {
@@ -103,9 +122,13 @@ var papersearchBackground = class extends ExtensionCommon.ExtensionAPI {
         } finally {
           if (observer) Services.obs.removeObserver(observer, "browser-delayed-startup-finished");
           win.clearTimeout(timer);
+          const placed = setPosition(hwnd, ctypes.voidptr_t(1), 0, 0, 0, 0, 0x0013); // HWND_BOTTOM; NOSIZE|NOMOVE|NOACTIVATE
+          const opacityRestored = !(style & 0x00080000) || setAlpha(hwnd, color.value, alpha.value, alphaFlags.value);
           setStyle(hwnd, -20, style);
           user.close();
           win.focus = focus;
+          if (!placed) throw new Error("Cannot place the browser behind existing windows");
+          if (!opacityRestored) throw new Error("Cannot restore the browser window opacity");
         }
       }
       await IOUtils.writeJSON(PathUtils.join(PathUtils.profileDir, "papersearch-background.json"),

@@ -29,6 +29,7 @@ class PageActivity:
         self._doi = doi
         self._shown = False
         self._transfers = 0
+        self._automatic_until = 0.0
         self.closed = False
         self.page = None
         self._pages: dict[int, tuple[Any, dict]] = {}
@@ -48,6 +49,18 @@ class PageActivity:
             progress_reporter.clear_attention(self._key)
             self._shown = False
 
+    def automatic_for(self, seconds: float) -> None:
+        """Defer idle reminders until the caller's existing automatic deadline.
+
+        This is a finite lease, not progress: polling must pass only the time
+        remaining on the original bound. Zero releases it at manual handoff.
+        The watcher can still remind if the browser call never returns.
+        """
+        with self._lock:
+            self._automatic_until = self._clock() + max(0.0, seconds)
+            if seconds > 0:
+                self._clear()
+
     def check(self) -> None:
         """Thread safe; never inspect a page or interrupt an in-flight operation."""
         with self._lock:
@@ -59,6 +72,7 @@ class PageActivity:
                 self._last_progress = self._clock()
                 self._clear()
             elif (not self._shown and not self._transfers
+                  and self._clock() >= self._automatic_until
                   and not self._navigation_loading()
                   and self._clock() - self._last_progress >= self.after):
                 progress_reporter.set_attention(

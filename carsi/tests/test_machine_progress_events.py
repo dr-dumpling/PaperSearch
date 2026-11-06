@@ -73,7 +73,7 @@ class MachineProgressEventsTests(unittest.TestCase):
 
     def test_login_challenge_resolution_changes_machine_stage_without_secrets(self):
         result = DownloadResult(doi=DOI, status="failed")
-        for event, expected in [("sso_start", "waiting_login"),
+        for event, expected in [("sso_start", "checking_access"),
                                 ("challenge_wait", "checking_access"),
                                 ("challenge_manual_wait", "waiting_verification"),
                                 ("challenge_resolved", "checking_access"),
@@ -85,6 +85,26 @@ class MachineProgressEventsTests(unittest.TestCase):
             self.assertEqual(state["current"], DOI)
             self.assertNotIn("private-fixture", json.dumps(state))
             self.assertEqual(state["done"], 0)
+
+    def test_automatic_login_steps_do_not_request_school_credentials(self):
+        result = DownloadResult(doi=DOI, status="failed")
+        for event, detail in [("sso_start", ""), ("institution_federation_selected", ""),
+                              ("institution_entry_unresolved", ""), ("institution_selection_required", "carsi"),
+                              ("login_state", ""),
+                              ("login_attempt_started", "1/3"), ("login_retry_wait", ""),
+                              ("login_navigation_interrupted", ""), ("login_observed", "publisher")]:
+            PublisherBatchDownloader._event(result, event, detail)
+            self.assertEqual(progress.read_state()["stage"], "checking_access", event)
+            self.assertFalse(progress.read_state()["attention"], event)
+        d = PublisherBatchDownloader({})
+        d._set_login_attention(result, "请在浏览器里登录学校")
+        self.assertEqual(progress.read_state()["stage"], "waiting_login")
+        self.assertTrue(progress.read_state()["attention"])
+        d._event(result, "login_state", "school account page")
+        self.assertEqual(progress.read_state()["stage"], "waiting_login")
+        d._set_login_attention(result, "")
+        d._event(result, "login_state", "publisher article")
+        self.assertEqual(progress.read_state()["stage"], "checking_access")
 
     def test_mcp_final_result_keeps_identity_pending_and_exception_fails(self):
         with patch.object(server, "download", return_value={"success": True, "file": "/tmp/fixture.pdf"}):

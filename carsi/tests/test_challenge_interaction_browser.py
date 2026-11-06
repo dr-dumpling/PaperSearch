@@ -121,15 +121,16 @@ class InteractionFixture:
         self.assertEqual(click(), "clicked")
         self.page.wait_for_function("document.title === 'Article'", timeout=2000)
 
-    def test_late_closed_widget_is_clicked_after_twenty_seconds(self):
-        self.frame_body = checkbox_html(closed=True, ready_ms=25000)
+    def test_late_closed_widget_is_clicked_after_idle_threshold_without_false_reminder(self):
+        self.frame_body = checkbox_html(closed=True, ready_ms=35000)
         self.body = check_page(outer_closed=True)
         self.open_widget()
         d = PublisherBatchDownloader({"browser_page_wait_timeout": 40},
                                      profile=SPRINGER_PROFILE, require_interactive_browser=True)
         result = DownloadResult(doi=DOI, status="failed", state="article_loaded")
         with patch("paper_search_carsi.progress_reporter.set_attention") as attention:
-            self.assertTrue(d._wait_for_challenge(self.page, result))
+            self.assertTrue(d._wait_for_challenge(self.page, result),
+                            [(e["state"], e["detail"]) for e in result.events])
         clicks = [e for e in result.events if e["state"] == "challenge_interaction"]
         self.assertEqual(len(clicks), 1)
         self.assertIn("checkbox clicked; attempt 1/3", clicks[0]["detail"])

@@ -75,6 +75,20 @@ class ViewTests(unittest.TestCase):
         a = pv.view(state, NOW)["attention"]
         self.assertEqual((a["short"], a["remaining"], a["more"], a["login"]), ("请完成验证", "", 1, False))
 
+    def test_attention_describes_the_request_not_the_surrounding_stage(self):
+        for stage in ("waiting_login", "waiting_verification", "checking_access"):
+            for message, short in (
+                ("页面持续没有进展，请查看浏览器，可能需要手动操作", "页面暂时无进展"),
+                ("页面持续无进展，请查看浏览器", "页面暂时无进展"),
+                ("请在 CARSI 页面自行选择学校并完成登录", "请选择学校"),
+                ("请在浏览器里确认学校认证页的提示（二次验证）", "请完成验证"),
+                ("", "需要你处理"),
+            ):
+                with self.subTest(stage=stage, message=message):
+                    a = pv.view(running(stage=stage, attention={"k": {"message": message}}), NOW)["attention"]
+                    self.assertEqual(a["short"], short)
+                    self.assertFalse(a["login"])
+
     def test_finished_states(self):
         cases = [({"success": 40, "failed": 0}, "ok", "下载完成"),
                  ({"success": 38, "failed": 2}, "warn", "下载结束，部分失败"),

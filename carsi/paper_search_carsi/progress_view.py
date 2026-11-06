@@ -30,8 +30,6 @@ STAGE_STEP = {
     "waiting_verification": (1, "等待验证"), "route_failed": (1, "换一条路"),
     "fetching_pdf": (2, "取 PDF"), "pdf_captured": (3, "核对 PDF"), "saved_pending_verification": (3, "已保存"),
 }
-# What a needs-you prompt asks, short enough for the collapsed capsule.
-ATTENTION_SHORT = {"waiting_login": "请登录学校", "waiting_verification": "请完成验证"}
 # The answer a button gets in the window, before the download confirms it.
 ACTION_FEEDBACK = {
     "show_browser": "正在切到下载浏览器",
@@ -201,10 +199,13 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
     prompt = None
     if attention:
         item = attention[-1]
-        message = str(item.get("message") or "请在浏览器窗口完成安全验证")
-        stage = str(state.get("stage") or "")
-        short = ATTENTION_SHORT.get(stage) or (
-            "请登录学校" if "登录" in message else "请完成验证" if "验证" in message else "需要你处理")
+        message = str(item.get("message") or "请查看浏览器，可能需要手动操作")
+        # The surrounding SSO/verification stage is not evidence of the action
+        # being requested. In particular, an idle page is not a school login.
+        short = ("页面暂时无进展" if "无进展" in message or "没有进展" in message else
+                 "请选择学校" if "选择学校" in message else
+                 "请登录学校" if "登录" in message else
+                 "请完成验证" if "验证" in message else "需要你处理")
         deadline = item.get("deadline")
         remaining = (max(0, int(deadline - now))
                      if isinstance(deadline, (int, float)) and not isinstance(deadline, bool) else None)

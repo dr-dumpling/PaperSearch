@@ -4,12 +4,60 @@ import os
 import pytest
 
 from paper_search_carsi.engine.login_wait import LoginWait
+from paper_search_carsi.engine.batch import PublisherBatchDownloader
+from paper_search_carsi.publishers.profiles import get_publisher_profile
 
 
 pytestmark = pytest.mark.skipif(os.environ.get("CARSI_LOCAL_BROWSER_TEST") != "1",
                                 reason="local Chrome fixture opt-in")
 FORM = ('<form onsubmit="event.preventDefault()"><label>Fixture account<input name="account"></label>'
         '<button>Sign in</button></form>')
+
+
+@pytest.mark.parametrize('site,url', [
+    ('lww', 'https://login.wolterskluwer.com/login'),
+    ('elsevier', 'https://www.sciencedirect.com/user/login'),
+    ('elsevier', 'https://accounts.fixture.test/login'),
+])
+def test_publisher_password_with_institution_route_is_not_a_school_login(site, url):
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as driver:
+        browser = driver.chromium.launch(channel='chrome', headless=True)
+        context = browser.new_context(service_workers='block')
+        page = context.new_page()
+        page.route('**/*', lambda route: route.fulfill(content_type='text/html', body=(
+            '<title>Publisher account</title><input type="password">'
+            '<a id="athensLoginUrl" href="/institution">OpenAthens | Institutional</a>')))
+        try:
+            page.goto(url)
+            d = PublisherBatchDownloader({'publisher_institution_federation': 'carsi'},
+                                         profile=get_publisher_profile(site))
+            d.institution_query = 'Fixture University'
+            assert not d._school_password_box(page, page.url)
+            assert not d._users_login_step(page)
+            assert d._login_wait_page(page) != 'school_login'
+            # A credential page on the school's IdP still requests the user,
+            # even if it offers the same alternative institution link.
+            page.goto('https://idp.fixture.edu/login')
+            assert d._school_password_box(page, page.url)
+            assert d._users_login_step(page)
+            # An unknown external credential form without an institutional
+            # route is left to the user; this change cannot click through it.
+            page.goto('https://school-account.fixture.test/login')
+            page.locator('a').evaluate('el => el.remove()')
+            assert d._users_login_step(page)
+            # Typing in a publisher account form is explicit user involvement.
+            page.goto(url)
+            page.locator('input').fill('local fixture only')
+            assert d._users_login_step(page)
+            # With no institution option, an unfamiliar standalone login form
+            # must still be left to the user, even on the publisher's host.
+            page.goto(url)
+            page.locator('a').evaluate('el => el.remove()')
+            assert d._users_login_step(page)
+        finally:
+            context.close()
+            browser.close()
 
 
 @pytest.mark.parametrize("target", ["main", "iframe", "popup"])

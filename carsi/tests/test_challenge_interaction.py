@@ -318,10 +318,30 @@ def test_late_widget_is_handled_within_the_existing_wait(wait_case, monkeypatch,
     else:
         assert c.d._resolve_suspect_block(c.page, c.result, captured)
     assert c.clock[0] == 1001 + ready_after
-    if ready_after >= 30:
-        c.attention.assert_called_once()
+    c.attention.assert_not_called()  # still inside the bounded automatic wait
+
+
+@pytest.mark.parametrize("entry", ["article", "pdf"])
+def test_background_idle_check_waits_for_automatic_handoff(wait_case, monkeypatch, entry):
+    c = wait_case
+    from paper_search_carsi import progress_reporter
+    monkeypatch.setattr(progress_reporter, "has_attention", lambda **kwargs: False)
+    monkeypatch.setattr(interaction, "needs_manual_verification", lambda page: False)
+    notified_at = []
+    c.attention.side_effect = lambda *args, **kwargs: notified_at.append(c.clock[0])
+    def click(*args, **kwargs):
+        # Model the independent watcher checking while a browser RPC is active.
+        c.result._page_activity.check()
+        assert not notified_at
+        return "absent"
+    monkeypatch.setattr(interaction, "click_checkbox", click)
+    if entry == "article":
+        assert not c.d._wait_for_challenge(c.page, c.result)
     else:
-        c.attention.assert_not_called()
+        assert not c.d._resolve_suspect_block(c.page, c.result, {
+            "suspect_block": "403 https://journal.example/pdf", "bytes": None, "block_reason": None})
+    assert notified_at == [1058]  # original 60 s wait, two seconds reserved for handoff
+    assert c.clock[0] == 1060
 
 
 def test_expired_deadline_never_clicks_or_extends_the_wait(wait_case, monkeypatch):

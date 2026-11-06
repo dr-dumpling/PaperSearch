@@ -187,12 +187,12 @@ class UserWaitMixin:
                     self._raise_on_publisher_access_blocked(tab)
                     result._attention_page = tab
                     activity.observe(tab)
-                    activity.check()
                     if not automatic:
                         deadline = min(deadline, self._wait_deadline(result))
                     if not manual and self._automatic_challenge_step(tab, result, automatic, deadline):
                         page.wait_for_timeout(min(1000, max(0, (deadline - time.time()) * 1000)))
                         continue
+                activity.automatic_for(0)
                 result._attention_page = tab
                 if state != shown:
                     if state in ("verification", "login"):
@@ -236,6 +236,7 @@ class UserWaitMixin:
             self._event(result, "ip_blocked_response", f"{suspect} | no PDF after waiting ({shown or 'nothing shown'})")
             return False
         finally:
+            activity.automatic_for(0)
             result._attention_page = None
             if activity_owned:
                 activity.close()
@@ -386,6 +387,11 @@ class UserWaitMixin:
             bound = min(deadline, now + remaining) if remaining is not None else deadline
             attempt["automatic_end"] = bound - manual_reserve
         automatic_end = min(deadline - manual_reserve, attempt["automatic_end"])
+        activity = getattr(result, "_page_activity", None)
+        if activity is not None:
+            # The separate request watcher also checks idle time during these
+            # RPCs. Use the frozen automatic bound; never renew the wait budget.
+            activity.automatic_for(automatic_end - now)
         if now >= automatic_end or (attempt["attempts"] >= 3 and now >= attempt["retry_at"]):
             return False
         if challenge_interaction.needs_manual_verification(page):
@@ -403,6 +409,8 @@ class UserWaitMixin:
             if outcome != "absent":
                 attempt["attempts"] += 1
                 attempt["retry_at"] = time.time() + 3
+                if outcome == "clicked" and activity is not None:
+                    activity.progress(page)
                 self._event(result, "challenge_interaction",
                             f"checkbox {outcome}; attempt {attempt['attempts']}/3; awaiting verification")
         return time.time() < automatic_end
@@ -440,8 +448,10 @@ class UserWaitMixin:
                     if time.time() >= deadline:
                         break
                     result._attention_page = page
-                    activity.check()
                     auto_pending = not manual and self._automatic_challenge_step(page, result, automatic, deadline)
+                    if not auto_pending:
+                        activity.automatic_for(0)
+                    activity.check()
                     if not auto_pending and not manual:
                         result._attention_page = page
                         interaction.enter_context(watchdog.pause_operation())
@@ -478,6 +488,7 @@ class UserWaitMixin:
                 self._wait_ran_out(result)
             return passed
         finally:
+            activity.automatic_for(0)
             if verification_wait is not None:
                 excluded = max(0, verification_wait.close() - verification_deadline)
                 outer_wait = getattr(result, "_login_wait", None)
