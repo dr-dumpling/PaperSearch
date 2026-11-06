@@ -1,8 +1,19 @@
-# PaperSearch
+<p align="center">
+  <img src="assets/logo.svg" width="112" alt="PaperSearch 图标">
+</p>
 
-简体中文 | [English](README.en.md)
+<h1 align="center">PaperSearch</h1>
 
-**让 AI 帮你查文献、核对引用、下载全文和补充材料。**
+<p align="center"><b>让 AI 帮你查文献、核对引用、下载全文和补充材料。</b></p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch" alt="npm"></a>
+  <img src="https://img.shields.io/node/v/papersearch" alt="Node.js">
+  <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
+  <a href="https://linux.do"><img src="https://img.shields.io/badge/LinuxDo-community-1f6feb" alt="LinuxDo"></a>
+</p>
+
+<p align="center">简体中文 | <a href="README.en.md">English</a></p>
 
 PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Claude Code、Codex、Cursor、Kimi Code、Qwen Code、CodeBuddy、TRAE 等支持本机命令调用的 AI 工具，就能替你检索 20 多个学术数据源、核对 DOI，把论文的 PDF 和补充材料下载下来并整理好。你也可以在终端或脚本里直接使用，输出默认是 JSON。
 
@@ -11,10 +22,7 @@ PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Clau
 - **每一篇都核对过**：逐个核对 PDF 首页的 DOI 和题名，不是这篇文章的不算成功。
 - **结果直接能用**：按“期刊_年份_标题”建文件夹，正文和补充材料放在一起；没下到的篇目说明原因。
 
-[![npm](https://img.shields.io/npm/v/papersearch)](https://www.npmjs.com/package/papersearch)
-![Node.js](https://img.shields.io/node/v/papersearch)
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-[![LinuxDo](https://img.shields.io/badge/LinuxDo-community-1f6feb)](https://linux.do)
+<p align="center"><img src="assets/overview.png" width="900" alt="PaperSearch 能做的事：检索论文、核验与引文、期刊指标、正文片段、下载全文和补充材料"></p>
 
 [效果](#效果) | [快速开始](#快速开始) | [常见任务](#常见任务) | [工作方式](#工作方式) | [机构下载扩展](#机构下载扩展) | [检索来源](#检索来源) | [配置](#配置) | [Agent Skill](#agent-skill) | [命令](#命令) | [排障](#排障)
 
@@ -38,7 +46,9 @@ downloads/
 └── diagnostics/                                   运行记录、附件清单、截图
 ```
 
-<!-- 截图：机构下载的进度窗口。图片放在 docs/ 以外（例如 assets/progress-window.png），docs/ 不随公开仓库发布 -->
+机构下载时，屏幕角落会出现进度胶囊：显示进度；需要你登录或验证时变成琥珀色提醒；鼠标指上去展开更多操作。
+
+<p align="center"><img src="assets/progress-capsule.png" width="820" alt="进度胶囊：下载中、需要登录学校、鼠标指上去展开、设置"></p>
 
 ## 快速开始
 
@@ -155,9 +165,9 @@ paper-search carsi status --format text
 - 下载时屏幕角落会出现进度胶囊：显示进度、正在下正文还是附录、哪家出版社；需要你登录或验证时变成琥珀色，背景与边缘轻柔呼吸，并在开启系统通知时发送通知；点击“请登录学校”等提醒可切到当前任务的下载浏览器。鼠标指上去展开，可以跳过本篇、标记本刊或出版社无权限、终止整个任务、报告问题，右上角齿轮调整等待时间和默认下载文件夹，“–”最小化；按住胶囊或展开卡片的非按钮区域可拖动。停在学校登录页默认最多等 3 分钟，停在其他页面（人机验证、出版社页面等）默认 1 分钟后结束这一篇。
 - 默认下载浏览器在后台继续运行，启动、点击和跳转时不主动抢前台，也不会自动最小化或隐藏窗口；需要登录或验证时由胶囊提示，点击提醒即可切到浏览器处理。完成检查但页面未列出附件会显示“已检查，页面未列出补充材料”，不计为失败；登录未完成、暂不支持发现附件或下载失败会分别说明。
 - 默认下载文件夹可在胶囊设置中选择或输入，也可运行 `paper-search config set DEFAULT_DOWNLOAD_PATH "/完整路径/论文"`。保存后用于新任务；`--save-path` 或 `savePath` 可为单次任务指定其他目录，正在运行的批次保持原目录。
-- 当前源码（待发布）：胶囊齿轮新增“页面持续无进展”，默认 30 秒，可保存为 1–600 秒，并可恢复默认。学校账号登录立即提醒；其他页面持续无进展达到设定时间后，胶囊才变色呼吸、提示查看浏览器。自动通过保持安静，恢复进展后清除提醒；主页面仍在导航加载时，在原页面等待上限内暂不提醒；持续接收文件也不会被当作页面卡住。该设置只改变提醒时间，不延长页面等待上限。
-- 当前源码（待发布）：机构登录中，你在专用登录页输入、选择或点击控件，或点击胶囊接管后，暂停登录等待倒计时；输入间的停顿不消耗剩余时间。离开人工登录步骤后继续计时；无人操作仍按原限时结束。
-- 当前源码（待发布）：macOS 通知改用 PaperSearch 自己的名称和图标，点击通知与点击胶囊提醒共用当前任务的浏览器恢复入口。首次配置机构下载扩展时可选择是否开启系统通知，新配置默认关闭；胶囊齿轮里的“系统通知”开关点击即保存，已有选择在升级后保留。关闭通知仍保留琥珀色呼吸提醒。无需另外安装通知工具；开启后横幅显示仍遵循 macOS 通知权限与专注模式设置。
+- 胶囊齿轮新增“页面持续无进展”，默认 30 秒，可保存为 1–600 秒，并可恢复默认。学校账号登录立即提醒；其他页面持续无进展达到设定时间后，胶囊才变色呼吸、提示查看浏览器。自动通过保持安静，恢复进展后清除提醒；主页面仍在导航加载时，在原页面等待上限内暂不提醒；持续接收文件也不会被当作页面卡住。该设置只改变提醒时间，不延长页面等待上限。
+- 机构登录中，你在专用登录页输入、选择或点击控件，或点击胶囊接管后，暂停登录等待倒计时；输入间的停顿不消耗剩余时间。离开人工登录步骤后继续计时；无人操作仍按原限时结束。
+- macOS 通知改用 PaperSearch 自己的名称和图标，点击通知与点击胶囊提醒共用当前任务的浏览器恢复入口。首次配置机构下载扩展时可选择是否开启系统通知，新配置默认关闭；胶囊齿轮里的“系统通知”开关点击即保存，已有选择在升级后保留。关闭通知仍保留琥珀色呼吸提醒。无需另外安装通知工具；开启后横幅显示仍遵循 macOS 通知权限与专注模式设置。
 - 能取哪些出版社的正文和补充材料，见 [出版社支持表](skills/paper-search/references/publisher-support.md)。正文和补充材料都实测取得的有 Elsevier、Wiley、Springer Nature、OUP、Wolters Kluwer、Taylor & Francis、Sage、ACS、NEJM、ASCE、Dove 等，另已实测取得 ASH、Thieme、PLOS、Copernicus、Annual Reviews、IOP、AMS、APS、Optica、IEEE、World Scientific、MDPI、Frontiers 的补充材料及论文关联的 Figshare 附件；尚未取得的附件入口仍在补全；表里没有的网站按通用规则尝试。
 - `paper-search carsi update` 在 PaperSearch 升级后更新扩展，`paper-search carsi uninstall` 卸载（默认保留浏览器和学校配置）。
 - Windows：PowerShell 拦住 `npm.ps1` 时改用 `npm.cmd` 或命令提示符；下载要在桌面会话里运行，经 SSH 或系统服务启动时浏览器窗口打不开。
@@ -246,6 +256,18 @@ paper-search skills update --targets claude
 - **升级后自动更新**：通过内置目标安装的 Skill，会在升级 PaperSearch 后第一次运行 `paper-search`（`skills`、`setup` 除外）时更新到新版本：只更新原来装过的位置；被替换的旧文件备份在 `~/.local/share/paper-search-cli/skill-backups/`；并在 stderr 写一行说明。一个都没装时只提示一次怎么装。不想自动更新：`paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false`。
 - `paper-search doctor` 显示内置安装目标中的 Skill 位置和版本状态。
 
+### 新版提醒（0.4.8 新增）
+
+发现 npm 上有新的稳定版本时，日常调用会在终端提示当前版本、最新版本和升级命令。在线任务期间异步检查，成功结果缓存 24 小时；检查失败不会影响文献任务，命令结束即取消未完成的检查。提醒写入 stderr，stdout 的 JSON 不变；离线管理命令只使用缓存，CI、帮助和配置命令不自动提醒。
+
+```bash
+paper-search update check --format text
+paper-search config set PAPER_SEARCH_UPDATE_NOTIFY false  # 关闭自动检查和提醒
+paper-search config set PAPER_SEARCH_UPDATE_NOTIFY true   # 重新开启
+```
+
+不会自动安装更新。升级 CLI 后，已安装的 Skill 会按现有规则同步；机构下载扩展仍用 `paper-search carsi update` 更新。此开关与胶囊的系统通知开关独立。
+
 ## 命令
 
 | 命令 | 用途 |
@@ -255,6 +277,7 @@ paper-search skills update --targets claude
 | `paper-search download` | 下载已核验论文的 PDF |
 | `paper-search run <工具>` | 精确调用某个工具，参数用 `--arg` 或 `--json-args` |
 | `paper-search failures` | 汇总下载失败的原因 |
+| `paper-search update check` | 检查 npm 稳定新版（0.4.8 新增） |
 | `paper-search carsi` | 机构下载扩展的安装、状态、更新、卸载 |
 | `paper-search setup` / `config` | 配置 key、Skill 和扩展 |
 | `paper-search doctor` | 健康检查：配置、可用功能、Skill 和扩展的状态 |
@@ -280,7 +303,8 @@ paper-search skills update --targets claude
 
 - 接下来的重点：批量下载更稳、新电脑安装更顺；在 PDF 之外交付全文包（原始 XML/HTML、Markdown 和正文图片）。详见 [路线图](docs/ROADMAP.zh.md)。
 - 想了解原理和代码结构：[架构说明](docs/ARCHITECTURE.zh.md)。
-- 下载失败或想要支持某家出版社：在 Issues 里附上 `paper-search failures --format text` 的输出（先删掉不想公开的信息）。
+- 下载失败或想要支持某家出版社：使用“下载失败 / 想支持某家出版社”Issue 模板，说明版本、系统、网站和 DOI。
+- 0.4.8 新增：`paper-search failures --export ./failure-report.zip` 导出最近一批机构下载失败记录；可加 `--run <运行ID> --doi <DOI>` 筛选，也包含正文成功但附件失败的条目。请先检查包内 `summary.md`、HTML 与截图中的个人信息，再手动附到 Issue。导出只处理副本，不改原记录、不重跑或上传；旧记录没有的 HTML 会标为缺失。已安装版本没有该命令时，先提供版本和现象，勿上传原始诊断。
 - 想自己加出版社规则：见 [carsi/CONTRIBUTING.md](carsi/CONTRIBUTING.md)。
 
 ## 使用边界

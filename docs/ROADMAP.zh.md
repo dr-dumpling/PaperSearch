@@ -38,5 +38,5 @@
 
 ## 参与
 
-- **下载失败**：在 Issues 里附上 `paper-search failures --format text` 的输出（先删掉不想公开的信息）。
+- **下载失败**：使用下载失败 Issue 模板；支持导出的源码版本可附上核对过的记录包，已安装版本没有此命令时先提供版本、系统、DOI 和现象。
 - **想支持某家出版社**：说明网站和一篇你有权限的文章 DOI；也可以按 [carsi/CONTRIBUTING.md](../carsi/CONTRIBUTING.md) 自己加规则。

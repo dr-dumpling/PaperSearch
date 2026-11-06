@@ -100,6 +100,8 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 
 ## 功能地图
 
+0.4.8 新增：`paper-search update check --format text` 检查 npm 稳定新版。日常命令的更新提示在 stderr，不能当作文献任务失败；可告知用户建议，未经用户授权不执行升级。`paper-search config set PAPER_SEARCH_UPDATE_NOTIFY false` 关闭自动检查与提醒，详见 `references/management-layer.md`。
+
 本 Skill 有五个文献功能；`doctor`、`smoke`、`config`、`skills`、`carsi`、`failures` 是管理和诊断命令。
 
 | 用户意图 | 能力名 | 首选入口 | 关键边界 |
@@ -149,7 +151,7 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 
 问的时候顺带说明：补充材料只有部分出版社支持，见 `references/publisher-support.md`。用户已经说明的不再问。机构下载没启用时只走开放下载、只下正文；用户要补充材料时，告诉用户需要先安装机构下载扩展（`references/carsi-setup.md`）。
 
-几十到几百篇用一次 `download_batch`，不要自己循环调用单篇下载。下载结束后运行 `paper-search failures --format text`，按失败类别向用户说明。
+几十到几百篇用一次 `download_batch`，不要自己循环调用单篇下载。下载结束后运行 `paper-search failures --format text`，按失败类别向用户说明。0.4.8 新增：需要向维护者报告时用 `paper-search failures --export ./failure-report.zip` 导出副本，先核对包内公开检查清单；详见 `references/browser-download.md`。不自动上传或提交 issue。
 
 ## 核心规则
 

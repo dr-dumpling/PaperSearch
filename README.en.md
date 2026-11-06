@@ -1,8 +1,19 @@
-# PaperSearch
+<p align="center">
+  <img src="assets/logo.svg" width="112" alt="PaperSearch logo">
+</p>
 
-[简体中文](README.md) | English
+<h1 align="center">PaperSearch</h1>
 
-**Let your AI tools search the literature, verify citations, and download full texts and supplementary files.**
+<p align="center"><b>Let your AI tools search the literature, verify citations, and download full texts and supplementary files.</b></p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch" alt="npm"></a>
+  <img src="https://img.shields.io/node/v/papersearch" alt="Node.js">
+  <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
+  <a href="https://linux.do"><img src="https://img.shields.io/badge/LinuxDo-community-1f6feb" alt="LinuxDo"></a>
+</p>
+
+<p align="center"><a href="README.md">简体中文</a> | English</p>
 
 PaperSearch provides the `paper-search` command and a bundled Skill. Once installed, Claude Code, Codex, Cursor, Kimi Code, Qwen Code, CodeBuddy, TRAE and other AI tools that can run local commands can search more than 20 scholarly sources for you, verify DOIs, and download and organize paper PDFs and supplementary files. You can also use it directly in a terminal or a script; output is JSON by default.
 
@@ -11,10 +22,7 @@ PaperSearch provides the `paper-search` command and a bundled Skill. Once instal
 - **Every paper checked**: each PDF's first page is checked against the DOI and title; a file of another article is not counted as a success.
 - **Ready to use**: one folder per paper named journal_year_title, with the main text and supplementary files together; papers not downloaded come with a reason.
 
-[![npm](https://img.shields.io/npm/v/papersearch)](https://www.npmjs.com/package/papersearch)
-![Node.js](https://img.shields.io/node/v/papersearch)
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-[![LinuxDo](https://img.shields.io/badge/LinuxDo-community-1f6feb)](https://linux.do)
+<p align="center"><img src="assets/overview.en.png" width="900" alt="What PaperSearch does: search papers, verify and trace citations, journal metrics, text snippets, full texts and supplementary files"></p>
 
 [What you get](#what-you-get) | [Quick start](#quick-start) | [Common tasks](#common-tasks) | [How it works](#how-it-works) | [Institutional download extension](#institutional-download-extension) | [Search sources](#search-sources) | [Configuration](#configuration) | [Agent Skill](#agent-skill) | [Commands](#commands) | [Troubleshooting](#troubleshooting)
 
@@ -38,7 +46,9 @@ downloads/
 └── diagnostics/                                   run records, file manifests, screenshots
 ```
 
-<!-- Screenshot: the institutional download progress window. Keep images outside docs/ (e.g. assets/progress-window.png); docs/ is not published to the public repository -->
+During institutional downloads, a progress capsule in a corner of the screen shows progress, turns amber when you need to sign in or complete a verification, and opens into a card when you hover over it (its interface is in Chinese).
+
+<p align="center"><img src="assets/progress-capsule.en.png" width="820" alt="Progress capsule: downloading, sign in to your school, hover to expand, settings"></p>
 
 ## Quick start
 
@@ -155,9 +165,9 @@ paper-search carsi status --format text
 - Downloads show a small progress capsule in a corner of the screen: progress, whether the main text or the supplementary files are being fetched, and the publisher; it turns amber with a gentle breathing glow and sends a system notification, if enabled, when you need to sign in or complete a verification. Click the reminder to switch to the current task’s download browser. Hover to open it: skip this paper, mark the journal or publisher as no access, stop the whole task, report a problem, change wait times and the default download folder (the gear at the top right), or minimize it (–). Drag the pill or a non-control area of the expanded card to move it. On the school's login page a paper waits up to 3 minutes by default; anywhere else (human checks, publisher pages, ...) it ends after 1 minute.
 - The default download browser keeps running in the background without requesting foreground focus on startup, clicks, or navigation. It does not automatically minimize or hide its window. The capsule alerts you when intervention is needed; click the reminder to switch to the browser when ready. A completed check with no listed supplementary files is not a failure. Incomplete sign-in, unsupported discovery, and download failures remain distinct results.
 - Choose or type the default download folder in capsule settings, or run `paper-search config set DEFAULT_DOWNLOAD_PATH "/absolute/path/papers"`. New tasks use the saved folder; `--save-path` or `savePath` overrides it for one task. A running batch keeps its original folder.
-- Current source (not yet released): capsule settings include “页面持续无进展” (page inactivity), defaulting to 30 seconds, adjustable from 1 to 600 seconds, with a restore-default action. School sign-in prompts appear immediately. Other pages prompt with an amber breathing glow only after making no progress for the selected interval. Automatic passage stays quiet, resumed progress clears the reminder, and active main-document navigation stays quiet within the existing page timeout. Receiving file data does not count as a stalled page. This setting changes the reminder delay without extending page timeouts.
-- Current source (not yet released): typing, selecting or clicking a control in the dedicated sign-in page, or taking over through the capsule, pauses the remaining sign-in budget, including pauses between inputs. The timer resumes after leaving the manual sign-in step; an untouched sign-in still times out.
-- Current source (not yet released): macOS notifications use PaperSearch’s name and icon. Notification clicks share the capsule reminder’s action for restoring the current task’s browser. The initial extension setup offers a notification choice; new configurations default to off, and upgrades preserve existing preferences. The System notifications switch in the capsule’s settings saves immediately. Turning it off keeps the amber reminder. No separate notification tool is required; enabled notifications still follow macOS notification permissions and Focus settings.
+- capsule settings include “页面持续无进展” (page inactivity), defaulting to 30 seconds, adjustable from 1 to 600 seconds, with a restore-default action. School sign-in prompts appear immediately. Other pages prompt with an amber breathing glow only after making no progress for the selected interval. Automatic passage stays quiet, resumed progress clears the reminder, and active main-document navigation stays quiet within the existing page timeout. Receiving file data does not count as a stalled page. This setting changes the reminder delay without extending page timeouts.
+- typing, selecting or clicking a control in the dedicated sign-in page, or taking over through the capsule, pauses the remaining sign-in budget, including pauses between inputs. The timer resumes after leaving the manual sign-in step; an untouched sign-in still times out.
+- macOS notifications use PaperSearch’s name and icon. Notification clicks share the capsule reminder’s action for restoring the current task’s browser. The initial extension setup offers a notification choice; new configurations default to off, and upgrades preserve existing preferences. The System notifications switch in the capsule’s settings saves immediately. Turning it off keeps the amber reminder. No separate notification tool is required; enabled notifications still follow macOS notification permissions and Focus settings.
 - Which publishers' main texts and supplementary files it can fetch is in the [publisher support table](skills/paper-search/references/publisher-support.md) (Chinese). Both have been fetched from Elsevier, Wiley, Springer Nature, OUP, Wolters Kluwer, Taylor & Francis, Sage, ACS, NEJM, ASCE, Dove and others; supplementary files from ASH, Thieme, PLOS, Copernicus, Annual Reviews, IOP, AMS, APS, Optica, IEEE, World Scientific, MDPI and Frontiers, as well as Figshare files linked to a paper, have also been fetched; remaining attachment routes are still being completed; sites not in the table are tried with the shared rules.
 - `paper-search carsi update` updates the extension after a PaperSearch upgrade; `paper-search carsi uninstall` removes it (keeping the browser and the school settings by default).
 - Windows: if PowerShell blocks `npm.ps1`, use `npm.cmd` or Command Prompt; downloads must run in a desktop session, as a browser window cannot open from SSH or a system service.
@@ -246,6 +256,18 @@ Run `npm root -g` to locate the global npm directory; the bundled Skill is under
 - **Auto-update after upgrades**: Skills installed through the built-in targets are updated on the first `paper-search` run after an upgrade (other than `skills` and `setup`): only where they were installed; replaced files are backed up under `~/.local/share/paper-search-cli/skill-backups/`; one line on stderr says what changed. With no Skill installed in those locations, it says once how to install it. To turn it off: `paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false`.
 - `paper-search doctor` shows Skill locations and version status for the built-in installation targets.
 
+### Update notices (since 0.4.8)
+
+When npm has a newer stable version, ordinary invocations show the installed and latest versions and an upgrade command. Checks run alongside online tasks and cache successful results for 24 hours. Network failures do not affect paper tasks; unfinished checks are cancelled when the command ends. Notices go to stderr, preserving stdout JSON. Offline management commands use only cached results; CI, help and configuration commands do not show automatic notices.
+
+```bash
+paper-search update check --format text
+paper-search config set PAPER_SEARCH_UPDATE_NOTIFY false  # Disable automatic checks and notices
+paper-search config set PAPER_SEARCH_UPDATE_NOTIFY true   # Enable them again
+```
+
+Updates are never installed automatically. Installed Skills sync under the existing rules after a CLI upgrade; update the institutional extension separately with `paper-search carsi update`. This setting is independent of capsule/system notifications.
+
 ## Commands
 
 | Command | Use |
@@ -255,6 +277,7 @@ Run `npm root -g` to locate the global npm directory; the bundled Skill is under
 | `paper-search download` | Download the PDF of a verified paper |
 | `paper-search run <tool>` | Call one tool exactly, with `--arg` or `--json-args` |
 | `paper-search failures` | Why downloads failed, summarized |
+| `paper-search update check` | Check the stable npm release (since 0.4.8) |
 | `paper-search carsi` | Install, check, update or remove the institutional download extension |
 | `paper-search setup` / `config` | Configure keys, the Skill and the extension |
 | `paper-search doctor` | Health check: configuration, available features, Skill and extension status |
@@ -280,7 +303,8 @@ Commands print JSON by default; `--pretty` formats it and `--format text` prints
 
 - Next: steadier batch downloads and smoother installs on new computers; beyond PDFs, a full-text package (the original XML/HTML, Markdown and the figures). See the [roadmap](docs/ROADMAP.zh.md) (Chinese).
 - How it works inside and where the code is: [architecture](docs/ARCHITECTURE.zh.md) (Chinese).
-- A download failed, or you want a publisher supported: open an issue with the output of `paper-search failures --format text` (remove anything you do not want to make public first).
+- For failed downloads or publisher requests, use the download-failure issue template and provide the version, OS, website and DOI.
+- New in 0.4.8: `paper-search failures --export ./failure-report.zip` exports institutional failures from the latest run, including saved main texts with incomplete supplements. Add `--run <run-id> --doi <DOI>` to select a paper. Review `summary.md`, HTML and images for personal information before attaching the ZIP manually. Export sanitizes copies without modifying originals, retrying downloads or uploading anything. Missing HTML in older records is explicitly reported. If your installed version lacks this command, report the version and symptoms without uploading raw diagnostics.
 - To add publisher rules yourself: see [carsi/CONTRIBUTING.md](carsi/CONTRIBUTING.md).
 
 ## Use responsibly

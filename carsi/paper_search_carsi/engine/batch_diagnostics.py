@@ -164,7 +164,12 @@ class DiagnosticsMixin:
     def _snapshot(self, page: Any, result: DownloadResult | None, why: str) -> None:
         """The page's URL and title, and a small picture of the window with every
         form field masked (never their values), in the article's diagnostics folder."""
-        if result is None or len(result.snapshots) >= self.MAX_SNAPSHOTS:
+        from ..browser import watchdog
+        if watchdog.fired:
+            return
+        if (result is None or len(result.snapshots) >= self.MAX_SNAPSHOTS
+                or (self.config.get("supplements") == "with" and len(result.snapshots) >= self.MAX_SNAPSHOTS - 1
+                    and not why.startswith("supplements"))):
             return
         url = str(getattr(page, "url", "") or "")
         entry = {"at": datetime.now().strftime("%H:%M:%S"), "why": why, "url": url[:500],
@@ -173,13 +178,9 @@ class DiagnosticsMixin:
         if run_dir is not None:
             folder = Path(run_dir) / "diagnostics" / safe_name(result.doi)
             path = folder / f"snapshot-{len(result.snapshots) + 1}-{re.sub(r'[^a-z0-9]+', '-', why.lower())[:40]}.jpg"
-            try:
-                folder.mkdir(parents=True, exist_ok=True)
-                page.screenshot(path=str(path), type="jpeg", quality=50, full_page=False, timeout=3_000,
-                                mask=[page.locator("input, textarea, select")])
-                entry["screenshot"] = str(path)
-            except Exception:
-                pass  # the URL and title are kept
+            from ..page_snapshot import capture_structure, masked_screenshot
+            entry.update(capture_structure(page, path.with_suffix(".html"), self.config))
+            entry.update(masked_screenshot(page, path))
         result.snapshots.append(entry)
         self._event(result, "snapshot", f"{why} | {url[:160]} | {entry['title'][:80]}")
 
@@ -187,9 +188,10 @@ class DiagnosticsMixin:
         """A successful article keeps its snapshots' URLs and titles, not their
         pictures (the live preview's frames go the same way)."""
         for entry in result.snapshots:
-            picture = entry.pop("screenshot", None)
-            if picture:
-                Path(picture).unlink(missing_ok=True)
+            for key in ("screenshot", "html"):
+                artifact = entry.pop(key, None)
+                if artifact:
+                    Path(artifact).unlink(missing_ok=True)
 
     def _note_wait(self, result: DownloadResult | None, what: str, started: float, why: str) -> None:
         """A wait of more than ``LONG_WAIT_SEC``: what it waited for and why it ended."""
@@ -208,6 +210,8 @@ class DiagnosticsMixin:
         # Persist fixed classifications, without changing the live workflow state.
         packet = serialize_download_result({**asdict(result),
             "final_url": getattr(page, "url", result.final_url)}, diagnostic=True)
+        import platform
+        packet["capture_system"] = platform.system()
         packet["adapter"] = type(self.adapter).__name__
         packet["browser"] = getattr(self, "browser", {})
         from ..browser import watchdog
@@ -221,22 +225,22 @@ class DiagnosticsMixin:
             except Exception as exc:
                 packet["access_state"], packet["access_evidence"] = "unknown", [f"probe failed: {type(exc).__name__}"]
         packet_path = diag_dir / "diagnostic.json"
+        if not stopped and result.reason != "publisher_access_blocked":
+            from ..page_snapshot import capture_structure, masked_screenshot
+            pages = []
+            try:
+                pages = [p for p in list(page.context.pages) if p is not page and not p.is_closed()][:2]
+            except Exception:
+                pass  # The working page is still captured; no other tab is known.
+            packet["pages"] = []
+            for index, tab in enumerate([page] + pages):
+                stem = "screenshot" if index == 0 else f"screenshot-tab{index}"
+                row = {"url": str(getattr(tab, "url", "") or ""), "title": self._title(tab)[:200], "why": "download failed"}
+                row.update(capture_structure(tab, diag_dir / f"{stem}.html", self.config))
+                if self.adapter.diagnostic_screenshots:
+                    row.update(masked_screenshot(tab, diag_dir / f"{stem}.png"))
+                packet["pages"].append(row)
         packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2), encoding="utf-8")
-        if not stopped and self.adapter.diagnostic_screenshots and result.reason != "publisher_access_blocked":
-            try:
-                page.screenshot(path=str(diag_dir / "screenshot.png"), full_page=True)
-            except Exception:
-                pass
-            # Other tabs (a PDF or verification tab) are where the problem usually is.
-            try:
-                others = [p for p in list(page.context.pages) if p is not page and not p.is_closed()]
-            except Exception:
-                others = []
-            for index, other in enumerate(others[:6], 1):
-                try:
-                    other.screenshot(path=str(diag_dir / f"screenshot-tab{index}.png"), full_page=False)
-                except Exception:
-                    pass
         result.diagnostic_path = str(packet_path)
 
     def _denial_line(self, page: Any) -> str:

@@ -150,6 +150,9 @@ def attach_page(folder: Path, page: Any, events: list[dict[str, Any]] | None = N
         tabs = [p for p in list(page.context.pages) if not p.is_closed()]
     except Exception:
         tabs = [page]
+    from .page_snapshot import capture_structure, masked_screenshot
+    from .config import load_config
+    config = load_config()
     for index, tab in enumerate(tabs[:6], 1):
         row: dict[str, Any] = {"index": index, "working_tab": tab is page}
         for key, getter in (("url", lambda t: t.url), ("title", lambda t: t.title())):
@@ -161,12 +164,11 @@ def attach_page(folder: Path, page: Any, events: list[dict[str, Any]] | None = N
             row["text_excerpt"] = tab.evaluate("() => (document.body ? document.body.innerText : '').slice(0, 3000)")
         except Exception:
             row["text_excerpt"] = ""
-        try:
-            name = f"tab{index}.png"
-            tab.screenshot(path=str(folder / name), full_page=False)
-            row["screenshot"] = name
-        except Exception:
-            pass
+        row.update(capture_structure(tab, folder / f"tab{index}.html", config))
+        row.update(masked_screenshot(tab, folder / f"tab{index}.png"))
+        for key in ("html", "screenshot"):
+            if key in row:
+                row[key] = Path(row[key]).name
         info["tabs"].append(row)
     if events is not None:
         info["recent_events"] = events[-40:]

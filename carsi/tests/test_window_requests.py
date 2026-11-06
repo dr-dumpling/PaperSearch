@@ -40,6 +40,8 @@ class FakePage:
         return "Some page"
 
     def locator(self, selector):
+        if selector == "input, textarea, select, [contenteditable]":
+            return Mock()
         if selector != "head > title":
             raise AssertionError(selector)
         return Mock(first=Mock(text_content=Mock(return_value=self.title())))

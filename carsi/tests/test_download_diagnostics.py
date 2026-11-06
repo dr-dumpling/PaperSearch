@@ -168,13 +168,13 @@ class DownloadArtifactIntegrationTests(unittest.TestCase):
                          {"10.1000/fixture"})
         self.assertEqual(self.result, before)
 
-    def test_diagnostic_is_unmasked_but_does_not_read_dom_or_replace_live_result(self):
+    def test_diagnostic_is_unmasked_and_page_capture_does_not_replace_live_result(self):
         page = Mock(url=self.result.final_url)
         with patch.object(self.downloader, "_body_text") as body, patch.object(
-            self.downloader, "_title") as title:
+            self.downloader, "_title", return_value="Captured page title") as title:
             self.downloader._write_diagnostic(page, self.result, self.root)
         body.assert_not_called()
-        title.assert_not_called()
+        title.assert_called_once()
         # User decision 2026-10-29: diagnostic files keep everything unmasked.
         diagnostic = Path(self.result.diagnostic_path).read_text()
         self.assertIn("CANARY_TOKEN", diagnostic)

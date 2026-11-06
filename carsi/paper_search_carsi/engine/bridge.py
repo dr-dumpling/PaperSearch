@@ -565,6 +565,10 @@ def _try_browser_batch_download(
                             manifest.write_text(json.dumps({"doi": doi, "files": result.supplements},
                                                            ensure_ascii=False, indent=2), encoding="utf-8")
                         result.record_path = str(manifest)
+                    if ((result.ok and result.verified_match) or supplements_mode == "only") and all(
+                        f.get("status") == "saved" for f in result.supplements
+                    ):
+                        downloader._drop_snapshot_pictures(result)
                     _note_supplements(result, written)
         finally:
             try:
@@ -639,6 +643,7 @@ def _note_supplements(result: Any, written: int) -> None:
         data = json.loads(path.read_text(encoding="utf-8"))
         data["events"] = list(data.get("events") or []) + list(getattr(result, "events", [])[written:])
         data["supplements"] = getattr(result, "supplements", [])
+        data["snapshots"] = getattr(result, "snapshots", [])
         data["pdf_path"] = str(getattr(result, "pdf_path", "") or "")
         if getattr(result, "phases", None):
             data["phases"] = {k: round(float(v), 1) for k, v in result.phases.items()}

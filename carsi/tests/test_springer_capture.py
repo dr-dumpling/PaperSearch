@@ -172,7 +172,7 @@ class SpringerCaptureTests(unittest.TestCase):
         self.d._capture_pdf = Mock(return_value=(self.supplement, SUPPLEMENT, None))
         with tempfile.TemporaryDirectory() as directory:
             result = self.d.fetch_one(self.page, self.batch.PaperRecord(doi=DOI), Path(directory))
-            self.assertEqual(list(Path(directory).iterdir()), [])
+            self.assertEqual(list(Path(directory).rglob("*.pdf")), [])  # diagnostic specimens are allowed; a rejected PDF is not
         self.assertFalse(result.ok)
         self.assertEqual(result.reason, "pdf_not_captured")
         self.d._save_publisher_session.assert_not_called()

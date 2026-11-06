@@ -363,7 +363,7 @@ class WileyCaptureTests(unittest.TestCase):
         self.d._capture_pdf = Mock(return_value=(self.other, PDF, None))
         with tempfile.TemporaryDirectory() as directory:
             result = self.d.fetch_one(self.page, self.batch.PaperRecord(doi=DOI), Path(directory))
-            self.assertEqual(list(Path(directory).iterdir()), [])
+            self.assertEqual(list(Path(directory).rglob("*.pdf")), [])  # diagnostic specimens are allowed; a rejected PDF is not
         self.assertFalse(result.ok)
         self.assertEqual(result.state, "pdf_wrong_article")
         self.d._save_publisher_session.assert_not_called()
@@ -484,7 +484,7 @@ class WileyCaptureTests(unittest.TestCase):
         self.d._article_access_available = Mock(return_value=False)
         with tempfile.TemporaryDirectory() as directory:
             result = self.d.fetch_one(self.page, self.batch.PaperRecord(doi=DOI), Path(directory))
-            self.assertEqual(list(Path(directory).iterdir()), [])
+            self.assertEqual(list(Path(directory).rglob("*.pdf")), [])  # diagnostic specimens are allowed; a rejected PDF is not
         self.assertFalse(result.ok)
         self.assertEqual((result.state, result.reason), ("ip_blocked", "ip_blocked"))
         self.d._capture_pdf.assert_called_once()

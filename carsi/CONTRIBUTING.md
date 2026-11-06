@@ -6,7 +6,7 @@
 2. 填域名、DOI 前缀（只写 `10.xxxx` 注册前缀）、文章/PDF URL 模板、成功/认证/SSO 标记、机构选校 selector。字段含义见 `schema.json`；不要写任何学校专属的 selector 或凭证。
 3. `"platform"` 是小写的平台标签，`list-publishers` 输出里的 platforms 汇总各 profile 的这一项，下载不读它；没有就写 `"generic"` 或省略。
 4. 跑 `pytest tests/test_builtin_profiles.py`：它会校验 schema、键/别名/DOI 前缀不与其他出版社冲突。这是合并的最低门槛。
-5. 在 `tests/fixtures/publishers/<key>/` 放脱敏后的文章页、认证页 HTML 快照（去掉 cookie、token、个人信息）。
+5. 当前源码新增（待发布）：下载失败后运行 `paper-search failures --export ./failure-report.zip --doi <DOI>`，从包内取核对过的 HTML 结构快照，放进 `tests/fixtures/publishers/<key>/`。先检查学校、姓名、邮箱、学号等信息；`href/action` 为避免执行已改为 `data-href/data-action`，编写真实页面 selector 时还原属性名。旧记录缺少 HTML 时不会补造，需另行记录一次授权测试。不得放入原始诊断、Cookie 或论文全文。
 6. 本机运行 `paper-search-carsi publisher-check --doi <受限 DOI>`，把脱敏报告贴进 PR。
 
 ## 加一个出版社适配器（tier 2）

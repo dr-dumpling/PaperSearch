@@ -19,7 +19,8 @@
 - `paper-search metrics ...` 是 `journal-metrics` 的别名。
 - `paper-search status [--validate] [--pretty]`
 - `paper-search doctor [--validate] [--format text] [--pretty]`
-- `paper-search failures [--run ID|latest] [--since YYYY-MM-DD] [--runs N] [--all] [--format text] [--pretty]`
+- `paper-search failures [--run ID|--since YYYY-MM-DD|--runs N] [--doi DOI] [--export file.zip] [--all] [--format text] [--pretty]`（导出与 DOI 筛选为 0.4.8 新增）
+- `paper-search update check [--format text] [--pretty]`（0.4.8 新增；只检查，不安装）
 - `paper-search carsi install [--browser camoufox|ego] [--yes] [--force] [--skip-school] [--format text]`
 - `paper-search carsi status [--format text] [--pretty]`
 - `paper-search carsi update [--force] [--format text] [--pretty]`

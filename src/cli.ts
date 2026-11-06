@@ -53,6 +53,8 @@ import {
   renderDoctorTextReport,
   renderSkillDiffTextReport,
 } from "./management/reports/index.js";
+import { beginUpdateNotification, checkForUpdate, renderUpdateNotice } from "./management/updates/index.js";
+import { exportFailureReport } from "./management/failures/exportReport.js";
 import { renderFailuresText, summarizeFailures } from "./management/failures/index.js";
 import { createNodeHost } from "./management/carsi/host.js";
 import {
@@ -124,9 +126,10 @@ Usage:
   paper-search search <query> [--sources no-key] [--max-results 10]
   paper-search journal-metrics <journal...> [--include-raw]
   paper-search run <tool-name> --json-args '{"query":"machine learning","maxResults":5}'
+  paper-search update check [--format text]
   paper-search status [--validate]
   paper-search doctor [--validate]
-  paper-search failures [--run <id>|latest] [--since 2026-11-01] [--runs 5] [--all]
+  paper-search failures [--run <id>|latest] [--since 2026-11-01] [--runs 5] [--doi <DOI>] [--export <file.zip>] [--all]
   paper-search carsi <install|status> [--browser camoufox|ego] [--yes] [--force] [--skip-school]
   paper-search carsi update [--force]
   paper-search carsi uninstall [--yes] [--remove-browser] [--remove-data]
@@ -501,6 +504,19 @@ async function run(parsed: ParsedCli): Promise<unknown> {
 
   if (flags.version || command === "version") {
     return packageVersion();
+  }
+
+  if (command === "update") {
+    if (positionals.length !== 1 || positionals[0] !== "check") {
+      throw new CliError("Usage: paper-search update check (check only; does not install updates).");
+    }
+    const result = await checkForUpdate({ current: packageVersion(), packageRoot: fileURLToPath(new URL("..", import.meta.url)) });
+    if (flags.format === "text") {
+      if (!result.ok) throw new CliError("Unable to check the npm version. Please try again later.", "UPDATE_CHECK_UNAVAILABLE");
+      return result.updateAvailable ? renderUpdateNotice(result).trimEnd()
+        : `Installed: ${result.currentVersion}; latest stable on npm: ${result.latestVersion}. ${result.status === "newer_than_registry" ? "Your installed version is newer." : "You are up to date."}`;
+    }
+    return { ...result, ...(result.ok ? {} : { exitCode: 1 }) };
   }
 
   if (command === "tools") {
@@ -1059,16 +1075,39 @@ async function handleCarsiCommand(
 }
 
 /** Failed institutional downloads from the run ledgers, by class (ADR 0012). */
-function handleFailuresCommand(flags: Record<string, FlagValue>): unknown {
+async function handleFailuresCommand(flags: Record<string, FlagValue>): Promise<unknown> {
   const root = resolveRunLogRoot();
   if (!root) {
     return { ok: false, error: "运行记录已关闭（PAPER_SEARCH_RUNLOG=0），没有可汇总的失败。" };
   }
-  const summary = summarizeFailures(root, {
+  for (const name of ["export", "doi", "run", "since", "runs"]) {
+    if (flags[name] !== undefined && (typeof flags[name] !== "string" || !String(flags[name]).trim())) {
+      throw new Error(`--${name} 需要一个值。`);
+    }
+  }
+  if (flags.runs !== undefined && (!/^\d+$/.test(String(flags.runs)) || !Number.isSafeInteger(Number(flags.runs)) || Number(flags.runs) < 1)) {
+    throw new Error("--runs 需要正整数。");
+  }
+  if ([flags.run, flags.since, flags.runs].filter((value) => value !== undefined).length > 1) {
+    throw new Error("--run、--since、--runs 只能选择一个。");
+  }
+  if (flags.since && !/^\d{4}-\d{2}-\d{2}$/.test(String(flags.since))) {
+    throw new Error("--since 使用 YYYY-MM-DD 格式。");
+  }
+  const query = {
+    ...(typeof flags.doi === "string" ? { doi: flags.doi.trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "") } : {}),
     ...(typeof flags.run === "string" ? { run: flags.run } : {}),
     ...(typeof flags.since === "string" ? { since: flags.since } : {}),
     ...(typeof flags.runs === "string" && Number(flags.runs) > 0 ? { runs: Number(flags.runs) } : {}),
-  });
+  };
+  if (typeof flags.export === "string") {
+    const report = await exportFailureReport({ root, query, output: flags.export, version: packageVersion(),
+      command: getConfigValue("PAPER_SEARCH_CARSI_EXECUTABLE") || "paper-search-carsi" });
+    return flags.format === "text"
+      ? `已导出 ${report.papers} 篇失败记录：${report.path}\n公开前请阅读包内 summary.md 并核对个人信息；${report.incompletePapers} 篇存在材料缺项或限制。`
+      : report;
+  }
+  const summary = summarizeFailures(root, query);
   if (flags.format === "text") {
     return renderFailuresText(summary, { all: flags.all === true });
   }
@@ -1429,10 +1468,19 @@ function parseConfigAssignment(
 
 async function main() {
   const parsed = parseCli(process.argv.slice(2));
+  let update: ReturnType<typeof beginUpdateNotification> | undefined;
 
   try {
     maybePrintSetupHint(parsed);
     maybeAutoSyncSkill(parsed);
+    const exempt = parsed.flags.help || parsed.flags.version || ["help", "version", "config", "setup", "update"].includes(parsed.command);
+    update = beginUpdateNotification({ current: packageVersion(),
+      packageRoot: fileURLToPath(new URL("..", import.meta.url)),
+      enabled: !exempt && !process.env.CI && getConfigValue("PAPER_SEARCH_UPDATE_NOTIFY") !== "false",
+      allowNetwork: ["search", "download", "journal-metrics", "doctor", "status"].includes(parsed.command) ||
+        (parsed.command === "run" && parsed.positionals[0] !== "get_platform_status"),
+      write: (text) => process.stderr.write(text),
+    });
     const result = await run(parsed);
     const output = prepareOutput(result);
     if (typeof output.exitCode === "number") {
@@ -1474,6 +1522,8 @@ async function main() {
     }
     process.stdout.write(`${formatOutput(payload, parsed.flags)}\n`);
     process.exitCode = error?.exitCode || 1;
+  } finally {
+    update?.stop();
   }
 }
 
@@ -1492,7 +1542,7 @@ function maybePrintSetupHint(parsed: ParsedCli): void {
   );
 }
 
-const SKILL_SYNC_EXEMPT = new Set(["skills", "setup", "help", "version"]);
+const SKILL_SYNC_EXEMPT = new Set(["skills", "setup", "help", "version", "update"]);
 
 /**
  * The first run after an install or upgrade brings the Skill copies the user

@@ -20,7 +20,11 @@ class FakeTab:
     def evaluate(self, script):
         return "Institutional Login page text"
 
-    def screenshot(self, path, full_page=False):
+    def locator(self, selector):
+        return selector
+
+    def screenshot(self, path, full_page=False, timeout=None, mask=None, **kwargs):
+        assert mask == ["input, textarea, select, [contenteditable]"]
         open(path, "wb").write(b"png")
 
 

@@ -187,6 +187,7 @@ class PublisherBatchDownloader(
         from . import supplements
         from .supplement_transfer import browser_request
 
+        self._run_dir = manifest_dir or getattr(self, "_run_dir", None)
         self._phase(result, "supplements")
         main_state = result.state
         progress_reporter.update(part="supplements", supplements_saved=0, supplements_total=None)
@@ -232,6 +233,7 @@ class PublisherBatchDownloader(
                         links = self._settled_supplement_links(page, doi)
                         if not (self._challenge_shell(page) or self._is_challenge_page(page)):
                             break
+                    self._snapshot(page, result, "supplements page")
                     if links is None:
                         self._event(result, "supplements_not_supported", self.profile.name)
                         return [{"status": "skipped", "reason": "supplements_not_supported", "url": url, "label": ""}]
@@ -467,6 +469,7 @@ class PublisherBatchDownloader(
             preparation = self._prepare_article(page, result, run_dir)
             if preparation is not None:
                 return preparation
+            self._snapshot(page, result, "article access checked")
             ip_block: str | None = None
             # Whether this capture comes after the school's login, and its first attempt.
             signed_in, attempts_from = self._school_login_done(), len(result.pdf_attempts)
@@ -782,7 +785,6 @@ class PublisherBatchDownloader(
         pdf_path = pdf_dir / f"{safe_name(record.doi)}.pdf"
         pdf_path.write_bytes(pdf_bytes)
         self._event(result, "pdf_saved")
-        self._drop_snapshot_pictures(result)
         text = pdf_extractor.extract_from_bytes(pdf_bytes)
         result.status = "success"
         result.reason = ""
@@ -793,6 +795,8 @@ class PublisherBatchDownloader(
         result.text_length = len(text or "")
         result.verified_match = self._text_matches_record(
             text, record, fallback_title=self._identity_title() or result.title)
+        if result.verified_match and str(self.config.get("supplements") or "") != "with":
+            self._drop_snapshot_pictures(result)
         self._save_publisher_session(page, result)
         if not any(e["state"] == "pdf_saved_unconfirmed" for e in result.events):
             from ..browser.preview import discard_frames

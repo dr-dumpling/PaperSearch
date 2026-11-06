@@ -12,6 +12,7 @@ export interface FailureQuery {
     since?: string;
     /** The last N runs. */
     runs?: number;
+    doi?: string;
 }
 export interface FailureItem {
     doi: string;
@@ -19,6 +20,8 @@ export interface FailureItem {
     evidence?: string;
     stoppedAt?: string;
     diagnostic?: string;
+    /** Only present for a supplementary-file failure. */
+    part?: "supplements";
 }
 export interface FailureGroup {
     failureClass: FailureClass;
@@ -40,6 +43,23 @@ export interface FailureSummary {
     classes: Record<FailureClass, number>;
     groups: FailureGroup[];
 }
+export interface ExportFailure extends FailureItem {
+    publisher: string;
+    site: string;
+    code: string;
+    failureClass: FailureClass;
+    record?: string;
+    detail: Record<string, unknown>;
+    outcome: Record<string, unknown>;
+}
+/** One entry per failed paper, including a saved main text with incomplete attachments. */
+export declare function selectFailures(root: string, query?: FailureQuery, options?: {
+    forExport?: boolean;
+}): {
+    runs: string[];
+    papers: ExportFailure[];
+    notAttempted: number;
+};
 export declare function summarizeFailures(root: string, query?: FailureQuery): FailureSummary;
 export declare function renderFailuresText(summary: FailureSummary, options?: {
     all?: boolean;

@@ -147,3 +147,11 @@ paper-search doctor --pretty
 ```
 
 不要让用户把密钥贴到聊天里，不要把密钥写进 Skill、README、测试或日志。`doctor` 和 `config` 的输出会把已配置的密钥脱敏。
+
+## CLI 新版提醒（0.4.8 新增）
+
+日常在线任务可异步检查 npm `papersearch` 的稳定新版，成功结果缓存 24 小时，失败或未完成请求退避 1 小时。发现新版后，每次日常调用提示一次当前/最新版本和匹配安装渠道的升级命令；提醒在 stderr，stdout JSON 和原任务结果不变。离线管理命令不联网，CI、help/version/config/setup/update 不自动提醒。
+
+`paper-search config set PAPER_SEARCH_UPDATE_NOTIFY false` 关闭自动检查和提醒；`true` 重新开启。此设置与胶囊/系统通知独立。`paper-search update check --format text` 可主动检查，关闭自动提醒后也可用；网络不可用时如实报告无法查询，不猜测最新版本。旧安装缺少该命令时只报告其版本，不伪造检查成功。
+
+看到提醒可以向用户说明有新版；未经授权，不执行提示中的升级命令。更新 CLI 包本体、已安装 Skill 同步、`paper-search carsi update` 更新扩展是三个不同步骤。

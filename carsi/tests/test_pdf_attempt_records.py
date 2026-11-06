@@ -146,7 +146,7 @@ class SnapshotTests(unittest.TestCase):
         kwargs = self.page.screenshot.call_args.kwargs
         self.assertEqual(kwargs["type"], "jpeg")
         self.assertIn("mask", kwargs)  # form fields are masked, never shown
-        self.page.locator.assert_called_with("input, textarea, select")
+        self.page.locator.assert_called_with("input, textarea, select, [contenteditable]")
         self.assertEqual(serialize_download_result(self.result, diagnostic=True)["snapshots"][0]["why"], "not subscribed")
 
     def test_a_successful_article_keeps_no_pictures(self):

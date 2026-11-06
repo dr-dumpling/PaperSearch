@@ -65,3 +65,31 @@ describe("paper-search failures", () => {
     expect(text).toContain("    10.1080/0142159x.2026.2752868  停在 pdf_candidate\n      /runs/download_failed/diagnostic.json");
   });
 });
+
+it("includes partial attachments and filters DOI without counting completed empty checks", () => {
+  const root = mkdtempSync(join(tmpdir(), "failures-supplements-"));
+  run(root, "20261106-090000-aaaaaa", [
+    { doi: "10.1234/partial", status: "ok", supplements: [{ status: "saved" }, { status: "failed", reason: "challenge_timeout" }],
+      stages: [{ ...entitled("", "Fixture", "https://publisher.example/article"), stage: "supplements", status: "ok" }] },
+    { doi: "10.1234/none", status: "ok", supplements: [], stages: [{ stage: "supplements", status: "skipped", code: "no_supplements" }] },
+    { doi: "10.1234/unsupported", status: "ok", supplements: [{ status: "skipped", reason: "supplements_not_supported" }],
+      stages: [{ ...entitled("", "Fixture", "https://publisher.example/article"), status: "ok" }] },
+  ]);
+  expect(summarizeFailures(root).failed).toBe(2);
+  const selected = summarizeFailures(root, { doi: "10.1234/PARTIAL" });
+  expect(selected.failed).toBe(1);
+  expect(selected.groups[0].code).toBe("challenge_timeout");
+  expect(selected.groups[0].items[0].part).toBe("supplements");
+});
+
+
+it("reclassifies legacy subscription labels when the known failure code was corrected", () => {
+  const root = mkdtempSync(join(tmpdir(), "failures-legacy-"));
+  run(root, "20261106-090000-fixture", [{ doi: "10.1234/login", status: "error", stages: [
+    { ...entitled("institution_not_registered", "Fixture", "https://publisher.example/login"),
+      failureClass: "no_access", evidence: "old subscription inference" },
+  ] }]);
+  const summary = summarizeFailures(root);
+  expect(summary.classes.user_or_external).toBe(1);
+  expect(summary.groups[0].evidence).toBeUndefined();
+});

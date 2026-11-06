@@ -220,6 +220,29 @@ def _cmd_login(args: argparse.Namespace) -> int:
 # other commands
 # ---------------------------------------------------------------------------
 
+def _cmd_report_export(args: argparse.Namespace) -> int:
+    from .config import load_config
+    from .failure_export import ExportError, MAX_REQUEST_BYTES, export_report
+
+    try:
+        raw = sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
+        if len(raw) > MAX_REQUEST_BYTES:
+            raise ExportError("export_request_too_large")
+        request = json.loads(raw)
+        if not isinstance(request, dict):
+            raise ExportError("invalid_export_request")
+        result = export_report(request, Path(args.output), load_config())
+    except (OSError, ValueError) as exc:
+        # Never print original JSON, paths, secrets or exception payloads.
+        code = (str(exc) if isinstance(exc, ExportError) else
+                "export_target_exists" if isinstance(exc, FileExistsError) else
+                "export_permission_denied" if isinstance(exc, PermissionError) else "export_io_or_input_error")
+        print(json.dumps({"ok": False, "error": code}))
+        return 1
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
 def _cmd_run(_args: argparse.Namespace) -> int:
     from .server import main as serve
 
@@ -435,6 +458,10 @@ def main(argv: list[str] | None = None) -> int:
     cfg.set_defaults(func=_cmd_config)
 
     sub.add_parser("list-publishers", help="print publisher profiles and their platform labels").set_defaults(func=_cmd_list_publishers)
+
+    exp = sub.add_parser("report-export", help="export a sanitized local failure ZIP from a JSON request on stdin")
+    exp.add_argument("--output", required=True)
+    exp.set_defaults(func=_cmd_report_export)
 
     chk = sub.add_parser("publisher-check", help="run one institutional download and print a sanitized report")
     chk.add_argument("--doi", required=True)

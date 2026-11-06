@@ -14,6 +14,8 @@ process.env.NODE_ENV = 'test';
 process.env.PAPER_SEARCH_RUNLOG_DIR = mkdtempSync(join(tmpdir(), 'paper-search-runlog-'));
 // CLI runs from tests never update the user's installed Skill; the sync's own tests turn it on.
 process.env.PAPER_SEARCH_SKILL_AUTO_UPDATE = 'false';
+// Version checks have their own injected transport tests; other tests stay offline.
+process.env.PAPER_SEARCH_UPDATE_NOTIFY = 'false';
 // A development shell (maintainer/dev-env.sh) does not reach the tests: they set what they need.
 for (const name of ['XDG_DATA_HOME', 'CARSI_DATA_DIR', 'PAPER_SEARCH_CARSI_EXECUTABLE', 'PAPER_SEARCH_CARSI_ENABLED']) {
   delete process.env[name];
