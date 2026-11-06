@@ -40,6 +40,7 @@ class UserStoppedBatch(UserMarkedNoEntitlement):
 
 # Not an entitlement decision: nothing is recorded, the batch ends.
 STOP_BATCH = "stop_batch"
+SHOW_BROWSER = "show_browser"
 
 
 SKIP = "skip"
@@ -191,13 +192,30 @@ def clear(key: str) -> bool:
 
 def request_action(current: str, action: str, run_id: str = "") -> None:
     """Written by the progress window when the user presses a button."""
-    if action not in _ACTIONS and action != STOP_BATCH:
+    if action not in _ACTIONS and action not in (STOP_BATCH, SHOW_BROWSER):
         raise ValueError("unknown action")
-    _write_json(control_path(), {"current": current, "action": action, "run_id": run_id, "at": time.time()})
+    data = {"current": current, "action": action, "run_id": run_id, "at": time.time()}
+    if action == STOP_BATCH and run_id:
+        # A batch stop survives both item handoff and later focus requests.
+        # A new run has a new identity, so an old stop cannot cancel it.
+        _write_json(control_path().with_name("stop.json"), data)
+    else:
+        _write_json(control_path(), data)
+
+
+def batch_stop_requested() -> bool:
+    """A durable stop for the current run, including the gap between papers."""
+    stop = _read_json(control_path().with_name("stop.json"))
+    if stop.get("action") != STOP_BATCH or not stop.get("run_id"):
+        return False
+    state = _read_json(control_path().with_name("current.json"))
+    return state.get("status") == "running" and stop["run_id"] == state.get("run_id")
 
 
 def take_action(doi: str, since: float) -> str | None:
     """The user's pending action for this paper (requested after ``since``), consumed once."""
+    if batch_stop_requested():
+        return STOP_BATCH
     path = control_path()
     data = _read_json(path)
     if not data or str(data.get("current", "")).lower() != (doi or "").lower():
@@ -212,7 +230,7 @@ def take_action(doi: str, since: float) -> str | None:
     except OSError:
         pass
     action = data.get("action")
-    return action if action in _ACTIONS or action == STOP_BATCH else None
+    return action if action in _ACTIONS or action in (STOP_BATCH, SHOW_BROWSER) else None
 
 
 def apply_user_decision(doi: str, publisher: str, since: float) -> str | None:
@@ -220,6 +238,8 @@ def apply_user_decision(doi: str, publisher: str, since: float) -> str | None:
     action = take_action(doi, since)
     if not action:
         return None
+    if action == SHOW_BROWSER:
+        return action  # an explicit focus request, never an entitlement decision
     if action == STOP_BATCH:
         raise UserStoppedBatch(action)
     if action == "skip_item":

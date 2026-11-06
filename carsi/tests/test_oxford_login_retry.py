@@ -21,6 +21,7 @@ class OxfordLoginRetryTests(unittest.TestCase):
         self.now = 0.0
         self.enterContext(patch.object(self.batch.time, 'monotonic', side_effect=lambda: self.now))
         self.page = Mock(url=ARTICLE)
+        self.page.frames = []
         self.page.is_closed.return_value = False
         self.page.wait_for_timeout.side_effect = self.wait
         self.d.adapter.advance_login = Mock(return_value=True)
@@ -47,7 +48,6 @@ class OxfordLoginRetryTests(unittest.TestCase):
     def test_an_away_user_ends_the_wait_on_their_page_after_the_short_wait(self):
         self.d.config['user_wait'] = 'short'
         self.state = 'human_login'
-        self.d._visible_input_values = Mock(return_value=())
         self.assertFalse(self.d.adapter.complete_login(self.page, self.result))
         self.assertEqual(self.result.reason, 'login_timeout')
         self.assertTrue(60 <= self.now < 200)  # the short wait, not the article's whole budget
@@ -64,6 +64,23 @@ class OxfordLoginRetryTests(unittest.TestCase):
         self.page.context.new_page.assert_not_called()
         self.assertLessEqual(self.now, 200)
 
+    def test_manual_login_can_finish_after_the_original_deadline(self):
+        self.d.config['user_wait'] = 'short'
+        self.state = 'human_login'
+        frame = Mock(evaluate=Mock(side_effect=lambda *args: int(self.now >= 2)))
+        self.page.frames = [frame]
+        def human_wait(ms):
+            self.wait(ms)
+            if self.now >= 400:
+                self.state = 'article_ready'
+        self.page.wait_for_timeout.side_effect = human_wait
+        self.assertTrue(self.d.adapter.complete_login(self.page, self.result))
+        self.assertEqual(self.now, 400)
+        self.assertEqual(self.result._oxford_login_deadline, 598)
+        self.assertIsNone(self.result._login_wait)
+        self.page.goto.assert_not_called()
+        self.d.adapter.advance_login.assert_not_called()
+
     def test_repeated_transient_failure_stops_after_two_retries(self):
         self.state = 'transient_error'
         self.assertFalse(self.d.adapter.complete_login(self.page, self.result))
@@ -73,6 +90,19 @@ class OxfordLoginRetryTests(unittest.TestCase):
         self.assertFalse(self.d.adapter.complete_login(self.page, self.result))
         self.assertEqual(self.page.goto.call_count, 2)
         self.assertEqual(self.now, 9)
+
+    def test_a_slow_page_read_cannot_expire_a_paused_login_near_its_deadline(self):
+        self.d.login_timeout_sec = 5
+        self.page.frames = [Mock(evaluate=Mock(side_effect=lambda *args: int(self.now >= 4)))]
+        def read_login(page, deadline=None):
+            if self.now >= 5:
+                self.now += 2
+                return 'article_ready'
+            return 'human_login'
+        self.d.adapter.login_state.side_effect = read_login
+        self.assertTrue(self.d.adapter.complete_login(self.page, self.result))
+        self.assertEqual(self.now, 7)
+        self.assertEqual(self.result._oxford_login_deadline, 8)
 
     def test_total_deadline_is_shared_across_reentry_and_navigation(self):
         self.d.login_timeout_sec = 50

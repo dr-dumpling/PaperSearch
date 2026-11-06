@@ -172,7 +172,9 @@ class PersistentBrowser:
 
 # Module-level singleton
 _browser = PersistentBrowser()
-atexit.register(_browser.close)
+# Logging/capture streams may already be closed during interpreter shutdown.
+# Explicit close still logs; the exit hook only releases owned browser resources.
+atexit.register(_browser._cleanup)
 
 
 def get_browser(config: dict[str, Any] | None = None):

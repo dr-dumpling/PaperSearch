@@ -57,6 +57,21 @@ def test_unrelated_frame_is_never_clicked(url):
     frame.frame_element.assert_not_called()
 
 
+@pytest.mark.parametrize("url,visible,expected", [
+    ("https://www.google.com/recaptcha/api2/anchor", True, True),
+    ("https://www.recaptcha.net/recaptcha/enterprise/anchor", True, True),
+    ("https://www.google.com/recaptcha/api2/anchor", False, False),
+    ("https://www.google.com.evil.example/recaptcha/api2/anchor", True, False),
+    ("https://journal.example/article?next=https://www.google.com/recaptcha/api2/anchor", True, False),
+    (FRAME, True, False),
+])
+def test_only_a_visible_manual_verification_frame_requests_handoff(url, visible, expected):
+    page, _, element, _ = widget(url=url)
+    element.is_visible.return_value = visible
+    assert interaction.needs_manual_verification(page) is expected
+    element.click.assert_not_called()
+
+
 def test_a_visible_checkbox_is_clicked_once_without_force():
     page, _, element, control = widget()
     assert interaction.click_checkbox(page, timeout_ms=750, checkpoint=Mock()) == "clicked"
@@ -140,6 +155,8 @@ def wait_case(monkeypatch):
     page.is_closed.return_value = False
     page.wait_for_timeout.side_effect = lambda ms: clock.__setitem__(0, clock[0] + ms / 1000)
     monkeypatch.setattr(batch_waits.time, "time", lambda: clock[0])
+    from paper_search_carsi.engine import page_activity
+    monkeypatch.setattr(page_activity, "time", SimpleNamespace(monotonic=lambda: clock[0]))
     d = PublisherBatchDownloader({}, require_interactive_browser=True)
     d._check_user_decision = Mock()
     d._raise_on_publisher_access_blocked = Mock()
@@ -175,6 +192,36 @@ def test_automatic_pass_does_not_ask_the_user_or_pause_automation(wait_case, mon
     assert not any("人工" in call.kwargs.get("phase", "") for call in update.call_args_list)
 
 
+@pytest.mark.parametrize("pass_after", [55, 80])
+@pytest.mark.parametrize("entry", ["article", "pdf"])
+def test_known_manual_widget_preserves_automation_budget_with_delayed_reminder(
+    wait_case, monkeypatch, pass_after, entry,
+):
+    c = wait_case
+    c.d._challenge_shell = lambda page: c.clock[0] < 1000 + pass_after
+    c.d._is_challenge_page = c.d._challenge_shell
+    monkeypatch.setattr(interaction, "needs_manual_verification", lambda page: True)
+    click = Mock(return_value="absent")
+    monkeypatch.setattr(interaction, "click_checkbox", click)
+    monkeypatch.setattr(watchdog, "time", SimpleNamespace(
+        monotonic=lambda: c.clock[0], sleep=watchdog.time.sleep))
+    from paper_search_carsi import progress_reporter
+    monkeypatch.setattr(progress_reporter, "has_attention", lambda **kwargs: False)
+    notified_at = []
+    c.attention.side_effect = lambda *args, **kwargs: notified_at.append(c.clock[0])
+    with watchdog.operation(60, "supplements"):
+        if entry == "article":
+            passed = c.d._wait_for_challenge(c.page, c.result)
+        else:
+            passed = c.d._resolve_suspect_block(c.page, c.result, {
+                "suspect_block": "403 https://journal.example/pdf", "bytes": None, "block_reason": None})
+        assert passed is (pass_after < 60)
+        assert c.clock[0] == 1000 + min(pass_after, 60)
+        assert notified_at == [1030]  # manual classification does not prompt early
+        assert watchdog.operation_remaining() >= 59  # waiting is not browser work
+    click.assert_not_called()
+
+
 @pytest.mark.parametrize("entry", ["article", "pdf"])
 def test_click_is_not_success_and_manual_handoff_keeps_the_original_deadline(wait_case, monkeypatch, entry):
     c = wait_case
@@ -189,7 +236,7 @@ def test_click_is_not_success_and_manual_handoff_keeps_the_original_deadline(wai
         assert not c.d._resolve_suspect_block(c.page, c.result, captured)
         assert captured["block_reason"] == "challenge_or_viewer_timeout"
     assert clicked.call_count == 2  # at 2 s and 5 s; automatic window ends at 8 s
-    c.attention.assert_called_once()
+    c.attention.assert_not_called()  # wait ends before the default idle reminder
     assert c.clock[0] == 1010
     assert not any(event["state"] == "challenge_resolved" for event in c.result.events)
 
@@ -227,7 +274,7 @@ def test_three_attempt_limit_leaves_observation_time_after_each_action(wait_case
     assert starts[0] >= 1002
     assert all(start - end >= 3 for start, end in zip(starts[1:], ends))
     assert c.clock[0] == 1030
-    c.attention.assert_called_once()
+    c.attention.assert_not_called()  # 30 s is the deadline, with no time left to act
     assert not any(event["state"] == "challenge_resolved" for event in c.result.events)
 
 
@@ -271,7 +318,10 @@ def test_late_widget_is_handled_within_the_existing_wait(wait_case, monkeypatch,
     else:
         assert c.d._resolve_suspect_block(c.page, c.result, captured)
     assert c.clock[0] == 1001 + ready_after
-    c.attention.assert_not_called()
+    if ready_after >= 30:
+        c.attention.assert_called_once()
+    else:
+        c.attention.assert_not_called()
 
 
 def test_expired_deadline_never_clicks_or_extends_the_wait(wait_case, monkeypatch):

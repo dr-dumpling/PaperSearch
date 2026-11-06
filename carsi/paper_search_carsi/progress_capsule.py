@@ -3,8 +3,9 @@
 Collapsed it shows how far the task is ("12/40  正文 · Wiley"). Hovering opens
 a card with the paper, the counts and every action of the classic window
 (skip, no access, stop, problem report, settings, output folder). A step that
-needs the user (school login, verification) opens the card by itself and
-raises one system notification. The page is HTML (``assets/capsule.html``)
+needs the user (school login, verification) turns amber with a breathing glow
+and raises one system notification. Clicking the reminder activates the task's
+browser. The page is HTML (``assets/capsule.html``)
 drawn by pywebview with the system web engine: WebKit on macOS, WebView2 on
 Windows. Without pywebview or a usable engine the classic window
 (``progress_bar``) opens instead.
@@ -84,12 +85,15 @@ class Placement:
             pass
 
 
-def notify(title: str, body: str) -> None:
-    """One system notification; silently nothing where none is available."""
+def notify(title: str, body: str, state: dict[str, Any] | None = None) -> None:
+    """One system notification, bound to the current task on macOS."""
+    if not user_settings.notify_enabled():
+        return
     try:
         if sys.platform == "darwin":
-            script = f"display notification {json.dumps(body)} with title {json.dumps(title)}"
-            subprocess.run(["osascript", "-e", script], capture_output=True, timeout=5)
+            from .progress_macos import notify as native_notify
+
+            native_notify(title, body, state or {})
         elif os.name == "nt":
             # Windows toast through PowerShell's registered app id; the texts go in by
             # environment so no quoting is needed.
@@ -106,9 +110,11 @@ def notify(title: str, body: str) -> None:
             )
             subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
                            env={**os.environ, "PSC_TITLE": title, "PSC_BODY": body},
-                           capture_output=True, timeout=10, creationflags=0x08000000)
-    except Exception:
-        pass
+                           capture_output=True, timeout=10, check=True, creationflags=0x08000000)
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("progress notification failed: %s", type(exc).__name__)
 
 
 class Notifier:
@@ -117,17 +123,31 @@ class Notifier:
     def __init__(self, send=notify) -> None:
         self._send = send
         self._seen: set[str] = set()
+        self._task: tuple[str, str] = ("", "")
 
     def observe(self, state: dict[str, Any] | None) -> None:
+        if not user_settings.notify_enabled():
+            self._seen.clear()
+            if sys.platform == "darwin":
+                from .progress_macos import close
+
+                close()
+            return
+        task = (str((state or {}).get("run_id") or ""), str((state or {}).get("current") or ""))
         attention = state.get("attention") if state and state.get("status") == "running" else None
         prompts = {f"{key}@{value.get('since', '')}": value for key, value in attention.items()
                    if isinstance(value, dict)} if isinstance(attention, dict) else {}
-        new = [prompts[key] for key in prompts if key not in self._seen]
+        new = [prompts[key] for key in prompts if task != self._task or key not in self._seen]
+        if self._seen and (not prompts or task != self._task) and sys.platform == "darwin":
+            from .progress_macos import clear_notifications
+
+            clear_notifications()
         self._seen = set(prompts)
-        if not new or not user_settings.notify_enabled():
+        self._task = task
+        if not new:
             return
         message = str(new[-1].get("message") or "需要你在浏览器里处理")
-        threading.Thread(target=self._send, args=("PaperSearch", message), daemon=True).start()
+        threading.Thread(target=self._send, args=("PaperSearch", message, state), daemon=True).start()
 
 
 class Api:
@@ -188,10 +208,35 @@ class Api:
             pass
 
     # --- the buttons ------------------------------------------------------
+    def activate_on_input(self) -> None:
+        """The first real click restores normal Windows focus and keyboard input."""
+        activate = getattr(self._window, "_capsule_activate_on_input", None)
+        if callable(activate):
+            activate()
+
     def act(self, action: str, current: str, run_id: str = "") -> str:
-        """Skip, no access (journal / publisher) or stop, for the running download."""
+        """Control the running download, including showing its browser on request."""
         try:
-            from .entitlements import request_action
+            from .entitlements import SHOW_BROWSER, request_action
+
+            if action == SHOW_BROWSER:
+                state = read_state() or {}
+                if (state.get("status") != "running" or not state.get("attention")
+                        or str(state.get("current") or "") != current
+                        or str(state.get("run_id") or "") != run_id):
+                    return "当前没有等待处理的下载浏览器"
+                if sys.platform == "darwin":
+                    from .browser.foreground import activate_mac
+
+                    pid = state.get("browser_pid")
+                    if not isinstance(pid, int) or pid <= 0 or not activate_mac(pid):
+                        return "未能切到下载浏览器，请从程序坞打开"
+                if os.name == "nt" and isinstance(state.get("owner_pid"), int) and state["owner_pid"] > 0:
+                    # The click gives this foreground window permission to let
+                    # the exact backend process activate its browser on Windows.
+                    import ctypes
+
+                    ctypes.windll.user32.AllowSetForegroundWindow(state["owner_pid"])
 
             request_action(str(current), str(action), str(run_id))
             return progress_view.ACTION_FEEDBACK[str(action)]
@@ -225,6 +270,17 @@ class Api:
             "notify": user_settings.notify_enabled(),
             "download_dir": download_directory.current(),
         }
+
+    def set_notifications(self, enabled: bool) -> dict[str, Any]:
+        """The notification switch saves immediately, independently of other fields."""
+        if not isinstance(enabled, bool):
+            return {"ok": False, "error": "通知开关必须为开启或关闭"}
+        try:
+            user_settings.set_notify(enabled)
+            self._notifier.observe(read_state())
+        except (OSError, ValueError) as exc:
+            return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
+        return {"ok": True, "notify": enabled}
 
     def save_settings(self, values: dict[str, Any], notify_on: bool, download_dir: str | None = None) -> dict[str, Any]:
         """Check every field, then save them all; nothing is saved when one is wrong."""
@@ -493,20 +549,59 @@ def _prepare_nonactivating_start(window: Any) -> None:
         get_style.restype = ctypes.c_ssize_t
         set_style.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
         set_style.restype = ctypes.c_ssize_t
+        user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+                                        ctypes.c_int, ctypes.c_int, wintypes.UINT]
+        user32.SetForegroundWindow.argtypes = [wintypes.HWND]
         initial = []
 
         def before_show():
-            hwnd = window.native.Handle.ToInt64()
+            from webview.window import FixPoint
+
+            native = window.native
+            hwnd = native.Handle.ToInt64()
             initial.append((hwnd, get_style(hwnd, -20)))
             set_style(hwnd, -20, initial[-1][1] | 0x08000000)  # WS_EX_NOACTIVATE
+            # WinForms' geometry methods omit SWP_NOACTIVATE: even an animated
+            # resize can steal focus after the nonactivating initial show.
+            # Preserve their logical-pixel geometry, only for this capsule.
+            def resize(width, height, fix_point):
+                width, height = int(width * native._scale), int(height * native._scale)
+                x, y = native.Location.X, native.Location.Y
+                if fix_point & FixPoint.EAST:
+                    x += native.Width - width
+                if fix_point & FixPoint.SOUTH:
+                    y += native.Height - height
+                user32.SetWindowPos(hwnd, None, x, y, width, height, 0x0054)
 
-        def shown():
+            def move(x, y):
+                user32.SetWindowPos(hwnd, None, int(x * native._scale), int(y * native._scale),
+                                    0, 0, 0x0055)  # NOSIZE | NOZORDER | NOACTIVATE | SHOWWINDOW
+
+            native.resize, native.move = resize, move
+            # pywebview's Shown handler calls WebView2.Focus() after raising
+            # events.shown. That explicit focus defeats the initial native
+            # style, even if we restore the style later. Suppress just this
+            # first Focus call; later user-initiated restores keep normal input.
+            original = native.on_shown
+
+            def first_shown(*_):
+                native.Shown -= first_shown
+                native.Shown += original
+                window.events.shown.set()
+
+            native.Shown -= original
+            native.Shown += first_shown
+
+        def activate_on_input():
             if initial:
                 hwnd, style = initial.pop()
                 set_style(hwnd, -20, style)
+                user32.SetForegroundWindow(hwnd)
 
         window.events.before_show += before_show
-        window.events.shown += shown
+        # Keep the style through the native startup sequence. Restoring it on
+        # shown allows Application.Run/WebView2 to focus the just-shown form.
+        window._capsule_activate_on_input = activate_on_input
 
 
 def main() -> None:
@@ -529,6 +624,15 @@ def main() -> None:
             background_color="#202124" if dark else "#FFFFFF",
         )
         api._window = window
+        if sys.platform == "darwin":
+            from .progress_macos import install_notification_handler
+
+            try:
+                install_notification_handler(lambda current, run_id: api.act("show_browser", current, run_id))
+            except (OSError, RuntimeError) as exc:
+                import logging
+
+                logging.getLogger(__name__).warning("notification host unavailable: %s", type(exc).__name__)
         api._native_geometry = sys.platform == "darwin"
         _serialize_native_resize(window)
         _prepare_nonactivating_start(window)
@@ -540,10 +644,18 @@ def main() -> None:
         # icon: the Dock icon on macOS, instead of a blank one; watch: notifications and closing.
         webview.start(func=api.watch, icon=str(ICON) if sys.platform == "darwin" else None)
     except Exception:  # no usable web engine (e.g. WebView2 missing): the classic window
+        if sys.platform == "darwin":
+            from .progress_macos import close
+
+            close()
         progress_view.release_window_lock()
         _classic()
         return
     progress_view.release_window_lock()
+    if sys.platform == "darwin":
+        from .progress_macos import close
+
+        close()
     # The window is gone. pywebview answers each page call on a thread of its own,
     # and one still waiting for the closed page would hold the interpreter's
     # shutdown forever (the window froze on screen): leave without waiting.

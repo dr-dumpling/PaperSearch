@@ -19,6 +19,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 
 from . import access_rules
+from .page_activity import transfer
 from .batch_common import (
     page_operation,
     POLL_MS,
@@ -173,7 +174,8 @@ class CaptureMixin:
                     continue
                 tries[url] = tries.get(url, 0) + 1
                 try:
-                    fetched = page.evaluate(self._FETCH_PDF_JS, {"url": url, "timeout": int(min(10, remaining) * 1000)})
+                    with transfer(result):
+                        fetched = page.evaluate(self._FETCH_PDF_JS, {"url": url, "timeout": int(min(10, remaining) * 1000)})
                 except Exception as exc:
                     if not _is_browser_error(exc):
                         raise
@@ -410,7 +412,8 @@ class CaptureMixin:
                                 or not self._response_matches_article(response, doi, **article_options)):
                             rejected_pdf_urls.update(self._response_urls(response))
                             return
-                    payload = cdp_session.send("Fetch.getResponseBody", {"requestId": request_id})
+                    with transfer(result):
+                        payload = cdp_session.send("Fetch.getResponseBody", {"requestId": request_id})
                     body = (
                         base64.b64decode(payload["body"], validate=True)
                         if payload.get("base64Encoded")
@@ -534,7 +537,8 @@ class CaptureMixin:
                 if self._should_defer_response_body(url):
                     captured["deferred_url"] = url
                     return
-                body = response.body()
+                with transfer(result):
+                    body = response.body()
                 # Body-level block-page detection (some block pages are 200
                 # with an HTML "IP Address Blocked" body).
                 if not body[:5] == b"%PDF-" and not captured["block_reason"]:
@@ -714,7 +718,8 @@ class CaptureMixin:
                             if not self._refusal_answer(response):
                                 rejected_pdf_urls.update(self._response_urls(response))
                         else:
-                            body = response.body()
+                            with transfer(result):
+                                body = response.body()
                             if self._accept_pdf_body(body, response_url):
                                 captured["bytes"] = body
                                 captured["url"] = response.url
@@ -1145,7 +1150,8 @@ class CaptureMixin:
             if (self._uses_article_pdf_validation()
                     and self._is_supplementary_url(str(getattr(download, "suggested_filename", "") or ""))):
                 return None, pdf_url
-            path = download.path()
+            with transfer(result):
+                path = download.path()
             body = Path(path).read_bytes()
             final_url = str(getattr(download, "url", "") or pdf_url)
             if self._uses_article_pdf_validation() and (
@@ -1358,7 +1364,8 @@ class CaptureMixin:
             page.wait_for_timeout(2 * POLL_MS)
         return None, ""
 
-    def _capture_loaded_pdf_viewer(self, page: Any, source_url: str) -> bytes | None:
+    def _capture_loaded_pdf_viewer(self, page: Any, source_url: str, *,
+                                   output: Path | None = None, max_bytes: int | None = None) -> bytes | Path | None:
         """Read a PDF already loaded by Firefox's native PDF.js viewer.
 
         The viewer runs in a privileged native realm.  Accessing its
@@ -1369,7 +1376,7 @@ class CaptureMixin:
         repeated ``app.open`` calls while the document loads.
         """
         script = r"""
-        async (sourceUrl) => {
+        async ({sourceUrl, maxBytes}) => {
             try {
                 const nativeWindow = window.wrappedJSObject || window;
                 const nativeLocation = String(nativeWindow.location?.href || "");
@@ -1409,7 +1416,12 @@ class CaptureMixin:
                 if (!app.pdfDocument || typeof app.pdfDocument.getData !== "function") {
                     return null;
                 }
+                if (maxBytes) {
+                    const info = await app.pdfDocument.getDownloadInfo();
+                    if (info.length > maxBytes) return {oversized: info.length};
+                }
                 const data = await app.pdfDocument.getData();
+                if (maxBytes && data.byteLength > maxBytes) return {oversized: data.byteLength};
                 // Crossing the Xray/automation boundary with one large Blob
                 // causes a large transient allocation. Keep the native bytes
                 // here and transfer at most 1 MiB per bridge call instead.
@@ -1439,11 +1451,14 @@ class CaptureMixin:
         }
         """
         try:
-            encoded = page.evaluate(script, source_url)
+            encoded = page.evaluate(script, {"sourceUrl": source_url, "maxBytes": max_bytes})
         except Exception:
             return None
+        if isinstance(encoded, dict) and "oversized" in encoded:
+            from .supplements import SupplementTooLarge
+            raise SupplementTooLarge(encoded["oversized"])
         if isinstance(encoded, dict) and isinstance(encoded.get("transfer"), str):
-            return self._read_viewer_chunks(page, encoded["transfer"], encoded.get("size"))
+            return self._read_viewer_chunks(page, encoded["transfer"], encoded.get("size"), output=output)
         if not isinstance(encoded, str) or not encoded.startswith("data:"):
             return None
         try:
@@ -1452,11 +1467,14 @@ class CaptureMixin:
         except (ValueError, TypeError):
             return None
         if len(body) > MIN_PDF_BYTES and body.startswith(b"%PDF-"):
+            if output is not None:
+                output.write_bytes(body)
+                return output
             return body
         return None
 
     @staticmethod
-    def _read_viewer_chunks(page: Any, token: str, size: Any) -> bytes | None:
+    def _read_viewer_chunks(page: Any, token: str, size: Any, *, output: Path | None = None) -> bytes | Path | None:
         """Bound bridge/Blob allocations while preserving exact bytes and cleanup."""
         read_chunk = r"""async ({token, offset, length}) => {
             try {
@@ -1476,22 +1494,38 @@ class CaptureMixin:
             } catch (_) { return null; }
         }"""
         body = bytearray()
+        sink = None
+        complete = False
         try:
             if type(size) is not int or size <= MIN_PDF_BYTES:
                 return None
+            if output is not None:
+                sink = output.open("wb")
             for offset in range(0, size, 1024 * 1024):
                 length = min(1024 * 1024, size - offset)
                 encoded = page.evaluate(read_chunk, {"token": token, "offset": offset, "length": length})
                 if not isinstance(encoded, str) or not encoded.startswith("data:"):
                     return None
                 part = base64.b64decode(encoded.split(",", 1)[1], validate=True)
-                if len(part) != length:
+                if len(part) != length or (offset == 0 and not part.startswith(b"%PDF-")):
                     return None
-                body.extend(part)
+                if sink is not None:
+                    sink.write(part)
+                else:
+                    body.extend(part)
+            complete = True
+            if output is not None:
+                return output
             return bytes(body) if body.startswith(b"%PDF-") else None
         except Exception:
+            if output is not None:
+                raise
             return None
         finally:
+            if sink is not None:
+                sink.close()
+            if output is not None and not complete:
+                output.unlink(missing_ok=True)
             try:
                 page.evaluate("""token => { const w = window.wrappedJSObject || window;
                     if (w.__carsiPdfTransfer?.token === token) delete w.__carsiPdfTransfer; }""", token)
@@ -1547,13 +1581,14 @@ class CaptureMixin:
                     from ..network import proxy_dict
                     proxies = proxy_dict(ctx_proxy)
         try:
-            resp = requests.get(
-                url,
-                headers=headers,
-                timeout=(10, 60),
-                allow_redirects=True,
-                proxies=proxies,
-            )
+            with transfer(getattr(self, "_item_result", None)):
+                resp = requests.get(
+                    url,
+                    headers=headers,
+                    timeout=(10, 60),
+                    allow_redirects=True,
+                    proxies=proxies,
+                )
             # This request is not the browser: a 403/429 here (bot protection,
             # ScienceDirect's challenge, 2026-10-31) says nothing about the
             # browser's access and must not stop the batch. Only a block page counts.

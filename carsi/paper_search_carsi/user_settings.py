@@ -1,6 +1,5 @@
-"""The settings the progress window lets the user type in: how long a download
-waits on the school's login page and elsewhere, and how many papers each
-publisher may open per hour. They apply from the next paper."""
+"""The progress window's wait limits, page inactivity reminder delay, and
+publisher hourly limit. Saved values apply to subsequent papers."""
 
 from __future__ import annotations
 
@@ -23,6 +22,7 @@ class Field:
 FIELDS = (
     Field("login", "学校登录页最多等", "browser_login_timeout", 180, 30, 1800, "秒"),
     Field("page", "其他页面最多等", "browser_page_wait_timeout", 60, 10, 600, "秒"),
+    Field("stalled", "页面持续无进展", "browser_stall_notify_after", 30, 1, 600, "秒"),
     Field("hourly", "每家出版社每小时最多", "publisher_hourly_limit", 100, 0, 1000, "篇"),
 )
 
@@ -60,7 +60,7 @@ NOTIFY_KEY = "progress_notify"
 
 def notify_enabled() -> bool:
     """Whether a step that needs the user also raises a system notification."""
-    return bool(_config.load_config().get(NOTIFY_KEY, True))
+    return bool(_config.load_config().get(NOTIFY_KEY, False))
 
 
 def set_notify(on: bool) -> None:

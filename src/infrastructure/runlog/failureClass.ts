@@ -30,11 +30,10 @@ export const FAILURE_CLASS_LABELS: Readonly<Record<FailureClass, string>> = {
 
 const CLASS_OF_CODE: Readonly<Record<string, FailureClass>> = {
   // The publisher denied the recognised school; the publisher has no route for
-  // the school's federation; the school is not registered there; the user
+  // the school's federation; the user
   // marked the journal or publisher as without access.
   entitlement_missing: "no_access",
   institution_federation_unavailable: "no_access",
-  institution_not_registered: "no_access",
   no_entitlement: "no_access",
   // The user skipped, cancelled, closed the login, gave wrong credentials or did
   // not finish on the school's login page; the school's login failed; the
@@ -47,6 +46,8 @@ const CLASS_OF_CODE: Readonly<Record<string, FailureClass>> = {
   login_credentials_rejected: "user_or_external",
   captcha_required: "user_or_external",
   idp_login_error: "user_or_external",
+  // An unregistered authentication application/entry says nothing about subscriptions.
+  institution_not_registered: "user_or_external",
   idp_account_locked: "user_or_external",
   idp_password_expired: "user_or_external",
   // The school's login ended on its own site: the school has not enabled the publisher.

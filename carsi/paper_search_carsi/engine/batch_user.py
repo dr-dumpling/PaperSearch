@@ -11,6 +11,7 @@ Part of ``PublisherBatchDownloader`` (batch.py), which combines the mixins."""
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from pathlib import Path
@@ -20,6 +21,17 @@ from urllib.parse import urlparse
 from .. import progress_reporter
 from ..entitlements import UserMarkedNoEntitlement
 from .batch_common import DownloadResult, open_page
+from .page_activity import PageActivity
+
+
+class _UserWatch(threading.Event):
+    def __init__(self, activity: PageActivity):
+        super().__init__()
+        self.activity = activity
+
+    def set(self) -> None:
+        super().set()
+        self.activity.close()
 
 
 class UserProvidedPdf(Exception):
@@ -51,15 +63,28 @@ class UserRequestsMixin:
         from .. import entitlements, issues
         from ..browser import watchdog
 
-        stop = threading.Event()
+        activity, _ = self._observe_page_activity(page, result)
+        stop = _UserWatch(activity)
         publisher = str(getattr(getattr(self, "profile", None), "name", "") or "")
         since = getattr(self, "_item_started", 0.0)
         scheduled: set[str] = set()
+        if sys.platform == "darwin":
+            from ..browser.foreground import mac_browser_pid
+
+            try:
+                pid = mac_browser_pid(page, self.config)
+            except Exception as exc:
+                self._event(result, "browser_focus_unavailable", type(exc).__name__)
+                pid = 0
+            progress_reporter.update(browser_pid=pid)
 
         def watch() -> None:
             while not stop.wait(1.0):
+                activity.check()
                 try:
-                    entitlements.apply_user_decision(result.doi, publisher, since)
+                    action = entitlements.apply_user_decision(result.doi, publisher, since)
+                    if action == entitlements.SHOW_BROWSER:
+                        watchdog.run_soon(lambda: self._show_download_browser(page, result))
                 except UserMarkedNoEntitlement as decision:
                     self._event(result, "user_entitlement_decision", str(decision))
                     watchdog.interrupt(decision)
@@ -76,6 +101,46 @@ class UserRequestsMixin:
 
         threading.Thread(target=watch, name="user-requests", daemon=True).start()
         return stop
+
+    def _observe_page_activity(self, page: Any, result: DownloadResult) -> tuple[PageActivity, bool]:
+        activity = getattr(result, "_page_activity", None)
+        owned = activity is None or activity.closed
+        if owned:
+            result._page_activity = activity = PageActivity(result.doi, self.config)
+        if page is not None:
+            activity.observe(page)
+        return activity, owned
+
+    def _show_download_browser(self, page: Any, result: DownloadResult) -> None:
+        """Focus the existing task page only after the user requests it."""
+        from ..browser import watchdog
+
+        try:
+            page = getattr(result, "_attention_page", None) or page
+            activity = getattr(result, "_page_activity", None)
+            if not getattr(result, "_attention_page", None) and activity is not None and not activity.closed:
+                page = activity.page or page
+            if page is None or page.is_closed():
+                self._tell_user("下载浏览器已关闭", result)
+                return
+            from ..browser.foreground import show
+
+            wait = getattr(result, "_login_wait", None)
+            if wait is not None and getattr(result, "_login_attention", ""):
+                wait.take_over()
+                self._set_login_attention(result, result._login_attention, page=page)
+            verification_wait = getattr(result, "_verification_wait", None)
+            if verification_wait is not None:
+                verification_wait.take_over()
+            show(page, self.config)
+        except (watchdog.BrowserUnresponsive, UserMarkedNoEntitlement):
+            raise
+        except Exception as exc:
+            self._event(result, "browser_focus_failed", type(exc).__name__)
+            self._tell_user("未能切到下载浏览器，请从程序坞或任务栏打开", result)
+            return
+        self._event(result, "browser_shown", "requested from progress capsule")
+        self._tell_user("已切到下载浏览器", result)
 
     def _handle_report(self, folder: Path, page: Any, result: DownloadResult, *, act: bool = True) -> None:
         """Capture the live page for a report and, while the article runs (``act``),

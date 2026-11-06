@@ -26,7 +26,7 @@ _ARTICLE = re.compile(r"/doi/(?:(?:abs|full|pdf|epdf|pdfdirect|reader)/)?(10\.\d
 _CARSI = "China CERNET Federation (CARSI)"
 # Supplement files: /doi/suppl/<DOI>/suppl_file/<name>, with the link text.
 _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href*="/doi/suppl/"]')].map(a => ({
-    href: a.href, label: (a.innerText || a.getAttribute('title') || '').replace(/\\s+/g, ' ').trim().slice(0, 200)}))"""
+    href: a.href, label: ((a.textContent || '').trim() || a.getAttribute('title') || '').replace(/\\s+/g, ' ').trim().slice(0, 200)}))"""
 # The page's institution-login links, read at once: a link-by-link lookup waited
 # 30 s on a page still navigating after a silent IdP return (ASCE, 2026-11-02).
 _SSOSTART_LINKS_JS = """() => [...document.querySelectorAll('a[href*="/action/ssostart"]')].map(a => ({
@@ -54,17 +54,31 @@ class AtyponAdapter(PublisherAdapter):
 
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink] | None:
         """Files under ``/doi/suppl/<this DOI>/suppl_file/``; a supplement link of
-        another article on the page (AHA, 2026-11-01) is not this article's."""
-        links: list[SupplementLink] = []
-        rows = page.evaluate(_SUPPLEMENT_ROWS_JS)
-        prefix = f"/doi/suppl/{doi.lower()}/suppl_file/"
-        for row in rows if isinstance(rows, list) and doi else []:
-            target = urlparse(str(row.get("href") or "") if isinstance(row, dict) else "")
-            url = target._replace(fragment="").geturl()
-            if (self._on_site(url) and unquote(target.path).lower().startswith(prefix)
-                    and url not in {link.url for link in links}):
-                links.append(SupplementLink(url, str(row.get("label") or "")))
-        return links
+        another article on the page is not this article's. Follow the observed
+        supplement landing page once when the article only links to that page.
+        """
+        landing_path = f"/doi/suppl/{doi.lower()}"
+        for attempt in range(2):
+            links: list[SupplementLink] = []
+            landing = ""
+            rows = page.evaluate(_SUPPLEMENT_ROWS_JS)
+            for row in rows if isinstance(rows, list) and doi else []:
+                target = urlparse(str(row.get("href") or "") if isinstance(row, dict) else "")
+                url = target._replace(fragment="").geturl()
+                if not self._on_site(url):
+                    continue
+                path = unquote(target.path).lower()
+                if path.startswith(landing_path + "/suppl_file/"):
+                    if url not in {link.url for link in links}:
+                        links.append(SupplementLink(url, str(row.get("label") or "")))
+                elif path.rstrip("/") == landing_path:
+                    landing = landing or url
+            if links or not landing or attempt:
+                return links
+            if unquote(urlparse(str(page.url)).path).lower().rstrip("/") == landing_path:
+                return []
+            open_page(page, landing, timeout_ms=30_000)
+        return []
 
     def institution_chooser_open(self, page: Any) -> bool:
         return self._chooser(str(getattr(page, "url", "") or "")) and page.locator("select#shib-search--fed").is_visible()

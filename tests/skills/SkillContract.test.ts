@@ -182,7 +182,7 @@ describe("paper-search bundled skill contract", () => {
       expect(skill).toContain(choice);
     }
     expect(support).toMatch(
-      /\|\s*出版社\s*\|\s*网站\s*\|\s*常见 DOI 前缀\s*\|\s*正文\s*\|\s*补充材料\s*\|\s*说明\s*\|/,
+      /\|\s*出版社\s*\|\s*网站\s*\|\s*常见 DOI 前缀\s*\|\s*正文\s*\|\s*补充材料\s*\|\s*\n/,
     );
     for (const code of [
       "supplements_not_supported",

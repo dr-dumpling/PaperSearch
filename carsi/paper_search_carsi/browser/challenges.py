@@ -49,11 +49,21 @@ def is_challenge_path(url: str) -> bool:
     return "/crawlprevention/" in path or path == "/captcha" or path.startswith("/captcha/")
 
 
+def continues_manual_challenge(title: str) -> bool:
+    """An already recognised image challenge keeps its title between puzzle steps."""
+    return str(title or "").strip().lower() == "human verification"
+
+
 def has_challenge_text(title: str, text: str) -> bool:
     """Recognise verification wording after explicit access blocks are excluded."""
     haystack = f"{title} {text}".lower()
     if str(title or "").strip().lower() == "human verification":
         body = " ".join(str(text or "").lower().split())
+        # Image-only verification screens can expose no body text until the
+        # user presses Begin. Keep the exact interstitial title requirement:
+        # an article discussing human verification is not a challenge.
+        if body in {"", "begin", "begin english"}:
+            return True
         if "complete the security check" in body and "you are not a bot" in body:
             return True
     return (any(marker in haystack for marker in _TEXT_MARKERS)

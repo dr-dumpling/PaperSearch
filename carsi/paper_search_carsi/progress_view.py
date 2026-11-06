@@ -34,6 +34,7 @@ STAGE_STEP = {
 ATTENTION_SHORT = {"waiting_login": "请登录学校", "waiting_verification": "请完成验证"}
 # The answer a button gets in the window, before the download confirms it.
 ACTION_FEEDBACK = {
+    "show_browser": "正在切到下载浏览器",
     "stop_batch": "已终止任务：这一篇结束，剩下的不再下载",
     "skip_item": "已跳过本篇，进入下一篇",
     "skip_journal": "已记住：本刊无权限，以后自动跳过（可用 entitlements 撤销）",

@@ -65,8 +65,10 @@ class OvidSite:
             wall = page.locator("button.omni-article-tool__check-access").first
             if not wall.is_visible():
                 return False
-            wall.click(timeout=5_000, no_wait_after=True)
+            if not self.d._click_control(page, wall, result, "ovid-check-access"):
+                return False
             institution.wait_for(state="visible", timeout=5_000)
-        institution.click(timeout=10_000, no_wait_after=True)
+        if not self.d._click_control(page, institution, result, "ovid-institution-control"):
+            return False
         self.d._event(result, "sso_entry_clicked", "ovid-institution-control")
         return True

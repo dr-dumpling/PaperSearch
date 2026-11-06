@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from ...engine.router import elsevier_journal_article, extract_elsevier_pii
 from ..base import PublisherAdapter, SupplementLink, register
@@ -28,6 +28,8 @@ from .sciencedirect import ScienceDirectSite
 # ClinicalKey (clinicalkey.com, .fr, .es, .com.au, ...): EMC titles are served
 # only there, a separate subscription with its own sign-in and reader.
 _CLINICALKEY = re.compile(r"(?:www\.)?clinicalkey\.[a-z]{2,3}(?:\.[a-z]{2})?")
+_ASH_DOI = re.compile(r"10\.1182/(?:blood|bloodadvances)\.[^/?#\s]+", re.I)
+_ASH_HOSTS = frozenset({"ashpublications.org", "www.ashpublications.org"})
 
 
 # Every file link on the page with the text around it (the item's caption).
@@ -181,6 +183,14 @@ class ElsevierAdapter(PublisherAdapter):
     def login_url(self) -> str | None:
         return "https://www.sciencedirect.com/"
 
+    def article_url(self, doi: str) -> str | None:
+        # ASH's society site points its institution entry to this same-DOI
+        # Linking Hub route. Use the publishing partner's existing flow rather
+        # than treating that explicit cross-site entry as a missing login.
+        if _ASH_DOI.fullmatch(doi):
+            return "https://linkinghub.elsevier.com/retrieve/doi/" + quote(doi, safe="/")
+        return None
+
     def open_institution_entry(self, page: Any, result: Any) -> bool | None:
         clicked = self.click_institution_entry(page, result)
         if self.d.config.get("publisher_institution_federation") == "carsi":
@@ -252,6 +262,11 @@ class ElsevierAdapter(PublisherAdapter):
         Gastroenterology) show only the abstract there, so the DOI's landing page follows."""
         from .journal_site import _get_elsevier_pii
 
+        if _ASH_DOI.fullmatch(doi):
+            # ASH keeps supplementary content on the original journal page.
+            # A ScienceDirect detour spends the same discovery budget on an
+            # extra verification without supplying these Silverchair files.
+            return [f"https://doi.org/{doi}"]
         pii = _get_elsevier_pii(doi)
         first = [f"https://www.sciencedirect.com/science/article/pii/{pii}"] if pii else []
         return first + [f"https://doi.org/{doi}"]
@@ -297,6 +312,9 @@ class ElsevierAdapter(PublisherAdapter):
         return bool(expected) and here != expected
 
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink] | None:
+        if (urlparse(str(page.url)).hostname or "").lower() in _ASH_HOSTS and _ASH_DOI.fullmatch(doi):
+            from ..platforms.silverchair import supplement_links
+            return supplement_links(page, doi, _ASH_HOSTS)
         if sciencedirect.is_page(str(page.url)):
             self.sciencedirect.wait_for_full_text(page)
         return supplement_links_from_rows(page.evaluate(_SUPPLEMENT_ROWS_JS), str(page.url), doi)

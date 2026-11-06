@@ -1,10 +1,11 @@
 """Waits on the user share one budget per article; when the user seems away they are short."""
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
 from paper_search_carsi.browser import watchdog
-from paper_search_carsi.engine import batch, bridge
+from paper_search_carsi.engine import batch, batch_diagnostics, batch_login, batch_waits, bridge
 from paper_search_carsi.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_carsi.engine.batch_common import PublisherContentError
 from paper_search_carsi.publishers.profiles import ELSEVIER_PROFILE, get_publisher_profile
@@ -124,6 +125,20 @@ class UserWaitBudgetTests(unittest.TestCase):
         self.assertEqual(clock[0], 1025 + batch.AWAY_WAIT_SEC)
         self.assertTrue(result._user_wait_expired)
 
+    def test_manual_verification_input_pauses_the_page_and_article_budgets(self):
+        d = self.downloader()
+        page, clock = self.verification_page()
+        page.frames = [Mock(evaluate=Mock(side_effect=lambda *a: int(clock[0] >= 1005)))]
+        d._challenge_shell = Mock(side_effect=lambda p: clock[0] < 1400)
+        d._is_challenge_page = Mock(side_effect=lambda p: clock[0] < 1400)
+        d._automatic_challenge_step = Mock(return_value=False)
+        result = DownloadResult(doi="10.1/fixture", status="failed")
+        self.assertTrue(d._wait_for_challenge(page, result))
+        self.assertGreaterEqual(clock[0], 1400)
+        self.assertGreater(result._user_wait_deadline, clock[0])
+        self.assertIsNone(result._verification_wait)
+        self.assertFalse(getattr(result, "_user_wait_expired", False))
+
     def login_loop(self, d, page, result, clock):
         for name in ("_dismiss_cookie_banners", "_click_openathens_entry", "_select_institution",
                      "_click_sso_entry", "_institution_pdf_entitlement_missing", "_challenge_shell",
@@ -135,15 +150,20 @@ class UserWaitBudgetTests(unittest.TestCase):
         d._login_block_reason = Mock(return_value=None)
         d._title = Mock(return_value="Sign in")
         d._is_human_login_page = Mock(return_value=True)
-        with patch.object(batch.time, "sleep", lambda sec: clock.__setitem__(0, clock[0] + sec)), \
-                patch.object(batch.time, "time", lambda: clock[0]):
+        # Only the login flow advances this clock; a browser watchdog thread
+        # from another test must keep its real sleep.
+        login_clock = SimpleNamespace(time=lambda: clock[0], monotonic=lambda: clock[0],
+                                      sleep=lambda sec: clock.__setitem__(0, clock[0] + sec))
+        with patch.object(batch_login, "time", login_clock), \
+             patch.object(batch_waits, "time", login_clock), \
+             patch.object(batch_diagnostics, "time", login_clock):
             return d._complete_login_from_current_page(page, result)
 
     def test_when_the_user_seems_away_an_untouched_login_page_ends_after_the_short_wait(self):
         d = self.downloader(user_wait="short")
-        d._visible_input_values = Mock(return_value=("", ""))
         clock = [1000.0]
         page = Mock(url="https://cas.school.example/login")
+        page.frames = []
         result = DownloadResult(doi="10.1002/x", status="failed", article_url=ARTICLE)
         self.assertFalse(self.login_loop(d, page, result, clock))
         self.assertTrue(result._user_wait_expired)
@@ -152,15 +172,22 @@ class UserWaitBudgetTests(unittest.TestCase):
 
     def test_someone_typing_on_the_login_page_is_waited_for(self):
         d = self.downloader(user_wait="short")
-        typed = iter(range(1000))
-        d._visible_input_values = Mock(side_effect=lambda page: (str(next(typed)), ""))
         clock = [1000.0]
         page = Mock(url="https://cas.school.example/login")
+        page.frames = [Mock(evaluate=Mock(side_effect=lambda *a: int(clock[0] >= 1012)))]
+        d._users_login_step = Mock(return_value=True)
+        def finish_login(*args):
+            if clock[0] >= 1400:
+                d._users_login_step.return_value = False
+                d._is_human_login_page.return_value = False
+                d._article_access_available.return_value = True
+        d._check_user_decision.side_effect = finish_login
         result = DownloadResult(doi="10.1002/x", status="failed", article_url=ARTICLE)
-        self.assertFalse(self.login_loop(d, page, result, clock))
-        # Waited to the article's total (180 s after the entry steps), not just the short wait.
-        self.assertGreaterEqual(clock[0] - 1000, 180)
-        self.assertTrue(result._user_wait_expired)
+        self.assertTrue(self.login_loop(d, page, result, clock))
+        # One real input takes over; even a long pause between inputs is allowed.
+        self.assertGreaterEqual(clock[0] - 1000, 400)
+        self.assertFalse(getattr(result, "_user_wait_expired", False))
+        self.assertIsNone(result._login_wait)
 
     def test_a_login_that_waited_out_on_the_user_is_reported_as_a_login_timeout(self):
         result = DownloadResult(doi="10.1016/x", status="failed")

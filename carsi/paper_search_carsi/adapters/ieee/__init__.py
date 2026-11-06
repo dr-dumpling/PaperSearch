@@ -11,12 +11,72 @@ publisher route.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from ...engine.batch_common import pump_until, settle
 from ...engine.router import extract_ieee_article_number
-from ..base import PublisherAdapter, register
+from ..base import PublisherAdapter, SupplementLink, register
+
+_SUPPLEMENTS_JS = r"""() => {
+  let metadata = window.xplGlobal?.document?.metadata;
+  // Camoufox's isolated evaluation world may not expose page globals. Read
+  // the same JSON declaration from the DOM without executing website code.
+  if (!metadata) {
+    for (const script of document.scripts) {
+      const text = script.textContent || '';
+      if (text.length > 1048576) continue;
+      const match = text.match(/xplGlobal\.document\.metadata\s*=\s*(\{[\s\S]*?\})\s*;/);
+      if (!match) continue;
+      try { metadata = JSON.parse(match[1]); }
+      catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+      break;
+    }
+  }
+  return {
+    article: metadata?.articleNumber,
+    doi: metadata?.doi,
+    multimedia: metadata?.sections?.multimedia,
+    tabs: [...document.querySelectorAll('a.document-tab-link[href]')].map(a => a.href),
+    dois: [...document.querySelectorAll('a.multimedia-doi[href]')].map(a => a.href),
+    rows: [...document.querySelectorAll('.media-item a[href]')].map(a => ({
+        href:a.href, label:(a.textContent || '').trim().slice(0,240)
+    }))
+  };
+}"""
+
+
+def supplement_links_from_page(data: dict, page_url: str, doi: str) -> list[SupplementLink] | None:
+    current = urlparse(page_url)
+    main_article = re.fullmatch(r"/document/(\d+)/?", current.path)
+    if (current.scheme == "https" and current.netloc == "ieeexplore.ieee.org" and main_article
+            and str(data.get("article") or "") == main_article[1]
+            and str(data.get("doi") or "").casefold() == doi.casefold()
+            and (data.get("multimedia") is False or data.get("multimedia") == "false")
+            and not data.get("rows") and not data.get("dois")
+            and not any(urlparse(urljoin(page_url, str(tab))).path.rstrip("/")
+                        == f"/document/{main_article[1]}/media" for tab in data.get("tabs", []))):
+        # IEEE explicitly declares the sections of this identified article.
+        # Missing tabs or an unfinished app shell alone are not empty evidence.
+        return []
+    article = re.fullmatch(r"/document/(\d+)/media/?", current.path)
+    if (current.scheme != "https" or current.netloc != "ieeexplore.ieee.org" or not article
+            or not any(re.fullmatch(r"https://doi\.org/" + re.escape(doi) + r"/mm\d+", url, re.I)
+                       for url in data.get("dois", []))):
+        return None
+    links: list[SupplementLink] = []
+    seen: set[str] = set()
+    for row in data.get("rows", []):
+        target = urlparse(str(row.get("href") or ""))
+        if (target.scheme != "https" or target.netloc != current.netloc
+                or not re.fullmatch(r"/ielx\d+/\d+/\d+/" + article[1] + r"/[^/]+", target.path)):
+            continue
+        url = target._replace(fragment="").geturl()
+        if url not in seen:
+            seen.add(url)
+            links.append(SupplementLink(url, str(row.get("label") or "")))
+    return links
 
 _SEARCH = "input.inst-typeahead-input"
 # Text on an article page that offers the institution login.
@@ -74,6 +134,40 @@ _SEARCH_INPUTS = (
 class IEEEAdapter(PublisherAdapter):
     publisher = "ieee"
 
+    def is_article_page_url(self, url: str) -> bool:
+        parsed = urlparse(url)
+        return (parsed.scheme == "https" and parsed.netloc == "ieeexplore.ieee.org"
+                and re.fullmatch(r"/document/\d+/?", parsed.path) is not None)
+
+    def supplement_links(self, page: Any, doi: str) -> list[SupplementLink] | None:
+        """Open the article's observed Supplemental Items tab before discovery."""
+        current = urlparse(str(page.url))
+        article = re.fullmatch(r"/document/(\d+)/?", current.path)
+        if current.scheme == "https" and current.netloc == "ieeexplore.ieee.org" and article:
+            for control in page.locator('a.document-tab-link[href]').all():
+                href = urljoin(str(page.url), control.get_attribute('href') or '')
+                target = urlparse(href)
+                if (target.scheme == "https" and target.netloc == current.netloc
+                        and target.path == f"/document/{article[1]}/media"):
+                    # This is a client-side document tab; a fresh navigation can
+                    # return a blank shell instead of rendering its media panel.
+                    # Native activation reaches the same client-side router
+                    # without waiting for animation-frame stability in a
+                    # background tab. Never activate a hidden/disabled tab.
+                    activated = control.evaluate("""el => {
+                        if (!el.getClientRects().length || getComputedStyle(el).visibility !== 'visible'
+                                || el.getAttribute('aria-disabled') === 'true') return false;
+                        el.click(); return true;
+                    }""", timeout=5_000)
+                    if not activated:
+                        continue
+                    pump_until(page, lambda: page.evaluate("""doi =>
+                        [...document.querySelectorAll('a[href]')].some(a =>
+                            a.href.toLowerCase().startsWith('https://doi.org/' + doi.toLowerCase() + '/mm'))
+                        """, doi), 15_000)
+                    break
+        return supplement_links_from_page(page.evaluate(_SUPPLEMENTS_JS), str(page.url), doi)
+
     def login_url(self) -> str | None:
         return "https://ieeexplore.ieee.org/"
 
@@ -98,6 +192,12 @@ class IEEEAdapter(PublisherAdapter):
         search = page.locator(_SEARCH).first
         if search.is_visible():
             return False  # the modal is open: the school is chosen there
+        for dialog in page.get_by_role("dialog").filter(
+                has_text=re.compile(r"institutional sign in|access through", re.I)).all():
+            if dialog.is_visible():
+                # PDF can open this modal before the login flow starts. It may
+                # show only a remembered school, with no search input yet.
+                return False
         entry = page.locator("a.inst-sign-in").first
         if not entry.is_visible():
             return None

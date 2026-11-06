@@ -19,14 +19,19 @@ _MAX_RESOURCES = 5
 _MAX_ARTICLES = 50
 _MAX_BYTES = 200 * 1024 * 1024
 _BUDGET_SEC = 30
-_PAGE_LINKS = """() => ({
- doi: document.querySelector('meta[name="citation_doi"]')?.content || '',
+_PAGE_LINKS = """() => {
  // A cited dataset is not a supplement of the article citing it.
- links: [...document.querySelectorAll('a[href], iframe[src]')]
+ const links = [...document.querySelectorAll('a[href], iframe[src]')]
    .filter(a => !a.closest('[role="doc-bibliography"], [role="doc-biblioentry"], '
-     + '#references, #bibliography, .ref-list, .article-section__references'))
-   .map(a => a.href || a.src)
-})"""
+     + '#references, #bibliography, #articleReferences, .ref-list, .article-section__references'));
+ return {
+   doi: document.querySelector('meta[name="citation_doi"]')?.content || '',
+   links: links.map(a => a.href || a.src),
+   labelled: links.filter(a => a.tagName === 'A' &&
+     /^(?:supplement(?:ary)?(?: (?:material|information|data|file|document))?|supporting information)\\s*\\d*$/i
+       .test((a.textContent || '').replace(/\\s+/g,' ').trim())).map(a => a.href)
+ };
+}"""
 
 
 def _doi(value: Any) -> str:
@@ -66,13 +71,17 @@ def resource(url: str) -> tuple[str, str, str] | None:
     return m[1], m[2], m[3] or ""
 
 
-def _belongs(data: dict, doi: str) -> bool:
+def _belongs(data: dict, doi: str, *, labelled: bool = False) -> bool:
     resource_doi = _doi(data.get("resource_doi"))
     if resource_doi:
         return resource_doi == doi
-    return any(isinstance(item, dict) and item.get("relation") == "IsSupplementTo"
-               and _doi(item.get("identifier")) == doi
-               for item in data.get("related_materials") or [])
+    parents = [_doi(item.get("identifier")) for item in data.get("related_materials") or []
+               if isinstance(item, dict) and item.get("relation") == "IsSupplementTo"]
+    if parents:
+        return doi in parents
+    # Some publisher deposits omit the backlink. An explicit Supplement link
+    # on the DOI-verified article is then sufficient; a plain citation is not.
+    return labelled
 
 
 def supplement_links(page: Any, doi: str, *, clock=time.monotonic, pause=time.sleep) -> list[SupplementLink] | None:
@@ -124,7 +133,7 @@ def supplement_links(page: Any, doi: str, *, clock=time.monotonic, pause=time.sl
                 if (requested != actual if version else
                         re.sub(r"\.v\d+$", "", requested) != re.sub(r"\.v\d+$", "", actual)):
                     raise ValueError("figshare_resource_doi_mismatch")
-            if not _belongs(detail, doi):
+            if not _belongs(detail, doi, labelled=root in data.get("labelled", [])):
                 raise ValueError("figshare_article_mismatch")
             articles = [detail]
             if kind == "collections":

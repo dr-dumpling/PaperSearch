@@ -101,12 +101,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # 任务启动时自动弹出悬浮进度条（独立进程，已有实例则不重复弹出）。
     "progress_bar_auto": True,
     # 需要登录学校或完成验证时，除了进度胶囊变色，再发一条系统通知；进度窗口的设置里可以关。
-    "progress_notify": True,
+    "progress_notify": False,
     # 每篇文章在学校登录页等待用户输入的总时长上限，秒；从第一次等待算起。
     "browser_login_timeout": 180,
     # 不在学校登录页时（出版社页面、选机构页、人机验证、取 PDF 时等待处理）最多等多久，秒；
     # 连续超过就结束这一篇。进度窗口里可以改。
     "browser_page_wait_timeout": 60,
+    # 页面没有实际进展多久后提醒人工查看；仅控制提醒，不延长页面等待上限。
+    "browser_stall_notify_after": 30,
     # 每个出版社每小时最多打开的文章数，防止学校因下载过多被出版社暂停访问；0 = 不限。
     "publisher_hourly_limit": 100,
     # Turnstile 交互门（如 sci-hub.vg）：无头会话下无法点击，默认跳过并冷却。
@@ -163,6 +165,7 @@ def save_config(config: dict[str, Any]) -> None:
 
 _VALIDATION_RULES: dict[str, tuple[type, Any, Any]] = {
     # key: (type, min_value, max_value)
+    "browser_stall_notify_after": (int, 1, 600),
     "connect_timeout": (int, 1, 60),
     "read_timeout": (int, 1, 120),
     "request_delay_min": (float, 0.0, 30.0),

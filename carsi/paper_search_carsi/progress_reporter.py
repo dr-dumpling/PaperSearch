@@ -147,8 +147,9 @@ def ensure_progress_bar(config: dict[str, Any] | None = None) -> None:
 
         kwargs = {"creationflags": 0x08000000} if os.name == "nt" else {}
         env = {**os.environ, "CARSI_PROGRESS_BAR_CHILD": "1"}
+        command = [sys.executable, "-m", "paper_search_carsi.progress_capsule"]
         subprocess.Popen(
-            [sys.executable, "-m", "paper_search_carsi.progress_capsule"],
+            command,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
             env=env, start_new_session=(os.name != "nt"), **kwargs,
         )
@@ -457,6 +458,13 @@ def advance(ok: bool, current: str = "", phase: str = "") -> None:
         _write_state()
 
 
+def has_attention(*, current: str = "", excluding: str = "") -> bool:
+    """Whether another reminder already asks this paper's user to act."""
+    with _LOCK:
+        return any(key != excluding and (not current or value.get("current") == current)
+                   for key, value in _STATE.get("attention", {}).items())
+
+
 def set_attention(key: str, message: str, *, current: str = "", phase: str = "",
                   deadline: float | None = None) -> None:
     """Show a manual-action reminder without stopping other workers; ``deadline``
@@ -476,6 +484,19 @@ def set_attention(key: str, message: str, *, current: str = "", phase: str = "",
         }
         if deadline is not None:
             attention[str(key)]["deadline"] = float(deadline)
+        _write_state()
+
+
+def update_attention_deadline(key: str, deadline: float | None) -> None:
+    """Change only the countdown, keeping the reminder/notification identity."""
+    with _LOCK:
+        attention = _STATE.get("attention", {}).get(str(key))
+        if attention is None or attention.get("deadline") == deadline:
+            return
+        if deadline is None:
+            attention.pop("deadline", None)
+        else:
+            attention["deadline"] = float(deadline)
         _write_state()
 
 

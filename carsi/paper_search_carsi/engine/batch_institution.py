@@ -190,9 +190,10 @@ class InstitutionMixin:
         }
         return null;
     }"""
-    # The chooser's own submit: the nearest shown control around what was chosen,
-    # the first after it ("Access through Institution" on ACS, "Go" on JAMA). What
-    # was chosen is a list (its index among document.querySelectorAll('select')) or
+    # The chooser's own submit: the nearest control around what was chosen,
+    # the first after it. A custom UI can hide both its school list and native
+    # submit; a unique nearby native Select/Continue still belongs to it.
+    # What was chosen is a list (its index among document.querySelectorAll('select')) or
     # an entry (a selector), whose form's controls only, or with no form none of
     # another form's; ``controls`` names the controls that count (null: any button
     # or link-button). Never a control of the page outside the chooser, such as the
@@ -200,18 +201,23 @@ class InstitutionMixin:
     _LIST_SUBMIT_JS = r"""([anchor, controls]) => {
         const s = typeof anchor === 'number' ? document.querySelectorAll('select')[anchor] : document.querySelector(anchor);
         if (!s) return null;
-        const own = typeof anchor === 'number' ? undefined : s.closest('form');
+        const own = s.form || s.closest('form');
         const shown = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden' && !el.disabled;
-        const text = el => (el.innerText || el.value || el.getAttribute('aria-label') || el.getAttribute('title') || '')
+        const text = el => (el.innerText || el.value || el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || '')
             .replace(/\s+/g, ' ').trim();
         const CONTROL = controls || ('button, input[type="submit"], input[type="button"], input[type="image"], '
             + 'a[href^="javascript" i], a[role="button"], [role="button"], a.button, a.btn');
-        const NOT = /cancel|back|reset|clear|register|personal|sign ?up|help|close|remember|forgot/i;
+        const NOT = /cancel|back|reset|clear|register|personal|sign ?up|help|close|remember|forgot|subscribe|purchase|\bbuy\b/i;
+        const NATIVE_ACTION = /^(?:select|continue|go|next|sign\s*in|log\s*in|选择|继续|登录)$|access.*institut/i;
         for (let box = s.parentElement, n = 0; box && n < 6; box = box.parentElement, n++) {
-            const found = [...box.querySelectorAll(CONTROL)].filter(c => !s.contains(c) && shown(c) && text(c).length <= 60
-                && !NOT.test(text(c)) && (own === undefined || !('form' in c) || c.form === own));
-            if (!found.length) continue;
-            const pick = found.find(c => s.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING) || found[found.length - 1];
+            const candidates = [...box.querySelectorAll(CONTROL)].filter(c => !s.contains(c) && !c.disabled && text(c).length <= 60
+                && !NOT.test(text(c)) && (('form' in c ? c.form : c.closest('form')) === own));
+            const found = candidates.filter(shown);
+            const native = typeof anchor === 'number' && !shown(s) && own
+                ? candidates.filter(c => c.type === 'submit' && c.form === own && !shown(c) && NATIVE_ACTION.test(text(c))) : [];
+            if (!found.length && native.length !== 1) continue;
+            const pick = native.length === 1 ? native[0]
+                : (found.find(c => s.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING) || found[found.length - 1]);
             document.querySelectorAll('[data-paper-search-submit]').forEach(e => e.removeAttribute('data-paper-search-submit'));
             pick.setAttribute('data-paper-search-submit', '');
             return text(pick).slice(0, 80) || pick.tagName;
@@ -260,9 +266,18 @@ class InstitutionMixin:
 
     @staticmethod
     def _filled_lists(lists: Any, federation: dict) -> dict:
-        """The lists other than the federation's with more than a placeholder."""
+        """Filled school lists, not the header's journal/language/search lists.
+
+        Only positive institution evidence can establish that a school is
+        missing. An unrelated filled dropdown says nothing about an empty
+        institution list that is still loading.
+        """
+        school = re.compile(r"institut|school|universit|\buniv\b|college|organi[sz]ation|\bidp\b|大学|学院|研究院", re.I)
         return {str(s.get("name")): list(s.get("options") or ()) for s in lists or ()
-                if s.get("i") != federation.get("i") and len(s.get("options") or ()) > 1}
+                if s.get("i") != federation.get("i") and len(s.get("options") or ()) > 1
+                and (school.search(str(s.get("name") or "")) or any(
+                    school.search(str(o[1])) for o in s.get("options") or ()
+                    if isinstance(o, (list, tuple)) and len(o) == 2))}
 
     # The list chosen in, marked by its index among document.querySelectorAll('select'):
     # a locator's "select" would also count lists inside shadow roots.
@@ -591,12 +606,39 @@ class InstitutionMixin:
             entries = []
             for role in ("link", "button"):
                 try:
-                    for entry in page.get_by_role(role, name=re.compile(r"^\s*access through\s+\S", re.I)).all()[:10]:
+                    for entry in page.get_by_role(role, name=re.compile(r"^\s*access through\s*\S", re.I)).all()[:10]:
                         if entry.is_visible() is True:
-                            label = re.sub(r"^\s*access through\s+", "", entry.inner_text(timeout=1_000), flags=re.I)
+                            label = re.sub(r"^\s*access through\s*", "", entry.inner_text(timeout=1_000), flags=re.I)
                             entries.append((self._institution_match_score(label), label, entry))
                 except Exception:
                     continue
+            if not any(score >= 2 for score, _, _ in entries):
+                # A widget's accessible name can differ from its visible school
+                # text, or it can be a clickable div/span without a role. Use
+                # the visible control text, still requiring a click affordance.
+                candidates = page.evaluate("""() => {
+                    document.querySelectorAll('[data-paper-search-remembered]').forEach(e =>
+                        e.removeAttribute('data-paper-search-remembered'));
+                    const items = [...document.querySelectorAll('a,button,[role="button"],div,span')].filter(el => {
+                        const native = el.matches('a[href],button,[role="button"]');
+                        if (!native && el.closest('a,button,[role="button"]')) return false;
+                        const text = (el.textContent || '').trim();
+                        return text.length <= 160 && /^access through\\s*\\S/i.test(text)
+                            && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden'
+                            && !el.disabled && el.getAttribute('aria-disabled') !== 'true'
+                            && (native || typeof el.onclick === 'function' || getComputedStyle(el).cursor === 'pointer');
+                    });
+                    return items.filter(el => !items.some(other => other !== el && el.contains(other)))
+                        .slice(0,10).map((el,i) => {
+                            el.setAttribute('data-paper-search-remembered', String(i));
+                            return {i, text:(el.textContent || '').trim()};
+                        });
+                }""")
+                if isinstance(candidates, list):
+                    for candidate in candidates:
+                        label = re.sub(r"^\s*access through\s*", "", candidate["text"], flags=re.I)
+                        entries.append((self._institution_match_score(label), label,
+                                        page.locator(f'[data-paper-search-remembered="{candidate["i"]}"]')))
             top = max((score for score, _, _ in entries), default=0)
             best = [(label, entry) for score, label, entry in entries if score == top]
             if top >= 2 and len(best) == 1:

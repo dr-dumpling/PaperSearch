@@ -139,7 +139,7 @@ class SettingsTests(unittest.TestCase):
 
     def test_current_reads_every_field(self):
         with patch.object(user_settings._config, "load_config", return_value={"browser_login_timeout": 300}):
-            self.assertEqual(user_settings.current(), {"login": 300, "page": 60, "hourly": 100})
+            self.assertEqual(user_settings.current(), {"login": 300, "page": 60, "stalled": 30, "hourly": 100})
 
     def test_typed_values_are_checked(self):
         page = next(f for f in user_settings.FIELDS if f.name == "page")

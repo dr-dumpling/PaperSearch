@@ -171,7 +171,6 @@ export async function downloadWithFallback(
       reviewPaths.push(result.review.path);
     }
     if (result.supplements?.length) supplements = result.supplements;
-    if (["batch_stopped", "user_skipped"].includes(result.code || "")) break;
     if (result.status === "ok" && result.path) {
       discardReviews(reviewPaths, result.path);
       return {
@@ -186,6 +185,7 @@ export async function downloadWithFallback(
         ...(supplements ? { supplements } : {}),
       };
     }
+    if (["batch_stopped", "user_skipped"].includes(result.code || "")) break;
   }
 
   return {

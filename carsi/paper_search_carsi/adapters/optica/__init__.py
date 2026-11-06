@@ -12,13 +12,26 @@ import re
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
-from ...engine.batch_common import open_page
+from ...engine.batch_common import open_page, pump_until
 from ..base import PublisherAdapter, register
 
 
 @register
 class OpticaAdapter(PublisherAdapter):
     publisher = "optica"
+
+    def supplement_links(self, page: Any, doi: str) -> None:
+        # The embedded reader can still be loading after the outer document
+        # reports ready. Let its article metadata/links render before discovery.
+        target = urlparse(str(page.url))
+        if (target.scheme == "https" and target.netloc == "opg.optica.org"
+                and target.path.endswith("/viewmedia.cfm") and parse_qs(target.query).get("html") == ["true"]):
+            pump_until(page, lambda: page.evaluate("""() =>
+                document.readyState !== 'loading' &&
+                (!!document.querySelector('meta[name="citation_doi"]')
+                 || document.querySelectorAll('a[href]').length > 0)
+            """), 15_000)
+        return None
 
     @classmethod
     def profile_pdf_candidates(cls, doi: str, source_url: str) -> list[str]:

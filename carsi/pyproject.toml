@@ -37,7 +37,7 @@ where = ["."]
 include = ["paper_search_carsi*"]
 
 [tool.setuptools.package-data]
-paper_search_carsi = ["publishers/builtin/*.json", "publishers/schema.json", "data/*.json", "assets/*.png", "assets/*.html"]
+paper_search_carsi = ["publishers/builtin/*.json", "publishers/schema.json", "data/*.json", "assets/*.png", "assets/*.html", "assets/papersearch-notifier", "assets/quiet-browser/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

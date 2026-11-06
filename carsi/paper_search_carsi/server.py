@@ -82,7 +82,23 @@ def carsi_download(
             kwargs["user_wait"] = user_wait
         if diagnostics_dir:
             kwargs["diagnostics_dir"] = diagnostics_dir
-        result = download(identifier, output_dir, strategy=strategy, **kwargs)
+        from .entitlements import batch_stop_requested
+
+        if batch_stop_requested():
+            result = {"success": False, "identifier": identifier,
+                      "error_type": "batch_stopped", "reason": "batch_stopped"}
+        else:
+            result = download(identifier, output_dir, strategy=strategy, **kwargs)
+        # A click during the last save or browser cleanup still stops the
+        # caller's batch, without discarding already saved main/extra files.
+        if batch_stop_requested():
+            result["artifacts"] = {**result.get("artifacts", {}), "state": "batch_stopped"}
+            if not result.get("success"):
+                result.update(error_type="batch_stopped", reason="batch_stopped", action="")
+            if supplements in ("with", "only") and not any(
+                    f.get("reason") == "batch_stopped" for f in result.get("supplements", [])):
+                result.setdefault("supplements", []).append(
+                    {"status": "skipped", "reason": "batch_stopped", "url": "", "label": ""})
         outcome["result"] = result
         if not result.get("success"):
             if result.get("error_type") == "access_blocked":

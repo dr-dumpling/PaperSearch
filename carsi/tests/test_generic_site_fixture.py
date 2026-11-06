@@ -190,8 +190,10 @@ class GenericSiteFixtureTests(unittest.TestCase):
         self.assertTrue(result.verified_match)
         self.assertEqual(Path(result.pdf_path).read_bytes(), self.body)
         states = [event["state"] for event in result.events]
-        self.assertIn("challenge_manual_wait", states)
+        # An automatically completed check need not interrupt the user.
+        self.assertIn("challenge_wait", states)
         self.assertIn("challenge_resolved", states)
+        self.assertLess(states.index("challenge_resolved"), states.index("pdf_saved"))
         self.assertNotIn("sso_start", states)
         self.assertNotIn("login_entry_missing", states)
 
@@ -239,10 +241,29 @@ class GenericSiteFixtureTests(unittest.TestCase):
         self.assertEqual(Path(result.pdf_path).read_bytes(), self.body)
         self.assertTrue(all(url == PDF for url, _ in http_calls), http_calls)
         states = [event["state"] for event in result.events]
-        self.assertIn("challenge_manual_wait", states)
+        self.assertIn("challenge_wait", states)
         self.assertIn("challenge_resolved", states)
+        self.assertLess(states.index("challenge_resolved"), states.index("pdf_saved"))
         self.assertNotIn("sso_start", states)
         self.assertNotIn("login_entry_missing", states)
+
+    def test_a_verification_drawn_after_the_blank_page_is_handled_before_access_checks(self):
+        self.signed_in = True
+        self.context.route(ARTICLE, lambda route: route.fulfill(
+            status=200, content_type="text/html",
+            body='<title>Loading article</title><body><script>'
+                 'setTimeout(() => { document.title="Human Verification"; '
+                 'document.body.innerHTML="<p>Complete the security check before continuing. '
+                 'This verifies that you are not a bot.</p>"; '
+                 f'setTimeout(() => location.replace({json.dumps(ARTICLE)}), 5000);'
+                 '}, 4500);</script></body>'), times=1)
+        result = self.d.fetch_one(self.page, PaperRecord(doi=DOI, title=TITLE), self.root / "run")
+        self.assertTrue(result.ok, (result.state, result.reason, result.events[-12:]))
+        states = [event["state"] for event in result.events]
+        self.assertIn("challenge_resolved", states)
+        self.assertLess(states.index("challenge_resolved"), states.index("article_access_ready"))
+        self.assertNotIn("login_entry_missing", states)
+        self.assertTrue(result.verified_match)
 
     def test_a_slowly_drawn_article_reaches_its_pdf_without_an_unnecessary_login(self):
         self.signed_in, self.article_delay_ms = True, 25_000

@@ -11,6 +11,7 @@ class PublisherManualWaitTests(unittest.TestCase):
     def setUp(self):
         self.downloader = PublisherBatchDownloader(config={}, profile=ELSEVIER_PROFILE, login_timeout_sec=1)
         self.page = Mock(url='https://www.sciencedirect.com/science/article/pii/S0002916525005908')
+        self.page.frames = []
         del self.page.new_page
         self.downloader._title = Mock(return_value='Just a moment...')
         self.downloader._body_text = Mock(return_value='Verify you are human')

@@ -75,6 +75,13 @@ class DiagnosticsMixin:
                                             f"{spent['slowest']} {spent['slowest_sec']:.0f} s")
             result._last_event_at = now
             result.events.append(item)
+            activity = getattr(result, "_page_activity", None)
+            if activity is not None and state in {
+                "article_open", "institution_federation_selected", "article_access_ready",
+                "pdf_capture_started", "browser_pdf_response_captured", "pdf_saved",
+                "supplements_found", "supplements_saved", "challenge_resolved",
+            }:
+                activity.progress()
             # Only publish fixed phase text; event details can contain signed URLs.
             report = {
                 "article_open": ("打开论文页面", "opening_article"),
@@ -125,6 +132,9 @@ class DiagnosticsMixin:
             return ""
         now = time.monotonic()
         current = getattr(result, "_phase_now", None)
+        activity = getattr(result, "_page_activity", None)
+        if activity is not None and name and (current is None or current[0] != name):
+            activity.progress()
         if current:
             result.phases[current[0]] = round(result.phases.get(current[0], 0.0) + now - current[1], 1)
         result._phase_now = (name, now) if name else None

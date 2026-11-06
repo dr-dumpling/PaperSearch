@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 
 from paper_search_carsi.engine import bridge
 
-DOI = "10.1182/blood.2025032360"
-LANDING = "https://ashpublications.org/blood/article/148/16/2029/569436/TRANSFORM-1-phase-3-study"
+DOI = "10.9999/generic-fixture.2026"
+LANDING = "https://journals.fixture.example/blood/article/148/16/2029/569436/TRANSFORM-1-phase-3-study"
 CONFIG = {"publisher_institution_federation": "carsi", "carsi_idp_name": "Example University"}
 
 
@@ -28,7 +28,7 @@ class GenericSiteRoutingTests(unittest.TestCase):
             self.decision = stack.enter_context(patch("paper_search_carsi.entitlements.decision_for",
                                                       return_value=remembered))
             stack.enter_context(patch("paper_search_carsi.entitlements.journal_identity",
-                                      return_value={"issn": [], "journal": "Blood", "publisher": ""}))
+                                      return_value={"issn": [], "journal": "Fixture Journal", "publisher": ""}))
             self.progress = stack.enter_context(patch("paper_search_carsi.progress_reporter.update"))
             self.wait = stack.enter_context(patch("paper_search_carsi.rate_limit.wait_seconds", return_value=wait))
             self.record = stack.enter_context(patch("paper_search_carsi.rate_limit.record"))
@@ -45,29 +45,29 @@ class GenericSiteRoutingTests(unittest.TestCase):
         result = self.run_bridge()
         self.resolve.assert_called_once_with(DOI)
         profile = self.factory.call_args.kwargs["profile"]
-        self.assertEqual(profile.name, "site:ashpublications.org")
+        self.assertEqual(profile.name, "site:fixture.example")
         self.assertTrue(profile.generic)
         self.assertEqual(profile.article_url(DOI), "https://doi.org/" + DOI)
         self.assertEqual(self.downloader.fetch_one.call_args.args[1].doi, DOI)
-        self.assertEqual(result["artifacts"]["publisher"], "site:ashpublications.org")
+        self.assertEqual(result["artifacts"]["publisher"], "site:fixture.example")
         self.assertEqual(result["error_type"], "download_failed")
 
     def test_the_hourly_limit_the_progress_window_and_remembered_decisions_name_the_site(self):
         self.run_bridge()
-        self.wait.assert_called_once_with("site:ashpublications.org", 100)
-        self.record.assert_called_once_with("site:ashpublications.org")
-        self.assertEqual(self.progress.call_args.kwargs["publisher"], "site:ashpublications.org")
-        self.assertEqual(self.decision.call_args.args[1], "site:ashpublications.org")
+        self.wait.assert_called_once_with("site:fixture.example", 100)
+        self.record.assert_called_once_with("site:fixture.example")
+        self.assertEqual(self.progress.call_args.kwargs["publisher"], "site:fixture.example")
+        self.assertEqual(self.decision.call_args.args[1], "site:fixture.example")
         result = self.run_bridge(wait=120)
         self.factory.assert_not_called()
         self.assertEqual((result["error_type"], result["publisher"], result["retry_after_sec"]),
-                         ("rate_limited", "site:ashpublications.org", 120))
-        result = self.run_bridge(remembered={"decision": "skip", "key": "publisher:site:ashpublications.org"})
+                         ("rate_limited", "site:fixture.example", 120))
+        result = self.run_bridge(remembered={"decision": "skip", "key": "publisher:site:fixture.example"})
         self.factory.assert_not_called()
         self.assertEqual(result["reason"], "user_marked_no_entitlement")
 
     def test_a_doi_resolving_to_no_site_ends_as_unsupported_publisher(self):
-        for landing in (None, "https://ashpublications.org/blood/article-pdf/148/16/2029/x/main.pdf",
+        for landing in (None, "https://journals.fixture.example/blood/article-pdf/148/16/2029/x/main.pdf",
                         "https://www.clinicalkey.com/#!/content/journal/1-s2.0-S0"):
             with self.subTest(landing=landing):
                 result = self.run_bridge(landing=landing)

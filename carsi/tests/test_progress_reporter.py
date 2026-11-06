@@ -28,9 +28,11 @@ def test_manual_attention_lifecycle(tmp_path, monkeypatch):
     assert state["attention"] == {}
 
 
-@pytest.mark.parametrize("waits, manual, spent", [(1, False, 0), (22, False, 0), (59, True, 0), (10, True, 55)])
-def test_publisher_challenge_wait_only_asks_for_manual_help_after_automatic_phase(tmp_path, monkeypatch, waits, manual, spent):
-    """An automatic pass needs no attention; manual handoff still clears it."""
+@pytest.mark.parametrize("waits, reminder, handoff, spent", [
+    (1, False, False, 0), (22, False, False, 0), (59, True, True, 0), (10, False, True, 55)])
+def test_publisher_challenge_reminder_uses_idle_time_without_changing_budget_handoff(
+        tmp_path, monkeypatch, waits, reminder, handoff, spent):
+    """The reminder delay and the existing automation budget are independent."""
     monkeypatch.setenv("CARSI_DATA_DIR", str(tmp_path))
     progress_reporter.start_task("出版商下载", total=1)
 
@@ -42,6 +44,7 @@ def test_publisher_challenge_wait_only_asks_for_manual_help_after_automatic_phas
     monkeypatch.setattr(watchdog.time, "monotonic", lambda: clock[0])
 
     downloader = PublisherBatchDownloader.__new__(PublisherBatchDownloader)
+    downloader.config = {}
     events = []
     downloader.login_timeout_sec = 60
     downloader._event = lambda result, kind, detail: events.append(kind)
@@ -52,6 +55,9 @@ def test_publisher_challenge_wait_only_asks_for_manual_help_after_automatic_phas
         title = lambda self: ""
         url = "https://example.test/article"
         frames = []
+        evaluate = lambda *args: False  # no visible image-puzzle controls
+        on = lambda *args: None
+        remove_listener = lambda *args: None
 
         def __init__(self):
             self.calls = 0
@@ -80,8 +86,8 @@ def test_publisher_challenge_wait_only_asks_for_manual_help_after_automatic_phas
     # A completed verification leaves no timeout state behind (the supplements visit ran after it).
     assert result.state == "pdf_response_captured"
 
-    assert page.attention_seen is manual
+    assert page.attention_seen is reminder
     assert page.waited_ms == [1000] * waits  # checked every second
-    assert ("challenge_manual_wait" in events) is manual
+    assert ("challenge_manual_wait" in events) is handoff
     assert "challenge_resolved" in events
     assert progress_reporter.read_state()["attention"] == {}

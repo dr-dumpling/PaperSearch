@@ -25,6 +25,13 @@ class FakePage:
         self.context = self
         self.pages = [self]
         self.calls = []
+        self.main_frame = object()
+
+    def on(self, event, handler):
+        pass
+
+    def remove_listener(self, event, handler):
+        pass
 
     def is_closed(self):
         return False
@@ -106,6 +113,48 @@ class WatchdogRequestTests(DataDirTest):
 
 
 class SkipThisPaperTests(DataDirTest):
+    def test_show_browser_is_consumed_without_recording_an_entitlement(self):
+        with patch.object(entitlements, "record") as record:
+            entitlements.request_action(DOI, entitlements.SHOW_BROWSER)
+            self.assertEqual(entitlements.apply_user_decision(DOI, "Elsevier", 0), entitlements.SHOW_BROWSER)
+            record.assert_not_called()
+        self.assertIsNone(entitlements.take_action(DOI, 0))
+
+    def test_browser_focus_request_is_handled_on_the_current_page(self):
+        d = PublisherBatchDownloader(config={}, profile=ELSEVIER_PROFILE)
+        result = DownloadResult(doi=DOI, status="failed")
+        page = Mock()
+        page.is_closed.return_value = False
+        entitlements.request_action(DOI, entitlements.SHOW_BROWSER)
+        with patch('paper_search_carsi.browser.foreground.show') as show:
+            d._check_user_decision(result, page)
+            show.assert_called_once_with(page, d.config)
+        self.assertEqual(entitlements.load(), {})
+        self.assertIn('browser_shown', [e['state'] for e in result.events])
+
+    def test_closed_browser_is_not_reopened_and_focus_errors_are_reported(self):
+        d = PublisherBatchDownloader(config={})
+        result = DownloadResult(doi=DOI, status="failed")
+        page = Mock()
+        page.is_closed.return_value = True
+        d._show_download_browser(page, result)
+        page.bring_to_front.assert_not_called()
+        page.is_closed.return_value = False
+        with patch('paper_search_carsi.browser.foreground.show', side_effect=RuntimeError('fixture focus failure')):
+            d._show_download_browser(page, result)
+        self.assertIn('browser_focus_failed', [e['state'] for e in result.events])
+
+    def test_focus_uses_the_tab_waiting_for_the_user_when_it_is_a_popup(self):
+        d = PublisherBatchDownloader(config={})
+        result = DownloadResult(doi=DOI, status="failed")
+        article, login = Mock(), Mock()
+        login.is_closed.return_value = False
+        result._attention_page = login
+        with patch('paper_search_carsi.browser.foreground.show') as show:
+            d._show_download_browser(article, result)
+            show.assert_called_once_with(login, d.config)
+        article.bring_to_front.assert_not_called()
+
     def test_skip_this_paper_ends_it_and_remembers_nothing(self):
         entitlements.request_action(DOI, "skip_item")
         with self.assertRaises(UserSkippedArticle):

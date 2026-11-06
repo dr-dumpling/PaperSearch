@@ -268,99 +268,110 @@ class OUPAdapter(PublisherAdapter):
         last_progress_at = time.monotonic()
         action_done = False
         pending_retry = ""
-        waiting = None  # (since, page marker, typed values) while the page is the user's
-        while time.monotonic() < deadline:
-            try:
-                state = self.login_state(page, deadline)
-                if time.monotonic() >= deadline:
-                    break
-                parsed = urlparse(str(page.url))
-                marker = (state, parsed.hostname, parsed.path)
-                if marker != last_marker:
-                    d._event(result, "login_observed", state)
-                    last_marker = marker
-                    last_progress_at = time.monotonic()
-                    action_done = False
-                if state == "article_ready":
-                    result.reason = ""
-                    return True
-                if state in {"login_page_closed", "login_credentials_rejected",
-                             "institution_not_registered", "institution_pdf_entitlement_missing",
-                             "publisher_temporarily_unavailable"}:
-                    result.reason = state
-                    d._event(result, "login_stopped", state)
-                    return False
-                if state in {"verification", "human_login", "institution_chooser"}:
-                    # A stale redirect timer must never reload a human form.
-                    pending_retry = ""
-                    last_progress_at = time.monotonic()
-                    if state == "institution_chooser":
-                        d._select_institution(page, result)
-                    if d._user_away:
-                        # The user seems away: as everywhere, a page of theirs on
-                        # which nothing moves and nothing is typed ends the article.
-                        typed = d._visible_input_values(page)
-                        if waiting is None or waiting[1:] != (marker, typed):
-                            waiting = (time.monotonic(), marker, typed)
-                        elif time.monotonic() - waiting[0] >= AWAY_WAIT_SEC:
-                            d._wait_ran_out(result)
-                            result.reason = "login_timeout"
-                            d._event(result, "login_stopped", result.reason)
-                            return False
-                else:
-                    if state == "transient_error":
-                        pending_retry = "transient_error"
-                    elif state == "publisher_login" and not action_done and getattr(result, "_oxford_login_entry_attempt", 0) == attempt:
-                        pending_retry = "returned_auth_wall"
-                    elif time.monotonic() - last_progress_at >= 45:
-                        pending_retry = "redirect_stalled"
-                    if pending_retry:
-                        if attempt >= max_attempts:
-                            result.reason = "login_retries_exhausted"
-                            d._event(result, "login_stopped", result.reason)
-                            return False
-                        d._event(result, "login_retry_wait", f"{attempt + 1}/3")
-                        page.wait_for_timeout(min(3_000 * attempt, max(1, int((deadline - time.monotonic()) * 1000))))
-                        if time.monotonic() >= deadline:
-                            break
-                        # Recheck after backoff: the user or redirect may have
-                        # completed while the browser dispatched pending events.
-                        after_wait = self.login_state(page, deadline)
-                        if time.monotonic() >= deadline:
-                            break
-                        if after_wait not in {"transient_error", "publisher_login", "redirect_wait"}:
-                            pending_retry = ""
-                            continue
-                        attempt += 1
-                        result._oxford_login_attempt = attempt
-                        d._event(result, "login_attempt_started", f"{attempt}/3")
-                        pending_retry = ""
+        waiting = None  # (since, page marker) while the page is the user's
+        with d._login_wait_budget(result, "_oxford_login_deadline", deadline, time.monotonic) as wait:
+            while time.monotonic() < wait.deadline:
+                deadline = wait.deadline
+                try:
+                    d._check_user_decision(result, page)
+                    state = self.login_state(page, deadline)
+                    deadline = wait.deadline
+                    if time.monotonic() >= deadline:
+                        break
+                    user_step = state == "human_login" or (state == "institution_chooser" and d._users_login_step(page))
+                    wait.observe(page, user_step)
+                    deadline = wait.deadline
+                    message = ("请在浏览器窗口选择学校并完成机构登录" if state == "institution_chooser"
+                               else "请在浏览器窗口完成机构登录") if user_step else ""
+                    d._set_login_attention(result, message, time.time() + deadline - time.monotonic(), page=page)
+                    parsed = urlparse(str(page.url))
+                    marker = (state, parsed.hostname, parsed.path)
+                    if marker != last_marker:
+                        d._event(result, "login_observed", state)
+                        last_marker = marker
                         last_progress_at = time.monotonic()
                         action_done = False
-                        open_page(page, result.article_url,
-                                  timeout_ms=max(1, min(15_000, int((deadline - time.monotonic()) * 1000))))
-                        continue
-                    if state == "publisher_login" and not action_done:
-                        action_done = self.advance_login(page, result, deadline)
-                        if action_done:
-                            result._oxford_login_entry_attempt = attempt
-                remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
-                if remaining_ms:
-                    page.wait_for_timeout(min(1_000, remaining_ms))
-            except Exception as exc:
-                if page.is_closed():
-                    result.reason = "login_page_closed"
-                    d._event(result, "login_stopped", result.reason)
-                    return False
-                # Only browser navigation/timeouts are retryable. Programming
-                # errors must retain the normal unexpected_error path.
-                if not self.retryable_navigation_error(exc):
-                    raise
-                d._event(result, "login_navigation_interrupted", type(exc).__name__)
-                pending_retry = "navigation_error"
-                remaining = int((deadline - time.monotonic()) * 1000)
-                if remaining > 0:
-                    page.wait_for_timeout(min(1_000, remaining))
-        result.reason = "login_timeout"
-        d._event(result, "login_stopped", result.reason)
-        return False
+                    if state == "article_ready":
+                        result.reason = ""
+                        return True
+                    if state in {"login_page_closed", "login_credentials_rejected",
+                                 "institution_not_registered", "institution_pdf_entitlement_missing",
+                                 "publisher_temporarily_unavailable"}:
+                        result.reason = state
+                        d._event(result, "login_stopped", state)
+                        return False
+                    if state in {"verification", "human_login", "institution_chooser"}:
+                        # A stale redirect timer must never reload a human form.
+                        pending_retry = ""
+                        last_progress_at = time.monotonic()
+                        if state == "institution_chooser":
+                            d._select_institution(page, result)
+                        if wait.paused:
+                            waiting = None
+                        if d._user_away and not wait.paused:
+                            # The user seems away: as everywhere, a page of theirs on
+                            # which nothing moves and nothing is typed ends the article.
+                            if waiting is None or waiting[1] != marker:
+                                waiting = (time.monotonic(), marker)
+                            elif time.monotonic() - waiting[0] >= AWAY_WAIT_SEC:
+                                d._wait_ran_out(result)
+                                result.reason = "login_timeout"
+                                d._event(result, "login_stopped", result.reason)
+                                return False
+                    else:
+                        if state == "transient_error":
+                            pending_retry = "transient_error"
+                        elif state == "publisher_login" and not action_done and getattr(result, "_oxford_login_entry_attempt", 0) == attempt:
+                            pending_retry = "returned_auth_wall"
+                        elif time.monotonic() - last_progress_at >= 45:
+                            pending_retry = "redirect_stalled"
+                        if pending_retry:
+                            if attempt >= max_attempts:
+                                result.reason = "login_retries_exhausted"
+                                d._event(result, "login_stopped", result.reason)
+                                return False
+                            d._event(result, "login_retry_wait", f"{attempt + 1}/3")
+                            page.wait_for_timeout(min(3_000 * attempt, max(1, int((deadline - time.monotonic()) * 1000))))
+                            if time.monotonic() >= deadline:
+                                break
+                            # Recheck after backoff: the user or redirect may have
+                            # completed while the browser dispatched pending events.
+                            after_wait = self.login_state(page, deadline)
+                            if time.monotonic() >= deadline:
+                                break
+                            if after_wait not in {"transient_error", "publisher_login", "redirect_wait"}:
+                                pending_retry = ""
+                                continue
+                            attempt += 1
+                            result._oxford_login_attempt = attempt
+                            d._event(result, "login_attempt_started", f"{attempt}/3")
+                            pending_retry = ""
+                            last_progress_at = time.monotonic()
+                            action_done = False
+                            open_page(page, result.article_url,
+                                      timeout_ms=max(1, min(15_000, int((deadline - time.monotonic()) * 1000))))
+                            continue
+                        if state == "publisher_login" and not action_done:
+                            action_done = self.advance_login(page, result, deadline)
+                            if action_done:
+                                result._oxford_login_entry_attempt = attempt
+                    remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
+                    if remaining_ms:
+                        page.wait_for_timeout(min(1_000, remaining_ms))
+                except Exception as exc:
+                    if page.is_closed():
+                        result.reason = "login_page_closed"
+                        d._event(result, "login_stopped", result.reason)
+                        return False
+                    # Only browser navigation/timeouts are retryable. Programming
+                    # errors must retain the normal unexpected_error path.
+                    if not self.retryable_navigation_error(exc):
+                        raise
+                    d._event(result, "login_navigation_interrupted", type(exc).__name__)
+                    pending_retry = "navigation_error"
+                    remaining = int((deadline - time.monotonic()) * 1000)
+                    if remaining > 0:
+                        page.wait_for_timeout(min(1_000, remaining))
+            result.reason = "login_timeout"
+            d._event(result, "login_stopped", result.reason)
+            return False

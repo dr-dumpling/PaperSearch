@@ -46,6 +46,35 @@ def opened(page, **kwargs):
 
 
 class OpenPageTests(unittest.TestCase):
+    def test_aborted_redirect_continues_only_after_a_main_frame_commit(self):
+        from playwright.sync_api import Error
+        for committed in (False, True):
+            with self.subTest(committed=committed):
+                page = page_with([["interactive", 3000]])
+                page.main_frame.url = ARTICLE
+                callbacks = {}
+                page.on.side_effect = lambda name, callback: callbacks.update({name:callback})
+                def goto(*args, **kwargs):
+                    if committed:
+                        callbacks['framenavigated'](page.main_frame)
+                    raise Error('Page.goto: NS_ERROR_ABORT')
+                page.goto.side_effect = goto
+                if committed:
+                    opened(page, ready_ms=250)
+                else:
+                    with self.assertRaisesRegex(Error, 'NS_ERROR_ABORT'):
+                        opened(page, ready_ms=250)
+                page.goto.assert_called_once()
+                page.remove_listener.assert_called_once_with('framenavigated',callbacks['framenavigated'])
+
+    def test_network_errors_remain_errors_even_after_a_document_commit(self):
+        from playwright.sync_api import Error
+        page=page_with([["interactive",3000]])
+        page.goto.side_effect=Error('Page.goto: NS_ERROR_CONNECTION_REFUSED')
+        with self.assertRaisesRegex(Error,'CONNECTION_REFUSED'):
+            opened(page,ready_ms=250)
+        page.remove_listener.assert_called_once()
+
     def test_the_navigation_commits_and_a_parsed_page_goes_on_at_once(self):
         page = page_with([["interactive", 3000]])
         opened(page, timeout_ms=30_000, referer="https://doi.org/")

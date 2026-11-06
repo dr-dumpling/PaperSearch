@@ -92,6 +92,17 @@ class CollectTests(unittest.TestCase):
         self.assertEqual([f["status"] for f in files], ["saved", "skipped"])
         self.assertEqual(files[1]["reason"], "time_budget")
 
+    def test_oversized_native_viewer_attachment_is_a_size_skip(self):
+        request = MagicMock(); request.get.return_value = response(status=403)
+        page = MagicMock(); page.evaluate.return_value = {"oversized": supplements.MAX_FILE_BYTES + 1}
+        d = PublisherBatchDownloader({})
+        files = supplements.collect(request, [SupplementLink(SUPP)], self.out, DOI,
+            download=lambda url: d._capture_loaded_pdf_viewer(page, url, output=self.out / 'part',
+                                                              max_bytes=supplements.MAX_FILE_BYTES))
+        self.assertEqual((files[0]['status'], files[0]['reason']), ('skipped', 'too_large'))
+        self.assertEqual(files[0]['size'], supplements.MAX_FILE_BYTES + 1)
+        self.assertFalse((self.out / 'part').exists())
+
     def test_stopping_mid_collection_keeps_saved_files_and_skips_the_rest(self):
         from paper_search_carsi.entitlements import UserStoppedBatch
         request = MagicMock()

@@ -126,32 +126,58 @@ class PublisherBatchDownloader(
             self._adapter = cls(self)
         return self._adapter
 
-    def _download_in_new_tab(self, page: Any, url: str) -> tuple[Path, str]:
+    def _download_in_new_tab(self, page: Any, url: str, *, result: DownloadResult | None = None) -> tuple[Path, str]:
         """Open the file in a new tab, as typed in the address bar, and take what
         the browser downloads. Clicks on the page were flaky after the first
         file (a later file's download never started); new tabs took 8 of 8
         (Taylor & Francis with ego, 2026-11-01)."""
+        from .page_activity import transfer
+        from .supplements import MAX_FILE_BYTES
+
         tab = page.context.new_page()
+        path = None
+        completed = False
         try:
-            with tab.expect_download(timeout=60_000) as info:
-                try:
-                    tab.goto(url, referer=str(page.url), timeout=60_000)
-                except Exception as exc:
-                    if not _is_browser_error(exc):
-                        raise  # the navigation ends where the download starts
-            download = info.value
+            activity = getattr(result, "_page_activity", None)
+            if activity is not None:
+                activity.observe(tab)
+            downloads = []
+            tab.on("download", lambda item: downloads.append(item))
+            deadline = time.monotonic() + 60
+            try:
+                referer = str(page.url)
+                tab.goto(url, timeout=60_000,
+                         **({"referer": referer} if referer.startswith(("http://", "https://")) else {}))
+            except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
             with tempfile.NamedTemporaryFile(prefix="papersearch-supplement-", suffix=".part", delete=False) as fh:
                 path = Path(fh.name)
-            try:
-                download.save_as(str(path))
-                name = download.suggested_filename
-                # Keep the browser's temporary copy out of the Python heap.
-                download.delete()
-            except BaseException:
-                path.unlink(missing_ok=True)
-                raise
-            return path, name
+            while time.monotonic() < deadline:
+                if result is not None:
+                    self._check_user_decision(result, tab)
+                if downloads:
+                    download = downloads[0]
+                    with transfer(result):
+                        download.save_as(str(path))
+                    name = download.suggested_filename
+                    download.delete()
+                    completed = True
+                    return path, name
+                if self._pdf_viewer_present(tab):
+                    # Inline attachments produce no download event. Reuse the
+                    # native reader, copying at most 1 MiB across each bridge
+                    # call directly to disk, under the attachment size limit.
+                    with transfer(result):
+                        saved = self._capture_loaded_pdf_viewer(tab, url, output=path, max_bytes=MAX_FILE_BYTES)
+                    if saved == path:
+                        completed = True
+                        return path, Path(unquote(urlparse(url).path)).name or "supplement.pdf"
+                tab.wait_for_timeout(min(250, max(1, int((deadline - time.monotonic()) * 1000))))
+            raise TimeoutError("attachment download or native PDF was not ready")
         finally:
+            if path is not None and not completed:
+                path.unlink(missing_ok=True)
             tab.close()
 
     def collect_supplements(self, context: Any, doi: str, output_dir: Path,
@@ -162,6 +188,7 @@ class PublisherBatchDownloader(
         from .supplement_transfer import browser_request
 
         self._phase(result, "supplements")
+        main_state = result.state
         progress_reporter.update(part="supplements", supplements_saved=0, supplements_total=None)
         try:
             page = context.new_page()
@@ -191,8 +218,20 @@ class PublisherBatchDownloader(
                             self._event(result, "supplements_failed", "verification not completed")
                             return [{"status": "failed", "reason": "challenge_timeout", "url": url, "label": ""}]
                     settle(page, 2_000)
-                    self._wait_for_page_text(page, result)
-                    links = self._settled_supplement_links(page, doi)
+                    while True:
+                        # The initial check can finish on a blank redirect, and
+                        # the adapter can trigger a later navigation. Neither is
+                        # evidence that the article has no supplementary files.
+                        self._wait_for_page_text(page, result)
+                        if not self._wait_for_challenge(page, result):
+                            self._event(result, "supplements_failed", "verification not completed")
+                            return [{"status": "failed", "reason": "challenge_timeout", "url": url, "label": ""}]
+                        self._wait_for_page_text(page, result)
+                        if self._challenge_shell(page) or self._is_challenge_page(page):
+                            continue
+                        links = self._settled_supplement_links(page, doi)
+                        if not (self._challenge_shell(page) or self._is_challenge_page(page)):
+                            break
                     if links is None:
                         self._event(result, "supplements_not_supported", self.profile.name)
                         return [{"status": "skipped", "reason": "supplements_not_supported", "url": url, "label": ""}]
@@ -215,7 +254,8 @@ class PublisherBatchDownloader(
                     files = supplements.collect(request, links, Path(output_dir), doi,
                                                 manifest_dir=manifest_dir,
                                                 target_dir=Path(output_dir) / "supplements" if self.config.get("diagnostics_dir") else None,
-                                                download=lambda url: self._download_in_new_tab(page, url),
+                                                download=lambda url: self._download_in_new_tab(page, url, result=result),
+                                                activity=user_watch.activity.progress,
                                                 progress=lambda saved: progress_reporter.update(supplements_saved=saved))
             saved = sum(1 for f in files if f.get("status") == "saved")
             self._event(result, "supplements_saved", f"{saved}/{len(files)}")
@@ -250,6 +290,8 @@ class PublisherBatchDownloader(
         finally:
             user_watch.set()
             watchdog.clear_interrupt()
+            if result.ok:
+                result.state = main_state
             self._close_phase(result)
             try:
                 page.close()

@@ -70,6 +70,19 @@ def test_exact_association_required_and_reference_is_not_evidence():
     assert not supplement_links(page_for(detail=detail), DOI, pause=lambda _: None)[0].error
 
 
+def test_explicit_supplement_label_fills_missing_backlink_but_never_overrides_conflict():
+    page = page_for(detail={'id': 8675280})
+    page.evaluate.return_value['labelled'] = [ROOT]
+    assert not supplement_links(page, DOI, pause=lambda _: None)[0].error
+    for detail in [
+        {'id': 8675280, 'resource_doi': '10.1/other'},
+        {'id': 8675280, 'related_materials': [{'relation': 'IsSupplementTo', 'identifier': '10.1/other'}]},
+    ]:
+        page = page_for(detail=detail)
+        page.evaluate.return_value['labelled'] = [ROOT]
+        assert supplement_links(page, DOI, pause=lambda _: None)[0].error == 'figshare_article_mismatch'
+
+
 @pytest.mark.parametrize('file,error', [
     ({**FILE, 'size': 201 * 1024 * 1024}, 'too_large'),
     ({**FILE, 'is_link_only': True}, 'figshare_link_only'),
@@ -138,9 +151,9 @@ def test_real_dom_references_are_not_supplement_candidates():
             page = browser.new_page()
             page.route('**/*', lambda route: route.abort())
             for section in ['role="doc-bibliography"', 'class="article-section__references"',
-                            'id="references"']:
+                            'id="references"', 'id="articleReferences"']:
                 page.set_content(f'''<meta name="citation_doi" content="{DOI}">
-                    <section {section}><a href="{reference}">Cited dataset</a></section>''')
+                    <section {section}><a href="{reference}">Supplement 1</a></section>''')
                 fake = page_for()
                 proxy = SimpleNamespace(evaluate=page.evaluate, context=fake.context)
                 assert supplement_links(proxy, DOI, pause=lambda _: None) is None
@@ -153,6 +166,26 @@ def test_real_dom_references_are_not_supplement_candidates():
                 links = supplement_links(proxy, DOI, pause=lambda _: None)
                 assert [(link.url, link.error) for link in links] == [
                     ('https://api.figshare.com/v2/file/download/123', '')]
+        finally:
+            browser.close()
+
+
+@pytest.mark.skipif(os.getenv('CARSI_LOCAL_BROWSER_TEST') != '1', reason='local browser fixture opt-in')
+def test_real_dom_explicit_supplement_label_can_supply_missing_backlink():
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as driver:
+        browser = driver.chromium.launch(channel='chrome', headless=True)
+        try:
+            page = browser.new_page()
+            page.route('**/*', lambda route: route.abort())
+            for label, expected in [('Supplement 1', ''), ('Cited dataset', 'figshare_article_mismatch')]:
+                page.set_content(f'''<meta name="citation_doi" content="{DOI}">
+                    <article><a href="{ROOT}">{label}</a></article>''')
+                fake = page_for(detail={'id': 8675280})
+                proxy = SimpleNamespace(evaluate=page.evaluate, context=fake.context)
+                links = supplement_links(proxy, DOI, pause=lambda _: None)
+                assert len(links) == 1 and links[0].error == expected
         finally:
             browser.close()
 

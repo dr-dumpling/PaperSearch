@@ -36,6 +36,7 @@ function fakeMachine(overrides: {
   sha256?: string;
   answers?: string[];
   config?: Record<string, string>;
+  notifications?: boolean;
 } = {}): Fake {
   const base = mkdtempSync(join(tmpdir(), "psc-install-"));
   const home = join(base, "home");
@@ -65,6 +66,9 @@ function fakeMachine(overrides: {
       calls.push(`${name} ${args.join(" ")}`.replace(root, "<root>").replace(root, "<root>"));
       const custom = overrides.respond?.(name, args);
       if (custom) return custom;
+      if (name === "paper-search-carsi" && args.join(" ") === "config get progress_notify") {
+        return { code: 0, stdout: JSON.stringify({ progress_notify: overrides.notifications ?? false }), stderr: "" };
+      }
       if (name === "uv" && args[0] === "--version" && command === "uv") return { code: 1, stdout: "", stderr: "not found" };
       if (name === "uv" && args[0] === "venv") {
         mkdirSync(join(args[1], "bin"), { recursive: true });
@@ -118,6 +122,28 @@ function fakeMachine(overrides: {
 const YES: InstallOptions = { browser: "camoufox", yes: true, force: false, skipSchool: false };
 
 describe("paper-search carsi install", () => {
+  it.each([
+    { answer: "y", previous: false, expected: true },
+    { answer: "n", previous: true, expected: false },
+    { answer: "", previous: true, expected: true },
+    { answer: "", previous: false, expected: false },
+  ])("records the notification choice $answer without forcing it on", async ({ answer, previous, expected }) => {
+    const m = fakeMachine({ answers: ["示例大学", answer], notifications: previous });
+    const result = await installCarsi(m.host, YES, m.context);
+    expect(result.record?.notifications).toBe(expected);
+    const writes = m.calls.filter(call => call.includes("config set progress_notify"));
+    expect(writes).toEqual(answer ? [`paper-search-carsi config set progress_notify ${expected}`] : []);
+    const before = [...m.calls];
+    expect((await installCarsi(m.host, YES, m.context)).status).toBe("already_installed");
+    expect(m.calls).toEqual(before);
+  });
+
+  it("rejects invalid notification choices instead of treating them as consent", async () => {
+    const m = fakeMachine({ answers: ["示例大学", "maybe", "y"] });
+    expect((await installCarsi(m.host, YES, m.context)).record?.notifications).toBe(true);
+    expect(m.logs).toContain("请输入 y（开启）或 n（关闭），也可以回车保留当前设置。");
+  });
+
   it("installs step by step and records each step", async () => {
     const m = fakeMachine();
     const outcome = await installCarsi(m.host, YES, m.context);
@@ -136,10 +162,11 @@ describe("paper-search carsi install", () => {
       "paper-search-carsi config set browser_backend camoufox",
       expect.stringMatching(/^python -c import json\nfrom paper_search_carsi\.config/),
       "paper-search-carsi setup --carsi --institution 红木兰大学",
+      "paper-search-carsi config get progress_notify",
       "python -c import tkinter",
     ]);
     const record = JSON.parse(readFileSync(join(m.root, "install.json"), "utf8"));
-    expect(Object.keys(record.steps)).toEqual(["preflight", "uv", "python", "backend", "browser", "config", "school", "check"]);
+    expect(Object.keys(record.steps)).toEqual(["preflight", "uv", "python", "backend", "browser", "config", "school", "notifications", "check"]);
     expect(record).toMatchObject({
       browser: "camoufox", python: "Python 3.12.7", backend: "0.1.0",
       camoufoxBrowser: "156.0.1-beta.36-0ad5663e", school: "红木兰大学", finishedAt: "2026-11-01T15:00:00.000Z",
@@ -284,7 +311,7 @@ describe("paper-search carsi install", () => {
     await installCarsi(m.host, YES, m.context).catch(() => undefined);
     const status = await carsiStatus(m.host, m.context);
     expect(status).toMatchObject({ installed: true, complete: false });
-    expect(renderStatusText(status)).toContain("→ 安装没有完成（1/8 步）：再运行 paper-search carsi install 接着装");
+    expect(renderStatusText(status)).toContain("→ 安装没有完成（1/9 步）：再运行 paper-search carsi install 接着装");
   });
 
   it("updates the backend after PaperSearch moved on, and only then", async () => {

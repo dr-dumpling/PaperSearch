@@ -12,11 +12,33 @@ over in silence.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from ...engine.batch_common import _is_browser_error, open_page, pump_until
-from ..base import PublisherAdapter, register
+from ..base import PublisherAdapter, SupplementLink, register
+
+_SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href]')].map(a => ({
+    href: a.href, label: (a.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 240)
+}))"""
+
+
+def supplement_links_from_rows(rows: list[dict], doi: str) -> list[SupplementLink]:
+    """Annual Reviews' current delivery links bind the file via itemId."""
+    links: list[SupplementLink] = []
+    seen: set[str] = set()
+    for row in rows:
+        target = urlparse(str(row.get("href") or ""))
+        ids = parse_qs(target.query).get("itemId", [])
+        if (target.scheme != "https" or target.netloc not in {"www.annualreviews.org", "annualreviews.org"}
+                or not target.path.startswith("/deliver/fulltext/") or len(ids) != 1
+                or not re.fullmatch(r"/content/suppdata/" + re.escape(doi) + r"/\d+", ids[0], re.I)):
+            continue
+        if ids[0].lower() not in seen:
+            seen.add(ids[0].lower())
+            links.append(SupplementLink(target._replace(fragment="").geturl(), str(row.get("label") or "")))
+    return links
 
 _OPENATHENS_BOX = ("xpath=(//*[contains(normalize-space(.), 'Option 2: Sign-in with OpenAthens')]"
                    "/following::input[contains(@placeholder, 'organization')])[1]")
@@ -85,6 +107,9 @@ def _error(exc: Exception) -> str:
 @register
 class AnnualReviewsAdapter(PublisherAdapter):
     publisher = "annual reviews"
+
+    def supplement_links(self, page: Any, doi: str) -> list[SupplementLink]:
+        return supplement_links_from_rows(page.evaluate(_SUPPLEMENT_ROWS_JS), doi)
 
     def openathens_entry(self, page: Any, result: Any) -> bool | None:
         """From the Shibboleth page, its OpenAthens page with the school as the

@@ -10,6 +10,7 @@ import type {
 import {
   carsiAttemptDetails,
   type CarsiBackend,
+  type CarsiDownloadRequest,
 } from "../carsi/index.js";
 import type { SupplementFile } from "../types.js";
 
@@ -112,6 +113,7 @@ async function tryEntitledAccess(
       path: outcome.path,
       verified: true,
       message: "Entitled access PDF downloaded.",
+      ...(outcome.trace?.state === "batch_stopped" ? { code: "batch_stopped" } : {}),
       trace,
       ...supplements,
     };
@@ -132,7 +134,7 @@ async function tryEntitledAccess(
  */
 export async function fetchSupplementsOnly(
   backend: CarsiBackend | undefined,
-  request: { identifier: string; outputDir: string; diagnosticsDir?: string },
+  request: Omit<CarsiDownloadRequest, "supplements">,
   onTrace?: (trace: Record<string, unknown>) => void,
 ): Promise<SupplementFile[] | undefined> {
   if (!backend) return undefined;

@@ -28,6 +28,12 @@ describe("failure classes (ADR 0012)", () => {
     expect(describeFailure("login_timeout", old)).toEqual({ failureClass: "unexplained", stoppedAt: "user_wait_expired" });
   });
 
+  it("does not turn an unregistered authentication application into a subscription denial", () => {
+    expect(describeFailure("institution_not_registered", diagnostic({
+      access_evidence: ["The application you are trying to access is not registered"],
+    }))).toEqual({ failureClass: "user_or_external" });
+  });
+
   it("keeps the evidence for no access", () => {
     const denied = diagnostic({ access_evidence: ["Access provided by Hong Mu-lan University", "Hong Mu-lan University does not subscribe to this content"] });
     expect(describeFailure("entitlement_missing", denied)).toEqual({

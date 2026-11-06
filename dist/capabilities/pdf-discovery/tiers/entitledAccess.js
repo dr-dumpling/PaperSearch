@@ -84,6 +84,7 @@ async function tryEntitledAccess(context, backend) {
             path: outcome.path,
             verified: true,
             message: "Entitled access PDF downloaded.",
+            ...(outcome.trace?.state === "batch_stopped" ? { code: "batch_stopped" } : {}),
             trace,
             ...supplements,
         };

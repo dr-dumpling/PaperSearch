@@ -212,7 +212,10 @@ def pump_until(page: Any, done: Callable[[], bool], timeout_ms: int, step_ms: in
 # after the request and held DOMContentLoaded back until 33 s on an ad script
 # that never answered (headless probe, 2026-11-02); the login's returns to the
 # article waited 32-40 s each for it.
-_DOCUMENT_STATE_JS = "() => [document.readyState, document.body ? document.body.innerText.length : 0]"
+# This is DOM readiness, not an access verdict. Avoid laying out the whole
+# article, and do not read its body at all once the parser has finished.
+_DOCUMENT_STATE_JS = """() => [document.readyState,
+    document.readyState === 'loading' && document.body ? document.body.textContent.length : 0]"""
 
 
 def open_page(page: Any, url: str, *, timeout_ms: int = 60_000, ready_ms: int = 15_000, **kwargs: Any) -> Any:
@@ -221,7 +224,31 @@ def open_page(page: Any, url: str, *, timeout_ms: int = 60_000, ready_ms: int = 
     parsed or its text stops growing; a verification page is left untouched at
     once. The caller checks the page state it needs (``settle``, the access rule,
     the verification wait). Returns the response."""
-    response = page.goto(url, wait_until="commit", timeout=timeout_ms, **kwargs)
+    committed = False
+
+    def navigated(frame: Any) -> None:
+        nonlocal committed
+        if frame == page.main_frame and str(frame.url).startswith(("https://", "http://")):
+            committed = True
+
+    started = time.monotonic()
+    page.on("framenavigated", navigated)
+    try:
+        try:
+            response = page.goto(url, wait_until="commit", timeout=timeout_ms, **kwargs)
+        except Exception as exc:
+            # A script redirect can replace the requested navigation before goto
+            # returns (Firefox NS_ERROR_ABORT). Continue only after an observed
+            # top-level document commit; the caller still checks identity/access.
+            if not _is_browser_error(exc) or not any(
+                    marker in str(exc) for marker in ("NS_ERROR_ABORT", "net::ERR_ABORTED")):
+                raise
+            left = max(0, min(ready_ms, timeout_ms - int((time.monotonic() - started) * 1000)))
+            if not committed and not pump_until(page, lambda: committed, left):
+                raise
+            response = None
+    finally:
+        page.remove_listener("framenavigated", navigated)
     text = {"size": -1, "since": time.time()}  # the body text's length, and since when
 
     def readable() -> bool:

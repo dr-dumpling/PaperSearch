@@ -167,6 +167,8 @@ export async function downloadSupplementsOnly(
     identifier: request.doi || request.paperId,
     outputDir: layout.paperDir,
     diagnosticsDir: layout.diagnosticsDir,
+    ...(request.batch ? { batch: request.batch } : {}),
+    ...(request.shortUserWait ? { userWait: "short" as const } : {}),
   }, value => { trace = value; });
   let filingFailed = false;
   try { if (files) organizeFiles({ supplements: files, trace }, layout, layout.paperDir); }
@@ -200,10 +202,11 @@ async function supplementsForOpenItem(
   request: DownloadWithFallbackOptions,
   backend: CarsiBackend | undefined,
   searchers: Searchers,
-): Promise<void> {
+): Promise<DownloadWithFallbackResult | undefined> {
   if (request.content !== "both" || result.status !== "ok" || result.supplements) return;
   const extra = await downloadSupplementsOnly({ ...request, ...(result.publishedDoi ? { doi: result.publishedDoi } : {}) }, backend, searchers, result.path && !result.version ? dirname(result.path) : undefined);
   if (extra.supplements) result.supplements = extra.supplements;
+  return extra;
 }
 
 const AWAY_NOTICE =
@@ -397,11 +400,17 @@ async function downloadSupplementsBatch(
   const total = options.items.length;
   const ledger = openLedger("supplements", batchId, options, log);
   const items: DownloadBatchItemResult[] = [];
+  let succeeded = 0;
+  let failed = 0;
   for (const [offset, item] of options.items.entries()) {
-    const request = itemOptions(item, options);
+    const batch = { id: batchId, index: offset + 1, total, done: offset, succeeded, failed };
+    const request = { ...itemOptions(item, options), batch };
     const entry = runItem(offset + 1, request);
     log(`[批量] 补充材料 ${offset + 1}/${total}：${request.doi || request.paperId}`);
     const result = await downloadSupplementsOnly(recorded(request, ledger, entry), backend, searchers);
+    await reportBatchItem(request, result, backend);
+    if (result.status === "ok") succeeded += 1;
+    else failed += 1;
     ledger?.item(entry, result);
     items.push(itemResult(result, offset + 1, request));
     if (stoppedByUser(result)) {
@@ -447,11 +456,10 @@ async function downloadPerItem(
     const batch = { id: batchId, index, total, done: offset, succeeded, failed };
     const result = await pastHourlyLimit(
       () =>
-        downloadBatchItem(
+        downloadWithFallback(
           searchers,
           recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entry),
           createTiers(backend),
-          backend,
         ),
       log,
       pause,
@@ -463,7 +471,8 @@ async function downloadPerItem(
       log(AWAY_NOTICE);
     }
     const finished = itemResult(result, index, request);
-    if (!stoppedByUser(result)) await supplementsForOpenItem(finished, recorded(request, ledger, entry), backend, searchers);
+    if (!stoppedByUser(result)) await supplementsForOpenItem(finished, recorded({ ...request, batch }, ledger, entry), backend, searchers);
+    await reportBatchItem({ ...request, batch }, finished, backend);
     ledger?.item(entry, finished);
     items.push(finished);
     if (publisherBlocked(result)) log(blockedNotice(request.doi || request.paperId));
@@ -585,9 +594,19 @@ async function downloadTwoPhase(
   if (options.content === "both" && !stopped) {
     const open = requests.map((_, offset) => offset).filter((offset) => !pending.includes(offset));
     if (open.length) ledger?.phase(`补充材料 ${open.length} 篇`);
+    let supplementsSucceeded = 0;
+    let supplementsFailed = 0;
     for (const [step, offset] of open.entries()) {
       log(`[批量] 补充材料 ${step + 1}/${open.length}：${requests[offset].doi || requests[offset].paperId}`);
-      await supplementsForOpenItem(items[offset], recorded(requests[offset], ledger, entries[offset]), backend, searchers);
+      const batch = { id: batchId, index: step + 1, total: open.length, done: step,
+        succeeded: supplementsSucceeded, failed: supplementsFailed };
+      const request = { ...requests[offset], batch };
+      const extra = await supplementsForOpenItem(items[offset], recorded(request, ledger, entries[offset]), backend, searchers);
+      if (extra) {
+        await reportBatchItem(request, extra, backend);
+        if (extra.status === "ok") supplementsSucceeded += 1;
+        else supplementsFailed += 1;
+      }
       ledger?.item(entries[offset], items[offset]);
       if (stoppedByUser(items[offset])) {
         for (const rest of open.slice(step + 1)) {

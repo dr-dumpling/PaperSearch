@@ -7,15 +7,54 @@ sign-in (``myiopscience.iop.org/signin``) with the article as its target.
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urlencode, urlparse
+from urllib.parse import unquote, urlencode, urlparse
 
 from ...engine.batch_common import open_page
-from ..base import PublisherAdapter, register
+from ..base import PublisherAdapter, SupplementLink, register
+
+_SUPPLEMENT_ROWS_JS = """() => ({
+    doi: document.querySelector('meta[name="citation_doi"]')?.content || '',
+    rows: [...document.querySelectorAll('a[href]')].map(a => ({
+        href: a.href, label: (a.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 240)
+    }))
+})"""
+
+
+def supplement_links_from_page(data: dict, page_url: str, doi: str) -> list[SupplementLink] | None:
+    """Files declared by this article's dedicated supplementary-data page.
+
+    IOP's current file host uses signed URLs without a full DOI in the path.
+    Bind the list to the article page and keep the signature for the transfer.
+    """
+    page = urlparse(page_url)
+    citation = str(data.get("doi") or "").lower().removeprefix("https://doi.org/")
+    if (page.scheme != "https" or page.netloc != "iopscience.iop.org"
+            or unquote(page.path).rstrip("/").lower() != f"/article/{doi.lower()}/data"
+            or citation != doi.lower()):
+        return None
+    links: list[SupplementLink] = []
+    seen: set[str] = set()
+    for row in data.get("rows", []):
+        target = urlparse(str(row.get("href") or ""))
+        label = str(row.get("label") or "")
+        if (target.scheme == "https"
+                and target.netloc == "cfn-live-content-bucket-iop-org.s3.eu-west-1.amazonaws.com"
+                and target.path.startswith("/journals/")
+                and "supplement" in label.lower() and target.path not in seen):
+            seen.add(target.path)
+            links.append(SupplementLink(target._replace(fragment="").geturl(), label))
+    return links
 
 
 @register
 class IOPAdapter(PublisherAdapter):
     publisher = "iop"
+
+    def supplements_page_urls(self, doi: str) -> list[str]:
+        return [f"https://iopscience.iop.org/article/{doi}/data"]
+
+    def supplement_links(self, page: Any, doi: str) -> list[SupplementLink] | None:
+        return supplement_links_from_page(page.evaluate(_SUPPLEMENT_ROWS_JS), str(page.url), doi)
 
     def open_institution_entry(self, page: Any, result: Any) -> bool | None:
         current_url = str(getattr(page, "url", "") or "")

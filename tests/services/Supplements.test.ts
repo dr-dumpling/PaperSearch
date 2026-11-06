@@ -1,17 +1,62 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "@jest/globals";
 import { downloadBatch } from "../../src/capabilities/pdf-discovery/batch.js";
 import type { DownloadTier } from "../../src/capabilities/pdf-discovery/DownloadTier.js";
 import { normalizeDownloadResult } from "../../src/capabilities/pdf-discovery/carsi/CarsiResultNormalizer.js";
 import { selectCarsiBatchSupport } from "../../src/capabilities/pdf-discovery/carsi/CarsiReadiness.js";
-import type { CarsiBackend, CarsiDownloadRequest } from "../../src/capabilities/pdf-discovery/carsi/index.js";
+import type { CarsiBackend, CarsiBatchUpdate, CarsiDownloadRequest } from "../../src/capabilities/pdf-discovery/carsi/index.js";
 import { fetchSupplementsOnly } from "../../src/capabilities/pdf-discovery/tiers/entitledAccess.js";
 import { decodeCarsiProgress } from "../../src/capabilities/pdf-discovery/carsi/CarsiProgress.js";
 
 const toolResult = (payload: unknown) => ({ content: [{ type: "text", text: JSON.stringify(payload) }] });
 
 describe("supplementary files", () => {
+  it.each([
+    ["supplements", "two_phase"], ["both", "two_phase"], ["both", "per_item"],
+  ] as Array<["supplements" | "both", "two_phase" | "per_item"]>)("%s / %s keeps a serial attachment batch and finishes only after its last visit", async (content, mode) => {
+    const root = mkdtempSync(join(tmpdir(), "supplement-progress-"));
+    const requests: CarsiDownloadRequest[] = [];
+    const updates: CarsiBatchUpdate[] = [];
+    const sequence: string[] = [];
+    const backend: CarsiBackend = {
+      probe: async () => ({ state: "available", code: "ready", message: "", missing: [] }),
+      downloadLegalDoi: async (request) => {
+        requests.push(request);
+        sequence.push(`visit:${request.identifier}`);
+        return { kind: "attempt_error", identifier: request.identifier, code: "supplements_only", message: "",
+          supplements: request.identifier === "10.1000/b" ? [{ label: "S1", status: "failed", reason: "http_404" }] : [] };
+      },
+      reportBatchProgress: async (update) => {
+        updates.push(update);
+        if (update.finished) sequence.push("finished");
+        return true;
+      },
+    };
+    const tiers = (): DownloadTier[] => [{ id: "oa", stage: "unpaywall", run: async () => {
+      expect(content).toBe("both");
+      return { status: "ok", verified: true, path: join(root, "main.pdf"), message: "fixture" };
+    }}];
+    try {
+      const result = await downloadBatch({} as never, {
+        content, mode, savePath: root, items: ["a", "b", "c"].map(id => ({ doi: `10.1000/${id}` })),
+      }, backend, () => {}, tiers);
+      expect(requests.map(r => r.batch)).toEqual([
+        { id: result.batchId, index: 1, total: 3, done: 0, succeeded: 0, failed: 0 },
+        { id: result.batchId, index: 2, total: 3, done: 1, succeeded: 1, failed: 0 },
+        { id: result.batchId, index: 3, total: 3, done: 2,
+          succeeded: mode === "per_item" ? 2 : 1, failed: mode === "per_item" ? 0 : 1 },
+      ]);
+      expect(requests.every(r => r.supplements === "only")).toBe(true);
+      expect(sequence).toEqual(["visit:10.1000/a", "visit:10.1000/b", "visit:10.1000/c", "finished"]);
+      expect(updates.at(-1)).toEqual(expect.objectContaining({ total: 3, done: 3, finished: true,
+        succeeded: mode === "per_item" ? 3 : 2, failed: mode === "per_item" ? 0 : 1 }));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("reports a completed attachment check without claiming a PDF was saved", () => {
     expect(decodeCarsiProgress({ message: "carsi.stage:supplements_checked" }, "10.1000/example")).toEqual({
       identifier: "10.1000/example", stage: "supplements_checked",
@@ -155,6 +200,25 @@ describe("supplementary files", () => {
         } else expect(result.items.every((item) => item.status === "error")).toBe(true);
       }
     }
+  });
+
+  it.each(["two_phase", "per_item"] as const)("%s keeps the last saved files when stop arrives during backend cleanup", async (mode) => {
+    const visited: string[] = [];
+    const tiers = (): DownloadTier[] => [{ id: "entitled_access", stage: "entitled_access",
+      run: async (context) => {
+        visited.push(context.doi!);
+        return { status: "ok", verified: true, path: "/tmp/saved.pdf", message: "saved",
+          code: "batch_stopped",
+          supplements: [{ status: "saved", label: "S1", file: "/tmp/supplement.txt" }] };
+      } }];
+    const result = await downloadBatch({} as never, {
+      items: [{ doi: "10.1000/a" }, { doi: "10.1000/b" }], content: "both", mode,
+    }, undefined, () => {}, tiers);
+    expect(visited).toEqual(["10.1000/a"]);
+    expect(result.items[0].status).toBe("ok");
+    expect(result.items[0].path).toBe("/tmp/saved.pdf");
+    expect(result.items[0].supplements?.[0].status).toBe("saved");
+    expect(result.items[1].attempts.some(a => a.code === "batch_stopped")).toBe(true);
   });
 
   it("does nothing extra when supplements are not requested", async () => {

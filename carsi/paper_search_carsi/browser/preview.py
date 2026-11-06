@@ -154,7 +154,9 @@ class BrowserPreview:
             row = {'page_id': page_id, 'host': host, 'kind': kind, 'screenshot_status': 'unavailable'}
             captured_at = time.time()
             try:
-                if page.locator('input[type="password"]:visible').count():
+                # This is only a preview label, not an access decision. The
+                # :visible selector forces layout of a potentially long article.
+                if page.locator('input[type="password"]').count():
                     row['kind'] = 'login'
                 # The user requested the actual rendered page without preview
                 # masks. Field values are never extracted into JSON or logs.

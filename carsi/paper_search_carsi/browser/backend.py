@@ -474,13 +474,20 @@ def _camoufox_options(headless: bool, proxy: Any, args: list[str] | None, humani
         "focusmanager.testmode": True,
         "dom.disable_window_flip": True,
         "browser.tabs.loadDivertedInBackground": True,
+        "browser.link.open_newwindow": 3,
+        "browser.link.open_newwindow.restriction": 0,
         **(opts.get("firefox_user_prefs") or {}),
+        "papersearch.background.enabled": not headless,
+        "papersearch.background.bootstrap": False,
     }
     if not headless and opts.get("ignore_default_args") is not True:
         # Playwright adds -foreground to every headed Firefox launch.
         opts["ignore_default_args"] = list(dict.fromkeys([
             *(opts.get("ignore_default_args") or []), "-foreground",
         ]))
+    if not headless:
+        from .background import options as background_options
+        background_options(opts)
     opts.update(headless=headless, humanize=humanize, proxy=proxy)
     pinned = pinned_camoufox_dir()
     if pinned is not None and "executable_path" not in opts:
@@ -556,6 +563,23 @@ def _launch_camoufox_persistent(user_data_dir: str, headless: bool, proxy: Any,
     from playwright.sync_api import sync_playwright
 
     opts = _camoufox_options(headless, proxy, args, humanize, kwargs)
+    if os.name == "nt" and not headless:
+        # Let the owned helper create the first window without activation.
+        from .background import ADDON_DIR, install_startup_helper
+        install_startup_helper(Path(user_data_dir))
+        opts["addons"] = [p for p in opts["addons"] if str(p) != str(ADDON_DIR)]
+        opts["ignore_default_args"] = [*(opts.get("ignore_default_args") or []), "about:blank"]
+        opts["args"] = [*(opts.get("args") or []), "-silent"]
+        opts["firefox_user_prefs"].update({
+            "papersearch.background.bootstrap": True,
+            "xpinstall.signatures.required": False,
+            "extensions.autoDisableScopes": 0,
+            "extensions.enabledScopes": 1,
+            "extensions.startupScanScopes": 1,
+            # Gecko's first-profile video self-test opens an offscreen dialog
+            # that still steals focus before any download window is created.
+            "media.sanity-test.disabled": True,
+        })
     pw = sync_playwright().start()
     try:
         context = NewBrowser(pw, persistent_context=True, user_data_dir=user_data_dir, **opts)
@@ -629,11 +653,23 @@ def launch_persistent_context(
     LAST_LAUNCH.update(holder=holder or "free", waited=round(time.monotonic() - waited_from, 1), released=released)
     if proxy is None:
         proxy = _proxy_from_config(config)
+    from uuid import uuid4
+    background_session = uuid4().hex
+    if not headless:
+        kwargs["firefox_user_prefs"] = {**(kwargs.get("firefox_user_prefs") or {}),
+                                        "papersearch.background.session": background_session}
     context = _launch_camoufox_persistent(
         str(profile), headless=headless, proxy=proxy, args=args, humanize=humanize, **kwargs
     )
     if not callable(getattr(context, "close", None)):
         return context
+    if not headless:
+        from .background import ready as background_ready
+        try:
+            background_ready(profile, background_session)
+        except Exception:
+            context.close()
+            raise
     restored = _restore_session_cookies(context, profile)
     if restored:
         logger.info("browser_backend: restored %d session cookie(s) from the previous run", restored)

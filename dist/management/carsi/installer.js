@@ -1,7 +1,7 @@
 import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, } from "node:fs";
 import { dirname, join } from "node:path";
 import { egoAppCandidates, PYTHON_VERSION, runtimePaths, runtimeRoot, UV_ARCHIVES, uvArchiveUrl, UV_VERSION, } from "./runtime.js";
-export const INSTALL_STEPS = ["preflight", "uv", "python", "backend", "browser", "config", "school", "check"];
+export const INSTALL_STEPS = ["preflight", "uv", "python", "backend", "browser", "config", "school", "notifications", "check"];
 export class InstallError extends Error {
     step;
     logFile;
@@ -54,6 +54,7 @@ export async function installCarsi(host, options, context) {
         browser: () => installBrowser(host, paths, options, record),
         config: () => writeConfig(host, paths, options, context, record),
         school: () => askSchool(host, paths, options, context, record),
+        notifications: () => askNotifications(host, paths, context, record),
         check: () => selfCheck(host, paths, context, record),
     };
     for (const step of INSTALL_STEPS) {
@@ -98,6 +99,7 @@ const STEP_LABELS = {
     browser: "下载 Camoufox 浏览器",
     config: "写入配置",
     school: "学校",
+    notifications: "系统通知偏好",
     check: "自检",
 };
 function describePlan(host, paths, options) {
@@ -254,6 +256,27 @@ async function askSchool(host, paths, options, context, record) {
         record.school = school;
     else
         warn(record, "还没有配置学校：机构登录时需要你在选校页自己选");
+}
+async function askNotifications(host, paths, context, record) {
+    const env = { CARSI_DATA_DIR: context.dataDir };
+    const result = await check(host.run(paths.executable, ["config", "get", "progress_notify"], { env }), "读取系统通知设置失败");
+    const current = JSON.parse(result.stdout).progress_notify;
+    if (typeof current !== "boolean")
+        throw new Error("系统通知设置必须为 true 或 false");
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const answer = (await host.ask(`需要登录或手动处理时，是否发送系统通知？[y/n，回车保留${current ? "开启" : "关闭"}]（以后可在胶囊齿轮中修改）：`)).trim();
+        if (answer && !/^(?:y(?:es)?|n(?:o)?)$/i.test(answer)) {
+            host.log("请输入 y（开启）或 n（关闭），也可以回车保留当前设置。");
+            continue;
+        }
+        const enabled = answer ? /^y(?:es)?$/i.test(answer) : current;
+        if (answer)
+            await check(host.run(paths.executable, ["config", "set", "progress_notify", String(enabled)], { env }), "保存系统通知设置失败");
+        record.notifications = enabled;
+        host.log(`系统通知已${enabled ? "开启" : "关闭"}；胶囊的琥珀色提醒始终保留。`);
+        return;
+    }
+    throw new Error("尚未选择系统通知偏好，请重新运行安装命令继续配置");
 }
 function setupReply(stdout) {
     try {

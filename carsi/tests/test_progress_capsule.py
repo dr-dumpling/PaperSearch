@@ -132,6 +132,46 @@ def api(placement=None, notifier=None, close_after=None):
 
 
 class ApiTests(unittest.TestCase):
+    def test_notification_switch_persists_immediately_without_changing_other_settings(self):
+        from paper_search_carsi import config, user_settings
+        with TemporaryDirectory() as directory, \
+                patch.object(config, 'DATA_DIR', Path(directory)), \
+                patch.object(config, 'CONFIG_FILE', Path(directory) / 'config.json'), \
+                patch.object(capsule, 'read_state', return_value=running()):
+            a = api()
+            self.assertFalse(user_settings.notify_enabled())
+            before = user_settings.current()
+            self.assertEqual(a.set_notifications(True), {'ok': True, 'notify': True})
+            self.assertTrue(user_settings.notify_enabled())
+            self.assertEqual(a.set_notifications(False), {'ok': True, 'notify': False})
+            self.assertFalse(user_settings.notify_enabled())
+            self.assertEqual(user_settings.current(), before)
+            self.assertFalse(a.set_notifications('false')['ok'])
+            self.assertFalse(user_settings.notify_enabled())
+
+    def test_browser_focus_only_targets_the_current_running_prompt(self):
+        state = running(attention={'login': {'message': '请登录学校'}}, run_id='r1', browser_pid=101)
+        with patch.object(capsule, 'read_state', return_value=state), \
+                patch('paper_search_carsi.browser.foreground.activate_mac', return_value=True) as activate, \
+                patch('paper_search_carsi.entitlements.request_action') as request:
+            self.assertEqual(api().act('show_browser', state['current'], 'r1'), pv.ACTION_FEEDBACK['show_browser'])
+            request.assert_called_once_with(state['current'], 'show_browser', 'r1')
+            request.reset_mock()
+            api().act('show_browser', state['current'], 'old-run')
+            api().act('show_browser', '10.1000/other', 'r1')
+            state['status'] = 'done'
+            api().act('show_browser', state['current'], 'r1')
+            request.assert_not_called()
+
+    def test_failed_native_activation_does_not_report_a_successful_request(self):
+        state = running(attention={'login': {'message': '请登录学校'}}, run_id='r1', browser_pid=101)
+        with patch.object(capsule, 'read_state', return_value=state), \
+                patch.object(capsule.sys, 'platform', 'darwin'), \
+                patch('paper_search_carsi.browser.foreground.activate_mac', return_value=False), \
+                patch('paper_search_carsi.entitlements.request_action') as request:
+            self.assertIn('未能切到', api().act('show_browser', state['current'], 'r1'))
+            request.assert_not_called()
+
     def test_js_bridge_never_walks_the_native_window_object_graph(self):
         a = api()
         a._window = MagicMock()
@@ -159,24 +199,28 @@ class ApiTests(unittest.TestCase):
         from paper_search_carsi import user_settings
 
         with patch.object(user_settings, "save") as save, patch.object(user_settings, "set_notify") as set_notify:
-            result = api().save_settings({"login": "5", "page": "60", "hourly": "100"}, True)
+            result = api().save_settings({"login": "5", "page": "60", "stalled": "30", "hourly": "100"}, True)
             self.assertFalse(result["ok"])
             self.assertIn("login", result["errors"])
             save.assert_not_called()
-            result = api().save_settings({"login": "240", "page": "45", "hourly": "0"}, False)
+            result = api().save_settings({"login": "240", "page": "45", "stalled": "0", "hourly": "0"}, False)
+            self.assertEqual(result["errors"], {"stalled": "请输入 1 到 600 之间的整数"})
+            save.assert_not_called()
+            set_notify.assert_not_called()
+            result = api().save_settings({"login": "240", "page": "45", "stalled": "40", "hourly": "0"}, False)
         self.assertEqual(result, {"ok": True})
-        save.assert_called_once_with({"login": 240, "page": 45, "hourly": 0})
+        save.assert_called_once_with({"login": 240, "page": 45, "stalled": 40, "hourly": 0})
         set_notify.assert_called_once_with(False)
 
     def test_settings_shown_with_their_defaults_and_the_notification_switch(self):
         from paper_search_carsi import user_settings
 
-        with patch.object(user_settings, "current", return_value={"login": 180, "page": 60, "hourly": 100}), \
+        with patch.object(user_settings, "current", return_value={"login": 180, "page": 60, "stalled": 30, "hourly": 100}), \
              patch.object(user_settings, "notify_enabled", return_value=True):
             shown = api().settings()
         self.assertTrue(shown["notify"])
         self.assertEqual([(f["name"], f["value"], f["default"]) for f in shown["fields"]],
-                         [("login", 180, 180), ("page", 60, 60), ("hourly", 100, 100)])
+                         [("login", 180, 180), ("page", 60, 60), ("stalled", 30, 30), ("hourly", 100, 100)])
 
     def test_the_watcher_notifies_and_closes_a_finished_auto_window(self):
         notifier = MagicMock()
@@ -328,6 +372,19 @@ class _Now:
 
 
 class NotifierTests(unittest.TestCase):
+    def test_windows_notification_failure_is_logged_without_native_error_output(self):
+        from paper_search_carsi import user_settings
+        failure = capsule.subprocess.CalledProcessError(1, 'powershell', stderr='private native output')
+        with patch.object(user_settings, 'notify_enabled', return_value=True), \
+                patch.object(capsule.sys, 'platform', 'win32'), \
+                patch.object(capsule, 'os', types.SimpleNamespace(name='nt', environ={})), \
+                patch.object(capsule.subprocess, 'run', side_effect=failure) as run, \
+                self.assertLogs(capsule.__name__, level='WARNING') as logs:
+            capsule.notify('PaperSearch', '需要处理', {})
+        self.assertTrue(run.call_args.kwargs['check'])
+        self.assertIn('CalledProcessError', logs.output[0])
+        self.assertNotIn('private native output', logs.output[0])
+
     def observe(self, notifier, prompts, enabled=True):
         from paper_search_carsi import user_settings
 
@@ -338,7 +395,7 @@ class NotifierTests(unittest.TestCase):
 
     def test_once_per_prompt(self):
         sent = []
-        n = capsule.Notifier(send=lambda title, body: sent.append(body))
+        n = capsule.Notifier(send=lambda title, body, state: sent.append(body))
         self.observe(n, {"a": ("请在浏览器里登录学校", "t1")})
         self.observe(n, {"a": ("请在浏览器里登录学校", "t1")})
         self.observe(n, {"a": ("请在浏览器窗口完成安全验证", "t2")})
@@ -346,9 +403,80 @@ class NotifierTests(unittest.TestCase):
 
     def test_switched_off(self):
         sent = []
-        n = capsule.Notifier(send=lambda title, body: sent.append(body))
+        n = capsule.Notifier(send=lambda title, body, state: sent.append(body))
         self.observe(n, {"a": ("请在浏览器里登录学校", "t1")}, enabled=False)
         self.assertEqual(sent, [])
+
+    def test_enable_during_an_existing_prompt_sends_once_and_keeps_the_amber_reminder(self):
+        sent = []
+        n = capsule.Notifier(send=lambda title, body, state: sent.append(body))
+        prompts = {"a": ("请在浏览器里登录学校", "t1")}
+        self.observe(n, prompts, enabled=False)
+        self.observe(n, prompts, enabled=True)
+        self.observe(n, prompts, enabled=True)
+        self.assertEqual(sent, ["请在浏览器里登录学校"])
+        self.observe(n, prompts, enabled=False)
+        state = running(attention={'a':{'message':prompts['a'][0],'since':'t1'}})
+        self.assertEqual(pv.view(state, NOW)['tone'], 'warn')
+        self.assertEqual(sent, ["请在浏览器里登录学校"])
+
+    def test_new_run_is_not_deduplicated_against_an_old_prompt(self):
+        from paper_search_carsi import user_settings
+
+        sent = []
+        notifier = capsule.Notifier(send=lambda title, body, state: sent.append(state['run_id']))
+        state = running(attention={'a': {'message': '请登录学校', 'since': 'same-second'}})
+        with patch.object(capsule.threading, 'Thread', _Now), \
+                patch.object(user_settings, 'notify_enabled', return_value=True), \
+                patch('paper_search_carsi.progress_macos.clear_notifications') as clear:
+            notifier.observe(state)
+            notifier.observe({**state, 'run_id': 'r2'})
+        self.assertEqual(sent, ['r1', 'r2'])
+        if sys.platform == 'darwin':
+            clear.assert_called_once()
+
+
+class WindowsGeometryTests(unittest.TestCase):
+    def test_animation_and_drag_keep_dpi_and_anchor_without_activating_the_window(self):
+        import ctypes
+        from webview.window import FixPoint
+
+        class Event(list):
+            def __iadd__(self, callback):
+                self.append(callback)
+                return self
+
+            def __isub__(self, callback):
+                self.remove(callback)
+                return self
+
+        user = MagicMock()
+        user.GetWindowLongPtrW.return_value = 0x0008
+        before = Event()
+        native = MagicMock(_scale=1.25, Width=325, Height=70,
+                           Location=types.SimpleNamespace(X=500, Y=200))
+        native.Handle.ToInt64.return_value = 100
+        native.Activated = Event()
+        native.Shown = Event([native.on_shown])
+        window = types.SimpleNamespace(native=native, events=types.SimpleNamespace(before_show=before, shown=MagicMock()))
+        with patch.object(capsule.sys, 'platform', 'win32'), \
+                patch.object(capsule, 'os', types.SimpleNamespace(name='nt')), \
+                patch.object(ctypes, 'windll', types.SimpleNamespace(user32=user), create=True):
+            capsule._prepare_nonactivating_start(window)
+            before[0]()
+        native.resize(200, 40, FixPoint.EAST | FixPoint.SOUTH)
+        user.SetWindowPos.assert_called_with(100, None, 575, 220, 250, 50, 0x0054)
+        native.move(120, 80)
+        user.SetWindowPos.assert_called_with(100, None, 150, 100, 0, 0, 0x0055)
+        user.SetForegroundWindow.assert_not_called()
+        native.Shown[0]()
+        user.SetForegroundWindow.assert_not_called()
+        self.assertEqual(native.Activated, [])
+        window._capsule_activate_on_input()
+        user.SetWindowLongPtrW.assert_called_with(100, -20, 0x0008)
+        user.SetForegroundWindow.assert_called_once_with(100)
+        window._capsule_activate_on_input()
+        user.SetForegroundWindow.assert_called_once_with(100)
 
 
 class FallbackTests(unittest.TestCase):
@@ -361,6 +489,11 @@ class FallbackTests(unittest.TestCase):
         env = patch.dict(os.environ, {"CARSI_DATA_DIR": tmp.name})
         env.start()
         self.addCleanup(env.stop)
+        # Lifecycle unit tests must not register a real app or touch macOS settings.
+        for name in ('install_notification_handler', 'close'):
+            native_notifications = patch('paper_search_carsi.progress_macos.' + name)
+            native_notifications.start()
+            self.addCleanup(native_notifications.stop)
 
     def test_without_pywebview_the_classic_window_opens(self):
         with patch.dict(sys.modules, {"webview": None}), patch.object(capsule, "_classic") as classic:

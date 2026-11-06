@@ -304,6 +304,38 @@ class ElsevierJournalSiteTests(unittest.TestCase):
         self.assertEqual(infer_publisher_profile("10.1136/bmj-2024-081234").name, "BMJ")
         self.assertEqual(infer_publisher_profile("10.1016/j.ajhg.2025.01.014").name, "Elsevier")
 
+    def test_ash_journals_use_their_elsevier_article_route_without_accepting_other_prefixes(self):
+        from paper_search_carsi.publishers.profiles import infer_publisher_profile
+        for doi in ("10.1182/blood.2023022921", "10.1182/bloodadvances.2024012345"):
+            with self.subTest(doi=doi):
+                profile = infer_publisher_profile(doi)
+                self.assertIsNotNone(profile)
+                self.assertEqual(profile.name, "Elsevier")
+                d = PublisherBatchDownloader({}, profile=profile)
+                self.assertEqual(d._article_url(doi), f"https://linkinghub.elsevier.com/retrieve/doi/{doi}")
+        for doi in ("10.1182/bloodneoplasia.2024012345", "10.11820/blood.2023022921", "10.1016/j.example.2024.1"):
+            with self.subTest(doi=doi):
+                self.assertIsNone(self.downloader().adapter.article_url(doi))
+
+    def test_ash_supplements_on_the_society_site_use_the_silverchair_rule(self):
+        d = self.downloader()
+        page = Mock(url="https://ashpublications.org/blood/article/143/1/1/507123/Title")
+        supplement = "https://ashpublications.org/blood/article-supplement/507123/pdf/Supplement.pdf"
+        page.evaluate.return_value = [
+            {"href": supplement, "label": "Supplemental data"},
+            {"href": supplement.replace("507123", "507124"), "label": "Another article"},
+            {"href": supplement.replace("ashpublications.org", "ashpublications.org.evil.example"), "label": "Other host"},
+        ]
+        self.assertEqual([(s.url, s.label) for s in d.adapter.supplement_links(page, "10.1182/blood.2023022921")],
+                         [(supplement, "Supplemental data")])
+
+    def test_ash_supplements_visit_the_original_journal_without_a_sciencedirect_detour(self):
+        for doi in ("10.1182/blood.2023022921", "10.1182/bloodadvances.2024012345"):
+            with self.subTest(doi=doi), patch(
+                    "paper_search_carsi.adapters.elsevier.journal_site._get_elsevier_pii") as metadata:
+                self.assertEqual(self.downloader().adapter.supplements_page_urls(doi), [f"https://doi.org/{doi}"])
+                metadata.assert_not_called()
+
     def test_get_access_or_an_institution_entry_means_no_full_text(self):
         d = self.downloader()
 

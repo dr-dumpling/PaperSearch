@@ -27,24 +27,32 @@ body {
   font-variant-numeric: tabular-nums;
 }
 body.mac { padding: 10px; }            /* room for the shadow around a transparent window */
-#root { box-sizing: border-box; overflow: hidden; display: inline-block; background: var(--bg); border: 0.5px solid var(--line); cursor: grab; }
-#root.dragging, #root.dragging * { cursor: grabbing; }
+#root { position: relative; box-sizing: border-box; overflow: hidden; display: inline-block; background: var(--bg); border: 0.5px solid var(--line); cursor: default; }
+#root.dragging, #root.dragging * { cursor: default; }
 body.mac #root { box-shadow: var(--shadow); -webkit-backdrop-filter: blur(20px); }
 #root.pill { border-radius: 999px; }
 #root.card { border-radius: 16px; width: 330px; box-sizing: border-box; }
 body:not(.mac) #root { border-radius: 8px; border: none; }
 #root.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
-.surface { transform-origin: top right; }
+#root.warn::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: rgba(245, 158, 11, 0.17); z-index: 0;
+  box-shadow: inset 0 0 0 2px var(--warn-dot), inset 0 0 16px rgba(217, 119, 6, 0.2);
+  opacity: 0.2; animation: breathe 3.6s ease-in-out infinite;
+}
+.surface { position: relative; z-index: 1; transform-origin: top right; }
 .fade .surface { animation: fade .22s ease-out; }
 .folder-setting { margin: 12px 0; }
 .folder-setting .folder-row { display:flex; gap:8px; margin-top:6px; }
 .folder-setting input { width:0; min-width:0; flex:1; text-align:left; }
 .folder-setting .hint { margin-top:5px; font-size:11px; color:var(--dim); }
-@media (prefers-reduced-motion: reduce) { .fade .surface { animation:none; } }
+@media (prefers-reduced-motion: reduce) { .fade .surface, #root.warn::after { animation:none; } }
 @keyframes fade { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
-@keyframes breathe { 0%, 100% { box-shadow: var(--shadow); } 50% { box-shadow: var(--shadow), 0 0 0 4px rgba(217, 119, 6, 0.25); } }
-body.mac #root.warn.new { animation: breathe 1.6s ease-in-out 2; }
+@keyframes breathe { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.85; } }
 
+.attention-target { appearance: none; box-sizing: content-box; padding: 0; border: none; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pill-prompt { display: inline-flex; align-items: center; gap: 8px; }
+.attention-target:focus-visible { outline: 2px solid var(--warn-dot); outline-offset: -2px; border-radius: 8px; }
 .pillrow { display: flex; align-items: center; gap: 8px; padding: 5px 14px 5px 6px; white-space: nowrap; height: 28px; }
 .pillrow.icon-first { padding-left: 12px; }
 .count { font-weight: 600; font-size: 14px; }
@@ -160,7 +168,7 @@ let open = false;          // the card is showing
 let panel = "";            // "", "menu", "report", "confirm", "settings": kept until the user leaves it
 let flash = { text: "", until: 0 };
 let settings = null, settingsErrors = {}, notifyOn = true;
-let lastHtml = "", lastPrompt = "", hoverTimer = 0, leaveTimer = 0, pollTimer = 0, kinds = [];
+let lastHtml = "", hoverTimer = 0, leaveTimer = 0, pollTimer = 0, kinds = [];
 const api = () => window.pywebview.api;
 
 function pill() {
@@ -168,7 +176,8 @@ function pill() {
   if (v.mode === "attention") {
     const a = v.attention;
     return '<div class="pillrow icon-first capsule-drag-region">' + icon(a.login ? "lock" : "shield")
-      + "<b>" + esc(a.short) + "</b>" + (a.remaining ? "<span>" + esc(a.remaining) + "</span>" : "") + "</div>";
+      + '<button type="button" class="pill-prompt attention-target" data-act="show_browser" title="点击切到下载浏览器" aria-label="打开下载浏览器">'
+      + "<b>" + esc(a.short) + "</b>" + (a.remaining ? "<span>" + esc(a.remaining) + "</span>" : "") + "</button></div>";
   }
   if (v.mode === "done") {
     // "完成 38/40  2 篇失败": papers saved out of all; a check unless nothing was saved.
@@ -251,14 +260,16 @@ function attentionCard() {
   const a = V.attention;
   const sub = [a.remaining ? "剩 " + a.remaining : "", a.login ? "登录后自动继续" : "通过后自动继续",
                a.more ? "另有 " + a.more + " 项" : ""].filter(Boolean).join(" · ");
-  let html = '<div class="card-body"><div class="prompt capsule-drag-region">' + icon(a.login ? "lock" : "shield")
-    + '<div><div class="t">' + esc(a.message) + '</div><div class="s">' + esc(sub) + "</div></div></div>";
+  let html = '<div class="card-body"><button type="button" class="prompt attention-target" data-act="show_browser" title="点击切到下载浏览器" aria-label="打开下载浏览器">' + icon(a.login ? "lock" : "shield")
+    + '<div><div class="t">' + esc(a.message) + '</div><div class="s">' + esc(sub) + "</div></div></button>";
   if (panel === "confirm") return html + actionsBlock() + "</div>";
+  html += '<div class="actions"><button class="iconbtn" data-act="settings" aria-label="设置">' + icon("gear")
+    + '</button><span class="grow"></span>';
   if (V.actions) {
-    html += '<div class="actions"><span class="grow"></span><button class="btn" data-act="skip_item">跳过本篇</button>'
-      + '<button class="btn" data-act="confirm">终止</button></div>';
+    html += '<button class="btn" data-act="skip_item">跳过本篇</button>'
+      + '<button class="btn" data-act="confirm">终止</button>';
   }
-  return html + "</div>";
+  return html + "</div></div>";
 }
 
 function doneCard() {
@@ -284,11 +295,12 @@ function settingsCard() {
     + (settingsErrors.download_dir ? '<div class="err">' + esc(settingsErrors.download_dir) + '</div>' : '') + '</div>';
   for (const f of settings.fields) {
     html += '<div class="row"><span>' + esc(f.label) + '</span><span><input data-field="' + esc(f.name) + '" value="' + esc(f.value)
-      + '" inputmode="numeric"> <span class="dim">' + esc(f.unit) + "</span></span></div>"
+      + '" aria-label="' + esc(f.label) + '" inputmode="numeric"> <span class="dim">' + esc(f.unit) + "</span></span></div>"
       + (settingsErrors[f.name] ? '<div class="err">' + esc(settingsErrors[f.name]) + "</div>" : "");
   }
   html += '<div class="row"><span>需要处理时发系统通知</span><button class="switch' + (notifyOn ? " on" : "")
-    + '" data-act="notify" aria-label="系统通知"></button></div>'
+    + '" data-act="notify" role="switch" aria-checked="' + notifyOn + '" aria-label="系统通知"></button></div>'
+    + '<div class="err" id="notify-error" role="status"></div>'
     + (settingsErrors[""] ? '<div class="err">' + esc(settingsErrors[""]) + "</div>" : "")
     + '<div class="foot"><button class="btn link" style="color:var(--dim)" data-act="defaults">恢复默认</button>'
     + '<button class="btn primary" data-act="save">保存</button></div></div>';
@@ -310,11 +322,9 @@ function render(force) {
   else html = idleCard();
   const cls = shape + (V.mode === "attention" && panel !== "settings" ? " warn" : "");
   if (html === lastHtml && cls === lastCls) return;
-  const fresh = V.mode === "attention" && V.attention.message !== lastPrompt;
-  lastPrompt = V.mode === "attention" ? V.attention.message : "";
   const previous = root.getBoundingClientRect();
   root.style.width = ""; root.style.height = "";
-  root.className = cls + " capsule-drag-region" + (fresh ? " new" : "") + (cls !== lastCls ? " fade" : "");
+  root.className = cls + " capsule-drag-region" + (cls !== lastCls ? " fade" : "");
   root.innerHTML = '<div class="surface">' + html + "</div>";
   lastHtml = html;
   lastCls = cls;
@@ -363,6 +373,7 @@ async function act(action, target) {
     case "minimize": open = false; panel = ""; render(true); return api().minimize();  // back as a capsule when restored
     case "close": closing = true; ++fitGeneration; clearInterval(pollTimer); clearTimeout(hoverTimer); clearTimeout(leaveTimer); return api().request_close();  // no call left waiting on a closed page
     case "folder": return api().open_folder();
+    case "show_browser": return say(await api().act("show_browser", v.current, v.run_id));
     case "menu": panel = panel === "menu" ? "" : "menu"; return render(true);
     case "report": if (!kinds.length) kinds = await api().issue_kinds(); panel = "report"; return render(true);
     case "issue": panel = ""; return say(await api().report(target.dataset.kind, v.current));
@@ -374,7 +385,21 @@ async function act(action, target) {
     case "settings":
       settings = await api().settings(); notifyOn = settings.notify; settingsErrors = {}; panel = "settings"; open = true; return render(true);
     case "back": panel = ""; return render(true);
-    case "notify": notifyOn = !notifyOn; target.classList.toggle("on", notifyOn); return;
+    case "notify": {
+      target.disabled = true;
+      try {
+        const result = await api().set_notifications(!notifyOn);
+        if (!result.ok) throw new Error(result.error || "通知设置保存失败");
+        notifyOn = result.notify;
+        settings.notify = notifyOn;
+        target.classList.toggle("on", notifyOn);
+        target.setAttribute("aria-checked", String(notifyOn));
+        root.querySelector('#notify-error').textContent = "";
+      } catch (error) {
+        root.querySelector('#notify-error').textContent = error.message || "通知设置保存失败";
+      } finally { target.disabled = false; }
+      return;
+    }
     case "choose_folder": {
       const selected = await api().choose_download_directory();
       if (selected) { settings.download_dir = selected; root.querySelector('#download-dir').value = selected; }
@@ -400,6 +425,7 @@ async function act(action, target) {
 
 const interactive = (target) => target.closest('button, input, select, textarea, a, [contenteditable="true"], [role="button"]');
 root.addEventListener("pointerdown", (event) => {
+  if (event.button === 0 && api().activate_on_input) api().activate_on_input();
   if (event.button !== 0 || interactive(event.target)) return;
   dragging = true;
   ++fitGeneration;

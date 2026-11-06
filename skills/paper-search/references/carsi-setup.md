@@ -20,6 +20,7 @@ paper-search carsi install
 - 用户不需要先装 Python；中途失败时，处理提示的问题后再运行同一命令，会从失败的那一步接着装。
 - 装完会自动启用（`PAPER_SEARCH_CARSI_ENABLED=true`、`PAPER_SEARCH_CARSI_EXECUTABLE` 指向新装的后端）。原来配置了别的后端时，会先问用户是否替换。
 - 安装时会问学校；`--skip-school` 跳过，之后再配置。
+- 当前源码（待发布）：首次配置扩展时会询问是否开启系统通知。新配置默认关闭，回车保留当前选择；`--yes` 不代表同意开启通知。Agent 代为配置时先问用户要开启还是关闭，再通过同一后端的 `config set progress_notify true` 或 `false` 保存，已有明确选择不重复询问。以后可点胶囊齿轮里的“系统通知”开关立即修改；关闭不影响琥珀色呼吸和点击唤回浏览器。
 - `paper-search setup` 最后也会问是否安装扩展；`--skip-carsi` 不问，`--install-carsi` 直接安装。
 
 用户自己维护的后端（例如仓库里的开发版）用 `paper-search config set PAPER_SEARCH_CARSI_EXECUTABLE <路径>` 指定；不要擅自改用户已配置的路径。

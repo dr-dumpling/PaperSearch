@@ -7,6 +7,70 @@ from paper_search_carsi.progress_capsule import PAGE
 
 @unittest.skipUnless(os.environ.get('CARSI_BROWSER_TESTS') == '1', 'opt-in native Chrome test')
 class CapsulePageTests(unittest.TestCase):
+    def test_login_reminder_keeps_an_icon_drag_handle(self):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            for platform in ('darwin', 'win32'):
+                with self.subTest(platform=platform):
+                    browser, page = self.drag_page(p, platform)
+                    page.evaluate("""() => {
+                        testState.mode='attention';
+                        testState.attention={message:'请登录学校', short:'请登录学校', login:true, more:0};
+                        tick();
+                    }""")
+                    page.wait_for_function("V.mode === 'attention'")
+                    page.wait_for_timeout(400)  # the pill's animated resize must settle before grabbing it
+                    handle = page.locator('.pillrow > svg')
+                    point = handle.bounding_box()
+                    x, y = point['x'] + point['width']/2, point['y'] + point['height']/2
+                    page.mouse.move(x, y)
+                    page.mouse.down()
+                    page.mouse.move(x + 30, y + 15, steps=3)
+                    page.mouse.up()
+                    self.assertTrue(page.evaluate('nativeMoves.length > 0'))
+                    self.assertEqual(page.evaluate('requestedActions'), [])
+                    browser.close()
+
+    def test_attention_breathes_across_countdown_updates_and_respects_reduced_motion(self):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            for platform in ("darwin", "win32"):
+                with self.subTest(platform=platform):
+                    browser, page = self.drag_page(p, platform)
+                    page.evaluate("""() => {
+                        testState.mode='attention';
+                        testState.attention={message:'请在浏览器里登录学校', short:'请登录学校',
+                            login:true, remaining:'2:41', more:0};
+                        tick();
+                    }""")
+                    page.wait_for_selector('#root.warn')
+                    page.wait_for_function("root.getAnimations({subtree:true}).some(a => a.animationName === 'breathe' && a.currentTime > 600)")
+                    before = page.evaluate("root.getAnimations({subtree:true}).find(a => a.animationName === 'breathe').currentTime")
+                    page.evaluate("testState.attention.remaining='2:40'; tick()")
+                    page.wait_for_function("root.textContent.includes('2:40')")
+                    self.assertGreaterEqual(page.evaluate("root.getAnimations({subtree:true}).find(a => a.animationName === 'breathe').currentTime"), before)
+                    self.assertEqual(page.locator('#root').evaluate("el => getComputedStyle(el).opacity"), '1')
+                    page.locator('[data-act=show_browser]').click()
+                    page.wait_for_function("requestedActions.length === 1")
+                    self.assertEqual(page.evaluate('requestedActions[0][0]'), 'show_browser')
+                    self.assertEqual(page.evaluate('dragLocks'), [])
+                    page.mouse.move(50,25)
+                    page.wait_for_function('open')
+                    page.locator('[data-act=show_browser]').click()
+                    page.wait_for_function("requestedActions.length === 2")
+                    amber = page.locator('#root').evaluate("el => getComputedStyle(el).backgroundColor")
+                    page.emulate_media(reduced_motion='reduce')
+                    self.assertEqual(page.locator('#root').evaluate("el => getComputedStyle(el, '::after').animationName"), 'none')
+                    self.assertEqual(page.locator('#root').evaluate("el => getComputedStyle(el).backgroundColor"), amber)
+                    page.locator('[data-act=settings]').click()
+                    self.assertTrue(page.get_by_role('switch', name='系统通知').is_visible())
+                    page.locator('[data-act=back]').click()
+                    page.wait_for_selector('#root.warn')
+                    page.evaluate("testState.mode='running'; testState.attention=null; tick()")
+                    page.wait_for_function("!root.classList.contains('warn')")
+                    self.assertFalse(page.evaluate("root.getAnimations({subtree:true}).some(a => a.animationName === 'breathe')"))
+                    browser.close()
+
     def test_hover_without_click_animated_resize_and_directory_input(self):
         from playwright.sync_api import sync_playwright
         from paper_search_carsi.progress_view import view
@@ -20,12 +84,14 @@ class CapsulePageTests(unittest.TestCase):
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.set_content(PAGE.read_text())
             page.evaluate('''state => {
-              window.sizes=[]; window.saved=null;
+              window.sizes=[]; window.saved=null; window.savedValues=null; window.notificationPreference=true;
               window.pywebview={api:{platform:async()=> 'darwin', state:async()=>state,
                 resize:async(w,h)=>sizes.push([w,h]),
-                settings:async()=>({fields:[],notify:true,download_dir:'/original'}),
+                settings:async()=>({fields:[{name:'stalled',label:'页面持续无进展',unit:'秒',value:30,default:30}],
+                  notify:notificationPreference,download_dir:'/original'}),
+                set_notifications:async n=>{notificationPreference=n;return {ok:true,notify:n}},
                 choose_download_directory:async()=>'/chosen folder',
-                save_settings:async(v,n,d)=>{saved=d;return {ok:true}}}};
+                save_settings:async(v,n,d)=>{saved=d;savedValues=v;return {ok:true}}}};
               window.dispatchEvent(new Event('pywebviewready'));
             }''', state)
             page.wait_for_function('lastCls === "pill" && sizes.length > 5')
@@ -45,11 +111,28 @@ class CapsulePageTests(unittest.TestCase):
             page.mouse.move(50,25)
             page.wait_for_function('open === true')
             page.locator('[data-act=settings]').click()
+            switch = page.get_by_role('switch', name='系统通知')
+            self.assertEqual(switch.get_attribute('aria-checked'), 'true')
+            switch.click()
+            page.wait_for_function('notificationPreference === false')
+            self.assertEqual(switch.get_attribute('aria-checked'), 'false')
+            page.locator('[data-act=back]').click()
+            page.locator('[data-act=settings]').click()
+            self.assertEqual(page.get_by_role('switch', name='系统通知').get_attribute('aria-checked'), 'false')
+            page.get_by_role('switch', name='系统通知').click()
+            page.wait_for_function('notificationPreference === true')
+            idle = page.get_by_role('textbox', name='页面持续无进展')
+            self.assertEqual(idle.input_value(), '30')
+            idle.fill('45')
+            page.locator('[data-act=defaults]').click()
+            self.assertEqual(idle.input_value(), '30')
+            idle.fill('45')
             page.locator('[data-act=choose_folder]').click()
             self.assertEqual(page.locator('#download-dir').input_value(), '/chosen folder')
             page.locator('#download-dir').fill('/typed folder')
             page.locator('[data-act=save]').click()
             page.wait_for_function('saved === "/typed folder"')
+            self.assertEqual(page.evaluate('savedValues.stalled'), '45')
             self.assertEqual(errors, [])
 
     def test_holding_the_pill_freezes_hover_and_refresh_until_release(self):
@@ -115,10 +198,11 @@ class CapsulePageTests(unittest.TestCase):
         page = browser.new_page(viewport={'width': 800, 'height': 800})
         page.set_content(PAGE.read_text())
         page.evaluate("""({state, platform}) => {
-          window.testState=state; window.sizes=[]; window.dragLocks=[]; window.nativeMoves=[];
+          window.testState=state; window.sizes=[]; window.dragLocks=[]; window.nativeMoves=[]; window.requestedActions=[];
           window.pywebview={platform:platform==='darwin'?'cocoa':'edgechromium', api:{
             platform:async()=>platform, state:async()=>testState, resize:async(w,h)=>sizes.push([w,h]),
             set_dragging:async(active)=>dragLocks.push(active),
+            act:async(...args)=>{requestedActions.push(args); return '正在切到下载浏览器'},
             move_drag:async(x,y)=>nativeMoves.push([x,y]),
             settings:async()=>({fields:[], notify:true, download_dir:'/original'})},
             _jsApiCallback:(name,args)=>{if(name==='pywebviewMoveWindow')nativeMoves.push(args)}};

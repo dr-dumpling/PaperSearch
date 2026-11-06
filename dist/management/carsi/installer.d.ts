@@ -7,7 +7,7 @@ import { type RuntimePaths } from "./runtime.js";
  * tests run the steps without network, downloads or windows.
  */
 export type InstallBrowser = "camoufox" | "ego";
-export declare const INSTALL_STEPS: readonly ["preflight", "uv", "python", "backend", "browser", "config", "school", "check"];
+export declare const INSTALL_STEPS: readonly ["preflight", "uv", "python", "backend", "browser", "config", "school", "notifications", "check"];
 export type InstallStep = (typeof INSTALL_STEPS)[number];
 export interface InstallOptions {
     browser: InstallBrowser;
@@ -73,6 +73,7 @@ export interface InstallRecord {
     camoufoxBrowser?: string;
     ego?: string;
     school?: string;
+    notifications?: boolean;
     /** Set by update: when the extension was last brought to this PaperSearch version. */
     updatedAt?: string;
     warnings?: string[];

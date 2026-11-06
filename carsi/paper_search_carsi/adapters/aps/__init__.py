@@ -10,12 +10,32 @@ ends on another APS page goes back to this record's article.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from ...engine.router import _append_aps_candidates
 from ...engine.batch_common import open_page
-from ..base import PublisherAdapter, register
+from ..base import PublisherAdapter, SupplementLink, register
+
+_SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href]')].map(a => ({
+    href: a.href, label: (a.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 240)
+}))"""
+
+
+def supplement_links_from_rows(rows: list[dict], doi: str) -> list[SupplementLink]:
+    links: list[SupplementLink] = []
+    seen: set[str] = set()
+    for row in rows:
+        target = urlparse(str(row.get("href") or ""))
+        path = unquote(target.path).lower()
+        url = target._replace(fragment="").geturl()
+        if (target.scheme == "https" and target.netloc == "journals.aps.org"
+                and re.fullmatch(r"/[a-z]+/supplemental/" + re.escape(doi.lower()) + r"/[^/]+", path)
+                and url not in seen):
+            seen.add(url)
+            links.append(SupplementLink(url, str(row.get("label") or "")))
+    return links
 
 
 # APS resolves article pages per journal code; the DOI suffix carries the journal.
@@ -47,6 +67,9 @@ def aps_article_url(doi: str) -> str:
 class APSAdapter(PublisherAdapter):
     publisher = "aps"
     returns_to_record_article = True
+
+    def supplement_links(self, page: Any, doi: str) -> list[SupplementLink]:
+        return supplement_links_from_rows(page.evaluate(_SUPPLEMENT_ROWS_JS), doi)
 
     def article_url(self, doi: str) -> str | None:
         return aps_article_url(doi) or None

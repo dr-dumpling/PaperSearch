@@ -82,6 +82,18 @@ class OvidAccessTests(unittest.TestCase):
         self.assertEqual(self.requests, [ARTICLE, LOGIN])
         self.assertEqual(result.events[-1]['detail'], 'ovid-institution-control')
 
+    def test_institutional_control_obscured_by_overlay_uses_shared_click_handling(self):
+        self.html = (f'<title>Fixture article</title><body>'
+                     f'<a class="omni-sso-url" href="{LOGIN}">Institutional Users</a>'
+                     '<div style="position:fixed;inset:0;background:white;z-index:10">Overlay</div></body>')
+        self.page.goto(ARTICLE)
+        result = DownloadResult(doi='10.5435/fixture', status='failed')
+        self.assertTrue(self.downloader.adapter.open_institution_entry(self.page, result))
+        self.page.wait_for_url(LOGIN)
+        self.assertEqual(self.requests, [ARTICLE, LOGIN])
+        self.assertIn('click_intercepted', [e['state'] for e in result.events])
+        self.assertIn('script_click', [e['state'] for e in result.events])
+
     def test_fulltext_with_pdf_does_not_reenter_login(self):
         self.html = '<title>Fixture article</title><body>Logout <a href="/jnls/fixture/pdf/10.5435/fixture">PDF</a>Full text</body>'
         self.page.goto(FULLTEXT)

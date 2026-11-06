@@ -105,6 +105,22 @@ class InstitutionListRuleTests(unittest.TestCase):
         self.assertEqual(self.result.events[-1], {**self.result.events[-1], "state": "institution_list_not_ready",
                                                   "detail": f"1 options @ {self.page.url}"})
 
+    def test_a_header_journal_search_is_not_evidence_that_the_school_is_missing(self):
+        federation = school_list(self.FEDERATION, "#FederationDropdown", 0, value="11")
+        header = school_list([["all", "Search All"], ["j1", "Journal One"], ["j2", "Journal Two"]],
+                             "#HeaderSearch", 2)
+        self.d._page_selects = Mock(return_value=[header, federation, school_list([["", "Select"]])])
+        self.assertFalse(self.d._select_from_institution_lists(self.page, self.result))
+        self.assertFalse(getattr(self.result, "_institution_not_listed", False))
+        self.assertEqual(self.result.events[-1]["state"], "institution_list_not_ready")
+
+    def test_a_generic_list_of_other_universities_still_confirms_the_school_is_missing(self):
+        federation = school_list(self.FEDERATION, "#FederationDropdown", 0, value="11")
+        self.d._page_selects = Mock(return_value=[federation, school_list(
+            [["", "Select"], ["other", "Other University"]], "#results")])
+        self.assertFalse(self.d._select_from_institution_lists(self.page, self.result))
+        self.assertTrue(self.result._institution_not_listed)
+
     def test_a_reload_at_the_same_address_with_its_first_federation_is_chosen_again(self):
         # Changed by the user only on the very page where CARSI was chosen: a chooser
         # that reloads at the same address with its first federation selected is a
@@ -251,6 +267,30 @@ class FederatedEntryTests(unittest.TestCase):
         self.assertFalse(self.page.evaluate("() => document.querySelector('[name=remember]') === null"))
         self.assertEqual([e["state"] for e in result.events][:3],
                          ["institution_federation_selected", "institution_selected", "institution_list_submitted"])
+
+    def test_hidden_school_submit_is_used_before_an_unrelated_visible_store_link(self):
+        """The institution form's native controls can all be behind a custom UI."""
+        self.html = """<form id="webform"><div hidden>
+          <select id="institution"><option value="idp">Example University</option></select>
+          <input id="choose" type="submit" value="Select"
+            onclick="location.href='/institution-login';return false;">
+          </div><a class="btn" href="https://store.example/">Go</a></form>"""
+        self.page.goto("https://publisher.example/institution")
+        d = self.downloader("jama")
+        self.assertEqual(self.page.evaluate(d._LIST_SUBMIT_JS, [0, None]), "Select")
+        self.assertEqual(self.page.locator('[data-paper-search-submit]').get_attribute('id'), 'choose')
+        self.assertTrue(d._click_control(self.page, self.page.locator('[data-paper-search-submit]'),
+                                        DownloadResult(doi="10.1001/jama.1", status="failed"),
+                                        'institution list submit', timeout_ms=100))
+        self.page.wait_for_url('**/institution-login')
+        self.assertFalse(any('store.example' in url for url in self.requests))
+
+    def test_unrelated_hidden_purchase_submit_is_not_a_school_submit(self):
+        self.html = """<form><div hidden><select><option>Example University</option></select>
+          <input type="submit" value="Subscribe now"></div></form>
+          <form><button>Continue</button></form>"""
+        self.page.goto("https://publisher.example/institution")
+        self.assertIsNone(self.page.evaluate(PublisherBatchDownloader._LIST_SUBMIT_JS, [0, None]))
 
     def test_acs_form_without_a_unique_school_is_left_to_the_user(self):
         self.silverchair_form([("https://idp.b.example/idp/shibboleth", "EXAMPLE NORMAL UNIV")])

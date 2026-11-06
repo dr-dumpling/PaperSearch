@@ -31,7 +31,7 @@ class DownloadDirectoryTests(unittest.TestCase):
             a = Api(MagicMock(), MagicMock(), MagicMock())
             with patch("paper_search_carsi.user_settings.save") as save:
                 for value in ("", "relative/path", str(file), "bad\0path"):
-                    result = a.save_settings({"login": "180", "page": "60", "hourly": "100"}, True, value)
+                    result = a.save_settings({"login": "180", "page": "60", "stalled": "30", "hourly": "100"}, True, value)
                     self.assertFalse(result["ok"])
                     self.assertIn("download_dir", result["errors"])
                 save.assert_not_called()

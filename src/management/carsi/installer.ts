@@ -30,7 +30,7 @@ import {
  */
 export type InstallBrowser = "camoufox" | "ego";
 
-export const INSTALL_STEPS = ["preflight", "uv", "python", "backend", "browser", "config", "school", "check"] as const;
+export const INSTALL_STEPS = ["preflight", "uv", "python", "backend", "browser", "config", "school", "notifications", "check"] as const;
 export type InstallStep = (typeof INSTALL_STEPS)[number];
 
 export interface InstallOptions {
@@ -95,6 +95,7 @@ export interface InstallRecord {
   camoufoxBrowser?: string;
   ego?: string;
   school?: string;
+  notifications?: boolean;
   /** Set by update: when the extension was last brought to this PaperSearch version. */
   updatedAt?: string;
   warnings?: string[];
@@ -152,6 +153,7 @@ export async function installCarsi(
     browser: () => installBrowser(host, paths, options, record!),
     config: () => writeConfig(host, paths, options, context, record!),
     school: () => askSchool(host, paths, options, context, record!),
+    notifications: () => askNotifications(host, paths, context, record!),
     check: () => selfCheck(host, paths, context, record!),
   };
   for (const step of INSTALL_STEPS) {
@@ -196,6 +198,7 @@ const STEP_LABELS: Record<InstallStep, string> = {
   browser: "下载 Camoufox 浏览器",
   config: "写入配置",
   school: "学校",
+  notifications: "系统通知偏好",
   check: "自检",
 };
 
@@ -376,6 +379,32 @@ async function askSchool(
 }
 
 interface SchoolCandidate { name: string; name_en: string; domain: string; entity_id: string }
+
+async function askNotifications(
+  host: InstallerHost, paths: RuntimePaths, context: InstallContext, record: InstallRecord,
+): Promise<void> {
+  const env = { CARSI_DATA_DIR: context.dataDir };
+  const result = await check(host.run(paths.executable, ["config", "get", "progress_notify"], { env }),
+    "读取系统通知设置失败");
+  const current: unknown = JSON.parse(result.stdout).progress_notify;
+  if (typeof current !== "boolean") throw new Error("系统通知设置必须为 true 或 false");
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const answer = (await host.ask(
+      `需要登录或手动处理时，是否发送系统通知？[y/n，回车保留${current ? "开启" : "关闭"}]（以后可在胶囊齿轮中修改）：`,
+    )).trim();
+    if (answer && !/^(?:y(?:es)?|n(?:o)?)$/i.test(answer)) {
+      host.log("请输入 y（开启）或 n（关闭），也可以回车保留当前设置。");
+      continue;
+    }
+    const enabled = answer ? /^y(?:es)?$/i.test(answer) : current;
+    if (answer) await check(host.run(paths.executable,
+      ["config", "set", "progress_notify", String(enabled)], { env }), "保存系统通知设置失败");
+    record.notifications = enabled;
+    host.log(`系统通知已${enabled ? "开启" : "关闭"}；胶囊的琥珀色提醒始终保留。`);
+    return;
+  }
+  throw new Error("尚未选择系统通知偏好，请重新运行安装命令继续配置");
+}
 
 interface SetupReply {
   error?: string;

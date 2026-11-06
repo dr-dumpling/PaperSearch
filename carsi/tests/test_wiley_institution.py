@@ -61,7 +61,7 @@ class WileyInstitutionTests(unittest.TestCase):
 
         module("config", load_config=Mock(side_effect=AssertionError("config forbidden")),
                parse_proxy_pool=lambda *a, **k: [])
-        module("progress_reporter", update=Mock(), report_stage=Mock())
+        module("progress_reporter", update=Mock(), report_stage=Mock(), set_attention=Mock(), clear_attention=Mock())
         extractor = module("extractors.pdf_extractor", extract_from_bytes=Mock())
         module("extractors", pdf_extractor=extractor)
         self.batch = importlib.import_module(PACKAGE + ".engine.batch")

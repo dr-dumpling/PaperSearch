@@ -98,18 +98,17 @@ class PdfFirstTests(unittest.TestCase):
                 d._save_captured_pdf = Mock(side_effect=lambda p, rec, result, *args: result)
 
                 def settle(*args):
-                    callback = next(call.args[1] for call in page.on.call_args_list
-                                    if call.args[0] == "framenavigated")
                     if navigation:
-                        callback(page.main_frame if navigation == "reload" else object())
+                        for call in page.on.call_args_list:
+                            if call.args[0] == "framenavigated":
+                                call.args[1](page.main_frame if navigation == "reload" else object())
 
                 with tempfile.TemporaryDirectory() as directory, patch.object(batch, "settle", side_effect=settle):
                     d.fetch_one(page, PaperRecord(doi=DOI), Path(directory))
                 self.assertEqual(d._access_decision.call_count, 2 if navigation == "reload" else 1)
                 d._capture_pdf.assert_called_once()
-                callback = next(call.args[1] for call in page.on.call_args_list
-                                if call.args[0] == "framenavigated")
-                page.remove_listener.assert_called_once_with("framenavigated", callback)
+                for call in page.on.call_args_list:
+                    page.remove_listener.assert_any_call(*call.args)
 
     def test_browser_timeout_is_preserved_without_running_final_page_work(self):
         from paper_search_carsi.browser.watchdog import BrowserUnresponsive

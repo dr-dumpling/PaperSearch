@@ -19,6 +19,7 @@ class PublisherAccessBlockedTests(unittest.TestCase):
         self.d._title = Mock(return_value='Attention Required! | Cloudflare')
         self.d._body_text = Mock(return_value=BODY)
         self.page = SimpleNamespace(on=Mock(), remove_listener=Mock(), url='https://journals.fixture.example/article',wait_for_load_state=Mock(),goto=Mock(),close=Mock(),is_closed=Mock(return_value=False),evaluate=Mock(return_value=None),title=Mock(return_value='Attention Required! | Cloudflare'))
+        self.page.frames = []
         self.page.locator = Mock(return_value=SimpleNamespace(
             first=SimpleNamespace(text_content=Mock(return_value='Attention Required! | Cloudflare'))))
         self.result = self.batch.DownloadResult(doi='10.1000/fixture',status='failed')
@@ -121,7 +122,7 @@ class PublisherSideFailureTests(unittest.TestCase):
 
     def test_a_block_met_while_fetching_supplements_ends_that_step(self):
         tab = SimpleNamespace(url="https://journals.fixture.example/article", goto=Mock(), close=Mock(),
-                              context=None, locator=Mock(return_value=SimpleNamespace(
+                              context=None, on=Mock(), remove_listener=Mock(), locator=Mock(return_value=SimpleNamespace(
                                   first=SimpleNamespace(text_content=Mock(return_value="Just a moment...")))))
         context = SimpleNamespace(new_page=Mock(return_value=tab))
         self.d._challenge_shell = Mock(return_value=True)

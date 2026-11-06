@@ -13,13 +13,33 @@ from __future__ import annotations
 import re
 import time
 from typing import Any
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse
+from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse
 
 from ...engine.router import is_thieme_article_pdf_url
 from ...engine.batch_common import _is_browser_error, open_page
-from ..base import PublisherAdapter, register
+from ..base import PublisherAdapter, SupplementLink, register
 
 _HOSTS = frozenset({"thieme-connect.de", "www.thieme-connect.de", "thieme-connect.com", "www.thieme-connect.com"})
+
+_SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href]')].map(a => ({
+    href: a.href, label: (a.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 240)
+}))"""
+
+
+def supplement_links_from_rows(rows: list[dict], doi: str) -> list[SupplementLink]:
+    stem = doi.lower().replace(".", "-").replace("/", "-")
+    links: list[SupplementLink] = []
+    seen: set[str] = set()
+    for row in rows:
+        target = urlparse(str(row.get("href") or ""))
+        path = unquote(target.path).lower()
+        url = target._replace(fragment="").geturl()
+        if (target.scheme == "https" and target.netloc.lower() in _HOSTS
+                and re.fullmatch(r"/media/[^/]+/\d+/supmat/" + re.escape(stem) + r"_[^/]+", path)
+                and url not in seen):
+            seen.add(url)
+            links.append(SupplementLink(url, str(row.get("label") or "")))
+    return links
 
 
 @register
@@ -28,6 +48,9 @@ class ThiemeAdapter(PublisherAdapter):
     validates_article_pdf = True
     binds_response_url = True
     requires_institution_entry = True
+
+    def supplement_links(self, page: Any, doi: str) -> list[SupplementLink]:
+        return supplement_links_from_rows(page.evaluate(_SUPPLEMENT_ROWS_JS), doi)
 
     @classmethod
     def profile_pdf_candidate_url(cls, url: str) -> bool | None:

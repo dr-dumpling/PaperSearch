@@ -7,11 +7,14 @@ from __future__ import annotations
 import json
 import re
 import time
+from contextlib import contextmanager
 from typing import Any
 from types import SimpleNamespace
 from urllib.parse import unquote, urljoin, urlparse
 
 from . import access_rules
+from .login_wait import LoginWait
+from .. import progress_reporter
 from .batch_common import (AWAY_WAIT_SEC, POLL_MS, DownloadResult, PublisherContentError, _is_browser_error,
                            _is_navigation_cut, open_page, pump_until, settle)
 
@@ -64,6 +67,11 @@ class LoginMixin:
         # A verification can let the page through to the publisher's redirect
         # page (RSC's silent sign-in check, judged as the article, 2026-11-01).
         self._wait_past_redirect_page(page, result)
+        # A blank document may draw its verification panel only while waiting
+        # for text. Handle it before interpreting the panel as article access
+        # or looking for an institution entry that cannot exist on it.
+        if not self._wait_for_challenge(page, result):
+            return False
         self._raise_on_publisher_content_error(page)
         self._dismiss_cookie_banners(page, result)
         snapshot = self._access_snapshot(page) if not self._is_auth_page(str(page.url)) else None
@@ -127,7 +135,22 @@ class LoginMixin:
             return url[:200]
         return f"{url[:200]} | {verdict} ({basis or 'no rule'}): {evidence[:160]}"
 
-    _PAGE_TEXT_JS = "() => document.contentType !== 'text/html' ? -1 : (document.body ? document.body.innerText.trim().length : 0)"
+    # Readiness only needs a text node. body.innerText lays out the entire
+    # article, which can exhaust the page budget on a long document.
+    _PAGE_TEXT_JS = """() => {
+        if (document.contentType !== 'text/html') return -1;
+        if (!document.body) return 0;
+        const excluded = el => el.matches('script, style, noscript, template, [hidden]')
+            || el.style.display === 'none' || el.style.visibility === 'hidden';
+        if (excluded(document.body)) return 0;
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+            acceptNode: node => node.nodeType === Node.ELEMENT_NODE
+                ? (excluded(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP)
+                : (node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP)
+        });
+        const text = walker.nextNode();
+        return text ? text.nodeValue.trim().length : 0;
+    }"""
 
     def _wait_for_page_text(self, page: Any, result: DownloadResult) -> None:
         """Wait for the document before judging access, within the page budget.
@@ -201,8 +224,43 @@ class LoginMixin:
                     self._return_to_article_after_login(page, result)
             return signed_in
         finally:
+            self._set_login_attention(result, "")
             last = next((e["state"] for e in reversed(result.events) if e["state"] != "wait"), "")
             self._note_wait(result, "school login", started, "signed in" if signed_in else (result.reason or last))
+
+    def _set_login_attention(self, result: DownloadResult, message: str, deadline: float | None = None,
+                             *, page: Any = None) -> None:
+        """A user step, once per prompt; automatic SSO keeps its ordinary progress."""
+        if page is not None and message:
+            result._attention_page = page
+        elif not message:
+            result._attention_page = None
+        key = f"publisher-login:{id(self)}:{result.doi}"
+        wait = getattr(result, "_login_wait", None)
+        if wait is not None and wait.paused:
+            deadline = None
+        if message == getattr(result, "_login_attention", ""):
+            if message:
+                progress_reporter.update_attention_deadline(key, deadline)
+            return
+        if message:
+            progress_reporter.set_attention(key, message, current=result.doi, phase="机构登录", deadline=deadline)
+            progress_reporter.report_stage("waiting_login", current=result.doi)
+        else:
+            progress_reporter.clear_attention(key)
+        result._login_attention = message
+
+    @contextmanager
+    def _login_wait_budget(self, result: DownloadResult, attribute: str, deadline: float, clock):
+        wait = result._login_wait = LoginWait(deadline, clock, attribute=attribute)
+        try:
+            yield wait
+        finally:
+            try:
+                setattr(result, attribute, wait.close())
+            finally:
+                result._login_wait = None
+                self._set_login_attention(result, "")
 
     def _complete_login_steps(self, page: Any, result: DownloadResult) -> bool:
         own = self.adapter.complete_login(page, result)
@@ -264,208 +322,218 @@ class LoginMixin:
         self._select_institution(page, result)
 
         deadline = self._user_wait_deadline(result)
-        last_state = ""
-        last_auto_action = ""
-        last_auto_action_at = 0.0
-        visited_idp = False
-        page_since, page_inputs = time.time(), ()
-        outside_since = time.time()  # last seen on the user's own login step
-        article_returns = 0
-        session_returns = 0
-        away_from_publisher = False  # on an IdP, federation or chooser page since the last probe
-        returned = False  # back on the publisher's site after such a page: try the PDF
-        last_probe = time.time()
-        while time.time() < deadline:
-            time.sleep(1)  # each pass checks the page again: a step done goes on within a second
-            self._check_user_decision(result, page)
-            if getattr(result, "_institution_not_listed", False):
-                # The publisher's institution search has no entry for the school.
-                result.reason = "institution_federation_unavailable"
-                self._event(result, result.reason, "the school is not in the publisher's institution list")
-                return False
-            over, outside_since = self._page_wait_over(page, outside_since)
-            if over:
-                # Off the school's login page for a whole page wait (a publisher
-                # page, a chooser, a redirect that goes nowhere): nobody is typing.
-                self._event(result, "page_wait_ended",
-                            f"{self._login_wait_page(page)} after {self.page_wait_sec:.0f} s")
-                self._wait_ran_out(result)
-                return False
-            marker = f"{self._title(page)} | {getattr(page, 'url', '')[:160]}"
-            here = urlparse(str(getattr(page, "url", "") or ""))
-            on_publisher = self._on_publisher_host(here.geturl())
-            if here.hostname and (not on_publisher or self._is_idp_host(here.netloc)):
-                visited_idp = True
-                if self._is_idp_host(here.netloc):
-                    result._visited_idp = True  # the school's own login: a denial now is the school's
-            if here.hostname and (not on_publisher or self._is_auth_page(here.geturl())):
-                away_from_publisher = True
-            elif here.hostname and away_from_publisher:
-                away_from_publisher, returned = False, True
-                result._login_round_trip = True
-                self._event(result, "login_round_trip_returned", here.geturl()[:160])
-            if (on_publisher and self._is_success_article_url(here.geturl())
-                    and not self._is_auth_page(here.geturl()) and not self._challenge_shell(page)
-                    and (returned or time.time() - last_probe >= self.WAIT_PROBE_EVERY_SEC)
-                    and self._looks_logged_out(page)):
-                # Whoever signed in (this program or the user), the article page may
-                # give its PDF although it still looks signed out to the rules (ASCE's
-                # "GET ACCESS" after the login waited out five minutes, 2026-11-02): try it.
-                after_login, returned, last_probe = returned, False, time.time()
-                if self._probe_pdf_while_waiting(page, result, after_login=after_login):
-                    return False  # signed in, and the page still offers or denies the article
-            elif (visited_idp and on_publisher and article_returns < 2
-                  and not self._is_success_article_url(here.geturl())
-                  and not self._is_auth_page(here.geturl())
-                  and not self._challenge_shell(page)):
-                # Back from the IdP on a publisher page that is neither the
-                # article nor a login/chooser page (Taylor & Francis drops the
-                # redirect and lands on its home page): open the article.
-                article_returns += 1
-                try:
-                    open_page(page, result.article_url, timeout_ms=60_000)
-                    self._event(result, "idp_return_article", here.geturl()[:160])
-                    settle(page, 3_000)
-                    if not self._challenge_shell(page) and not self._looks_logged_out(page):
-                        return True
-                except Exception as exc:
-                    self._event(result, "idp_return_article_error", type(exc).__name__)
-                continue
-            if marker != last_state:
-                self._event(result, "login_state", marker)
-                last_state = marker
-                confirmation = self._idp_confirmation(page)
-                if confirmation:
-                    # The user decides: the engine never agrees on their behalf.
-                    self._event(result, "idp_confirmation_required", confirmation)
-                page_since, page_inputs = time.time(), self._visible_input_values(page) if self._user_away else ()
-            elif self._user_away:
-                inputs = self._visible_input_values(page)
-                if inputs != page_inputs:
-                    # Someone is typing here: wait for them, within the article's total.
-                    page_since, page_inputs = time.time(), inputs
-                elif time.time() - page_since >= AWAY_WAIT_SEC:
-                    # Nothing moved on this page and the user seems away.
+        with self._login_wait_budget(result, "_user_wait_deadline", deadline, time.time) as wait:
+            last_state = ""
+            last_auto_action = ""
+            last_auto_action_at = 0.0
+            visited_idp = False
+            page_since = time.time()
+            outside_since = time.time()  # last seen on the user's own login step
+            article_returns = 0
+            session_returns = 0
+            away_from_publisher = False  # on an IdP, federation or chooser page since the last probe
+            returned = False  # back on the publisher's site after such a page: try the PDF
+            last_probe = time.time()
+            while True:
+                self._check_user_decision(result, page)
+                user_step = self._users_login_step(page)
+                wait.observe(page, user_step)
+                deadline = wait.deadline
+                if time.time() >= deadline:
+                    break
+                time.sleep(1)  # each pass checks the page again: a step done goes on within a second
+                if getattr(result, "_institution_not_listed", False):
+                    # The publisher's institution search has no entry for the school.
+                    result.reason = "institution_federation_unavailable"
+                    self._event(result, result.reason, "the school is not in the publisher's institution list")
+                    return False
+                over, outside_since = self._page_wait_over(page, outside_since)
+                if over:
+                    # Off the school's login page for a whole page wait (a publisher
+                    # page, a chooser, a redirect that goes nowhere): nobody is typing.
+                    self._event(result, "page_wait_ended",
+                                f"{self._login_wait_page(page)} after {self.page_wait_sec:.0f} s")
                     self._wait_ran_out(result)
                     return False
-            if self._challenge_shell(page):
-                if not self._wait_for_challenge(page, result, deadline=deadline):
-                    return False
-                continue
-            if self._return_from_login_site(page, result):
-                continue
-            if manual_selection:
-                if self._is_challenge_page(page):
+                message = ""
+                if user_step:
+                    kind = self._login_wait_page(page)
+                    message = ("请在浏览器窗口选择学校并完成机构登录" if kind in {"school_choice", "institution_chooser"}
+                               else "请在浏览器窗口完成机构登录")
+                self._set_login_attention(result, message, deadline, page=page)
+                marker = f"{self._title(page)} | {getattr(page, 'url', '')[:160]}"
+                here = urlparse(str(getattr(page, "url", "") or ""))
+                on_publisher = self._on_publisher_host(here.geturl())
+                if here.hostname and (not on_publisher or self._is_idp_host(here.netloc)):
+                    visited_idp = True
+                    if self._is_idp_host(here.netloc):
+                        result._visited_idp = True  # the school's own login: a denial now is the school's
+                if here.hostname and (not on_publisher or self._is_auth_page(here.geturl())):
+                    away_from_publisher = True
+                elif here.hostname and away_from_publisher:
+                    away_from_publisher, returned = False, True
+                    result._login_round_trip = True
+                    self._event(result, "login_round_trip_returned", here.geturl()[:160])
+                if (on_publisher and self._is_success_article_url(here.geturl())
+                        and not self._is_auth_page(here.geturl()) and not self._challenge_shell(page)
+                        and (returned or time.time() - last_probe >= self.WAIT_PROBE_EVERY_SEC)
+                        and self._looks_logged_out(page)):
+                    # Whoever signed in (this program or the user), the article page may
+                    # give its PDF although it still looks signed out to the rules (ASCE's
+                    # "GET ACCESS" after the login waited out five minutes, 2026-11-02): try it.
+                    after_login, returned, last_probe = returned, False, time.time()
+                    if self._probe_pdf_while_waiting(page, result, after_login=after_login):
+                        return False  # signed in, and the page still offers or denies the article
+                elif (visited_idp and on_publisher and article_returns < 2
+                      and not self._is_success_article_url(here.geturl())
+                      and not self._is_auth_page(here.geturl())
+                      and not self._challenge_shell(page)):
+                    # Back from the IdP on a publisher page that is neither the
+                    # article nor a login/chooser page (Taylor & Francis drops the
+                    # redirect and lands on its home page): open the article.
+                    article_returns += 1
+                    try:
+                        open_page(page, result.article_url, timeout_ms=60_000)
+                        self._event(result, "idp_return_article", here.geturl()[:160])
+                        settle(page, 3_000)
+                        if not self._challenge_shell(page) and not self._looks_logged_out(page):
+                            return True
+                    except Exception as exc:
+                        self._event(result, "idp_return_article_error", type(exc).__name__)
+                    continue
+                if marker != last_state:
+                    self._event(result, "login_state", marker)
+                    last_state = marker
+                    confirmation = self._idp_confirmation(page)
+                    if confirmation:
+                        # The user decides: the engine never agrees on their behalf.
+                        self._event(result, "idp_confirmation_required", confirmation)
+                    page_since = time.time()
+                elif self._user_away:
+                    if wait.paused:
+                        page_since = time.time()
+                    elif time.time() - page_since >= AWAY_WAIT_SEC:
+                        # Nothing moved on this page and the user seems away.
+                        self._wait_ran_out(result)
+                        return False
+                if self._challenge_shell(page):
                     if not self._wait_for_challenge(page, result, deadline=deadline):
                         return False
                     continue
+                if self._return_from_login_site(page, result):
+                    continue
+                if manual_selection:
+                    if self._is_challenge_page(page):
+                        if not self._wait_for_challenge(page, result, deadline=deadline):
+                            return False
+                        continue
+                    block_reason = self._login_block_reason(page)
+                    if block_reason:
+                        self._event(result, block_reason, getattr(self, "_block_evidence", ""))
+                        return False
+                stuck = self._stuck_on_school_site(page, result)
+                if stuck:
+                    result.reason = result.state = "idp_no_return_to_publisher"
+                    result._stopped_host = urlparse(stuck).hostname or ""
+                    self._event(result, "idp_no_return_to_publisher",
+                                f"{stuck[:200]} | {self._title(page)[:80]} | {self.SCHOOL_SITE_STAY_SEC} s without returning")
+                    self._snapshot(page, result, "login stopped on the school's site")
+                    return False
+                if self._follow_federated_login_option(page, result):
+                    continue
+                if self._is_human_login_page(page):
+                    if not any(s["why"] == "waiting for the user: school login" for s in result.snapshots):
+                        self._snapshot(page, result, "waiting for the user: school login")
+                    continue
+                if manual_selection and self.adapter.institution_chooser_open(page):
+                    # The publisher's own chooser: choose there; no generic
+                    # Continue/SSO action while the user may be interacting.
+                    self._select_institution(page, result)
+                    continue
+                self._dismiss_cookie_banners(page, result)
+                self._click_optional_continue(page, result)
+                if self._is_challenge_page(page):
+                    if self._wait_for_challenge(page, result, deadline=deadline):
+                        continue
+                    self._event(result, "challenge_or_viewer_timeout", self._body_text(page, 500))
+                    return False
+                if self._return_to_record_article_if_needed(page, result, result.doi):
+                    if not self._looks_logged_out(page):
+                        return True
+                    continue
+                if self._article_access_available(page):
+                    return True
+                # After the IdP some publishers (Taylor & Francis) land on their
+                # home page with the institution session active: go back to the
+                # article. CARSI is automated too, so this applies in every mode.
+                if (session_returns < 2 and self._has_publisher_institution_session(page)
+                        and not self._is_success_article_url(getattr(page, "url", ""))):
+                    # Bounded: a page type the rules do not know as an article
+                    # (ScienceDirect book chapters, 2026-10-31) reloaded forever.
+                    session_returns += 1
+                    try:
+                        open_page(page, result.article_url, timeout_ms=60_000)
+                        self._event(result, "institution_session_return_article", result.article_url)
+                        settle(page, 3_000)
+                        self._dismiss_cookie_banners(page, result)
+                        if not self._looks_logged_out(page):
+                            return True
+                        continue
+                    except Exception as exc:
+                        self._event(result, "institution_session_return_error", f"{type(exc).__name__}: {exc}")
                 block_reason = self._login_block_reason(page)
                 if block_reason:
-                    self._event(result, block_reason, getattr(self, "_block_evidence", ""))
+                    self._event(result, block_reason, getattr(self, "_block_evidence", "") or self._body_text(page, 500))
                     return False
-            stuck = self._stuck_on_school_site(page, result)
-            if stuck:
-                result.reason = result.state = "idp_no_return_to_publisher"
-                result._stopped_host = urlparse(stuck).hostname or ""
-                self._event(result, "idp_no_return_to_publisher",
-                            f"{stuck[:200]} | {self._title(page)[:80]} | {self.SCHOOL_SITE_STAY_SEC} s without returning")
-                self._snapshot(page, result, "login stopped on the school's site")
-                return False
-            if self._follow_federated_login_option(page, result):
-                continue
-            if self._is_human_login_page(page):
-                if not any(s["why"] == "waiting for the user: school login" for s in result.snapshots):
-                    self._snapshot(page, result, "waiting for the user: school login")
-                continue
-            if manual_selection and self.adapter.institution_chooser_open(page):
-                # The publisher's own chooser: choose there; no generic
-                # Continue/SSO action while the user may be interacting.
-                self._select_institution(page, result)
-                continue
-            self._dismiss_cookie_banners(page, result)
-            self._click_optional_continue(page, result)
-            if self._is_challenge_page(page):
-                if self._wait_for_challenge(page, result, deadline=deadline):
+                if manual_selection:
+                    if self._open_adapter_login_page(page, result):
+                        entry_opened = False  # the next site's own entry is still to be opened
+                        continue
+                    if (not entry_opened and self._is_success_article_url(str(page.url))
+                            and not self._has_visible_editable_input(page)):
+                        # The first entry lookup can run before the article page has
+                        # rendered its entry (a publisher's silent redirect; ScienceDirect
+                        # right after linkinghub, 2026-10-31). Open the official entry
+                        # once it appears, then leave the user's institution selection alone.
+                        entry_opened = self._click_sso_entry(page, result)
+                        if entry_opened:
+                            continue
+                    self._select_institution(page, result)
                     continue
-                self._event(result, "challenge_or_viewer_timeout", self._body_text(page, 500))
-                return False
-            if self._return_to_record_article_if_needed(page, result, result.doi):
-                if not self._looks_logged_out(page):
+                if marker != last_auto_action or time.time() - last_auto_action_at > 10:
+                    if self._select_institution(page, result):
+                        settle(page, 2_000)
+                        last_auto_action = marker
+                        last_auto_action_at = time.time()
+                        continue
+                    if self._looks_logged_out(page) and self._click_sso_entry(page, result):
+                        settle(page, 2_000)
+                        self._select_institution(page, result)
+                        last_auto_action = marker
+                        last_auto_action_at = time.time()
+                        continue
+                    if self._click_openathens_entry(page, result):
+                        settle(page, 2_000)
+                        self._select_institution(page, result)
+                        last_auto_action = marker
+                        last_auto_action_at = time.time()
+                        continue
+                    self._select_institution(page, result)
+                    last_auto_action = marker
+                    last_auto_action_at = time.time()
+                if self._article_access_available(page):
                     return True
-                continue
-            if self._article_access_available(page):
-                return True
-            # After the IdP some publishers (Taylor & Francis) land on their
-            # home page with the institution session active: go back to the
-            # article. CARSI is automated too, so this applies in every mode.
-            if (session_returns < 2 and self._has_publisher_institution_session(page)
-                    and not self._is_success_article_url(getattr(page, "url", ""))):
-                # Bounded: a page type the rules do not know as an article
-                # (ScienceDirect book chapters, 2026-10-31) reloaded forever.
-                session_returns += 1
+            if not manual_selection and self._has_publisher_institution_session(page):
                 try:
                     open_page(page, result.article_url, timeout_ms=60_000)
                     self._event(result, "institution_session_return_article", result.article_url)
                     settle(page, 3_000)
                     self._dismiss_cookie_banners(page, result)
-                    if not self._looks_logged_out(page):
-                        return True
-                    continue
+                    return not self._looks_logged_out(page)
                 except Exception as exc:
                     self._event(result, "institution_session_return_error", f"{type(exc).__name__}: {exc}")
-            block_reason = self._login_block_reason(page)
-            if block_reason:
-                self._event(result, block_reason, getattr(self, "_block_evidence", "") or self._body_text(page, 500))
-                return False
-            if manual_selection:
-                if self._open_adapter_login_page(page, result):
-                    entry_opened = False  # the next site's own entry is still to be opened
-                    continue
-                if (not entry_opened and self._is_success_article_url(str(page.url))
-                        and not self._has_visible_editable_input(page)):
-                    # The first entry lookup can run before the article page has
-                    # rendered its entry (a publisher's silent redirect; ScienceDirect
-                    # right after linkinghub, 2026-10-31). Open the official entry
-                    # once it appears, then leave the user's institution selection alone.
-                    entry_opened = self._click_sso_entry(page, result)
-                    if entry_opened:
-                        continue
-                self._select_institution(page, result)
-                continue
-            if marker != last_auto_action or time.time() - last_auto_action_at > 10:
-                if self._select_institution(page, result):
-                    settle(page, 2_000)
-                    last_auto_action = marker
-                    last_auto_action_at = time.time()
-                    continue
-                if self._looks_logged_out(page) and self._click_sso_entry(page, result):
-                    settle(page, 2_000)
-                    self._select_institution(page, result)
-                    last_auto_action = marker
-                    last_auto_action_at = time.time()
-                    continue
-                if self._click_openathens_entry(page, result):
-                    settle(page, 2_000)
-                    self._select_institution(page, result)
-                    last_auto_action = marker
-                    last_auto_action_at = time.time()
-                    continue
-                self._select_institution(page, result)
-                last_auto_action = marker
-                last_auto_action_at = time.time()
-            if self._article_access_available(page):
-                return True
-        if not manual_selection and self._has_publisher_institution_session(page):
-            try:
-                open_page(page, result.article_url, timeout_ms=60_000)
-                self._event(result, "institution_session_return_article", result.article_url)
-                settle(page, 3_000)
-                self._dismiss_cookie_banners(page, result)
-                return not self._looks_logged_out(page)
-            except Exception as exc:
-                self._event(result, "institution_session_return_error", f"{type(exc).__name__}: {exc}")
-        self._wait_ran_out(result)
-        return False
+            self._wait_ran_out(result)
+            return False
 
     # The school's account cannot sign in (login state J). Shibboleth's own
     # words ("Your account is locked.", "Your password has expired.") and the
@@ -687,18 +755,6 @@ class LoginMixin:
             result._school_page = (url, time.time())
             return ""
         return url if time.time() - seen[1] >= self.SCHOOL_SITE_STAY_SEC else ""
-
-    @staticmethod
-    def _visible_input_values(page: Any) -> tuple[str, ...]:
-        """What the visible text and password fields hold; a change means someone types."""
-        try:
-            values = page.evaluate("""() => [...document.querySelectorAll('input')]
-                .filter(i => ['', 'text', 'email', 'password', 'tel', 'number'].includes((i.type || '').toLowerCase())
-                             && i.getClientRects().length > 0)
-                .map(i => i.value || '')""")
-        except Exception:
-            return ()
-        return tuple(str(v) for v in values) if isinstance(values, list) else ()
 
     def _open_adapter_login_page(self, page: Any, result: DownloadResult | None) -> bool:
         """Go to the adapter's next login page, each once per item (an Elsevier

@@ -77,11 +77,11 @@ class SuspectBlockResolutionTests(unittest.TestCase):
             p.start(); self.addCleanup(p.stop)
         self.d._pdf_step_needs_login = lambda p: False
 
-    def test_waits_while_the_verification_tab_is_open_then_continues(self):
+    def test_suspect_tab_that_advances_quickly_does_not_request_intervention(self):
         ticks = []
         def user_completes(ms):
             ticks.append(ms)
-            self.assertTrue(self.attention)  # capsule requests intervention without foregrounding
+            self.assertFalse(self.attention)  # a short automatic redirect stays quiet
             if len(ticks) == 2:
                 self.pdf_tab.url = "https://www.sciencedirect.com/science/article/pii/S1"  # verification done, tab moved on
         self.article.wait_for_timeout.side_effect = user_completes

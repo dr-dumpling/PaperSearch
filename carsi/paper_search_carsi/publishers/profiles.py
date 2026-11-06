@@ -81,9 +81,11 @@ def get_publisher_profile(name: str, *, profiles: Mapping[str, PublisherProfile]
     return profile
 
 
-# Journals whose DOIs keep a former publisher's registrant prefix.
-_MOVED_JOURNALS = {
+# Journals whose publishing platform differs from their DOI registrant.
+_JOURNAL_PLATFORMS = {
     "10.1136/ard-": "elsevier",  # Annals of the Rheumatic Diseases: BMJ -> Elsevier (2025)
+    "10.1182/blood.": "elsevier",  # ASH's publishing partner since 2021; also on ScienceDirect.
+    "10.1182/bloodadvances.": "elsevier",
 }
 
 
@@ -91,7 +93,7 @@ def infer_publisher_profile(doi: str, *, profiles: Mapping[str, PublisherProfile
     """Infer a likely publisher profile from stable DOI prefixes."""
     normalized = doi.strip().lower()
     catalog = PUBLISHER_PROFILES if profiles is None else profiles
-    for prefix, key in _MOVED_JOURNALS.items():
+    for prefix, key in _JOURNAL_PLATFORMS.items():
         if normalized.startswith(prefix) and key in catalog:
             return catalog[key]
     for profile in catalog.values():

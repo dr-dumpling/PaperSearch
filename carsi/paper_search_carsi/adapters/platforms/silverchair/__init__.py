@@ -25,7 +25,7 @@ _ARTICLE = re.compile(r"/[^/]+/article(?:-abstract)?/(?:doi/10\.\d{4,9}/.+/)?\d+
 _SUPPLEMENT = re.compile(r"/[^/]+/article-supplement/(\d{5,})/")
 _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href]')].map(a => ({
     href: a.href, label: (a.innerText || a.getAttribute('title') || '').replace(/\\s+/g, ' ').trim().slice(0, 200),
-    in_section: !!a.closest('[class*="supplementary-material"]')}))"""
+    in_section: !!a.closest('[class*="supplementary-material"], .dataSuppLink')}))"""
 
 
 def supplement_links(page: Any, doi: str, hosts: frozenset[str]) -> list[SupplementLink]:

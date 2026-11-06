@@ -37,6 +37,12 @@ REQUEST_TIMEOUT_MS = 60_000
 _DROPPED_CONNECTION = ("socket disconnected", "socket hang up", "ECONNRESET", "EPIPE")
 
 
+class SupplementTooLarge(ValueError):
+    def __init__(self, size: int):
+        self.size = size
+        super().__init__("attachment exceeds file size limit")
+
+
 def supplements_dir(output_dir: Path, doi: str) -> Path:
     return Path(output_dir) / (re.sub(r"[^A-Za-z0-9._-]+", "_", doi) + "_supplements")
 
@@ -116,7 +122,8 @@ def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi
             manifest_dir: Path | None = None,
             target_dir: Path | None = None,
             download: Callable[[str], tuple[bytes | Path, str]] | None = None,
-            progress: Callable[[int], None] | None = None) -> list[dict[str, Any]]:
+            progress: Callable[[int], None] | None = None,
+            activity: Callable[[], None] | None = None) -> list[dict[str, Any]]:
     """Fetch ``links`` with ``request`` (a Playwright APIRequestContext). A file
     refused with 403 is taken through ``download`` when given: the browser
     opens it and downloads it itself (Taylor & Francis behind Cloudflare
@@ -188,6 +195,8 @@ def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi
                                     break
                                 fh.write(chunk)
                                 last_progress = now
+                                if activity is not None:
+                                    activity()
                         _check_interrupted()
                         if size > MAX_FILE_BYTES:
                             entry.update(status="skipped", reason="too_large", size=size)
@@ -200,6 +209,8 @@ def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi
                     finally:
                         if temporary is not None:
                             temporary.unlink(missing_ok=True)
+            except SupplementTooLarge as exc:
+                entry.update(status="skipped", reason="too_large", size=exc.size)
             except (BrowserUnresponsive, UserMarkedNoEntitlement) as exc:
                 stopped_reason = ("batch_stopped" if isinstance(exc, UserStoppedBatch) else
                                   "user_skipped" if isinstance(exc, UserSkippedArticle) else

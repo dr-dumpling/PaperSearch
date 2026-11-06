@@ -5,7 +5,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
-from paper_search_carsi.engine import access_rules, batch, bridge
+from paper_search_carsi.engine import access_rules, batch, batch_diagnostics, batch_login, batch_waits, bridge
 from paper_search_carsi.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_carsi.publishers.model import PublisherProfile
 
@@ -98,7 +98,13 @@ class LoginLoopTests(unittest.TestCase):
         def sleep(seconds):
             clock[0] += seconds
             page.url = next(steps, page.url)
-        with patch.object(batch.time, "sleep", sleep), patch.object(batch.time, "time", lambda: clock[0]):
+        # The browser watchdog also sleeps on the standard time module. Keep
+        # this simulated login clock local so its thread cannot advance the
+        # user's navigation or consume the wait budget.
+        login_clock = SimpleNamespace(time=lambda: clock[0], monotonic=lambda: clock[0], sleep=sleep)
+        with patch.object(batch_login, "time", login_clock), \
+             patch.object(batch_waits, "time", login_clock), \
+             patch.object(batch_diagnostics, "time", login_clock):
             self.assertFalse(d._complete_login_from_current_page(page, result))
         self.assertEqual(result.reason, "idp_no_return_to_publisher")
         self.assertLess(clock[0] - 1000, 30)

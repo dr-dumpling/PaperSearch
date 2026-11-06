@@ -45,6 +45,13 @@ def link_rows(test, script):
     return DEFAULT
 
 
+class Handlers(list):
+    """Playwright allows the capture and activity observer to share an event."""
+    def __call__(self, *args):
+        for callback in list(self):
+            callback(*args)
+
+
 class WileyCaptureTests(unittest.TestCase):
     def setUp(self):
         self.enterContext(patch.dict(sys.modules))
@@ -65,8 +72,11 @@ class WileyCaptureTests(unittest.TestCase):
             return value
 
         module("config", load_config=Mock(side_effect=AssertionError("config forbidden")),
-               parse_proxy_pool=lambda *a, **k: [])
-        module("progress_reporter", update=Mock(), report_stage=Mock())
+               parse_proxy_pool=lambda *a, **k: [],
+               DEFAULT_CONFIG={"browser_stall_notify_after": 30, "browser_page_wait_timeout": 60})
+        module("progress_reporter", update=Mock(), report_stage=Mock(),
+               has_attention=Mock(return_value=False), set_attention=Mock(),
+               update_attention_deadline=Mock(), clear_attention=Mock())
         self.extractor = module("extractors.pdf_extractor", extract_from_bytes=Mock(return_value="Offline article"))
         module("extractors", pdf_extractor=self.extractor)
         self.batch = importlib.import_module(PACKAGE + ".engine.batch")
@@ -79,14 +89,24 @@ class WileyCaptureTests(unittest.TestCase):
         self.d._fetch_pdf_url_with_browser_state = Mock(return_value=(None, "", None))
         self.d._dismiss_cookie_banners = Mock()
         self.handlers = {}
+
+        def add_listener(event, callback):
+            self.handlers.setdefault(event, Handlers()).append(callback)
+
+        def remove_listener(event, callback):
+            listeners = self.handlers.get(event, [])
+            if callback in listeners:
+                listeners.remove(callback)
+            if not listeners:
+                self.handlers.pop(event, None)
+
         self.body = "Article abstract"
         self.controls = []
         self.page = types.SimpleNamespace(
             url=ARTICLE, context=types.SimpleNamespace(browser=None),
             title=Mock(return_value="Article title"),
             wait_for_timeout=Mock(), wait_for_load_state=Mock(), evaluate=Mock(return_value=[], side_effect=lambda script, *a: link_rows(self, script)),
-            on=lambda event, callback: self.handlers.__setitem__(event, callback),
-            remove_listener=lambda event, callback: self.handlers.pop(event, None),
+            on=add_listener, remove_listener=remove_listener,
             goto=Mock(), close=Mock(), is_closed=Mock(return_value=False),
         )
         self.page.locator = self.locator

@@ -36,6 +36,17 @@ describe("Entitled PDF acceptance", () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
+  it("preserves a verified PDF and propagates a stop received during backend cleanup", async () => {
+    const path = join(directory, "paper.pdf");
+    writeFileSync(path, textPdf([["Nutrition and health", "doi:10.1000/target"]]));
+    const backend: CarsiBackend = { probe: async () => ({ state: "available", code: "ready", message: "", missing: [] }), downloadLegalDoi: async () => ({
+      kind: "success", identifier: context.paperId, path, trace: { state: "batch_stopped" },
+    }) };
+    const result = await createEntitledAccessTier(backend).run(context);
+    expect(result).toMatchObject({ status: "ok", path, code: "batch_stopped", verified: true });
+    expect(existsSync(path)).toBe(true);
+  });
+
   it.each([
     ["10.1000/other", "pdf_identity_mismatch"],
     ["", "pdf_identity_unverified"],
