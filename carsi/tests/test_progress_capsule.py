@@ -3,6 +3,7 @@ where it sits, its notifications, and the classic window as the fallback.
 No window opens here: pywebview is never started."""
 import importlib.util
 import os
+import json
 import sys
 import types
 import unittest
@@ -146,6 +147,12 @@ def api(placement=None, notifier=None, close_after=None):
 
 
 class ApiTests(unittest.TestCase):
+    def setUp(self):
+        areas = patch.object(capsule, "_screen_areas", return_value=[
+            capsule.ScreenArea("main", capsule.Rect(0, 0, 1440, 900), capsule.Rect(0, 24, 1440, 830))])
+        areas.start()
+        self.addCleanup(areas.stop)
+
     def test_notification_switch_persists_immediately_without_changing_other_settings(self):
         from paper_search_carsi import config, user_settings
         with TemporaryDirectory() as directory, \
@@ -272,19 +279,24 @@ class ApiTests(unittest.TestCase):
         a.minimize()
         a._window.minimize.assert_called_once()
 
-    @unittest.skipUnless(importlib.util.find_spec("webview"), "pywebview not installed")
-    def test_drag_keeps_geometry_stable_and_saves_the_actual_drop(self):
-        a = api()
-        a._window = MagicMock(x=320, y=180, width=260, height=56)
-        a.set_dragging(True)
-        a.resize(350, 320)
-        a._window.resize.assert_not_called()
-        a.moved(320, 180)
-        a._placement.moved.assert_called_once_with(320, 180, 260, 56, persist=False)
-        a.set_dragging(False)
-        a._placement.moved.assert_called_with(320, 180, 260, 56)
-        a.resize(350, 320)
-        a._window.resize.assert_called_once()
+    def test_drag_keeps_geometry_stable_and_saves_only_the_actual_drop(self):
+        with TemporaryDirectory() as directory:
+            placement = capsule.Placement(Path(directory) / "capsule.json", "top")
+            a = api(placement=placement)
+            a._window = MagicMock(x=320, y=180, width=260, height=56)
+            def move(x, y):
+                a._window.x, a._window.y = x, y
+            a._window.move.side_effect = move
+            a.set_dragging(True, 340, 200)
+            a.move_drag(100, 100)
+            with patch.object(capsule, "_set_window_frame") as apply:
+                a.resize(350, 320)
+                apply.assert_not_called()
+                self.assertFalse(placement.path.exists())
+                # The mouse-up at the edge arrives without a final mouse-move.
+                a.set_dragging(False, 18, 100)
+                apply.assert_called_once_with(a._window, capsule.Rect(0, 80, 260, 56))
+            self.assertEqual(placement.home, capsule.Rect(0, 80, 260, 56))
 
     def test_dragging_keeps_a_completed_window_from_auto_closing(self):
         a = api(close_after=0)
@@ -297,26 +309,88 @@ class ApiTests(unittest.TestCase):
         a._window.destroy.assert_not_called()
 
     def test_drag_uses_pointer_delta_and_ignores_late_moves_after_release(self):
-        a = api()
-        a._window = MagicMock(x=320, y=180, width=260, height=56)
-        a.set_dragging(True, 500, 200)
-        a.move_drag(580, 245)
-        a._window.move.assert_called_once_with(400, 225)
-        a.set_dragging(False)
-        a.move_drag(700, 300)
-        a._window.move.assert_called_once()
+        with TemporaryDirectory() as directory:
+            a = api(placement=capsule.Placement(Path(directory) / "capsule.json", "top"))
+            a._window = MagicMock(x=320, y=180, width=260, height=56)
+            a.set_dragging(True, 500, 200)
+            a.move_drag(580, 245)
+            a._window.move.assert_called_once_with(400, 225)
+            a.set_dragging(False)
+            a.move_drag(700, 300)
+            a._window.move.assert_called_once()
 
-    @unittest.skipUnless(importlib.util.find_spec("webview"), "pywebview not installed")
-    def test_resize_keeps_the_anchored_corner(self):
-        from webview.window import FixPoint
+    def test_mac_cross_screen_drag_ignores_webkit_coordinate_rebasing(self):
+        a=api()
+        a._window=MagicMock()
+        a._native_geometry=True
+        appkit=MagicMock()
+        appkit.NSScreen.screens.return_value=[types.SimpleNamespace(frame=lambda:
+            types.SimpleNamespace(size=types.SimpleNamespace(height=900)))]
+        appkit.NSPoint.side_effect=lambda x,y:(x,y)
+        with patch.object(capsule.sys,'platform','darwin'), patch.dict(sys.modules,{'AppKit':appkit}), \
+                patch.object(capsule,'_window_geometry',return_value=(320,180,260,56)), \
+                patch.object(capsule,'_mac_pointer',side_effect=[(500,200),(510,-100),(520,-110)]), \
+                patch.object(capsule,'_set_window_frame'), \
+                patch.object(capsule,'_cocoa_call',side_effect=lambda action:action()):
+            a.set_dragging(True,500,200)
+            a.move_drag(-2000,18000)
+            a._window.native.setFrameTopLeftPoint_.assert_called_with((330,1020))
+            a.move_drag(9000,-5000)
+            a._window.native.setFrameTopLeftPoint_.assert_called_with((340,1030))
+            a.set_dragging(False)
+            a.move_drag(10000,10000)
+            self.assertEqual(a._window.native.setFrameTopLeftPoint_.call_count,2)
 
-        for corner, vertical in (("top", FixPoint.NORTH), ("bottom", FixPoint.SOUTH)):
-            with self.subTest(corner=corner):
-                a = api(placement=MagicMock(corner=corner))
-                a._window = MagicMock()
-                a.resize(330, 280.4)
-                a.resize(330, 280)
-                a._window.resize.assert_called_once_with(330, 280, fix_point=vertical | FixPoint.EAST)
+    def test_windows_drop_uses_physical_pointer_after_a_dpi_change(self):
+        with TemporaryDirectory() as directory:
+            placement = capsule.Placement(Path(directory) / "capsule.json", "top")
+            a = api(placement=placement)
+            a._window = MagicMock()
+            screens = [capsule.ScreenArea('main', capsule.Rect(0, 0, 1280, 720), capsule.Rect(0, 0, 1280, 690)),
+                       capsule.ScreenArea('left', capsule.Rect(-1280, 0, 1280, 720), capsule.Rect(-1280, 0, 1280, 690))]
+            scale = 1.25
+            def move(x, y):
+                nonlocal scale
+                self.assertEqual((x, y), (-14, 288))
+                scale = 1.5
+            a._window.move.side_effect = move
+            with patch.object(capsule.sys, 'platform', 'win32'), \
+                    patch.object(capsule, '_window_scale', side_effect=lambda window: scale), \
+                    patch.object(capsule, '_windows_pointer', side_effect=[(1100, 400), (-8, 400)]), \
+                    patch.object(capsule, '_screen_areas', return_value=screens), \
+                    patch.object(capsule, '_window_geometry', side_effect=[(872, 288, 260, 56), (-12, 240, 260, 56)]), \
+                    patch.object(capsule, '_set_window_frame') as frame:
+                a.set_dragging(True, 800, 200)
+                a.set_dragging(False, 9000, -4000)  # WebView coordinates were rebased
+                frame.assert_called_once_with(a._window, capsule.Rect(-260, 240, 260, 56))
+            self.assertEqual(placement.screen.name, 'left')
+
+    def test_atomic_animation_ignores_stale_frames_and_returns_home(self):
+        with TemporaryDirectory() as directory:
+            placement = capsule.Placement(Path(directory) / 'capsule.json', 'top')
+            a = api(placement=placement)
+            a._window = MagicMock(x=10, y=30, width=260, height=56)
+            def apply(window, frame):
+                window.x, window.y, window.width, window.height = frame.x, frame.y, frame.width, frame.height
+            with patch.object(capsule, '_set_window_frame', side_effect=apply) as native:
+                plan = a.begin_layout(True, 350, 320, 1)
+                self.assertEqual((plan['vertical'], plan['horizontal']), ('down', 'right'))
+                a.resize(350, 320, 0.5, 1)
+                self.assertEqual(native.call_args.args[1], capsule.Rect(10, 30, 305, 188))
+                a.resize(350, 320, 1, 1)
+                a.finish_layout(1)
+                a.begin_layout(True, 350, 550, 2)  # settings keeps the same home/direction
+                a.resize(350, 550, 1, 2)
+                a.finish_layout(2)
+                a.begin_layout(False, 260, 56, 3)
+                a.resize(350, 550, 1, 2)  # stale page animation
+                a.finish_layout(2)
+                a.resize(260, 56, 1, 3)
+                a.finish_layout(3)
+                self.assertEqual(native.call_args.args[1], capsule.Rect(10, 30, 260, 56))
+                self.assertFalse(placement.expanded)
+                self.assertEqual(json.loads(placement.path.read_text())['x'], 10)
+
 
 
 class IntegrationTests(unittest.TestCase):
@@ -355,24 +429,205 @@ class PlacementTests(unittest.TestCase):
         tmp = TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.path = Path(tmp.name) / "capsule.json"
+        self.screens = [capsule.ScreenArea("main", capsule.Rect(0, 0, 1440, 900), capsule.Rect(0, 24, 1440, 830))]
 
-    def test_default_corners(self):
-        self.assertEqual(capsule.Placement(self.path, "top").start(1440, 900, (260, 56)), (1160, 44))
-        self.assertEqual(capsule.Placement(self.path, "bottom").start(1920, 1080, (260, 56)), (1640, 968))
+    def test_default_corners_and_work_area(self):
+        self.assertEqual(capsule.Placement(self.path, "top").start(self.screens, (260, 56)), (1160, 44))
+        self.assertEqual(capsule.Placement(self.path, "bottom").start(self.screens, (260, 56)), (1160, 788))
+        self.screens[0] = capsule.ScreenArea('main', capsule.Rect(0, 0, 1440, 900), capsule.Rect(0, 70, 1440, 710))
+        self.assertEqual(capsule.Placement(self.path, "top").start(self.screens, (260, 56))[1], 70)
+        self.assertEqual(capsule.Placement(self.path, "bottom").start(self.screens, (260, 56))[1], 724)
 
-    def test_a_dragged_spot_is_remembered_and_ignored_when_off_screen(self):
-        capsule.Placement(self.path, "top").moved(300, 200, 260, 56)
-        self.assertEqual(capsule.Placement(self.path, "top").start(1440, 900, (330, 280)), (230, 200))
-        self.assertEqual(capsule.Placement(self.path, "top").start(500, 400, (260, 56))[1], 44)
-        self.assertEqual(capsule.Placement(self.path, "bottom").start(1440, 900, (260, 56)), (1160, 788))
+    def test_four_directions_settings_and_collapse_return_to_home(self):
+        for x, y, direction in [(0, 24, ('down', 'right')), (1180, 24, ('down', 'left')),
+                                (0, 798, ('up', 'right')), (1180, 798, ('up', 'left')),
+                                (590, 24, ('down', 'left')), (590, 798, ('up', 'left')),
+                                (0, 411, ('up', 'right')), (1180, 411, ('up', 'left'))]:
+            with self.subTest(x=x, y=y):
+                p = capsule.Placement(self.path, 'top')
+                home = capsule.Rect(x, y, 260, 56)
+                p.begin(True, home, self.screens)
+                self.assertEqual(p.direction, direction)
+                card = p.target(350, 300, True)
+                p.finish(True, card)
+                p.begin(True, card, self.screens)
+                settings = p.target(350, 600, True)
+                self.assertEqual(p.direction, direction)
+                self.assertGreaterEqual(settings.x, 0)
+                self.assertGreaterEqual(settings.y, 24)
+                self.assertLessEqual(settings.right, 1440)
+                self.assertLessEqual(settings.bottom, 854)
+                p.begin(False, settings, self.screens)
+                self.assertEqual(p.target(260, 56, False), home)
+                p.finish(False, home)
+                self.assertFalse(p.expanded)
 
-    def test_intermediate_drag_positions_do_not_write_the_settings_file(self):
-        position = capsule.Placement(self.path, "top")
-        position.moved(300, 200, 260, 56, persist=False)
-        self.assertFalse(self.path.exists())
-        self.assertEqual((position.right, position.edge), (560, 200))
-        position.moved(320, 180, 260, 56)
-        self.assertEqual(capsule.Placement(self.path, "top").start(1440, 900, (260, 56)), (320, 180))
+    def test_clamping_does_not_overwrite_home_or_drift_after_repeated_expansions(self):
+        p = capsule.Placement(self.path, 'top')
+        home = capsule.Rect(600, 440, 260, 56)
+        for _ in range(4):
+            p.begin(True, home, self.screens)
+            large = p.target(1000, 800, True)
+            self.assertEqual(large.y, 24)
+            p.finish(True, large)
+            p.begin(False, large, self.screens)
+            self.assertEqual(p.target(260, 56, False), home)
+            p.finish(False, home)
+        self.assertEqual(capsule.Placement(self.path, 'top').start(self.screens, (260, 56)), (600, 440))
+
+    def test_oversized_page_is_limited_to_work_area(self):
+        p = capsule.Placement(self.path, 'top')
+        p.begin(True, capsule.Rect(100, 50, 260, 56), self.screens)
+        self.assertEqual(p.target(2000, 1500, True), self.screens[0].work)
+
+    def test_legacy_top_and_bottom_positions_migrate_on_next_save(self):
+        for corner, edge in [('top', 200), ('bottom', 256)]:
+            self.path.write_text(json.dumps({'corner': corner, 'right': 560, 'edge': edge}))
+            p = capsule.Placement(self.path, 'top')
+            self.assertEqual(p.start(self.screens, (260, 56)), (300, 200))
+            p.save()
+            self.assertEqual(json.loads(self.path.read_text())['version'], 2)
+
+    def test_invalid_or_disconnected_saved_position_uses_default(self):
+        for data in [{'corner':'top','right':-9000,'edge':100}, {'version':2,'x':'bad'},
+                     {'corner':'top','right':float('nan'),'edge':100}, [], {'version':2,'x':0,'y':0,'width':0,'height':56}]:
+            self.path.write_text(json.dumps(data))
+            self.assertEqual(capsule.Placement(self.path, 'top').start(self.screens, (260, 56)), (1160, 44))
+
+    def test_negative_secondary_monitor_survives_restart_and_work_area_changes(self):
+        extra = capsule.ScreenArea('secondary', capsule.Rect(-1600, -200, 1600, 1000), capsule.Rect(-1600, -176, 1600, 920))
+        screens = self.screens + [extra]
+        p = capsule.Placement(self.path, 'top')
+        p.begin(False, capsule.Rect(-1200, -100, 260, 56), screens)
+        p.finish(False, p.home)
+        restored = capsule.Placement(self.path, 'top')
+        self.assertEqual(restored.start(screens, (260, 56)), (-1200, -100))
+        self.assertEqual(restored.screen.name, 'secondary')
+        self.assertEqual(capsule.Placement(self.path, 'top').start(self.screens, (260, 56)), (1160, 44))
+
+    def test_drag_reanchors_an_open_card_at_the_new_edge(self):
+        p = capsule.Placement(self.path, 'top')
+        p.begin(True, capsule.Rect(1180, 798, 260, 56), self.screens)
+        for after, expected, home in [
+                (capsule.Rect(0,24,350,300), ('down','right'), capsule.Rect(0,24,260,56)),
+                (capsule.Rect(1090,554,350,300), ('up','left'), capsule.Rect(1180,798,260,56))]:
+            p.dragged(after,self.screens)
+            self.assertEqual(p.direction,expected)
+            self.assertEqual(p.home,home)
+            self.assertEqual(p.target(350,300,True),after)
+            p.begin(True,after,self.screens)
+            self.assertEqual(p.direction,expected)  # settings updates do not flip it
+            self.assertEqual(p.target(260,56,False),home)
+
+    def test_expanded_drag_to_above_left_monitor_uses_its_work_area(self):
+        p = capsule.Placement(self.path,'top')
+        p.begin(True,capsule.Rect(1180,798,260,56),self.screens)
+        secondary=capsule.ScreenArea('other',capsule.Rect(-1600,-1000,1600,1000),
+                                     capsule.Rect(-1600,-976,1600,920))
+        screens=self.screens+[secondary]
+        after=capsule.Rect(-1600,-976,350,300)
+        p.dragged(after,screens)
+        self.assertEqual(p.screen.name,'other')
+        self.assertEqual(p.direction,('down','right'))
+        self.assertEqual(p.target(350,300,True),after)
+        p.begin(False,after,screens)
+        self.assertEqual(p.target(260,56,False),capsule.Rect(-1600,-976,260,56))
+        restored=capsule.Placement(self.path,'top')
+        self.assertEqual(restored.start(screens,(260,56)),(-1600,-976))
+
+    def test_near_all_four_edges_snaps_only_the_relevant_axis(self):
+        for x, y, sx, sy in [(9, 300, 0, 300), (1080, 300, 1090, 300),
+                             (400, 34, 400, 24), (400, 543, 400, 554),
+                             (400, 300, 400, 300)]:
+            with self.subTest(x=x, y=y):
+                p = capsule.Placement(self.path, 'top')
+                p.begin(True, capsule.Rect(600, 440, 260, 56), self.screens)
+                card = p.dragged(capsule.Rect(x, y, 350, 300), self.screens)
+                self.assertEqual(card, capsule.Rect(sx, sy, 350, 300))
+                self.assertEqual(p.target(350, 300, True), card)
+
+    def test_release_on_second_display_wins_over_the_cards_center(self):
+        screens = self.screens + [capsule.ScreenArea(
+            'left', capsule.Rect(-1200, 0, 1200, 900), capsule.Rect(-1200, 24, 1200, 830))]
+        p = capsule.Placement(self.path, 'top')
+        p.begin(True, capsule.Rect(600, 440, 260, 56), screens)
+        card = p.dragged(capsule.Rect(-14, 300, 350, 300), screens, (-4, 315))
+        self.assertEqual(p.screen.name, 'left')
+        self.assertEqual(card, capsule.Rect(-350, 300, 350, 300))
+        self.assertEqual(p.target(470, 500, True).right, 0)
+        self.assertEqual(p.target(190, 48, False).right, 0)
+
+    def test_expanded_card_can_drop_at_every_height_along_either_side(self):
+        work = self.screens[0].work
+        for edge, x in [(-1, 0), (1, 1090)]:
+            for grab_x in (x + (10 if edge == -1 else 340), x + 175):
+                for y in (*range(52, 826, 11), 826):
+                    with self.subTest(edge=edge, x=grab_x, y=y):
+                        p = capsule.Placement(self.path, 'top')
+                        p.begin(True, capsule.Rect(600, 440, 260, 56), self.screens)
+                        card = p.dragged(capsule.Rect(x, y - 18, 350, 300), self.screens, (grab_x, y))
+                        self.assertEqual(p.edges, (edge, 0))
+                        self.assertEqual(p.target(350, 300, True), card)
+                        p.begin(False, card, self.screens)
+                        pill = p.target(260, 56, False)
+                        self.assertEqual(pill.y, y - 28)
+                        self.assertEqual(pill.x, work.x if edge == -1 else work.right - 260)
+                        p.finish(False, pill)
+                        p.begin(True, pill, self.screens)
+                        p.finish(False, p.target(260, 56, False))
+                        self.assertEqual(p.home, pill)
+
+    def test_expanded_card_snaps_only_the_edge_indicated_by_release(self):
+        p = capsule.Placement(self.path, 'top')
+        p.begin(True, capsule.Rect(600, 440, 260, 56), self.screens)
+        # The tall card extends off the bottom, but the release is along
+        # the left edge, not in the corner.
+        card = p.dragged(capsule.Rect(8, 690, 350, 300), self.screens, (120, 715))
+        self.assertEqual(card, capsule.Rect(0, 554, 350, 300))
+        self.assertEqual(p.target(260, 56, False), capsule.Rect(0, 687, 260, 56))
+
+    def test_right_and_bottom_stay_attached_when_the_pill_changes_size_or_restarts(self):
+        p = capsule.Placement(self.path, 'bottom')
+        p.begin(True, capsule.Rect(600, 440, 260, 56), self.screens)
+        p.dragged(capsule.Rect(1081, 546, 350, 300), self.screens)
+        pill = p.target(200, 48, False)
+        self.assertEqual(pill, capsule.Rect(1240, 806, 200, 48))
+        p.finish(False, pill)
+        smaller = [capsule.ScreenArea('main', capsule.Rect(0, 0, 1280, 800),
+                                     capsule.Rect(0, 30, 1280, 714))]
+        restored = capsule.Placement(self.path, 'bottom')
+        self.assertEqual(restored.start(smaller, (260, 56)), (1080, 696))
+        self.assertEqual(restored.target(360, 200, True), capsule.Rect(920, 544, 360, 200))
+
+    def test_saved_measured_pill_size_and_windows_dpi_survive_restart(self):
+        p = capsule.Placement(self.path, 'bottom')
+        p.scale = 1.25
+        home = capsule.Rect(900, 700, 200, 40)
+        p.begin(False, home, self.screens)
+        p.finish(False, home)
+        same = capsule.Placement(self.path, 'bottom')
+        self.assertEqual(same.start(self.screens, (260,56), 1.25), (900,700))
+        self.assertEqual(same.home, home)
+        changed = capsule.Placement(self.path, 'bottom')
+        changed.start(self.screens, (260,56), 1.5)
+        self.assertEqual(changed.home.x, 750)
+        self.assertEqual(changed.home.width, 200)
+        same.rescale(1.5)
+        self.assertEqual(same.home.x, 750)
+        self.assertEqual(same.home.height, 40)
+
+    def test_interrupted_collapse_keeps_original_corner_until_it_finishes(self):
+        p = capsule.Placement(self.path, 'top')
+        home = capsule.Rect(0, 24, 260, 56)
+        p.begin(True, home, self.screens)
+        card = p.target(350,500,True)
+        p.begin(False,card,self.screens)
+        partial = capsule.Rect(0,24,300,250)
+        p.begin(True,partial,self.screens)
+        self.assertEqual(p.home,home)
+        self.assertEqual(p.direction,('down','right'))
+        self.assertEqual(p.target(260,56,False),home)
+
 
 
 class _Now:
@@ -451,6 +706,34 @@ class NotifierTests(unittest.TestCase):
 
 
 class WindowsGeometryTests(unittest.TestCase):
+    def test_work_areas_include_negative_monitors_and_scale_like_the_window(self):
+        import ctypes
+
+        user = MagicMock()
+        user.MonitorFromWindow.return_value = 2
+        def info(handle, pointer):
+            value = pointer._obj
+            value.szDevice = 'main' if handle == 1 else 'secondary'
+            value.rcMonitor = (0, 0, 1920, 1080) if handle == 1 else (-1920, -300, 0, 780)
+            value.rcWork = (0, 0, 1920, 1040) if handle == 1 else (-1920, -260, 0, 780)
+            value.dwFlags = int(handle == 1)
+            return True
+        user.GetMonitorInfoW.side_effect = info
+        user.EnumDisplayMonitors.side_effect = lambda dc, rect, callback, data: (
+            callback(1, None, None, 0) and callback(2, None, None, 0))
+        for scale in (1.25, 1.5):
+            with self.subTest(scale=scale), patch.object(capsule.sys, 'platform', 'win32'), \
+                    patch.object(ctypes, 'windll', types.SimpleNamespace(user32=user), create=True), \
+                    patch.object(ctypes, 'WINFUNCTYPE', ctypes.CFUNCTYPE, create=True):
+                window = MagicMock()
+                window.native._scale = scale
+                window.native.Handle.ToInt64.return_value = 0x100000001
+                areas = capsule._windows_screen_areas(window)
+                self.assertEqual(areas[0].name, 'secondary')
+                self.assertEqual(areas[0].work, capsule.Rect(-1920/scale, -260/scale, 1920/scale, 1040/scale))
+                self.assertEqual(areas[1].work.height, 1040/scale)
+                user.MonitorFromWindow.assert_called_with(0x100000001, 2)
+
     def test_animation_and_drag_keep_dpi_and_anchor_without_activating_the_window(self):
         import ctypes
         from webview.window import FixPoint
@@ -482,6 +765,11 @@ class WindowsGeometryTests(unittest.TestCase):
         user.SetWindowPos.assert_called_with(100, None, 575, 220, 250, 50, 0x0054)
         native.move(120, 80)
         user.SetWindowPos.assert_called_with(100, None, 150, 100, 0, 0, 0x0055)
+        for scale in (1.25, 1.5):
+            native._scale = scale
+            window._capsule_set_frame(capsule.Rect(-400, 24, 350, 300))
+            user.SetWindowPos.assert_called_with(100, None, round(-400*scale), round(24*scale),
+                                                round(350*scale), round(300*scale), 0x0014)
         user.SetForegroundWindow.assert_not_called()
         native.Shown[0]()
         user.SetForegroundWindow.assert_not_called()
@@ -493,8 +781,42 @@ class WindowsGeometryTests(unittest.TestCase):
         user.SetForegroundWindow.assert_called_once_with(100)
 
 
+class MacGeometryTests(unittest.TestCase):
+    def test_visible_frame_converts_cocoa_coordinates_using_primary_screen_top(self):
+        def frame(x, y, w, h):
+            return types.SimpleNamespace(origin=types.SimpleNamespace(x=x, y=y),
+                                         size=types.SimpleNamespace(width=w, height=h))
+        main = MagicMock()
+        main.frame.return_value = frame(0, 0, 1440, 900)
+        main.visibleFrame.return_value = frame(0, 50, 1440, 826)
+        main.deviceDescription.return_value = {'NSScreenNumber': 1}
+        extra = MagicMock()
+        extra.frame.return_value = frame(-1600, 100, 1600, 1000)
+        extra.visibleFrame.return_value = frame(-1600, 100, 1600, 976)
+        extra.deviceDescription.return_value = {'NSScreenNumber': 2}
+        appkit = MagicMock()
+        appkit.NSScreen.screens.return_value = [main, extra]
+        appkit.NSMakeRect.side_effect = lambda *args: args
+        with patch.object(capsule.sys, 'platform', 'darwin'), patch.dict(sys.modules, {'AppKit': appkit}), \
+                patch.object(capsule, '_cocoa_call', side_effect=lambda action: action()):
+            areas = capsule._screen_areas(MagicMock())
+            self.assertEqual(areas[0].work, capsule.Rect(0, 24, 1440, 826))
+            self.assertEqual(areas[1].work, capsule.Rect(-1600, -176, 1600, 976))
+            window = MagicMock()
+            capsule._set_window_frame(window, capsule.Rect(-1200, -100, 350, 500))
+            window.native.setFrame_display_.assert_called_once_with((-1200, 500, 350, 500), True)
+            window.native.makeKeyAndOrderFront_.assert_not_called()
+
+
 class FallbackTests(unittest.TestCase):
     def setUp(self):
+        screens = patch.object(capsule, '_screen_areas', return_value=[capsule.ScreenArea(
+            'main', capsule.Rect(0, 0, 1440, 900), capsule.Rect(0, 24, 1440, 830))])
+        screens.start()
+        self.addCleanup(screens.stop)
+        scale = patch.object(capsule, "_window_scale", return_value=1.0)
+        scale.start()
+        self.addCleanup(scale.stop)
         quiet_start = patch.object(capsule, "_prepare_nonactivating_start")
         quiet_start.start()
         self.addCleanup(quiet_start.stop)

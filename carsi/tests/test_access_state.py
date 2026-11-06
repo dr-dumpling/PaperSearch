@@ -29,7 +29,7 @@ def tab(text, url=SPRINGER, **probe):
 class AccessStateTests(unittest.TestCase):
     def state(self, *tabs, publisher="springer", school_chosen=False):
         d = PublisherBatchDownloader(dict(SCHOOL), profile=get_publisher_profile(publisher))
-        d._item_result = SimpleNamespace(events=[{"state": "institution_selected", "detail": "Fixture University"}]
+        d._item_result = SimpleNamespace(_visited_idp=school_chosen, events=[{"state": "institution_selected", "detail": "Fixture University"}]
                                          if school_chosen else [])
         tabs[0].context.pages = list(tabs)
         return d._access_state(tabs[0])

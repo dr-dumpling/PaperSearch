@@ -117,8 +117,10 @@ class DiagnosticsMixin:
             }.get(state)
             if state == "login_state" and getattr(result, "_login_attention", ""):
                 report = ("等待在浏览器完成机构登录", "waiting_login")
-            if state == "challenge_wait" and detail.startswith("manual "):
-                report = ("等待人工安全验证", "waiting_verification")
+            if state == "challenge_manual_wait" or state == "challenge_wait" and detail.startswith("manual "):
+                report = (("等待人工安全验证", "waiting_verification")
+                          if getattr(result, "_verification_attention", False)
+                          else ("正在检查安全验证", "checking_access"))
             if state == "login_attempt_started" and detail in {"1/3", "2/3", "3/3"}:
                 report = (f"机构登录：第 {detail[0]} 次尝试，共 3 次", "checking_access")
             if state == "login_observed":

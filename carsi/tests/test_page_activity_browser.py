@@ -15,7 +15,9 @@ pytestmark = pytest.mark.skipif(os.environ.get("CARSI_LOCAL_BROWSER_TEST") != "1
                                 reason="local Camoufox fixture opt-in")
 
 
-def test_slow_redirect_stays_quiet_then_a_truly_idle_document_notifies(tmp_path, monkeypatch):
+def test_slow_redirect_and_idle_document_do_not_invent_a_user_action(tmp_path, monkeypatch, caplog):
+    import logging
+    caplog.set_level(logging.INFO, logger="paper_search_carsi.engine.page_activity")
     after = int(os.environ.get("CARSI_TEST_STALL_AFTER", "1"))
     delay = after + (3 if after >= 30 else 1)
     stop = threading.Event()
@@ -81,12 +83,13 @@ def test_slow_redirect_stays_quiet_then_a_truly_idle_document_notifies(tmp_path,
         assert notices == []
         assert not progress_reporter.read_state()["attention"]
         page.wait_for_timeout((after + 0.3) * 1000)
-        assert len(notices) == 1
-        assert notices[0] >= loaded + after - 0.1
+        assert notices == []
+        assert "page_idle:" in caplog.text
+        assert not progress_reporter.read_state()["attention"]
         assert not failures
         print(json.dumps({"configured_idle_seconds": after, "navigation_seconds": round(loaded, 2),
                           "notifications_during_loading": 0,
-                          "stalled_document_notified_after_seconds": round(notices[0] - loaded, 2)}))
+                          "idle_diagnostic_without_notification": True}))
     finally:
         stop.set()
         if watcher is not None:

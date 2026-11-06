@@ -22,7 +22,7 @@ class Field:
 FIELDS = (
     Field("login", "学校登录页最多等", "browser_login_timeout", 180, 30, 1800, "秒"),
     Field("page", "其他页面最多等", "browser_page_wait_timeout", 60, 10, 600, "秒"),
-    Field("stalled", "页面持续无进展", "browser_stall_notify_after", 30, 1, 600, "秒"),
+    Field("stalled", "验证提醒前最多等", "browser_stall_notify_after", 30, 1, 600, "秒"),
     Field("hourly", "每家出版社每小时最多", "publisher_hourly_limit", 100, 0, 1000, "篇"),
 )
 

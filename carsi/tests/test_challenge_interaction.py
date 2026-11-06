@@ -235,8 +235,8 @@ def test_click_is_not_success_and_manual_handoff_keeps_the_original_deadline(wai
         captured = {"suspect_block": "403 https://journal.example/pdf", "bytes": None, "block_reason": None}
         assert not c.d._resolve_suspect_block(c.page, c.result, captured)
         assert captured["block_reason"] == "challenge_or_viewer_timeout"
-    assert clicked.call_count == 2  # at 2 s and 5 s; automatic window ends at 8 s
-    c.attention.assert_not_called()  # wait ends before the default idle reminder
+    assert clicked.call_count == 3  # dispatched at 2, 5, 8 s; observing never extends the bound
+    c.attention.assert_not_called()
     assert c.clock[0] == 1010
     assert not any(event["state"] == "challenge_resolved" for event in c.result.events)
 
@@ -254,8 +254,7 @@ def test_click_that_clears_challenge_continues_without_manual_handoff(wait_case,
 
 
 @pytest.mark.parametrize("entry", ["article", "pdf"])
-@pytest.mark.parametrize("outcome", ["clicked", "unavailable"])
-def test_three_attempt_limit_leaves_observation_time_after_each_action(wait_case, monkeypatch, entry, outcome):
+def test_three_attempt_limit_leaves_observation_time_after_each_action(wait_case, monkeypatch, entry):
     c = wait_case
     c.d.config["browser_page_wait_timeout"] = 30
     starts, ends = [], []
@@ -263,7 +262,7 @@ def test_three_attempt_limit_leaves_observation_time_after_each_action(wait_case
         starts.append(c.clock[0])
         c.clock[0] += 0.5  # interval starts after the native action finishes
         ends.append(c.clock[0])
-        return outcome
+        return "clicked"
     monkeypatch.setattr(interaction, "click_checkbox", click)
     if entry == "article":
         assert not c.d._wait_for_challenge(c.page, c.result)
@@ -274,7 +273,8 @@ def test_three_attempt_limit_leaves_observation_time_after_each_action(wait_case
     assert starts[0] >= 1002
     assert all(start - end >= 3 for start, end in zip(starts[1:], ends))
     assert c.clock[0] == 1030
-    c.attention.assert_not_called()  # 30 s is the deadline, with no time left to act
+    c.attention.assert_called_once()
+    assert c.attention.call_args.kwargs["deadline"] == 1030
     assert not any(event["state"] == "challenge_resolved" for event in c.result.events)
 
 
@@ -340,7 +340,7 @@ def test_background_idle_check_waits_for_automatic_handoff(wait_case, monkeypatc
     else:
         assert not c.d._resolve_suspect_block(c.page, c.result, {
             "suspect_block": "403 https://journal.example/pdf", "bytes": None, "block_reason": None})
-    assert notified_at == [1058]  # original 60 s wait, two seconds reserved for handoff
+    assert notified_at == []  # absence of a widget does not prove a user action
     assert c.clock[0] == 1060
 
 
@@ -360,8 +360,9 @@ def test_native_mouse_motion_gets_time_but_cannot_extend_the_page_deadline(wait_
     monkeypatch.setattr(interaction, "click_checkbox", click)
     assert c.d._automatic_challenge_step(c.page, c.result, attempt, deadline=1010)
     assert click.call_args.kwargs["timeout_ms"] == 2500
+    c.clock[0] += 1
     assert c.d._automatic_challenge_step(c.page, c.result, attempt, deadline=1002.4)
-    assert 0 < click.call_args.kwargs["timeout_ms"] <= 1600
+    assert 0 < click.call_args.kwargs["timeout_ms"] <= 1400
 
 
 @pytest.mark.parametrize("entry", ["article", "pdf"])

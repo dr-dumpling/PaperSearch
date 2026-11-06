@@ -40,14 +40,22 @@ body:not(.mac) #root { border-radius: 8px; border: none; }
   box-shadow: inset 0 0 0 2px var(--warn-dot), inset 0 0 16px rgba(217, 119, 6, 0.2);
   opacity: 0.2; animation: breathe 3.6s ease-in-out infinite;
 }
-.surface { position: relative; z-index: 1; transform-origin: top right; }
+.surface { position: relative; z-index: 1; transform-origin: var(--origin-x, right) var(--origin-y, top); }
+body.grow-right { --origin-x: left; }
+body.grow-left { --origin-x: right; }
+body.grow-down { --origin-y: top; }
+body.grow-up { --origin-y: bottom; }
+#root.animating > .surface { position: absolute; top: 0; left: 0; }
+body.grow-left #root.animating > .surface { left: auto; right: 0; }
+body.grow-up #root.animating > .surface { top: auto; bottom: 0; }
+#root.card > .surface { overflow-y: auto; max-height: var(--content-max-height, none); }
 .fade .surface { animation: fade .22s ease-out; }
 .folder-setting { margin: 12px 0; }
 .folder-setting .folder-row { display:flex; gap:8px; margin-top:6px; }
 .folder-setting input { width:0; min-width:0; flex:1; text-align:left; }
 .folder-setting .hint { margin-top:5px; font-size:11px; color:var(--dim); }
 @media (prefers-reduced-motion: reduce) { .fade .surface, #root.warn::after { animation:none; } }
-@keyframes fade { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes breathe { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.85; } }
 
 .attention-target { appearance: none; box-sizing: content-box; padding: 0; border: none; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
@@ -333,9 +341,10 @@ function render(force) {
   else if (V.mode === "done") html = doneCard();
   else html = idleCard();
   const cls = shape + (V.mode === "attention" && panel !== "settings" ? " warn" : "");
-  if (html === lastHtml && cls === lastCls) return;
+  if (!force && html === lastHtml && cls === lastCls) return;
   const previous = root.getBoundingClientRect();
   root.style.width = ""; root.style.height = "";
+  root.style.removeProperty("--content-max-height");
   root.className = cls + " capsule-drag-region" + (cls !== lastCls ? " fade" : "");
   root.innerHTML = '<div class="surface">' + html + "</div>";
   lastHtml = html;
@@ -343,14 +352,44 @@ function render(force) {
   fit(previous);
 }
 
-let fitGeneration = 0;
-async function fit(previous) {
+let fitGeneration = 0, layoutQueue = Promise.resolve();
+let settledGeneration = 0, settledSize = null, settledExpanded = null;
+function fit(previous) {
   const generation = ++fitGeneration;
   const pad = document.body.classList.contains("mac") ? 20 : 0;
   const target = root.getBoundingClientRect();
   const to = [Math.ceil(target.width), Math.ceil(target.height)];
   const from = previous.width && previous.height ? [previous.width, previous.height] : to;
+  const expanded = root.classList.contains("card");
   const border = document.body.classList.contains("mac") ? 1 : 0;
+  // Fix the content width before awaiting the native bridge. Otherwise an
+  // absolutely positioned surface shrink-wraps for a frame on every tick.
+  root.firstElementChild.style.width = Math.max(0, to[0] - border) + "px";
+  root.style.setProperty("--content-max-height", Math.max(0, to[1] - border) + "px");
+  if (settledGeneration === generation - 1 && settledExpanded === expanded && settledSize
+      && to.every((size, i) => size === settledSize[i] && Math.abs(size - from[i]) < 1)) {
+    // Elapsed time/countdowns update the text, not the window geometry.
+    root.style.width = to[0] + "px"; root.style.height = to[1] + "px";
+    settledGeneration = generation;
+    return;
+  }
+  // Do not paint the new natural size before the native frame catches up.
+  root.style.width = from[0] + "px"; root.style.height = from[1] + "px";
+  clearTimeout(hoverTimer); clearTimeout(leaveTimer);
+  root.classList.add("animating");
+  layoutQueue = layoutQueue.then(() => animateFit(generation, expanded, from, to, pad))
+    .catch(error => console.error("Capsule layout failed", error));
+}
+async function animateFit(generation, expanded, from, to, pad) {
+  if (generation !== fitGeneration || dragging || closing) return;
+  const layout = await api().begin_layout(expanded, to[0] + pad, to[1] + pad, generation);
+  if (generation !== fitGeneration || dragging || closing || !layout.vertical) return;
+  document.body.classList.remove("grow-up", "grow-down", "grow-left", "grow-right");
+  document.body.classList.add("grow-" + layout.vertical, "grow-" + layout.horizontal);
+  from = [layout.from_width - pad, layout.from_height - pad];
+  to = [layout.width - pad, layout.height - pad];
+  const border = document.body.classList.contains("mac") ? 1 : 0;
+  root.style.setProperty("--content-max-height", Math.max(0, to[1] - border) + "px");
   root.firstElementChild.style.width = Math.max(0, to[0] - border) + "px";
   const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 240;
   const started = performance.now();
@@ -360,11 +399,20 @@ async function fit(previous) {
     const eased = 1 - Math.pow(1 - t, 3);
     const width = Math.round(from[0] + (to[0] - from[0]) * eased);
     const height = Math.round(from[1] + (to[1] - from[1]) * eased);
+    await api().resize(width + pad, height + pad, eased, generation);
+    if (generation !== fitGeneration || dragging || closing) return;
     root.style.width = width + "px"; root.style.height = height + "px";
-    await api().resize(width + pad, height + pad);
     if (t === 1) break;
     await new Promise(requestAnimationFrame);
   }
+  if (generation === fitGeneration && !dragging && !closing) {
+    await api().finish_layout(generation);
+    if (generation === fitGeneration) {
+      root.classList.remove("animating");
+      settledGeneration = generation; settledSize = to; settledExpanded = expanded;
+    }
+  }
+  observeHover();
 }
 
 async function tick() {
@@ -375,6 +423,9 @@ async function tick() {
   // Once the prompt is handled an open card folds back unless the pointer is on it.
   if (before === "attention" && V.mode !== "attention" && !hovering && !dragging && !panel) open = false;
   render(false);
+  // Also detect a real pointer departure when clamping moved the window away
+  // from a stationary cursor (there may be no further native boundary event).
+  if (document.body.classList.contains("mac")) observeHover();
 }
 
 function say(text) { flash = { text: text, until: Date.now() + 6000 }; render(true); }
@@ -445,6 +496,7 @@ root.addEventListener("pointerdown", (event) => {
   if (event.button === 0 && api().activate_on_input) inputActivation = api().activate_on_input();
   if (event.button !== 0 || interactive(event.target)) return;
   dragging = true;
+  ++hoverRequest;
   ++fitGeneration;
   clearTimeout(hoverTimer); clearTimeout(leaveTimer);
   root.classList.add("dragging");
@@ -472,19 +524,21 @@ window.addEventListener("pointermove", event => {
   nextDragPoint = [event.screenX, event.screenY];
   if (!movingDrag) dragMove = flushDragMoves();
 });
-async function finishDrag() {
+async function finishDrag(event) {
   if (!dragging || endingDrag) return;
   endingDrag = true;
   try {
     await dragReady;
     await dragMove;
-    await api().set_dragging(false);
+    if (event.type === "pointerup") await api().set_dragging(false, event.screenX, event.screenY);
+    else await api().set_dragging(false);
   } finally {
     dragging = false; endingDrag = false;
     root.classList.remove("dragging");
     // Events queued by native tracking during a drag must not fold the card.
     render(true);
-    setHover(root.matches(':hover'), true);
+    await layoutQueue;
+    observeHover(root.matches(':hover'), true);
   }
 }
 window.addEventListener("pointerup", finishDrag);
@@ -509,8 +563,30 @@ function setHover(inside, force = false) {
     leaveTimer = setTimeout(() => { if (!panel) { open = false; render(true); } }, 280);
   }
 }
-root.addEventListener("mouseenter", () => setHover(true));
-root.addEventListener("mouseleave", () => setHover(false));
+let hoverRequest = 0, lastNativePointer = null;
+async function observeHover(inside, force = false) {
+  if (dragging || endingDrag || closing) return;
+  if (!document.body.classList.contains("mac")) {
+    if (typeof inside === "boolean") setHover(inside, force);
+    return;
+  }
+  if (root.classList.contains("animating")) return;
+  const request = ++hoverRequest;
+  let pointer;
+  try { pointer = await api().hover_state(); }
+  catch (error) {
+    if (!closing) console.error("Capsule pointer query failed", error);
+    return;
+  }
+  if (request !== hoverRequest || dragging || endingDrag || closing || root.classList.contains("animating")) return;
+  // Moving/resizing the frame can generate enter/exit without mouse movement.
+  // It must not start a collapse/open loop, including across display boundaries.
+  if (!force && lastNativePointer && pointer.x === lastNativePointer.x && pointer.y === lastNativePointer.y) return;
+  lastNativePointer = pointer;
+  setHover(pointer.inside, force);
+}
+root.addEventListener("mouseenter", () => observeHover(true));
+root.addEventListener("mouseleave", () => observeHover(false));
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && panel) { panel = ""; render(true); }
   if (event.key === "Enter" && panel === "settings") act("save");

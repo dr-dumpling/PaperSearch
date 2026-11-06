@@ -14,11 +14,12 @@ from urllib.parse import urlsplit
 _OBSERVE_SCRIPT = """() => {
     const key = Symbol.for('papersearch.turnstile.ready');
     if (window[key]) return;
-    const ready = window[key] = new WeakSet();
+    const ready = window[key] = new WeakMap();
+    let revision = 0;
     addEventListener('message', event => {
         if (event.origin !== 'https://challenges.cloudflare.com' || !event.source
             || event.data?.source !== 'cloudflare-challenge') return;
-        if (event.data.event === 'interactiveBegin') ready.add(event.source);
+        if (event.data.event === 'interactiveBegin') ready.set(event.source, ++revision);
         else if (['interactiveEnd', 'complete', 'fail', 'tokenExpired']
                  .includes(event.data.event)) ready.delete(event.source);
     });
@@ -99,7 +100,8 @@ def needs_manual_verification(page: Any) -> bool:
     return False
 
 
-def click_checkbox(page: Any, *, timeout_ms: int, checkpoint: Callable[[], None]) -> Literal[
+def click_checkbox(page: Any, *, timeout_ms: int, checkpoint: Callable[[], None],
+                   observation: Callable[[str], None] | None = None) -> Literal[
     "absent", "clicked", "unavailable"
 ]:
     """Try one visible checkbox; never force a click through an overlay.
@@ -110,11 +112,16 @@ def click_checkbox(page: Any, *, timeout_ms: int, checkpoint: Callable[[], None]
     """
     from playwright.sync_api import Error, TimeoutError
 
+    def note(reason: str) -> None:
+        if observation is not None:
+            observation(reason)
+
     until = time.monotonic() + max(0, timeout_ms) / 1000
+    unavailable = False
     for frame in page.frames:
         checkpoint()
         if time.monotonic() >= until:
-            return "absent"
+            return "unavailable" if unavailable else "absent"
         if not is_turnstile_frame(str(frame.url or "")):
             continue
         try:
@@ -123,60 +130,68 @@ def click_checkbox(page: Any, *, timeout_ms: int, checkpoint: Callable[[], None]
             observe_checkbox(page)
             element = frame.frame_element()
             if not element.is_visible():
+                note("hidden_frame")
                 continue
             controls = frame.locator('input[type="checkbox"], [role="checkbox"]')
             count = controls.count()
             position = None
             if count:
                 if count != 1:
-                    return "unavailable"
+                    note("multiple_controls")
+                    unavailable = True
+                    continue
                 target = controls.first
-                if not target.is_visible() or not target.is_enabled() or target.is_checked():
-                    return "unavailable"
+                if not target.is_visible():
+                    note("hidden_control")
+                    continue
+                if not target.is_enabled() or target.is_checked():
+                    note("disabled_or_checked")
+                    unavailable = True
+                    continue
             else:
                 title = (element.get_attribute("title") or "").lower()
                 box = element.bounding_box()
                 if ("cloudflare" not in title or "challenge" not in title or not box
                         or not 250 <= box["width"] <= 350 or not 60 <= box["height"] <= 80):
-                    return "unavailable"
-                if not element.evaluate("""iframe =>
-                    window[Symbol.for('papersearch.turnstile.ready')]?.has(iframe.contentWindow) === true
-                """):
-                    return "absent"  # loading/automatic check; no click has been attempted
+                    geometry = f" width={box['width']:.0f} height={box['height']:.0f}" if box else ""
+                    note("unsupported_geometry_or_title" + geometry)
+                    unavailable = True
+                    continue
+                readiness = element.evaluate("""iframe =>
+                    window[Symbol.for('papersearch.turnstile.ready')]?.get(iframe.contentWindow) || 0
+                """)
+                if not readiness:
+                    note("waiting_ready_signal")
+                    continue  # loading/automatic check; no click has been attempted
                 target = element
                 position = {"x": 28, "y": box["height"] / 2}
             checkpoint()
             remaining_ms = int((until - time.monotonic()) * 1000)
             if remaining_ms <= 0:
                 return "unavailable"
-            if position:
-                # A covered/moving widget has not received an input action.
-                # Keep its readiness until native actionability checks pass.
-                # Trial clicks on an iframe can reach its child document in
-                # Playwright. Hover checks visibility/stability/hit targeting
-                # without ever dispatching a checkbox click.
-                target.hover(timeout=remaining_ms, position=position, trial=True)
-                checkpoint()
-                remaining_ms = int((until - time.monotonic()) * 1000)
-                if remaining_ms <= 0:
-                    return "unavailable"
-            # One readiness signal permits only one closed-shadow click. Wait
-            # for a fresh interactiveBegin before retrying; otherwise a stale
-            # signal could toggle an already checked or processing widget.
-            if position and not element.evaluate("""iframe =>
-                window[Symbol.for('papersearch.turnstile.ready')]?.delete(iframe.contentWindow) === true
-            """):
-                return "absent"
-            remaining_ms = int((until - time.monotonic()) * 1000)
-            if remaining_ms <= 0:
-                return "unavailable"
+            # click performs visibility, stability and hit-target checks itself.
+            # A separate humanized hover uses the same short action budget twice.
+            # Keep readiness on actionability timeout so an overlay can clear.
             # The engine observes the navigation separately. A dispatched click
             # must not be reported as unavailable while waiting for that load.
             target.click(timeout=remaining_ms, no_wait_after=True,
                          **({"position": position} if position else {}))
+            if position:
+                try:
+                    element.evaluate("""(iframe, revision) => {
+                        const ready = window[Symbol.for('papersearch.turnstile.ready')];
+                        if (ready?.get(iframe.contentWindow) === revision) ready.delete(iframe.contentWindow);
+                    }""", readiness)
+                except Error as exc:
+                    if not any(text in str(exc).lower() for text in (
+                            "frame was detached", "frame has been detached", "element is not attached",
+                            "execution context was destroyed")):
+                        raise
+            note("click_dispatched")
             return "clicked"
         except TimeoutError:
-            return "unavailable"  # hidden/covered/stale; no repeated forced clicks
+            note("actionability_timeout")
+            unavailable = True
         except Error as exc:
             # Navigation can remove the widget before its action. Browser close,
             # crash, watchdog and cancellation errors must still reach the caller.
@@ -184,6 +199,8 @@ def click_checkbox(page: Any, *, timeout_ms: int, checkpoint: Callable[[], None]
                 "frame was detached", "frame has been detached", "element is not attached",
                 "execution context was destroyed",
             )):
-                return "unavailable"
+                note("frame_detached")
+                unavailable = True
+                continue
             raise
-    return "absent"
+    return "unavailable" if unavailable else "absent"

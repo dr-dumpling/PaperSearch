@@ -1,4 +1,4 @@
-"""Remind the user after an owned page makes no progress, without driving it.
+"""Track idle owned pages without treating missing progress as a user action.
 
 Main-document requests, navigation, a loaded document, a workflow step or
 received file bytes refresh the timer. An in-flight navigation gets only the
@@ -7,6 +7,7 @@ The request watcher can check the timer without making a browser RPC.
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from contextlib import contextmanager
@@ -25,9 +26,8 @@ class PageActivity:
         self._clock = clock or time.monotonic
         self._last_progress = self._clock()
         self._lock = threading.RLock()
-        self._key = f"page-stalled:{id(self)}:{doi}"
         self._doi = doi
-        self._shown = False
+        self._reported = False
         self._transfers = 0
         self._automatic_until = 0.0
         self.closed = False
@@ -45,16 +45,14 @@ class PageActivity:
             self._clear()
 
     def _clear(self) -> None:
-        if self._shown:
-            progress_reporter.clear_attention(self._key)
-            self._shown = False
+        self._reported = False
 
     def automatic_for(self, seconds: float) -> None:
-        """Defer idle reminders until the caller's existing automatic deadline.
+        """Defer idle diagnostics until the caller's existing automatic deadline.
 
         This is a finite lease, not progress: polling must pass only the time
         remaining on the original bound. Zero releases it at manual handoff.
-        The watcher can still remind if the browser call never returns.
+        The watcher can still log if the browser call never returns.
         """
         with self._lock:
             self._automatic_until = self._clock() + max(0.0, seconds)
@@ -66,19 +64,21 @@ class PageActivity:
         with self._lock:
             if self.closed:
                 return
-            if progress_reporter.has_attention(current=self._doi, excluding=self._key):
+            if progress_reporter.has_attention(current=self._doi):
                 # School login and other explicit requests have priority. Start
                 # a fresh quiet interval when they finish rather than duplicating them.
                 self._last_progress = self._clock()
                 self._clear()
-            elif (not self._shown and not self._transfers
+            elif (not self._reported and not self._transfers
                   and self._clock() >= self._automatic_until
                   and not self._navigation_loading()
                   and self._clock() - self._last_progress >= self.after):
-                progress_reporter.set_attention(
-                    self._key, "页面持续没有进展，请查看浏览器，可能需要手动操作",
-                    current=self._doi, phase="需要人工处理")
-                self._shown = True
+                # Silence is not evidence of a login or verification control.
+                # Keep a bounded diagnostic; only the workflow can request the
+                # user's attention after inspecting the current page.
+                logging.getLogger(__name__).info("page_idle: no observed progress for %.0f seconds",
+                                                 self._clock() - self._last_progress)
+                self._reported = True
 
     def _navigation_loading(self) -> bool:
         pending = self._navigations.get(id(self.page))
@@ -156,7 +156,7 @@ class PageActivity:
                 self.progress()
 
     def close(self) -> None:
-        """Detach on the browser thread and clear any reminder before the next item."""
+        """Detach on the browser thread before the next item."""
         with self._lock:
             self.closed = True
             self._navigations.clear()

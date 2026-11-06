@@ -74,7 +74,7 @@ class WileyCaptureTests(unittest.TestCase):
         module("config", load_config=Mock(side_effect=AssertionError("config forbidden")),
                parse_proxy_pool=lambda *a, **k: [],
                DEFAULT_CONFIG={"browser_stall_notify_after": 30, "browser_page_wait_timeout": 60})
-        module("progress_reporter", update=Mock(), report_stage=Mock(),
+        module("progress_reporter", update=Mock(), report_stage=Mock(), read_state=Mock(return_value={}),
                has_attention=Mock(return_value=False), set_attention=Mock(),
                update_attention_deadline=Mock(), clear_attention=Mock())
         self.extractor = module("extractors.pdf_extractor", extract_from_bytes=Mock(return_value="Offline article"))

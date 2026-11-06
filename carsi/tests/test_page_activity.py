@@ -1,6 +1,7 @@
-"""A generic idle reminder, independent of publisher and verification widgets."""
+"""Idle diagnostics never claim that the page needs human input."""
 from collections import defaultdict
 import time
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -27,7 +28,8 @@ class Page:
 
 
 @pytest.fixture
-def case(tmp_path, monkeypatch):
+def case(tmp_path, monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="paper_search_carsi.engine.page_activity")
     monkeypatch.setenv("CARSI_DATA_DIR", str(tmp_path))
     progress_reporter.start_task("fixture", total=1)
     now = [0.0]
@@ -42,37 +44,41 @@ def attention():
     return progress_reporter.read_state()["attention"]
 
 
-def test_default_and_custom_thresholds_use_seconds(case):
+def test_default_and_custom_thresholds_use_seconds(case, caplog):
     a, now = case.activity, case.now
     for when in (0, 10, 29.99):
         now[0] = when
         a.check()
-        assert attention() == {}
+        assert not attention()
+        assert "page_idle:" not in caplog.text
     now[0] = 30
     a.check()
-    reminder = next(iter(attention().values()))
-    assert reminder["phase"] == "需要人工处理"
-    assert "继续按钮" not in reminder["message"]
-    original = dict(attention())
+    assert "page_idle:" in caplog.text
+    assert not attention()
+    original = len(caplog.records)
     now[0] = 50
     a.check()
-    assert attention() == original
+    assert not attention()
+    assert len(caplog.records) == original
     a.close()
+    caplog.clear()
     custom = PageActivity("10.1234/fixture", {"browser_stall_notify_after": 45}, clock=lambda: now[0])
     now[0] = 94
     custom.check()
     assert not attention()
     now[0] = 95
     custom.check()
-    assert attention()
+    assert "page_idle:" in caplog.text
+    assert not attention()
     custom.close()
 
 
-def test_progress_clears_reminder_and_restarts_timer(case):
+def test_progress_clears_reminder_and_restarts_timer(case, caplog):
     a, now = case.activity, case.now
     now[0] = 30
     a.check()
-    assert attention()
+    assert "page_idle:" in caplog.text
+    assert not attention()
     now[0] = 35
     a.progress()
     assert not attention()
@@ -81,10 +87,11 @@ def test_progress_clears_reminder_and_restarts_timer(case):
     assert not attention()
     now[0] = 65
     a.check()
-    assert attention()
+    assert "page_idle:" in caplog.text
+    assert not attention()
 
 
-def test_automatic_work_defers_reminders_without_resetting_idle_time(case):
+def test_automatic_work_defers_reminders_without_resetting_idle_time(case, caplog):
     a, now = case.activity, case.now
     a.automatic_for(58)
     now[0] = 31
@@ -92,10 +99,11 @@ def test_automatic_work_defers_reminders_without_resetting_idle_time(case):
     assert not attention()
     a.automatic_for(0)  # automatic attempts finished early, still no progress
     a.check()
-    assert attention()
+    assert "page_idle:" in caplog.text
+    assert not attention()
 
 
-def test_automatic_work_has_a_finite_bound_even_if_the_caller_never_returns(case):
+def test_automatic_work_has_a_finite_bound_even_if_the_caller_never_returns(case, caplog):
     a, now = case.activity, case.now
     a.automatic_for(58)
     now[0] = 57
@@ -103,16 +111,18 @@ def test_automatic_work_has_a_finite_bound_even_if_the_caller_never_returns(case
     assert not attention()
     now[0] = 58
     a.check()
-    assert attention()
+    assert "page_idle:" in caplog.text
+    assert not attention()
 
 
-def test_navigation_and_popup_update_target_but_subframes_do_not(case):
+def test_navigation_and_popup_update_target_but_subframes_do_not(case, caplog):
     a, now, page = case.activity, case.now, case.page
     now[0] = 20
     page.emit("framenavigated", object())
     now[0] = 30
     a.check()
-    assert attention()
+    assert "page_idle:" in caplog.text
+    assert not attention()
     page.emit("framenavigated", page.main_frame)
     assert not attention()
     now[0] = 40
@@ -131,7 +141,7 @@ def test_navigation_and_popup_update_target_but_subframes_do_not(case):
     assert not attention()
 
 
-def test_school_login_has_priority_and_restarts_quiet_interval(case):
+def test_school_login_has_priority_and_restarts_quiet_interval(case, caplog):
     a, now = case.activity, case.now
     progress_reporter.set_attention("school", "请登录学校", current="10.1234/fixture")
     now[0] = 100
@@ -143,7 +153,8 @@ def test_school_login_has_priority_and_restarts_quiet_interval(case):
     assert not attention()
     now[0] = 130
     a.check()
-    assert attention()
+    assert "page_idle:" in caplog.text
+    assert not attention()
 
 
 def navigation(page, *, previous=None):
@@ -151,7 +162,7 @@ def navigation(page, *, previous=None):
                            frame=page.main_frame, redirected_from=previous)
 
 
-def test_slow_main_navigation_does_not_prompt_just_before_it_finishes(case):
+def test_slow_main_navigation_does_not_prompt_just_before_it_finishes(case, caplog):
     a, now, page = case.activity, case.now, case.page
     request = navigation(page)
     page.emit("request", request)
@@ -169,10 +180,10 @@ def test_slow_main_navigation_does_not_prompt_just_before_it_finishes(case):
     assert not attention()
     now[0] = 63
     a.check()
-    assert attention()  # A loaded page that subsequently stalls still notifies.
+    assert "page_idle:" in caplog.text  # A loaded page that subsequently stalls still notifies.
 
 
-def test_a_navigation_cannot_suppress_stall_reminders_forever(case):
+def test_a_navigation_cannot_suppress_stall_reminders_forever(case, caplog):
     a, now, page = case.activity, case.now, case.page
     request = navigation(page)
     page.emit("request", request)
@@ -184,10 +195,10 @@ def test_a_navigation_cannot_suppress_stall_reminders_forever(case):
     assert not attention()
     now[0] = 60
     a.check()
-    assert attention()  # Redirects keep the original loading bound.
+    assert "page_idle:" in caplog.text  # Redirects keep the original loading bound.
 
 
-def test_failed_navigation_clears_loading_and_background_traffic_is_not_progress(case):
+def test_failed_navigation_clears_loading_and_background_traffic_is_not_progress(case, caplog):
     a, now, page = case.activity, case.now, case.page
     request = navigation(page)
     page.emit("request", request)
@@ -199,10 +210,10 @@ def test_failed_navigation_clears_loading_and_background_traffic_is_not_progress
         page.emit("request", navigation(Page()))
         page.emit("response", SimpleNamespace(request=object()))
         a.check()
-    assert attention()  # Failure ended the grace; ads and XHR did not renew it.
+    assert "page_idle:" in caplog.text  # Failure ended the grace; ads and XHR did not renew it.
 
 
-def test_loading_bound_uses_existing_page_wait_setting(case):
+def test_loading_bound_uses_existing_page_wait_setting(case, caplog):
     a = PageActivity("10.1234/fixture", {"browser_stall_notify_after": 5,
                      "browser_page_wait_timeout": 15}, clock=lambda: case.now[0])
     a.observe(case.page)
@@ -213,12 +224,13 @@ def test_loading_bound_uses_existing_page_wait_setting(case):
         assert not attention()
         case.now[0] = 15
         a.check()
-        assert attention()
+        assert "page_idle:" in caplog.text
+        assert not attention()
     finally:
         a.close()
 
 
-def test_download_bytes_and_browser_file_transfers_do_not_look_stalled(case):
+def test_download_bytes_and_browser_file_transfers_do_not_look_stalled(case, caplog):
     a, now = case.activity, case.now
     for second in range(0, 201, 20):
         now[0] = second
@@ -234,10 +246,11 @@ def test_download_bytes_and_browser_file_transfers_do_not_look_stalled(case):
     assert not attention()
     now[0] = 430
     a.check()
-    assert attention()
+    assert "page_idle:" in caplog.text
+    assert not attention()
 
 
-def test_polling_logs_and_countdowns_do_not_count_as_workflow_progress(case):
+def test_polling_logs_and_countdowns_do_not_count_as_workflow_progress(case, caplog):
     result = DownloadResult(doi="10.1234/fixture", status="failed")
     result._page_activity = case.activity
     d = PublisherBatchDownloader({})
@@ -248,12 +261,13 @@ def test_polling_logs_and_countdowns_do_not_count_as_workflow_progress(case):
         d._event(result, "challenge_wait", f"automatic {second}")
         progress_reporter.update(phase="自动检查", deadline=1000 - second)
         case.activity.check()
-    assert attention()
+    assert "page_idle:" in caplog.text
+    assert not attention()
     d._event(result, "article_access_ready")
     assert not attention()
 
 
-def test_automatic_school_choice_steps_count_as_progress(case):
+def test_automatic_school_choice_steps_count_as_progress(case, caplog):
     """JBJS on Windows, 2026-11-06: OpenAthens took the remembered school five
     times in 25 s without a main-frame navigation. That is the program working,
     not a page waiting for the user; once it stops, the reminder still comes."""
@@ -267,7 +281,8 @@ def test_automatic_school_choice_steps_count_as_progress(case):
         assert not attention()
     case.now[0] = 60 + 31
     case.activity.check()
-    assert attention()
+    assert "page_idle:" in caplog.text
+    assert not attention()
 
 
 def test_setting_round_trip_and_invalid_value_do_not_modify_config(tmp_path, monkeypatch):
@@ -283,16 +298,17 @@ def test_setting_round_trip_and_invalid_value_do_not_modify_config(tmp_path, mon
         assert user_settings.current()["stalled"] == 45
 
 
-def test_request_watcher_reminds_without_a_browser_rpc_and_cleans_up(case):
+def test_request_watcher_reminds_without_a_browser_rpc_and_cleans_up(case, caplog):
     case.activity.close()
     d = PublisherBatchDownloader({"browser_stall_notify_after": 1})
     result = DownloadResult(doi="10.1234/fixture", status="failed")
     stop = d._start_user_watch(case.page, result)
     try:
         end = time.monotonic() + 3
-        while not attention() and time.monotonic() < end:
+        while "page_idle:" not in caplog.text and time.monotonic() < end:
             time.sleep(0.05)
-        assert attention()
+        assert "page_idle:" in caplog.text
+        assert not attention()
         assert result._page_activity.page is case.page
     finally:
         stop.set()

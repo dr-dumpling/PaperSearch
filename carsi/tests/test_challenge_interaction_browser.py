@@ -178,6 +178,17 @@ class InteractionFixture:
         self.assertEqual(len(times), 1)
         self.assertEqual(self.page.title(), "Just a moment...")
 
+    def test_immediate_retry_signal_is_not_erased_after_a_dispatched_click(self):
+        self.frame_body = checkbox_html(closed=True, pass_on_click=2, retry_ms=0)
+        self.body = check_page(outer_closed=True)
+        self.open_widget()
+        self.page.wait_for_function("document.documentElement.dataset.fixtureReady === 'true'")
+        click = lambda: click_checkbox(self.page, timeout_ms=2500, checkpoint=lambda: None)
+        self.assertEqual(click(), "clicked")
+        self.page.wait_for_timeout(100)
+        self.assertEqual(click(), "clicked")
+        self.page.wait_for_function("document.title === 'Article'", timeout=2000)
+
     def test_third_click_finds_widget_after_layout_and_viewport_changes(self):
         self.frame_body = checkbox_html(closed=True, pass_on_click=3, retry_ms=400)
         self.body = check_page(outer_closed=True)

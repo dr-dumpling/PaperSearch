@@ -23,6 +23,7 @@ class ArticleAfterLoginTests(unittest.TestCase):
         self.d = PublisherBatchDownloader({}, profile=PROFILE)
         self.result = DownloadResult(doi=DOI, status="failed", article_url=ARTICLE, final_url=FULLTEXT)
         self.result.events.append({"state": "institution_selected", "detail": "Hong Mu-Lan University (entityID)"})
+        self.result._visited_idp = True
         self.d._item_result = self.result
         for name in ("_challenge_shell", "_wait_past_redirect_page", "_dismiss_cookie_banners"):
             setattr(self.d, name, Mock(return_value=False))
@@ -65,11 +66,11 @@ class ArticleAfterLoginTests(unittest.TestCase):
         page.goto.assert_not_called()
 
     def test_without_the_school_s_login_or_on_a_login_page_nothing_moves(self):
-        self.result.events.clear()
+        self.result._visited_idp = False  # the school was selected but the IdP was not reached
         page = self.page(STORE)
         self.d._return_to_article_after_login(page, self.result)
         page.goto.assert_not_called()
-        self.result.events.append({"state": "institution_selected", "detail": "x"})
+        self.result._visited_idp = True
         page = self.page("https://jamanetwork.com/login?return=1")
         self.d._return_to_article_after_login(page, self.result)
         page.goto.assert_not_called()

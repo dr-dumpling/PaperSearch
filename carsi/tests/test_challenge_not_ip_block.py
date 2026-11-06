@@ -147,6 +147,7 @@ class SuspectBlockResolutionTests(unittest.TestCase):
         self.article.wait_for_timeout.side_effect = user_logs_in
         self.d._is_challenge_page = lambda p: False
         self.d._pdf_step_needs_login = lambda p: p is self.pdf_tab and not logged_in["done"]
+        self.d._users_login_step = self.d._pdf_step_needs_login
         self.pdf_tab.url = "https://onlinelibrary.wiley.com/doi/epdf/10.1002/x"
         self.captured["suspect_block"] = "403 https://onlinelibrary.wiley.com/doi/pdfdirect/10.1002/x"
         with unittest.mock.patch.object(PublisherBatchDownloader, "SUSPECT_UNKNOWN_GRACE_SEC", 0):
@@ -155,11 +156,12 @@ class SuspectBlockResolutionTests(unittest.TestCase):
         self.assertIn("pdf_step_login_wait", [e["state"] for e in self.result.events])
         self.assertEqual(self.attention, {})
 
-    def test_unknown_page_is_only_watched_for_the_grace_period(self):
+    def test_unknown_page_grace_is_not_a_successful_verification(self):
         self.d._is_challenge_page = lambda p: False
         with unittest.mock.patch.object(PublisherBatchDownloader, "SUSPECT_UNKNOWN_GRACE_SEC", 0):
-            self.assertTrue(self.d._resolve_suspect_block(self.article, self.result, self.captured))
-        self.assertIsNone(self.captured["block_reason"])
+            self.assertFalse(self.d._resolve_suspect_block(self.article, self.result, self.captured))
+        self.assertEqual(self.captured["block_reason"], "ip_blocked")
+        self.assertNotIn("challenge_resolved", [e["state"] for e in self.result.events])
         self.article.wait_for_timeout.assert_not_called()
 
     def test_non_interactive_browser_keeps_the_one_shot_decision(self):

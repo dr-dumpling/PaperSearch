@@ -141,7 +141,7 @@ class EntityIdEntryTests(unittest.TestCase):
         page.locator.return_value.first.click.assert_called_once_with(timeout=3_000)
         self.assertEqual(page.evaluate.call_count, 2)  # entries, then marking the entry
         d, page = self.chooser(items)
-        page.evaluate.side_effect = [items, True, None]
+        page.evaluate.side_effect = [items, True, True]
         page.locator.return_value.first.click.side_effect = PlaywrightTimeout("Locator.click: Timeout 3000ms exceeded.")
         self.assertTrue(d._click_unique_institution_entry(page, DownloadResult(doi="10.1/x", status="failed"), page.url))
         self.assertIn("el.click()", page.evaluate.call_args.args[0])
@@ -185,7 +185,7 @@ class EntityIdEntryTests(unittest.TestCase):
         box.fill.assert_called_once_with("")
         self.assertIn("institution_search_retyped", [e["state"] for e in result.events])
 
-    def test_a_school_missing_from_the_list_is_marked_for_the_login_to_end(self):
+    def test_unsuccessful_search_selection_is_not_proof_the_school_is_absent(self):
         d = downloader("Example University")
         d._click_unique_institution_entry = Mock(return_value=False)
         d._institution_search_selectors = lambda page: ("input#organisation",)
@@ -195,8 +195,8 @@ class EntityIdEntryTests(unittest.TestCase):
         page.locator.side_effect = lambda selector: Mock(first=box, **{"all.return_value": []})
         result = DownloadResult(doi="10.1/x", status="failed")
         self.assertFalse(d._assist_configured_institution(page, result))
-        self.assertTrue(result._institution_not_listed)
-        self.assertIn("auto_institution_not_found", [e["state"] for e in result.events])
+        self.assertFalse(getattr(result, "_institution_not_listed", False))
+        self.assertIn("institution_list_not_ready", [e["state"] for e in result.events])
 
     def test_an_unreadable_search_box_does_not_stall_the_choice(self):
         from playwright.sync_api import TimeoutError as PlaywrightTimeout

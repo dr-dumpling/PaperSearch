@@ -128,3 +128,31 @@ def test_trusted_login_input_pauses_but_script_updates_and_focus_do_not(target):
         finally:
             context.close()
             browser.close()
+
+
+def test_idp_redirect_and_unknown_relay_are_not_human_steps_but_real_controls_are():
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as driver:
+        browser = driver.chromium.launch(channel='chrome', headless=True)
+        context = browser.new_context(service_workers='block')
+        page = context.new_page()
+        page.route('**/*', lambda route: route.fulfill(content_type='text/html', body='<title>Authentication redirect</title><form><input type="hidden" name="SAMLResponse"></form>'))
+        d = PublisherBatchDownloader({'publisher_institution_federation': 'carsi'},
+                                     profile=get_publisher_profile('elsevier'), institution_query='Fixture University')
+        try:
+            for url in ('https://idp.fixture.edu/idp/profile/SAML2/POST/SSO', 'https://relay.fixture.test/sso'):
+                page.goto(url)
+                assert not d._users_login_step(page)
+                assert not d._is_human_login_page(page)
+            page.goto('https://idp.fixture.edu/login')
+            for markup in ('<input type="password">', '<input autocomplete="one-time-code">',
+                           '<input name="username">', '<canvas id="qrcode" width="100" height="100"></canvas>',
+                           '<input name="_shib_idp_consentOptions" type="radio"><button>Accept</button>'):
+                page.locator('body').evaluate('(el,html)=>el.innerHTML=html', markup)
+                assert d._users_login_step(page), markup
+                assert d._is_human_login_page(page), markup
+            page.locator('body').evaluate('el=>el.innerHTML="Returning to the publisher"')
+            assert not d._users_login_step(page)
+        finally:
+            context.close()
+            browser.close()

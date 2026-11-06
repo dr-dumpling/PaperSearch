@@ -563,6 +563,13 @@ def _launch_camoufox_persistent(user_data_dir: str, headless: bool, proxy: Any,
     from playwright.sync_api import sync_playwright
 
     opts = _camoufox_options(headless, proxy, args, humanize, kwargs)
+    if not headless:
+        # Gecko's automatic Troubleshoot Mode dialog blocks the download
+        # browser and disables its background helper. Keep recovery and the
+        # startup keyboard shortcut from opening it in this child only.
+        env = opts.get("env")
+        opts["env"] = {**(os.environ if env is None else env),
+                       "MOZ_DISABLE_AUTO_SAFE_MODE": "1", "MOZ_DISABLE_SAFE_MODE_KEY": "1"}
     if os.name == "nt" and not headless:
         # Let the owned helper create the first window without activation.
         from .background import ADDON_DIR, install_startup_helper

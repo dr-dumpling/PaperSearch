@@ -345,6 +345,7 @@ class PdfSentToArticleAfterLoginTests(unittest.TestCase):
         result = DownloadResult(doi=DOI, status="failed", article_url=ARTICLE)
         result.pdf_attempts.extend(attempts)
         if signed_in:
+            result._visited_idp = True
             result.events.append({"state": "institution_selected", "detail": "Synthetic University A (entityID)"})
         d._item_result = result
         page = self.page()
@@ -397,6 +398,7 @@ class PdfSentToArticleAfterLoginTests(unittest.TestCase):
         d._access_decision = Mock(return_value=("unknown", "", ""))
 
         def login(page, result):
+            result._visited_idp = True
             result.events.append({"state": "institution_selected", "detail": "Synthetic University A (entityID)"})
             page.locator.return_value.inner_text.return_value = "Buy this article"
             return True
@@ -423,6 +425,7 @@ class PdfSentToArticleAfterLoginTests(unittest.TestCase):
             f"abstract-only view: {ARTICLE}" if d._school_login_done() else ""))
 
         def login(page, result):
+            result._visited_idp = True
             result.events.append({"state": "institution_selected", "detail": "Synthetic University A (entityID)"})
             return True
         d._ensure_login = Mock(side_effect=login)
@@ -450,6 +453,7 @@ class PdfSentToArticleAfterLoginTests(unittest.TestCase):
                 d._access_decision = Mock(return_value=("unknown", "", ""))
 
                 def login(page, result):
+                    result._visited_idp = True
                     result.events.append({"state": "institution_selected", "detail": "Synthetic University A (entityID)"})
                     return True
                 d._ensure_login = Mock(return_value=True)

@@ -538,12 +538,31 @@ class InstitutionMixin:
         except Exception as exc:
             if not _is_browser_error(exc):
                 raise
-            # Covered or moving: the script's click, as before.
+            # Custom listboxes can commit their option on mousedown (Cambridge
+            # WAYF), before blur closes the list. HTMLElement.click() alone
+            # leaves the option unselected even though no error is raised.
+            # This is only the already matched institution, never a challenge
+            # widget, credential field or another default choice.
+            # Omit MouseEventInit.view: Camoufox rejects the evaluation
+            # world's window as a Window, and the selection does not need it.
             try:
-                page.evaluate("() => { const el = document.querySelector('[data-paper-search-entry]'); if (el) el.click(); }")
+                clicked = page.evaluate("""() => {
+                    const el = document.querySelector('[data-paper-search-entry]');
+                    if (!el || !el.getClientRects().length || el.closest('[disabled], [aria-disabled="true"]'))
+                        return false;
+                    const options = {bubbles:true, cancelable:true, button:0};
+                    el.dispatchEvent(new MouseEvent('mousedown', {...options, buttons:1}));
+                    el.dispatchEvent(new MouseEvent('mouseup', options));
+                    el.click();
+                    return true;
+                }""")
+                if clicked is not True:
+                    return False
+                self._event(result, "institution_entry_dispatched", "mouse sequence after native click failure")
             except Exception as again:
                 if not _is_browser_error(again):
                     raise
+                self._event(result, "institution_select_error", str(again).split("\n", 1)[0][:200])
                 return False
         self._event(result, "auto_institution_entry", f"{target['t'][:80]} @ {url}")
         self._event(result, "institution_selected", target["t"][:80] + (" (entityID)" if top == 4 else ""))
@@ -694,10 +713,11 @@ class InstitutionMixin:
                     # The results list as soon as it shows the school (at most 5 s).
                     if pump_until(page, lambda: self._click_unique_institution_entry(page, result, url), 5_000):
                         return True
-                    self._event(result, "auto_institution_not_found", f"{query} @ {url}")
-                    # The publisher has no login route for the school: the login ends
-                    # here instead of waiting out the user's time (Neurology, 2026-11-01).
-                    result._institution_not_listed = True
+                    # No successful selection within this short poll does not
+                    # prove absence: results may arrive later, be ambiguous or
+                    # temporarily unclickable. The login's existing page budget
+                    # bounds later passes, which inspect the entries again.
+                    self._event(result, "institution_list_not_ready", f"search selection pending @ {url}")
                     return False
                 except Exception as exc:
                     # Kept, not dropped: this step once stalled 30 s without a trace.

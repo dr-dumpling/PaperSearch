@@ -155,6 +155,8 @@ class InstitutionListRuleTests(unittest.TestCase):
                     "https://www.thieme-connect.de/products/ejournals/pdf/10.1055/x.pdf&type=auth_denied")
         self.assertFalse(d._denied_after_login(page))  # no login yet: an ordinary login page
         d._item_result.events.append({"state": "institution_selected", "detail": "Example University"})
+        self.assertFalse(d._denied_after_login(page))
+        d._item_result._visited_idp = True
         self.assertTrue(d._denied_after_login(page))
         page.url = page.url.replace("type=auth_denied", "type=")
         self.assertFalse(d._denied_after_login(page))
@@ -385,6 +387,8 @@ class FederatedEntryTests(unittest.TestCase):
 class ChooserPageTests(unittest.TestCase):
     def page(self, url, password=False):
         page = Mock(); page.url = url
+        page.evaluate.return_value = ""
+        page.locator.return_value.inner_text.return_value = ""
         page.locator.return_value.count.return_value = 1 if password else 0
         return page
 
@@ -393,10 +397,10 @@ class ChooserPageTests(unittest.TestCase):
                                      profile=get_publisher_profile("thieme"), institution_query="Example University")
         self.assertFalse(d._is_human_login_page(self.page("https://profile.thieme.de/HTML/sso/ejournals/shibboleth.htm")))
         self.assertFalse(d._is_human_login_page(self.page("https://wayfinder.openathens.net/?return=x")))
-        self.assertTrue(d._is_human_login_page(self.page("https://profile.thieme.de/HTML/sso/THIEME/login.htm")))
+        self.assertFalse(d._is_human_login_page(self.page("https://profile.thieme.de/HTML/sso/THIEME/login.htm")))
         self.assertTrue(d._is_human_login_page(self.page("https://wayfinder.openathens.net/?return=x", password=True)))
-        self.assertTrue(d._is_human_login_page(self.page("https://idp.school.example/login")))
-        self.assertTrue(d._is_human_login_page(self.page("https://wayfinder.openathens.net.evil.example/")))
+        self.assertFalse(d._is_human_login_page(self.page("https://idp.school.example/login")))
+        self.assertFalse(d._is_human_login_page(self.page("https://wayfinder.openathens.net.evil.example/")))
 
 
 if __name__ == "__main__":

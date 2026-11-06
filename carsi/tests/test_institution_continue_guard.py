@@ -18,11 +18,39 @@ LOGIN = '''<title>Sign in</title><input name="user"><input type="password" name=
 <input type="submit" value="Continue" onclick="document.title='SUBMITTED'">'''
 CONSENT = '''<title>Terms</title><header><input type="search" placeholder="Search this site"></header>
 <p>Do you accept the terms?</p><button onclick="document.title='SUBMITTED'">Yes</button>'''
+MOUSEDOWN_CHOOSER = '''<title>Find your institution</title>
+    <style>ul {position:relative} ul::after {content:'';position:absolute;inset:0}</style>
+    <input aria-label="Find your institution">
+    <ul><li role="option" onmousedown="document.body.dataset.school='chosen';this.parentElement.remove()">
+    <div>Example University</div></li></ul>
+    <button onclick="if(document.body.dataset.school==='chosen')location.href='/institution-login';
+        else document.title='Please select an institution'">Continue to login</button>'''
 
 
 def downloader(config=None, query=""):
     return PublisherBatchDownloader(config if config is not None else {"carsi_enabled": True, "carsi_idp_name": "红木兰大学"},
                                     profile=THIEME, institution_query=query)
+
+
+def assert_mousedown_chooser_navigates(test, page):
+    d = downloader(query="Example University")
+    result = DownloadResult(doi="10.1055/x", status="failed")
+    with unittest.mock.patch.object(d, "_left_page", return_value=False):
+        test.assertTrue(d._click_unique_institution_entry(page, result, page.url))
+    page.wait_for_url("**/institution-login", timeout=1000)
+    test.assertTrue(any(e["state"] == "institution_entry_dispatched" for e in result.events))
+
+
+@unittest.skipUnless(os.environ.get("CARSI_LOCAL_BROWSER_TEST") == "1", "local Camoufox fixture opt-in")
+class CamoufoxChooserTests(unittest.TestCase):
+    def test_school_option_mousedown_fallback_works_in_camoufox(self):
+        from paper_search_carsi.browser.backend import launch
+        browser = launch(headless=True, humanize=False, config={})
+        self.addCleanup(browser.close)
+        page = browser.new_page(service_workers="block")
+        page.route("**/*", lambda route: route.fulfill(content_type="text/html", body=MOUSEDOWN_CHOOSER))
+        page.goto("https://publisher.example/chooser")
+        assert_mousedown_chooser_navigates(self, page)
 
 
 class MockPageTests(unittest.TestCase):
@@ -98,6 +126,65 @@ class RealPageTests(unittest.TestCase):
 
     def test_after_matching_selection_continue_is_allowed(self):
         self.assertEqual(self.run_continue(SEARCH, after_selection=True), "SUBMITTED")
+
+    def test_selected_institution_continue_survives_stability_timeout(self):
+        # Background pages can stop producing stable animation frames. The
+        # chosen school's ordinary submit uses the same bounded click recovery
+        # as the institution entry, then its actual navigation is checked.
+        page = self.open('''<title>WAYF</title>
+            <style>@keyframes move {from {transform:translateX(0)} to {transform:translateX(100px)}}
+            button {animation:move .2s linear infinite alternate}</style>
+            <form action="/institution-login"><span data-paper-search-entry>Example University</span>
+            <button type="submit">Continue to login</button></form>''')
+        result = DownloadResult(doi="10.1055/x", status="failed")
+        downloader()._click_optional_continue(page, result, after_selection=True)
+        page.wait_for_url("**/institution-login?", timeout=1000)
+        self.assertTrue(any(e["state"] == "script_click" for e in result.events))
+
+    def test_disabled_continue_is_not_reported_as_submitted(self):
+        page = self.open('<title>WAYF</title><button disabled>Continue</button>')
+        result = DownloadResult(doi="10.1055/x", status="failed")
+        downloader()._click_optional_continue(page, result, after_selection=True)
+        self.assertFalse(any(e["state"] == "institution_continue" for e in result.events))
+
+    def test_school_option_mousedown_is_preserved_when_native_click_times_out(self):
+        assert_mousedown_chooser_navigates(self, self.open(MOUSEDOWN_CHOOSER))
+
+    def test_delayed_search_results_can_still_complete_the_school_choice(self):
+        page = self.open('''<title>Find your institution</title>
+            <input placeholder="Search for your institution" oninput="clearTimeout(window.search);
+                if(this.value==='Example University')window.search=setTimeout(()=>{
+                    const li=document.createElement('li');li.setAttribute('role','option');
+                    li.textContent='Example University';li.onclick=()=>location.href='/institution-login';
+                    document.querySelector('ul').append(li);
+                },6000)">
+            <ul></ul>''')
+        d = downloader(query="Example University")
+        result = DownloadResult(doi="10.1055/x", status="failed")
+        self.assertFalse(d._assist_configured_institution(page, result))
+        self.assertFalse(getattr(result, "_institution_not_listed", False))
+        page.get_by_role("option").wait_for(timeout=3000)
+        self.assertTrue(d._assist_configured_institution(page, result))
+        page.wait_for_url("**/institution-login", timeout=1000)
+
+    def test_fast_idp_return_is_observed_and_listener_is_removed(self):
+        page = self.open("<title>Redirect</title>")
+        d = downloader(query="Example University")
+        result = DownloadResult(doi="10.1055/x", status="failed")
+        d._item_result = result
+
+        def login(page, result):
+            page.goto("https://idp.fixture.edu/login")
+            page.goto("https://publisher.example/article")
+            return True
+
+        d._complete_login_steps = login
+        d._return_to_article_after_login = Mock()
+        self.assertTrue(d._complete_login_from_current_page(page, result))
+        self.assertTrue(d._school_login_done())
+        result._visited_idp = False
+        page.goto("https://idp.fixture.edu/login")
+        self.assertFalse(d._school_login_done())
 
     def test_after_a_chosen_entry_only_its_own_submit_is_pressed(self):
         # The page's first button[type=submit] can be the header's search (review

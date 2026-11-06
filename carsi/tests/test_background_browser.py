@@ -1,6 +1,7 @@
 """Owned browser activation and its startup handshake; no desktop input in unit tests."""
 import json
 import zipfile
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -32,6 +33,27 @@ def test_headless_launch_does_not_load_privileged_helper():
     assert not opts['firefox_user_prefs'].get('extensions.experiments.enabled')
     assert opts['firefox_user_prefs']['papersearch.background.enabled'] is False
     assert opts['firefox_user_prefs']['papersearch.background.bootstrap'] is False
+
+
+@pytest.mark.parametrize('platform,headless', [('nt', False), ('posix', False), ('posix', True)])
+def test_troubleshoot_mode_guard_only_reaches_the_owned_headed_child(tmp_path, monkeypatch, platform, headless):
+    camoufox = pytest.importorskip('camoufox')
+    sync_api = pytest.importorskip('playwright.sync_api')
+    parent = {'PATH': 'inherited'}
+    explicit = {'PATH': 'provided'}
+    monkeypatch.setattr(backend, 'os', SimpleNamespace(name=platform, environ=parent))
+    monkeypatch.setattr(background, 'install_startup_helper', Mock())
+    monkeypatch.setattr(sync_api, 'sync_playwright', Mock())
+    browser = Mock(return_value=Mock())
+    monkeypatch.setattr(camoufox, 'NewBrowser', browser)
+
+    backend._launch_camoufox_persistent(str(tmp_path), headless, None, None, False, env=explicit)
+
+    env = browser.call_args.kwargs['env']
+    assert env['PATH'] == 'provided'
+    for key in ('MOZ_DISABLE_AUTO_SAFE_MODE', 'MOZ_DISABLE_SAFE_MODE_KEY'):
+        assert env.get(key) == (None if headless else '1')
+        assert key not in parent and key not in explicit
 
 
 def test_helper_has_no_site_permissions_or_content_scripts():

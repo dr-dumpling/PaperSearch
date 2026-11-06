@@ -29,8 +29,8 @@ def test_manual_attention_lifecycle(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("waits, reminder, handoff, spent", [
-    (1, False, False, 0), (22, False, False, 0), (59, True, True, 0), (10, False, True, 55)])
-def test_publisher_challenge_reminder_uses_idle_time_without_changing_budget_handoff(
+    (1, False, False, 0), (22, False, False, 0), (59, False, False, 0), (10, False, False, 55)])
+def test_widget_absence_stays_automatic_and_obeys_the_original_operation_budget(
         tmp_path, monkeypatch, waits, reminder, handoff, spent):
     """The reminder delay and the existing automation budget are independent."""
     monkeypatch.setenv("CARSI_DATA_DIR", str(tmp_path))
@@ -82,6 +82,13 @@ def test_publisher_challenge_reminder_uses_idle_time_without_changing_budget_han
     result = DownloadResult(doi="10.1000/a", status="failed", state="pdf_response_captured")
     with watchdog.operation(60, "article preparation"):
         clock[0] += spent
+        if spent:
+            with pytest.raises(watchdog.BrowserOperationTimeout):
+                downloader._wait_for_challenge(page, result)
+            assert not page.attention_seen
+            assert "challenge_manual_wait" not in events
+            assert "challenge_resolved" not in events
+            return
         assert downloader._wait_for_challenge(page, result)
     # A completed verification leaves no timeout state behind (the supplements visit ran after it).
     assert result.state == "pdf_response_captured"

@@ -133,9 +133,17 @@ class CapsulePageTests(unittest.TestCase):
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.set_content(PAGE.read_text())
             page.evaluate('''state => {
+              window.testPointer={x:-1,y:-1};
+              document.addEventListener('pointermove', e=>{testPointer={x:e.clientX,y:e.clientY}});
+              window.pointerSnapshot=()=>{const r=root.getBoundingClientRect();return {...testPointer,
+                inside:testPointer.x>=r.left && testPointer.x<r.right && testPointer.y>=r.top && testPointer.y<r.bottom}};
               window.sizes=[]; window.saved=null; window.savedValues=null; window.notificationPreference=true;
-              window.pywebview={api:{platform:async()=> 'darwin', state:async()=>state,
+              window.pywebview={api:{platform:async()=> 'darwin', state:async()=>state, hover_state:async()=>pointerSnapshot(),
                 resize:async(w,h)=>sizes.push([w,h]),
+                begin_layout:async(expanded,w,h)=>({vertical:'down',horizontal:'right',width:w,height:h,
+                  from_width:parseFloat(root.style.width)+(document.body.classList.contains('mac')?20:0),
+                  from_height:parseFloat(root.style.height)+(document.body.classList.contains('mac')?20:0)}),
+                finish_layout:async()=>{},
                 settings:async()=>({fields:[{name:'stalled',label:'页面持续无进展',unit:'秒',value:30,default:30}],
                   notify:notificationPreference,download_dir:'/original'}),
                 set_notifications:async n=>{notificationPreference=n;return {ok:true,notify:n}},
@@ -152,7 +160,13 @@ class CapsulePageTests(unittest.TestCase):
             heights = page.evaluate('sizes.map(x=>x[1])')
             self.assertGreater(len(set(heights)), 4)
             self.assertEqual(heights, sorted(heights))
-            page.evaluate("open=false;render(true);root.dispatchEvent(new MouseEvent('mouseenter'))")
+            page.evaluate("open=false;render(true)")
+            page.wait_for_function("!root.classList.contains('animating')")
+            # A stationary cursor must not reopen a window that just moved.
+            # Re-enter with real pointer motion, as an inactive Cocoa hover does.
+            page.mouse.move(700,700)
+            page.wait_for_timeout(550)
+            page.mouse.move(50,25)
             page.wait_for_function('open === true')
             page.mouse.move(700,700)
             page.wait_for_function('open === false')
@@ -235,6 +249,151 @@ class CapsulePageTests(unittest.TestCase):
                     self.assertEqual(page.evaluate("dragLocks"), [])
                     browser.close()
 
+    def test_mac_window_motion_does_not_retrigger_hover_without_pointer_motion(self):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser,page=self.drag_page(p,'darwin')
+            try:
+                page.wait_for_timeout(400)
+                page.evaluate("""async () => {
+                    clearInterval(pollTimer);
+                    nativePointer={x:1000,y:1000,inside:true};
+                    pywebview.api.hover_state=async()=>({...nativePointer});
+                    await observeHover(true);
+                }""")
+                page.wait_for_function("open && !root.classList.contains('animating')")
+                before=page.evaluate('sizes.length')
+                for inside in (False,True,False,True):
+                    page.evaluate('async inside=>{nativePointer.inside=inside;await observeHover(inside)}',inside)
+                    page.wait_for_timeout(320)
+                    self.assertTrue(page.evaluate('open'))
+                self.assertEqual(page.evaluate('sizes.length'),before)
+                page.evaluate('async()=>{nativePointer={x:1001,y:1000,inside:false};await observeHover()}')
+                page.wait_for_function("!open && !root.classList.contains('animating')")
+                page.evaluate('async()=>{nativePointer.inside=true;await observeHover()}')
+                page.wait_for_timeout(300)
+                self.assertFalse(page.evaluate('open'))
+                page.evaluate('async()=>{nativePointer.x=1002;await observeHover()}')
+                page.wait_for_function('open')
+            finally:
+                browser.close()
+
+    def test_same_size_progress_updates_do_not_restart_native_animation(self):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser,page = self.drag_page(p,'darwin')
+            try:
+                page.wait_for_timeout(400)
+                page.evaluate("""() => { clearInterval(pollTimer); open=true; render(true); }""")
+                page.wait_for_function("!root.classList.contains('animating')")
+                page.evaluate("""() => {
+                    layoutCalls=0;
+                    const original=pywebview.api.begin_layout;
+                    pywebview.api.begin_layout=async(...args)=>{
+                        layoutCalls++;
+                        await new Promise(resolve=>setTimeout(resolve,100));
+                        return original(...args);
+                    };
+                }""")
+                before=page.locator('.surface').bounding_box()
+                for i in range(4):
+                    page.evaluate("i=>{testState.elapsed='1:1'+i;tick()}",i)
+                    page.wait_for_timeout(130)
+                    now=page.locator('.surface').bounding_box()
+                    self.assertAlmostEqual(now['width'],before['width'],delta=1)
+                    self.assertAlmostEqual(now['height'],before['height'],delta=1)
+                    self.assertFalse(page.locator('#root').evaluate("el=>el.classList.contains('animating')"))
+                self.assertEqual(page.evaluate('layoutCalls'),0)
+            finally:
+                browser.close()
+
+    def test_four_directions_align_content_during_animation_and_settings(self):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            for platform in ('darwin', 'win32'):
+                browser, page = self.drag_page(p, platform)
+                try:
+                    errors = []
+                    page.on('pageerror', lambda error: errors.append(str(error)))
+                    page.wait_for_timeout(400)
+                    for vertical, horizontal in [('down','right'), ('down','left'), ('up','right'), ('up','left')]:
+                        with self.subTest(platform=platform, vertical=vertical, horizontal=horizontal):
+                            page.mouse.move(790,790)
+                            page.evaluate("""([v,h]) => {
+                                clearInterval(pollTimer); clearTimeout(hoverTimer); clearTimeout(leaveTimer);
+                                panel=''; open=false;
+                                pywebview.api.begin_layout=async(expanded,w,height)=>({
+                                    vertical:v, horizontal:h, width:w, height,
+                                    from_width:parseFloat(root.style.width)+(document.body.classList.contains('mac')?20:0),
+                                    from_height:parseFloat(root.style.height)+(document.body.classList.contains('mac')?20:0)});
+                                render(true);
+                            }""", [vertical,horizontal])
+                            page.wait_for_function("!root.classList.contains('animating')")
+                            page.evaluate("""() => {
+                                samples=[];
+                                sampleTimer=setInterval(()=>{
+                                    if (!root.classList.contains('animating')) return;
+                                    const r=root.getBoundingClientRect(), s=root.firstElementChild.getBoundingClientRect();
+                                    samples.push({left:s.left-r.left,right:r.right-s.right,
+                                        top:s.top-r.top,bottom:r.bottom-s.bottom,width:r.width,height:r.height});
+                                }, 15);
+                                open=true; render(true);
+                            }""")
+                            page.wait_for_function("!root.classList.contains('animating')")
+                            page.evaluate('clearInterval(sampleTimer)')
+                            samples = page.evaluate('samples')
+                            self.assertGreater(len(samples), 3)
+                            for sample in samples:
+                                self.assertLess(abs(sample['left' if horizontal=='right' else 'right']), 1.1)
+                                self.assertLess(abs(sample['top' if vertical=='down' else 'bottom']), 1.1)
+                            # Frame cadence varies under load; require visible intermediate sizes.
+                            self.assertGreater(len({round(s['height']) for s in samples}), 1)
+                            page.locator('[data-act=settings]').click()
+                            page.wait_for_function("panel==='settings' && !root.classList.contains('animating')")
+                            self.assertTrue(page.locator('body').evaluate(
+                                "(el,c)=>el.classList.contains(c)", 'grow-'+vertical))
+                            self.assertTrue(page.get_by_role('switch',name='系统通知').is_visible())
+                            size = page.evaluate('sizes.at(-1)')
+                            box = page.locator('#root').bounding_box()
+                            pad = 20 if platform=='darwin' else 0
+                            self.assertAlmostEqual(size[0],box['width']+pad,delta=1)
+                            self.assertAlmostEqual(size[1],box['height']+pad,delta=1)
+                    self.assertEqual(errors, [])
+                finally:
+                    browser.close()
+
+    def test_short_work_area_scrolls_settings_and_reversed_animation_finishes(self):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser,page = self.drag_page(p,'win32')
+            try:
+                page.wait_for_timeout(400)
+                page.evaluate("""() => {
+                    clearInterval(pollTimer);
+                    pywebview.api.begin_layout=async(expanded,w,h)=>({vertical:'up',horizontal:'left',
+                        width:Math.min(w,300),height:Math.min(h,180),
+                        from_width:parseFloat(root.style.width),from_height:parseFloat(root.style.height)});
+                    open=true;render(true);
+                }""")
+                page.wait_for_function("!root.classList.contains('animating')")
+                page.locator('[data-act=settings]').click()
+                page.wait_for_function("panel==='settings' && !root.classList.contains('animating')")
+                self.assertLessEqual(page.locator('#root').bounding_box()['height'],180)
+                self.assertTrue(page.locator('.surface').evaluate('el=>el.scrollHeight>el.clientHeight'))
+                page.locator('[data-act=save]').scroll_into_view_if_needed()
+                self.assertTrue(page.locator('[data-act=save]').is_visible())
+                page.evaluate("""() => {
+                    panel=''; open=false; render(true);
+                    setTimeout(()=>{open=true;render(true)},40);
+                    setTimeout(()=>{open=false;render(true)},80);
+                }""")
+                page.wait_for_timeout(450)
+                page.wait_for_function("!root.classList.contains('animating')")
+                self.assertTrue(page.locator('#root').evaluate("el=>el.classList.contains('pill')"))
+                self.assertLess(page.locator('#root').bounding_box()['height'],70)
+            finally:
+                browser.close()
+
     @staticmethod
     def drag_page(playwright, platform='darwin'):
         from pathlib import Path
@@ -247,9 +406,17 @@ class CapsulePageTests(unittest.TestCase):
         page = browser.new_page(viewport={'width': 800, 'height': 800})
         page.set_content(PAGE.read_text())
         page.evaluate("""({state, platform}) => {
-          window.testState=state; window.sizes=[]; window.dragLocks=[]; window.nativeMoves=[]; window.requestedActions=[];
+          window.testPointer={x:-1,y:-1};
+              document.addEventListener('pointermove', e=>{testPointer={x:e.clientX,y:e.clientY}});
+              window.pointerSnapshot=()=>{const r=root.getBoundingClientRect();return {...testPointer,
+                inside:testPointer.x>=r.left && testPointer.x<r.right && testPointer.y>=r.top && testPointer.y<r.bottom}};
+              window.testState=state; window.sizes=[]; window.dragLocks=[]; window.nativeMoves=[]; window.requestedActions=[];
           window.pywebview={platform:platform==='darwin'?'cocoa':'edgechromium', api:{
-            platform:async()=>platform, state:async()=>testState, resize:async(w,h)=>sizes.push([w,h]),
+            platform:async()=>platform, state:async()=>testState, hover_state:async()=>pointerSnapshot(), resize:async(w,h)=>sizes.push([w,h]),
+                begin_layout:async(expanded,w,h)=>({vertical:'down',horizontal:'right',width:w,height:h,
+                  from_width:parseFloat(root.style.width)+(document.body.classList.contains('mac')?20:0),
+                  from_height:parseFloat(root.style.height)+(document.body.classList.contains('mac')?20:0)}),
+                finish_layout:async()=>{},
             set_dragging:async(active)=>dragLocks.push(active),
             act:async(...args)=>{requestedActions.push(args); return '正在切到下载浏览器'},
             move_drag:async(x,y)=>nativeMoves.push([x,y]),

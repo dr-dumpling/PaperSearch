@@ -261,11 +261,9 @@ class AccessMixin:
         return not getattr(getattr(self, "_item_result", None), "_pdf_retry_login", False)
 
     def _school_login_done(self) -> bool:
-        """This item chose the school, went through an identity provider, or came
-        back to the publisher from a login or chooser page, already."""
+        """This item reached its IdP; selecting a school is only an attempt."""
         result = getattr(self, "_item_result", None)
-        return result is not None and (getattr(result, "_visited_idp", False) or getattr(result, "_login_round_trip", False)
-                                       or any(e.get("state") in self._SCHOOL_CHOSEN for e in result.events))
+        return result is not None and (getattr(result, "_visited_idp", False) or getattr(result, "_login_round_trip", False))
 
     def _institution_pdf_entitlement_missing(self, page: Any, snapshot: SimpleNamespace | None = None) -> bool:
         """The article page denies access (access_rules.denial_evidence) to a

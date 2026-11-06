@@ -75,12 +75,13 @@ class PageWaitTests(unittest.TestCase):
         hub = ("https://iam.atypon.com/action/ssostart?idp=https%3A%2F%2Fidp.example.edu.cn%2Fidp%2Fshibboleth"
                "&redirectUri=%2F&federationId=urn%3Amace%3Aincommon")
         self.assertFalse(d._users_login_step(Page(hub)))  # AHA's stop on 2026-11-03: a page wait, not 3 minutes
-        self.assertTrue(d._users_login_step(Page("https://idp.example.edu.cn/idp/profile/SAML2/Redirect/SSO")))
+        with patch.object(d, "_idp_user_action", return_value=False):
+            self.assertFalse(d._users_login_step(Page("https://idp.example.edu.cn/idp/profile/SAML2/Redirect/SSO")))
         # Where the wait ended: the hub is not the school's login, so no login_timeout for the user.
         Page.is_closed = lambda self: False
         self.assertNotEqual(d._login_wait_page(Page(hub)), "school_login")
-        self.assertEqual(d._login_wait_page(Page("https://idp.example.edu.cn/idp/profile/SAML2/Redirect/SSO")),
-                         "school_login")
+        with patch.object(d, "_idp_user_action", return_value=False):
+            self.assertEqual(d._login_wait_page(Page("https://idp.example.edu.cn/idp/profile/SAML2/Redirect/SSO")), "authentication_redirect")
 
     def test_a_login_wait_off_the_login_page_ends_after_the_page_wait(self):
         d = downloader()

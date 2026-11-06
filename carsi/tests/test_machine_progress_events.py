@@ -75,7 +75,7 @@ class MachineProgressEventsTests(unittest.TestCase):
         result = DownloadResult(doi=DOI, status="failed")
         for event, expected in [("sso_start", "checking_access"),
                                 ("challenge_wait", "checking_access"),
-                                ("challenge_manual_wait", "waiting_verification"),
+                                ("challenge_manual_wait", "checking_access"),
                                 ("challenge_resolved", "checking_access"),
                                 ("browser_pdf_response_captured", "pdf_captured"),
                                 ("publisher_access_blocked", "route_failed")]:

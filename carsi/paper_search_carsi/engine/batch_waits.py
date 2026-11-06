@@ -151,18 +151,21 @@ class UserWaitMixin:
                             return True
                 state, tab = "", None
                 for candidate in pages:
+                    if (urlparse(str(candidate.url or "")).hostname or "").lower() == suspect_host:
+                        self._raise_on_publisher_access_blocked(candidate)
                     try:
                         if self._is_challenge_page(candidate):
                             state, tab = "verification", candidate
                             break
                         if self._pdf_step_needs_login(candidate):
-                            state, tab = "login", candidate
+                            state = "login" if candidate == page or self._users_login_step(candidate) else "unknown"
+                            tab = candidate
                             break
                     except (watchdog.BrowserUnresponsive, UserMarkedNoEntitlement):
                         raise
                     except Exception:
                         continue
-                if not state and time.time() - started < self.SUSPECT_UNKNOWN_GRACE_SEC:
+                if not state and not automatic and shown not in {"verification", "login"}:
                     for candidate in pages:
                         try:
                             if suspect_host and (urlparse(str(candidate.url or "")).hostname or "").lower() == suspect_host:
@@ -170,6 +173,10 @@ class UserWaitMixin:
                                 break
                         except Exception:
                             continue
+                if state == "unknown" and time.time() - started >= self.SUSPECT_UNKNOWN_GRACE_SEC:
+                    captured["block_reason"] = "ip_blocked"
+                    self._event(result, "ip_blocked_response", "PDF response remained blocked; no verification transition")
+                    return False
                 if not state:
                     if shown or automatic:
                         self._event(result, "challenge_resolved", f"{shown or 'verification'} page gone")
@@ -193,8 +200,12 @@ class UserWaitMixin:
                         page.wait_for_timeout(min(1000, max(0, (deadline - time.time()) * 1000)))
                         continue
                 activity.automatic_for(0)
+                if state == "verification":
+                    self._verification_attention(result, deadline)
                 result._attention_page = tab
                 if state != shown:
+                    if state != "verification" and shown == "verification":
+                        self._verification_attention(result, None)
                     if state in ("verification", "login"):
                         deadline = min(deadline, self._wait_deadline(result))
                     self._event(result, {"verification": "challenge_manual_wait", "login": "pdf_step_login_wait",
@@ -236,6 +247,7 @@ class UserWaitMixin:
             self._event(result, "ip_blocked_response", f"{suspect} | no PDF after waiting ({shown or 'nothing shown'})")
             return False
         finally:
+            self._verification_attention(result, None)
             activity.automatic_for(0)
             result._attention_page = None
             if activity_owned:
@@ -365,55 +377,78 @@ class UserWaitMixin:
 
     def _automatic_challenge_step(self, page: Any, result: DownloadResult,
                                   attempt: dict[str, Any], deadline: float) -> bool:
-        """Observe for an actionable widget within the existing verification wait.
+        """Count dispatched clicks only; reserve time for an observed user step.
 
-        True means keep observing, never that verification passed. Each wait
-        allows at most three interactions, including failed clicks, without a
-        new budget. Observe for at least three seconds after each attempt.
+        An absent/loading widget stays automatic, including late arrivals. A
+        visible widget we cannot operate hands off within the existing budget.
         """
         now = time.time()
         if not attempt:
             attempt.update(started=now, attempts=0, retry_at=now + 2)
             self._event(result, "challenge_wait", "automatic verification check")
-        # The spinner can run for more than 20 s before a checkbox appears.
-        # Keep observing inside the caller's deadline; loading spends no click.
-        # Reserve up to 2 s for manual handling without extending short waits.
-        manual_reserve = min(2, max(0, deadline - attempt["started"]) * 0.2)
-        # The enclosing page operation can already have spent time opening the
-        # article. Hand off before that earlier bound, retaining the same user
-        # wait deadline. Freeze it so pausing the operation cannot restart auto.
-        if "automatic_end" not in attempt:
-            remaining = watchdog.operation_remaining()
-            bound = min(deadline, now + remaining) if remaining is not None else deadline
-            attempt["automatic_end"] = bound - manual_reserve
-        automatic_end = min(deadline - manual_reserve, attempt["automatic_end"])
+        remaining = watchdog.operation_remaining()
+        if "handoff_at" not in attempt:
+            # Default 60 s wait: look automatically for 30 s and leave 30 s for
+            # the user. Short waits retain half; the original deadline is fixed.
+            after = float(self.config.get("browser_stall_notify_after", 30))
+            budget = max(0, deadline - now)
+            if remaining is not None:
+                budget = min(budget, max(0, remaining))
+            attempt["handoff_at"] = now + min(after, budget / 2)
+        result._verification_notify_at = attempt["handoff_at"]
+        automatic_end = min(deadline, now + remaining) if remaining is not None else deadline
         activity = getattr(result, "_page_activity", None)
         if activity is not None:
-            # The separate request watcher also checks idle time during these
-            # RPCs. Use the frozen automatic bound; never renew the wait budget.
             activity.automatic_for(automatic_end - now)
-        if now >= automatic_end or (attempt["attempts"] >= 3 and now >= attempt["retry_at"]):
-            return False
         if challenge_interaction.needs_manual_verification(page):
-            # We never operate this control. Waiting for it must not consume
-            # the enclosing automation budget, even if the site clears itself.
-            # The independent idle timer still decides when to remind the user.
             return False
+        if ((attempt["attempts"] >= 3 and now >= attempt["retry_at"])
+                or (attempt.get("unavailable") and now >= attempt["handoff_at"])):
+            return False
+        if now >= automatic_end:
+            # No observed user action: the caller ends at its original bound.
+            return True
         if now >= attempt["retry_at"] and attempt["attempts"] < 3:
-            # Camoufox's native humanized move can take 1.5 s before mouse-down.
-            # Leave time for that action, still inside the original wait budget.
+            reasons = []
             outcome = challenge_interaction.click_checkbox(
                 page, timeout_ms=min(2500, max(1, int((automatic_end - now) * 1000))),
                 checkpoint=lambda: self._check_user_decision(result, page),
+                observation=reasons.append,
             )
-            if outcome != "absent":
+            reason = ", ".join(dict.fromkeys(reasons)) or outcome
+            if reason != attempt.get("last_observation"):
+                self._event(result, "challenge_observation", reason)
+                attempt["last_observation"] = reason
+            attempt["unavailable"] = outcome == "unavailable" and (not reasons or any(
+                value.startswith(("actionability_timeout", "unsupported_geometry_or_title", "multiple_controls"))
+                for value in reasons))
+            attempt["retry_at"] = time.time() + (3 if outcome != "absent" else 1)
+            if outcome == "clicked":
                 attempt["attempts"] += 1
-                attempt["retry_at"] = time.time() + 3
-                if outcome == "clicked" and activity is not None:
+                if activity is not None:
                     activity.progress(page)
                 self._event(result, "challenge_interaction",
-                            f"checkbox {outcome}; attempt {attempt['attempts']}/3; awaiting verification")
-        return time.time() < automatic_end
+                            f"checkbox clicked; attempt {attempt['attempts']}/3; awaiting verification")
+        return True
+
+    def _verification_attention(self, result: DownloadResult, deadline: float | None) -> None:
+        from .. import progress_reporter
+        key = f"verification:{id(self)}:{result.doi}"
+        if deadline is None:
+            if getattr(result, "_verification_attention", False):
+                progress_reporter.clear_attention(key)
+                if (progress_reporter.read_state() or {}).get("stage") == "waiting_verification":
+                    progress_reporter.report_stage("checking_access", current=result.doi)
+            result._verification_attention = False
+        elif time.time() < getattr(result, "_verification_notify_at", 0):
+            return
+        elif not getattr(result, "_verification_attention", False):
+            progress_reporter.set_attention(key, "自动验证尚未完成，请在浏览器中检查并完成验证",
+                                           current=result.doi, phase="安全验证", deadline=deadline)
+            progress_reporter.report_stage("waiting_verification", current=result.doi)
+            result._verification_attention = True
+        else:
+            progress_reporter.update_attention_deadline(key, deadline)
 
     def _wait_for_challenge(self, page: Any, result: DownloadResult, *, deadline: float | None = None) -> bool:
         """Wait while a verification page is up, until ``_wait_deadline``."""
@@ -445,6 +480,10 @@ class UserWaitMixin:
                     if verification_wait is not None:
                         verification_wait.observe(page, True)
                         deadline = verification_wait.deadline
+                        self._verification_attention(result, deadline)
+                        from .. import progress_reporter
+                        progress_reporter.update_attention_deadline(
+                            f"verification:{id(self)}:{result.doi}", None if verification_wait.paused else deadline)
                     if time.time() >= deadline:
                         break
                     result._attention_page = page
@@ -460,6 +499,7 @@ class UserWaitMixin:
                         verification_deadline = deadline
                         verification_wait = result._verification_wait = LoginWait(deadline, time.time)
                         verification_wait.observe(page, True)
+                        self._verification_attention(result, deadline)
                         self._event(result, "challenge_manual_wait", "complete verification in visible browser")
                         if not any(s["why"] == "waiting for the user: verification" for s in result.snapshots):
                             self._snapshot(page, result, "waiting for the user: verification")
@@ -488,6 +528,7 @@ class UserWaitMixin:
                 self._wait_ran_out(result)
             return passed
         finally:
+            self._verification_attention(result, None)
             activity.automatic_for(0)
             if verification_wait is not None:
                 excluded = max(0, verification_wait.close() - verification_deadline)

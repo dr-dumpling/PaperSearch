@@ -145,6 +145,8 @@ class DenialTests(unittest.TestCase):
         d = self.d()
         self.assertFalse(d._institution_pdf_entitlement_missing(page(url, "Abstract")))  # not signed in yet: sign in
         d._item_result.events.append({"state": "institution_selected", "detail": "Hong Mu-lan University"})
+        self.assertFalse(d._institution_pdf_entitlement_missing(page(url, "Abstract")))
+        d._item_result._visited_idp = True
         self.assertTrue(d._institution_pdf_entitlement_missing(page(url, "Abstract")))
         self.assertTrue(d._institution_pdf_entitlement_missing(
             page(self.ARTICLE, "Abstract\nYou do not currently have access to this article.")))

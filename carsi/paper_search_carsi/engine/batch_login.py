@@ -215,6 +215,14 @@ class LoginMixin:
         a wait of more than 10 s records how it ended."""
         self._phase(result, "login")
         started, signed_in = time.time(), False
+
+        def observe_login_navigation(frame):
+            # A reused school session can cross the IdP and return between two
+            # polling passes. Observe only the main-frame host, never form data.
+            if frame == page.main_frame and self._is_idp_host(urlparse(str(frame.url)).netloc):
+                result._visited_idp = True
+
+        page.on("framenavigated", observe_login_navigation)
         try:
             from ..browser import watchdog
             # Human authentication has its own budget, not the automation's.
@@ -224,6 +232,7 @@ class LoginMixin:
                     self._return_to_article_after_login(page, result)
             return signed_in
         finally:
+            page.remove_listener("framenavigated", observe_login_navigation)
             self._set_login_attention(result, "")
             last = next((e["state"] for e in reversed(result.events) if e["state"] != "wait"), "")
             self._note_wait(result, "school login", started, "signed in" if signed_in else (result.reason or last))
@@ -248,6 +257,8 @@ class LoginMixin:
             progress_reporter.report_stage("waiting_login", current=result.doi)
         else:
             progress_reporter.clear_attention(key)
+            if (progress_reporter.read_state() or {}).get("stage") == "waiting_login":
+                progress_reporter.report_stage("checking_access", current=result.doi)
         result._login_attention = message
 
     @contextmanager
@@ -355,6 +366,11 @@ class LoginMixin:
                                 f"{self._login_wait_page(page)} after {self.page_wait_sec:.0f} s")
                     self._wait_ran_out(result)
                     return False
+                # Navigation and auto-submit can finish during the preceding
+                # wait. Never publish the classification of the old document.
+                user_step = self._users_login_step(page)
+                wait.observe(page, user_step)
+                deadline = wait.deadline
                 message = ""
                 if user_step:
                     kind = self._login_wait_page(page)
@@ -372,8 +388,9 @@ class LoginMixin:
                     away_from_publisher = True
                 elif here.hostname and away_from_publisher:
                     away_from_publisher, returned = False, True
-                    result._login_round_trip = True
-                    self._event(result, "login_round_trip_returned", here.geturl()[:160])
+                    if getattr(result, "_visited_idp", False):
+                        result._login_round_trip = True
+                        self._event(result, "login_round_trip_returned", here.geturl()[:160])
                 if (on_publisher and self._is_success_article_url(here.geturl())
                         and not self._is_auth_page(here.geturl()) and not self._challenge_shell(page)
                         and (returned or time.time() - last_probe >= self.WAIT_PROBE_EVERY_SEC)
@@ -381,7 +398,7 @@ class LoginMixin:
                     # Whoever signed in (this program or the user), the article page may
                     # give its PDF although it still looks signed out to the rules (ASCE's
                     # "GET ACCESS" after the login waited out five minutes, 2026-11-02): try it.
-                    after_login, returned, last_probe = returned, False, time.time()
+                    after_login, returned, last_probe = returned and self._school_login_done(), False, time.time()
                     if self._probe_pdf_while_waiting(page, result, after_login=after_login):
                         return False  # signed in, and the page still offers or denies the article
                 elif (visited_idp and on_publisher and article_returns < 2
@@ -1234,16 +1251,28 @@ class LoginMixin:
         return now - outside_since >= self.page_wait_sec, outside_since
 
     def _users_login_step(self, page: Any) -> bool:
-        """The user's own step of the login, which may take the long wait
-        (``login_timeout_sec``): the school's login page (a password field, or the
-        school's identity provider), or a school chooser when no school is
-        configured or the user chooses by hand. Any other page off the publisher's
-        site is not: Atypon's iam.atypon.com hub, where AHA's login stopped on
-        2026-11-03, was taken for the school's page and waited three minutes."""
+        """Require a current credential/consent control, not just an IdP URL."""
         url = str(getattr(page, "url", "") or "")
-        if self._school_password_box(page, url) or self._is_idp_host(urlparse(url).netloc):
+        if self._is_human_login_page(page):
             return True
-        return self._is_auth_page(url) and (not self.institution_query or bool(getattr(self, "_manual_school", False)))
+        return (not self._is_idp_host(urlparse(url).netloc) and self._is_auth_page(url)
+                and (not self.institution_query or bool(getattr(self, "_manual_school", False))))
+
+    def _idp_user_action(self, page: Any) -> bool:
+        if not self._is_idp_host(urlparse(str(getattr(page, "url", "") or "")).netloc):
+            return False
+        if self._idp_confirmation(page):
+            return True
+        # Username-first and QR login pages may have no password box. Inspect
+        # only visibility and labels; never collect input or QR contents.
+        return page.evaluate("""() => {
+            const visible = el => el.getClientRects().length > 0;
+            const input = [...document.querySelectorAll('input')].some(el => visible(el)
+                && !el.disabled && !el.readOnly && ['text','email','tel'].includes(el.type));
+            const qr = [...document.querySelectorAll('img,canvas,[role="img"]')].some(el => visible(el)
+                && /qr|二维码|扫码/i.test([el.id,el.className,el.getAttribute('alt'),el.getAttribute('aria-label')].join(' ')));
+            return input || qr;
+        }""") is True
 
     def _login_wait_page(self, page: Any) -> str:
         """Where a login that waited on the user ended (ADR 0012):
@@ -1259,21 +1288,17 @@ class LoginMixin:
         url = str(getattr(page, "url", "") or "")
         # The school's own page, by the same test as the long wait: a publisher's
         # SSO hub (iam.atypon.com) is no school login (2026-11-03).
-        if self._school_password_box(page, url) or self._is_idp_host(urlparse(url).netloc):
+        if self._school_password_box(page, url) or self._idp_user_action(page):
             return "school_login"
+        if self._is_idp_host(urlparse(url).netloc):
+            return "authentication_redirect"
         if self._is_auth_page(url):
             return "institution_chooser" if self.institution_query else "school_choice"
         return "publisher" if self._on_publisher_host(url) else "other"
 
     def _is_human_login_page(self, page: Any) -> bool:
-        current_url = str(getattr(page, "url", "") or "")
-        host = (urlparse(current_url).netloc or "").lower()
-        if self.config.get("publisher_institution_federation") == "carsi":
-            if self._school_password_box(page, current_url):
-                return True
-            if not self._on_publisher_host(current_url):
-                return not self._is_federation_chooser(current_url)
-        return self._is_idp_host(host)
+        url = str(getattr(page, "url", "") or "")
+        return self._school_password_box(page, url) or self._idp_user_action(page)
 
     def _school_password_box(self, page: Any, url: str) -> bool:
         """A password or one-time-code field that is not a personal account's box on the publisher's site."""
@@ -1645,16 +1670,16 @@ class LoginMixin:
             try:
                 button = (page.get_by_role("button", name="Next", exact=True) if selector == self._NEXT_BUTTON
                           else page.locator(selector)).first
-                if button.is_visible(timeout=1_500):
+                if button.is_visible(timeout=1_500) and button.is_enabled():
                     try:
                         text = (button.inner_text(timeout=1_000) or "").strip().lower()
                     except Exception:
                         text = ""
                     if "continue reading" in text:
                         continue
-                    button.click(timeout=5_000, no_wait_after=True)
-                    self._event(result, "institution_continue", selector)
-                    return
+                    if self._click_control(page, button, result, "institution continue"):
+                        self._event(result, "institution_continue", selector)
+                        return
             except Exception as exc:
                 if after_selection:
                     # Our own selection's Continue failed: keep why (RSC's Next, 2026-11-01).
