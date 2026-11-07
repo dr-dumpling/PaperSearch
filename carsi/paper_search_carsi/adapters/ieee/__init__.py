@@ -21,7 +21,7 @@ from ..base import PublisherAdapter, SupplementLink, register
 
 _SUPPLEMENTS_JS = r"""() => {
   let metadata = window.xplGlobal?.document?.metadata;
-  // Camoufox's isolated evaluation world may not expose page globals. Read
+  // The driver's isolated evaluation world does not expose page globals. Read
   // the same JSON declaration from the DOM without executing website code.
   if (!metadata) {
     for (const script of document.scripts) {

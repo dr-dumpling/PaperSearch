@@ -92,7 +92,7 @@ class OxfordGuardTests(unittest.TestCase):
 class OxfordNativeTests(OxfordGuardTests):
     @classmethod
     def setUpClass(cls):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         cls.driver = sync_playwright().start()
         cls.addClassCleanup(cls.driver.stop)
         cls.browser = cls.driver.chromium.launch(channel='chrome', headless=True,

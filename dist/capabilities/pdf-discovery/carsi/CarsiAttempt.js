@@ -13,7 +13,7 @@ const MESSAGES = {
     user_skipped: "已按你的操作跳过这一篇；没有记住期刊，以后会照常下载。",
     batch_stopped: "已按你的操作终止任务，后续篇目不再下载；已保存的文件保留。",
     no_entitlement: "已按你的记录跳过：该期刊或出版社标记为无权限，未打开浏览器。查看或撤销记录：paper-search-carsi entitlements。",
-    institution_federation_unavailable: "出版社的机构登录里找不到你的学校（这家出版社没有接入 CARSI），程序无法代为登录；请在校园网或学校 VPN 下下载，或在进度窗口点“出版社无权限”。",
+    institution_federation_unavailable: "当前出版社的机构登录入口找不到这所学校的登录路线。可尝试在校园网或学校 VPN 下访问；此结果不代表学校没有订阅。",
     institution_not_registered: "认证应用或入口未注册，或与当前认证渠道不兼容。请核查认证入口；这不代表学校没有该论文订阅。",
     paywall: "页面提示全文访问受限，尚不能确认机构登录或订阅状态；请核查页面，不要连续重复登录。",
     entitlement_missing: "学校登录后仍拿不到全文，学校可能没有订阅这部分内容：出版社仍限制这篇论文的全文访问。请核查机构订阅范围、年份和账号权限；不自动重复登录。",
@@ -40,6 +40,57 @@ const MESSAGES = {
     invalid_download_result: "下载后端返回的结果无法使用，请检查后端版本兼容性。",
     download_failed: "未取得可用 PDF；后端未提供可识别的失败分类。",
 };
+/**
+ * The same outcomes in a few words, for the progress window's finished card
+ * (one line each, next to the failure class); an unknown code gets ``unknown``.
+ */
+const SHORT_REASONS = {
+    login_required: "需要学校登录",
+    login_timeout: "等学校登录超时",
+    login_not_reached: "没进入学校登录页",
+    login_page_closed: "登录页被关闭",
+    login_credentials_rejected: "学校登录被拒绝",
+    login_retries_exhausted: "登录重试已用尽",
+    idp_login_error: "学校登录系统出错",
+    idp_account_locked: "学校账号被锁定",
+    idp_no_return_to_publisher: "登录后没回到出版社",
+    idp_password_expired: "学校密码已过期",
+    user_skipped: "你跳过了这一篇",
+    batch_stopped: "任务已终止",
+    no_entitlement: "你标记过无权限",
+    institution_federation_unavailable: "找不到学校的登录路线",
+    institution_not_registered: "认证入口未注册",
+    paywall: "页面提示全文受限",
+    entitlement_missing: "学校没有订阅",
+    cloudflare_blocked: "人机验证没通过",
+    captcha_required: "人机验证没通过",
+    download_timeout: "下载等待超时",
+    timeout: "下载等待超时",
+    cancelled: "下载已取消",
+    profile_busy: "下载环境被占用",
+    profile_unavailable: "下载环境不可用",
+    not_found: "没找到可用 PDF",
+    publisher_content_error: "出版社页面出错",
+    publisher_unreachable: "出版社网站没响应",
+    browser_operation_timeout: "页面处理超时",
+    browser_unresponsive: "浏览器没有响应",
+    unsupported_platform: "只在其他平台提供",
+    unsupported_publisher: "DOI 没指向能登录的网站",
+    generic_institution_entry_missing: "找不到机构登录入口",
+    access_blocked: "网站拦截了当前网络",
+    rate_limited: "到了每小时下载上限",
+    source_exception: "下载时程序出错",
+    suspicious_pdf: "全文未确认有效",
+    pdf_wrong_article: "拿到的是别篇 PDF",
+    pdf_identity_mismatch: "拿到的是别篇 PDF",
+    pdf_identity_unverified: "PDF 身份未确认",
+    invalid_pdf: "拿到的 PDF 无效",
+    invalid_download_result: "后端结果无法使用",
+    download_failed: "没取到 PDF",
+};
+export function carsiShortReason(code, unknown = SHORT_REASONS.download_failed) {
+    return code && Object.hasOwn(SHORT_REASONS, code) ? SHORT_REASONS[code] : unknown;
+}
 export function carsiAttemptDetails(code, trace) {
     const knownCode = Object.hasOwn(MESSAGES, code) ? code : "download_failed";
     // The school's site a login stopped on is a validated host name (CarsiResultNormalizer).

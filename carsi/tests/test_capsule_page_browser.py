@@ -1,14 +1,67 @@
 """Real DOM events and animated sizes with an isolated page/bridge fixture."""
 import json
 import os
+import time
 import unittest
 from paper_search_carsi.progress_capsule import PAGE
 
 
+def page_world(page):
+    """The fixture reads the capsule page's own globals. Patchright evaluates in
+    an isolated world by default and has no main-world wait_for_function, so
+    both go to the page's world here (a test harness, not the download browser)."""
+    evaluate = page.evaluate
+
+    def evaluate_in_page(expression, arg=None, **options):
+        return evaluate(expression, arg, **{"isolated_context": False, **options})
+
+    def wait_for_function(expression, *, arg=None, timeout=30_000, polling=None):
+        check = ("(arg) => { const value = (" + expression + ");"
+                 " return !!(typeof value === 'function' ? value(arg) : value); }")
+        deadline = time.monotonic() + timeout / 1000
+        while not evaluate_in_page(check, arg):
+            if time.monotonic() > deadline:
+                raise AssertionError(f"wait_for_function timed out: {expression}")
+            page.wait_for_timeout(polling if isinstance(polling, (int, float)) else 50)
+
+    page.evaluate = evaluate_in_page
+    page.wait_for_function = wait_for_function
+    return page
+
+
 @unittest.skipUnless(os.environ.get('CARSI_BROWSER_TESTS') == '1', 'opt-in native Chrome test')
 class CapsulePageTests(unittest.TestCase):
+    def test_verification_click_survives_countdown_refresh(self):
+        from patchright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            for expanded in (False, True):
+                with self.subTest(expanded=expanded):
+                    browser, page = self.drag_page(p, 'win32')
+                    try:
+                        page.evaluate("""async expanded => {
+                            testState.mode='attention';
+                            testState.attention={message:'请完成验证', short:'请完成验证', login:false,
+                                remaining:'0:29', more:0};
+                            open=expanded; await tick();
+                        }""", expanded)
+                        button = page.get_by_role('button', name='打开下载浏览器')
+                        page.wait_for_function("!root.classList.contains('animating')")
+                        page.evaluate("window.pressedButton = root.querySelector('[data-act=show_browser]')")
+                        box = button.bounding_box()
+                        page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+                        page.mouse.down()
+                        page.evaluate("async () => { testState.attention.remaining='0:28'; await tick(); }")
+                        page.wait_for_timeout(150)  # also cross the pill's hover-to-expand timer
+                        self.assertTrue(page.evaluate("pressedButton.isConnected"))
+                        self.assertIn('0:28', button.get_attribute('title') if expanded else button.inner_text())
+                        page.mouse.up()
+                        page.wait_for_function('requestedActions.length === 1', timeout=2500)
+                        self.assertEqual(page.evaluate('requestedActions[0][0]'), 'show_browser')
+                    finally:
+                        browser.close()
+
     def test_browser_request_waits_for_click_activation(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as p:
             browser, page = self.drag_page(p, 'win32')
             try:
@@ -30,7 +83,7 @@ class CapsulePageTests(unittest.TestCase):
                 browser.close()
 
     def test_expanded_attention_fits_and_keeps_browser_action(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as p:
             for platform in ('darwin', 'win32'):
                 browser, page = self.drag_page(p, platform)
@@ -57,7 +110,7 @@ class CapsulePageTests(unittest.TestCase):
                     browser.close()
 
     def test_login_reminder_keeps_an_icon_drag_handle(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as p:
             for platform in ('darwin', 'win32'):
                 with self.subTest(platform=platform):
@@ -81,7 +134,7 @@ class CapsulePageTests(unittest.TestCase):
                     browser.close()
 
     def test_attention_breathes_across_countdown_updates_and_respects_reduced_motion(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as p:
             for platform in ("darwin", "win32"):
                 with self.subTest(platform=platform):
@@ -121,14 +174,14 @@ class CapsulePageTests(unittest.TestCase):
                     browser.close()
 
     def test_hover_without_click_animated_resize_and_directory_input(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         from paper_search_carsi.progress_view import view
         import time
         state = view(dict(status='running', current='10.1000/example', title='Test article', publisher='Test', total=3,
                           done=0, success=0, failed=0, stage='fetching_pdf', started_at=time.time()), time.time())
         with sync_playwright() as p:
             browser = p.chromium.launch(channel='chrome', headless=True)
-            page = browser.new_page(viewport={'width':800,'height':800})
+            page = page_world(browser.new_page(viewport={'width':800,'height':800}))
             errors = []
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.set_content(PAGE.read_text())
@@ -199,7 +252,7 @@ class CapsulePageTests(unittest.TestCase):
             self.assertEqual(errors, [])
 
     def test_holding_the_pill_freezes_hover_and_refresh_until_release(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as p:
             browser, page = self.drag_page(p)
             page.wait_for_timeout(400)
@@ -218,7 +271,7 @@ class CapsulePageTests(unittest.TestCase):
             browser.close()
 
     def test_card_background_drags_but_buttons_and_settings_inputs_do_not(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as p:
             for platform in ("darwin", "win32"):
                 with self.subTest(platform=platform):
@@ -250,7 +303,7 @@ class CapsulePageTests(unittest.TestCase):
                     browser.close()
 
     def test_mac_window_motion_does_not_retrigger_hover_without_pointer_motion(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as p:
             browser,page=self.drag_page(p,'darwin')
             try:
@@ -279,7 +332,7 @@ class CapsulePageTests(unittest.TestCase):
                 browser.close()
 
     def test_same_size_progress_updates_do_not_restart_native_animation(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as p:
             browser,page = self.drag_page(p,'darwin')
             try:
@@ -308,7 +361,7 @@ class CapsulePageTests(unittest.TestCase):
                 browser.close()
 
     def test_four_directions_align_content_during_animation_and_settings(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as p:
             for platform in ('darwin', 'win32'):
                 browser, page = self.drag_page(p, platform)
@@ -363,7 +416,7 @@ class CapsulePageTests(unittest.TestCase):
                     browser.close()
 
     def test_short_work_area_scrolls_settings_and_reversed_animation_finishes(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as p:
             browser,page = self.drag_page(p,'win32')
             try:
@@ -394,6 +447,52 @@ class CapsulePageTests(unittest.TestCase):
             finally:
                 browser.close()
 
+    def test_finished_card_opens_one_reason_at_a_time_and_its_list_scrolls_without_dragging(self):
+        from datetime import datetime
+        import time
+        from patchright.sync_api import sync_playwright
+        from paper_search_carsi.progress_view import view
+        now = time.time()
+        failures = [{'cls': 'no_access', 'reason': '学校没有订阅', 'title': f'Paper {i}', 'journal': 'Spine',
+                     'doi': '', 'note': ''} for i in range(12)]
+        failures.append({'cls': 'user_or_external', 'reason': '等学校登录超时', 'title': 'Late', 'journal': 'Thieme',
+                         'doi': '', 'note': ''})
+        state = view(dict(status='done', run_id='r-done', total=200, done=200, success=187, failed=13,
+                          started_at=datetime.fromtimestamp(now - 6730).isoformat(timespec='seconds'),
+                          finished_at=datetime.fromtimestamp(now).isoformat(timespec='seconds'), output_dir='/tmp',
+                          results={'content': 'both', 'main': 187, 'supplements': 9,
+                                   'sources': [['机构订阅', 150], ['开放获取', 37]], 'failures': failures}), now)
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'win32')
+            try:
+                page.evaluate("async state => { testState = state; open = true; await tick(); }", state)
+                page.wait_for_function("!root.classList.contains('animating')")
+                text = page.locator('#root').inner_text()
+                for expected in ('共 200 篇', '1:52:10', '未完成 13 篇', '学校没有订阅', '12 篇', 'Spine 12',
+                                 '已完成 187 篇', '正文 187 篇 · 附录 9 个', '机构订阅 150 · 开放获取 37'):
+                    self.assertIn(expected, text)
+                self.assertEqual(page.locator('.paper-list').count(), 0)
+                # Every line of the card stays on one line.
+                self.assertTrue(page.evaluate("""[...root.querySelectorAll('.head .sub, .stats b, .grp .row, .grp .m, .saved-line')]
+                    .every(el => el.getClientRects().length === 1 && el.getBoundingClientRect().height < 30)"""))
+                rows = page.locator('[data-act=group]')
+                rows.nth(0).click()
+                page.wait_for_function("!root.classList.contains('animating')")
+                self.assertEqual(page.locator('.paper-list li').count(), 12)
+                self.assertTrue(page.locator('.paper-list').evaluate('el => el.scrollHeight > el.clientHeight'))
+                box = page.locator('.paper-list').bounding_box()
+                page.mouse.move(box['x'] + 20, box['y'] + 20)
+                page.mouse.down(); page.mouse.move(box['x'] + 60, box['y'] + 60); page.mouse.up()
+                self.assertEqual(page.evaluate('dragLocks'), [])
+                rows.nth(1).click()
+                page.wait_for_function("!root.classList.contains('animating')")
+                self.assertEqual(page.locator('.paper-list li').all_inner_texts(), ['Late\nThieme'])
+                rows.nth(1).click()
+                page.wait_for_function("!root.classList.contains('animating')")
+                self.assertEqual(page.locator('.paper-list').count(), 0)
+            finally:
+                browser.close()
+
     @staticmethod
     def drag_page(playwright, platform='darwin'):
         from pathlib import Path
@@ -403,7 +502,7 @@ class CapsulePageTests(unittest.TestCase):
         state = view(dict(status='running', current='10.1000/drag', title='Drag test article', publisher='Test',
                           total=3, done=0, success=0, failed=0, stage='fetching_pdf', started_at=time.time()), time.time())
         browser = playwright.chromium.launch(channel='chrome', headless=True)
-        page = browser.new_page(viewport={'width': 800, 'height': 800})
+        page = page_world(browser.new_page(viewport={'width': 800, 'height': 800}))
         page.set_content(PAGE.read_text())
         page.evaluate("""({state, platform}) => {
           window.testPointer={x:-1,y:-1};

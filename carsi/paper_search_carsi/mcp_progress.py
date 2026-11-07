@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from concurrent.futures import Executor
+from contextvars import copy_context
 import threading
 from typing import Callable, Any
 
@@ -11,16 +13,22 @@ from . import progress_reporter
 STAGE_PREFIX = "carsi.stage:"
 
 
-async def run_with_progress(context: Any, identifier: str, operation: Callable[[], str]) -> str:
+async def run_with_progress(context: Any, identifier: str, operation: Callable[[], str],
+                            *, executor: Executor | None = None) -> str:
     """Stream fixed stages while the blocking operation runs off the event loop.
 
     The injected MCP context owns the caller's progress token (or sends nothing
     for an older client). Neither a global progress file nor GUI prose is read.
     """
-    if context is None:
-        return await asyncio.to_thread(operation)
-
     loop = asyncio.get_running_loop()
+
+    async def run() -> str:
+        if executor is None:
+            return await asyncio.to_thread(operation)
+        return await loop.run_in_executor(executor, copy_context().run, operation)
+
+    if context is None:
+        return await run()
     queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=64)
     active = threading.Event()
     active.set()
@@ -64,7 +72,7 @@ async def run_with_progress(context: Any, identifier: str, operation: Callable[[
     cancelled = False
     try:
         with progress_reporter.listen_for_stages(identifier, observe):
-            return await asyncio.to_thread(operation)
+            return await run()
     except asyncio.CancelledError:
         cancelled = True
         raise

@@ -1,4 +1,4 @@
-"""Two browser backends: Camoufox (Playwright) by default, ego-lite on request."""
+"""Two browser backends, both on Patchright: Chrome by default, ego-lite on request."""
 
 from __future__ import annotations
 
@@ -12,13 +12,21 @@ from paper_search_carsi.browser import engine as browser_engine
 
 
 class TestResolveBackend:
-    def test_default_is_camoufox(self):
-        assert bb.resolve_backend({}) == bb.BACKEND_CAMOUFOX
-        assert bb.resolve_backend(None) == bb.BACKEND_CAMOUFOX
+    def test_default_is_chrome(self):
+        assert bb.resolve_backend({}) == bb.BACKEND_CHROME
+        assert bb.resolve_backend(None) == bb.BACKEND_CHROME
 
-    @pytest.mark.parametrize("retired", ["patchright", "cloakbrowser", "CloakBrowser"])
-    def test_retired_values_map_to_camoufox(self, retired):
-        assert bb.resolve_backend({"browser_backend": retired}) == bb.BACKEND_CAMOUFOX
+    @pytest.mark.parametrize("retired", ["camoufox", "Camoufox", "patchright", "cloakbrowser", "CloakBrowser"])
+    def test_retired_values_map_to_chrome(self, retired):
+        assert bb.resolve_backend({"browser_backend": retired}) == bb.BACKEND_CHROME
+
+    def test_a_retired_value_is_logged_once(self, monkeypatch, caplog):
+        monkeypatch.setattr(bb, "_retired_noted", set())
+        with caplog.at_level("WARNING", logger=bb.logger.name):
+            for _ in range(3):
+                bb.resolve_backend({"browser_backend": "camoufox"})
+        assert [r.getMessage() for r in caplog.records].count(
+            "browser_backend: 'camoufox' is retired, using chrome (set browser_backend to 'chrome' or 'ego')") == 1
 
     def test_unknown_value_resets_to_default(self):
         assert bb.resolve_backend({"browser_backend": "nonsense"}) == bb.DEFAULT_BACKEND
@@ -28,25 +36,29 @@ class TestResolveBackend:
         assert bb.resolve_backend({"browser_backend": "ego"}) == bb.BACKEND_EGO
         assert bb.uses_playwright({"browser_backend": "ego"}) is True
 
-    def test_ego_not_installed_falls_back_to_camoufox(self, monkeypatch, tmp_path):
+    def test_ego_not_installed_falls_back_to_chrome(self, monkeypatch, tmp_path):
         monkeypatch.setattr(bb, "ego_user_data_dir", lambda config=None: tmp_path / "missing")
-        assert bb.resolve_backend({"browser_backend": "ego"}) == bb.BACKEND_CAMOUFOX
+        assert bb.resolve_backend({"browser_backend": "ego"}) == bb.BACKEND_CHROME
 
-    def test_missing_camoufox_is_not_swapped_for_ego(self, monkeypatch):
-        monkeypatch.setattr(bb, "is_available", lambda name=None: name == bb.BACKEND_EGO)
-        assert bb.resolve_backend({"browser_backend": "camoufox"}) == bb.BACKEND_CAMOUFOX
+    def test_missing_chrome_is_not_swapped_for_ego(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(bb, "find_chrome", lambda config=None: None)
+        monkeypatch.setattr(bb, "ego_user_data_dir", lambda config=None: tmp_path)
+        assert bb.resolve_backend({"browser_backend": "chrome"}) == bb.BACKEND_CHROME
+        assert bb.is_available(bb.BACKEND_CHROME) is False
 
 
 class TestPlaywrightGate:
     def test_engine_serves_both_backends(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(bb, "is_available", lambda name=None: True)
+        monkeypatch.setattr(bb, "is_available", lambda name=None, config=None: True)
         monkeypatch.setattr(bb, "ego_user_data_dir", lambda config=None: tmp_path)
-        assert browser_engine._check_browser_backend({"browser_backend": "camoufox"}) is True
+        assert browser_engine._check_browser_backend({"browser_backend": "chrome"}) is True
         assert browser_engine._check_browser_backend({"browser_backend": "ego"}) is True
 
-    def test_missing_camoufox_reports_unavailable(self, monkeypatch):
-        monkeypatch.setattr(bb, "is_available", lambda name=None: False)
+    def test_missing_chrome_reports_unavailable_and_how_to_install_it(self, monkeypatch):
+        monkeypatch.setattr(bb, "is_available", lambda name=None, config=None: False)
         assert browser_engine._check_browser_backend({}) is False
+        with pytest.raises(RuntimeError, match="https://www.google.com/chrome/"):
+            browser_engine.get_persistent_context("/nonexistent/profile", {})
 
 
 class TestEgo:
@@ -75,7 +87,7 @@ class TestEgo:
         class PW:
             chromium = Chromium()
             def stop(self): calls.append("stop")
-        import playwright.sync_api as sync_api
+        import patchright.sync_api as sync_api
         monkeypatch.setattr(sync_api, "sync_playwright", lambda: type("S", (), {"start": lambda self: PW()})())
         monkeypatch.setattr(bb, "ego_running", lambda config=None: True)
         monkeypatch.setattr(bb, "ego_endpoint", lambda config=None: "ws://127.0.0.1:9222/devtools/browser/x")
@@ -145,53 +157,20 @@ class TestEgo:
         assert isinstance(context, Context)  # still the same object for page.context
 
 
-class TestCamoufoxLaunch:
-    def test_persistent_profile_is_a_separate_firefox_directory(self, monkeypatch, tmp_path):
-        chromium_profile = tmp_path / "publisher_profile_wiley"
-        calls = {}
-        monkeypatch.setattr(bb, "wait_for_profile_release", lambda d, *a, **k: calls.setdefault("wait", d))
-        monkeypatch.setattr(bb, "_launch_camoufox_persistent",
-                            lambda d, **kw: calls.setdefault("launch", (d, kw)) and "ctx")
-        assert bb.launch_persistent_context(str(chromium_profile), config={}) == "ctx"
-        expected = str(tmp_path / "publisher_profile_wiley-camoufox")
-        assert calls["wait"] == expected
-        assert calls["launch"][0] == expected
-        assert Path(expected).is_dir()
-        assert bb.camoufox_profile_dir(expected) == Path(expected)  # not suffixed twice
-
+class TestChromeLaunch:
     def test_configured_proxy_is_passed_explicitly(self, monkeypatch, tmp_path):
         seen = {}
         monkeypatch.setattr(bb, "wait_for_profile_release", lambda *a, **k: True)
-        monkeypatch.setattr(bb, "_launch_camoufox_persistent", lambda d, **kw: seen.update(kw) or "ctx")
+        monkeypatch.setattr(bb, "_keep_session_cookies", lambda context, profile: None)
+        monkeypatch.setattr(bb, "_launch_chrome_persistent",
+                            lambda profile, headless, proxy, args, config: seen.update(proxy=proxy) or
+                            type("Ctx", (), {"pages": [], "new_page": lambda self: None})())
         bb.launch_persistent_context(str(tmp_path / "p"), config={"network_proxy": "http://127.0.0.1:7890"})
         assert seen["proxy"] == {"server": "http://127.0.0.1:7890"}
 
-    def test_launch_drops_chromium_args_and_matches_host_os(self, monkeypatch):
-        pytest.importorskip("playwright")
-        pytest.importorskip("camoufox")
-        captured: dict = {}
 
-        class _FakeBrowser:
-            def close(self):
-                captured["closed"] = True
-
-        class _PW:
-            def stop(self):
-                captured["stopped"] = True
-
-        monkeypatch.setattr("playwright.sync_api.sync_playwright",
-                            lambda: type("SP", (), {"start": staticmethod(lambda: _PW())})())
-        monkeypatch.setattr("camoufox.NewBrowser", lambda pw, **kw: captured.update(kw) or _FakeBrowser())
-        browser = bb._launch_camoufox(headless=True, proxy=None,
-                                      args=["--disable-blink-features=AutomationControlled"], humanize=False)
-        assert captured.get("args") in (None, [])
-        assert captured["os"] == bb._host_os()
-        browser.close()
-        assert captured["closed"] and captured["stopped"]
-
-
-def test_firefox_profile_lock_names_its_owner(tmp_path):
-    os.symlink("192.168.1.2:+4242", tmp_path / "lock")
+def test_chromium_profile_lock_names_its_owner(tmp_path):
+    os.symlink("my-mac.local-4242", tmp_path / "SingletonLock")
     assert bb._profile_owner_pid(str(tmp_path)) == 4242
 
 

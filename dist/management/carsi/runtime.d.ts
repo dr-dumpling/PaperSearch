@@ -2,7 +2,7 @@
  * Where the institutional extension is installed (ADR 0013): uv when the
  * machine has none, a managed Python, the virtual environment with the backend,
  * the install record and log. The user's data (school, logins) stays in the
- * backend's data directory, and the Camoufox browser in Camoufox's own cache.
+ * backend's data directory. The browser is the user's own Google Chrome (ADR 0016).
  */
 export declare const UV_VERSION = "0.13.6";
 /** uv's release archives and their SHA-256 (the release's .sha256 files, 2026-11-01). */
@@ -28,4 +28,15 @@ export interface RuntimePaths {
 export declare function runtimePaths(root: string, platform: NodeJS.Platform): RuntimePaths;
 /** ego lite, the user's own browser; only looked for on macOS (ADR 0013). */
 export declare function egoAppCandidates(home?: string): string[];
+export declare const CHROME_DOWNLOAD_URL = "https://www.google.com/chrome/";
+/**
+ * Where Google Chrome installs itself, as the backend looks for it
+ * (browser/backend.py find_chrome); on Linux the backend searches PATH itself.
+ */
+export declare function chromeCandidates(platform: NodeJS.Platform, home?: string, env?: Record<string, string | undefined>): string[];
+/**
+ * Where an install from before Chrome had its Camoufox browser build:
+ * Camoufox's own cache (platformdirs' user cache directory for "camoufox").
+ */
+export declare function camoufoxBuildDir(platform: NodeJS.Platform, build: string, home?: string, env?: Record<string, string | undefined>): string;
 //# sourceMappingURL=runtime.d.ts.map

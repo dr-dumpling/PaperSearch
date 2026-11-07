@@ -5,7 +5,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from playwright.sync_api import Error as PlaywrightError
+from patchright.sync_api import Error as PlaywrightError
 
 from paper_search_carsi.engine.batch import PublisherBatchDownloader
 from paper_search_carsi.publishers.profiles import get_publisher_profile

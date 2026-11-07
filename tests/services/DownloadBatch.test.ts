@@ -1,5 +1,5 @@
 import { tmpdir } from "node:os";
-import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { readFileSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "@jest/globals";
 import { downloadBatch } from "../../src/capabilities/pdf-discovery/batch.js";
@@ -110,10 +110,19 @@ describe("serial download batch", () => {
     ]);
     expect(new Set(contexts.map((c) => c.batch?.id)).size).toBe(1);
     // item 1 never reached the backend; item 2 was recorded by the backend
-    // itself; item 3 is last, so the batch end is reported with final totals.
+    // itself; item 3 is last, so the batch end is reported with final totals;
+    // then the whole batch's outcome for the finished window.
     expect(updates).toEqual([
       expect.objectContaining({ done: 1, succeeded: 1, failed: 0, finished: false, current: "10.1000/oa" }),
       expect.objectContaining({ done: 3, succeeded: 2, failed: 1, finished: true }),
+      expect.objectContaining({
+        total: 3, done: 3, succeeded: 2, failed: 1, finished: true,
+        results: expect.objectContaining({
+          content: "main", main: 2, stopped: false,
+          sources: [["开放获取", 1], ["机构订阅", 1]],
+          failures: [{ cls: "unexplained", reason: "需要学校登录", doi: "10.1000/fail" }],
+        }),
+      }),
     ]);
     expect(result).toEqual(
       expect.objectContaining({ status: "partial", total: 3, succeeded: 2, failed: 1 }),
@@ -218,8 +227,13 @@ describe("serial download batch", () => {
       [2, 2, 1, 1],
     ]);
     expect(entitled[0].savePath).toContain("/tmp/own/papers/");
+    // The window counted the entitled stretch; its finished card covers all 3.
     expect(updates).toEqual([
       expect.objectContaining({ total: 2, done: 2, succeeded: 1, failed: 1, finished: true }),
+      expect.objectContaining({
+        total: 3, done: 3, succeeded: 2, failed: 1, finished: true,
+        results: expect.objectContaining({ main: 2, failures: [expect.objectContaining({ doi: "10.1000/fail" })] }),
+      }),
     ]);
     expect(result).toEqual(
       expect.objectContaining({ mode: "two_phase", status: "partial", total: 3, succeeded: 2, failed: 1, entitledAccessItems: 2 }),
@@ -369,6 +383,77 @@ describe("serial download batch", () => {
     }
   });
 
+  it("tells the finished window each failure's class and reason, the sources and the start", async () => {
+    const updates: CarsiBatchUpdate[] = [];
+    const before = Math.floor(Date.now() / 1000);
+    const root = mkdtempSync(join(tmpdir(), "batch-summary-"));
+    mkdirSync(join(root, "papers"));
+    const tiers = (): DownloadTier[] => [
+      {
+        id: "api",
+        stage: "publisher_api",
+        run: async (context) => context.doi === "10.1000/api"
+          ? { status: "ok", verified: true, path: "/tmp/api.pdf", message: "ok" }
+          : { status: "skipped", message: "no key" },
+      },
+      {
+        id: "entitled_access",
+        stage: "entitled_access",
+        run: async (context) => context.doi === "10.1000/denied"
+          ? { status: "error", message: "denied", code: "entitlement_missing",
+              supplements: [{ status: "saved", label: "", file: "/tmp/s1.docx" }] }
+          : { status: "skipped", message: "Entitled access requires a valid DOI." },
+      },
+    ];
+    await downloadBatch(
+      {} as never,
+      {
+        mode: "per_item",
+        items: [{ doi: "10.1000/denied", title: "A Denied Paper" }, { doi: "10.1000/api" }, { paperId: "pmid:123" }],
+        savePath: root,
+      },
+      fakeBackend(updates),
+      () => undefined,
+      tiers,
+    );
+    rmSync(root, { recursive: true, force: true });
+    const results = updates.at(-1)?.results;
+    // The folder button opens every paper of the batch.
+    expect(results).toEqual({
+      content: "main", folder: join(root, "papers"), started: expect.any(Number), stopped: false,
+      main: 1, supplements: 1, no_supplements: 0,
+      sources: [["出版社 API", 1]],
+      failures: [
+        { cls: "no_access", reason: "学校没有订阅", title: "A Denied Paper", doi: "10.1000/denied", note: "附录 1 个已保存" },
+        { cls: "unsupported", reason: "没有有效 DOI" },
+      ],
+    });
+    expect(results!.started).toBeGreaterThanOrEqual(before);
+  });
+
+  it("a batch stopped in the window says so in its finished card", async () => {
+    const updates: CarsiBatchUpdate[] = [];
+    const tiers = (): DownloadTier[] => [{
+      id: "entitled_access",
+      stage: "entitled_access",
+      run: async () => ({ status: "error", message: "stopped", code: "batch_stopped" }),
+    }];
+    await downloadBatch(
+      {} as never,
+      { mode: "per_item", items: [{ doi: "10.1000/a" }, { doi: "10.1000/b" }] },
+      fakeBackend(updates),
+      () => undefined,
+      tiers,
+    );
+    expect(updates.at(-1)?.results).toEqual(expect.objectContaining({
+      stopped: true,
+      failures: [
+        { cls: "user_or_external", reason: "任务已终止", doi: "10.1000/a" },
+        { cls: "user_or_external", reason: "任务已终止", doi: "10.1000/b" },
+      ],
+    }));
+  });
+
   it("works without a backend progress method", async () => {
     const backend = fakeBackend([]);
     delete backend.reportBatchProgress;
@@ -440,6 +525,16 @@ describe("backend batch support", () => {
     expect(createCarsiDownloadArguments("10.1000/x", "/tmp", "legal_only", undefined, undefined, "short")).toEqual(
       expect.objectContaining({ user_wait: "short" }),
     );
+  });
+
+  it("sends the finished window's summary only to a backend that declares it", () => {
+    const download = { name: "carsi_download", inputSchema: { type: "object", properties: base } };
+    expect(selectCarsiBatchSupport([download, progress], "legal_only").progressResults).toBeUndefined();
+    const withResults = {
+      ...progress,
+      inputSchema: { ...progress.inputSchema, properties: { ...progress.inputSchema.properties, results: { type: "object" } } },
+    };
+    expect(selectCarsiBatchSupport([download, withResults], "legal_only").progressResults).toBe(true);
   });
 
   it("adds the batch fields to the download arguments", () => {

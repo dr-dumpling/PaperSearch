@@ -7,10 +7,13 @@
 <p align="center"><b>让 AI 帮你查文献、核对引用、下载全文和补充材料。</b></p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch" alt="npm"></a>
-  <img src="https://img.shields.io/node/v/papersearch" alt="Node.js">
-  <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
-  <a href="https://linux.do"><img src="https://img.shields.io/badge/LinuxDo-community-1f6feb" alt="LinuxDo"></a>
+  <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch?style=flat-square" alt="npm"></a>
+  <a href="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml"><img src="https://img.shields.io/github/actions/workflow/status/dr-dumpling/PaperSearch/publish.yml?style=flat-square&amp;label=publish" alt="发布工作流状态"></a>
+  <a href="#机构下载扩展"><img src="https://img.shields.io/badge/CARSI-institutional%20downloads-7284CE?style=flat-square" alt="CARSI 机构下载扩展"></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/node/v/papersearch?style=flat-square" alt="Node.js 版本要求"></a>
+  <a href="#agent-skill"><img src="https://img.shields.io/badge/Agent%20Skill-bundled-D97757?style=flat-square" alt="随包 Agent Skill"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2F9E44?style=flat-square" alt="MIT 许可证"></a>
+  <a href="https://linux.do"><img src="https://img.shields.io/badge/LinuxDo-community-1f6feb?style=flat-square" alt="LinuxDo 社区"></a>
 </p>
 
 <p align="center">简体中文 | <a href="README.en.md">English</a></p>
@@ -22,7 +25,7 @@ PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Clau
 - **每一篇都核对过**：逐个核对 PDF 首页的 DOI 和题名，不是这篇文章的不算成功。
 - **结果直接能用**：按“期刊_年份_标题”建文件夹，正文和补充材料放在一起；没下到的篇目说明原因。
 
-<p align="center"><img src="assets/overview.png" width="900" alt="PaperSearch 能做的事：检索论文、核验与引文、期刊指标、正文片段、下载全文和补充材料"></p>
+<p align="center"><img src="assets/overview.png" width="840" alt="PaperSearch 能做的事：检索论文、搜正文片段、查期刊与分区、查引文和参考文献、下载全文和补充材料"></p>
 
 [效果](#效果) | [快速开始](#快速开始) | [常见任务](#常见任务) | [工作方式](#工作方式) | [机构下载扩展](#机构下载扩展) | [检索来源](#检索来源) | [配置](#配置) | [Agent Skill](#agent-skill) | [命令](#命令) | [排障](#排障)
 
@@ -46,39 +49,39 @@ downloads/
 └── diagnostics/                                   运行记录、附件清单、截图
 ```
 
-机构下载时，屏幕角落会出现进度胶囊：显示进度；需要你登录或验证时变成琥珀色提醒；鼠标指上去展开更多操作。
-
-<p align="center"><img src="assets/progress-capsule.png" width="820" alt="进度胶囊：下载中、需要登录学校、鼠标指上去展开、设置"></p>
-
 ## 快速开始
 
-要求 Node.js 18 及以上和 npm。
+首次安装需要 Node.js 18 或更高版本和 npm。下面以 Codex 为例，复制一行即可装好 `paper-search` 和配套 Skill。用其他 AI 工具时，把 `codex` 换成 [Agent Skill](#agent-skill) 里对应的 `--targets` 取值。
 
-```bash
-npm install -g papersearch
-paper-search setup
-paper-search doctor --format text
+**macOS、Linux 或 Windows 命令提示符：**
+
+```sh
+npm install -g papersearch && paper-search skills update --targets codex
 ```
 
-`paper-search setup` 会依次问三件事：API key 和邮箱；Skill 安装到通用目录还是工具专用目录；要不要安装机构下载扩展。每一步都可以跳过。`doctor` 显示现在能用哪些功能、还缺什么配置。
+**Windows PowerShell：**
 
-Skill 是教 AI 工具调用 `paper-search` 的说明文件，用 AI 工具做文献任务时要装。跳过了可以随时补装，`--targets` 换成你用的工具（`claude`、`codex`、`cursor`、`gemini`、`agents`，或 `all`）：
+```powershell
+npm.cmd install -g papersearch; if ($LASTEXITCODE -eq 0) { paper-search.cmd skills update --targets codex }
+```
+
+装好后，新开一个 AI 会话就可以查文献。只在终端使用的话，装 `paper-search` 就够了。需要 API key 或邮箱时，再运行 `paper-search setup`；需要下载学校订阅的论文时，再按 [机构下载扩展](#机构下载扩展) 安装。想检查当前可用功能，运行 `paper-search doctor --format text`。
+
+已装好 `paper-search` 的用户可以单独补装 Skill，`--targets` 的取值见下方 [Agent Skill](#agent-skill)：
 
 ```bash
 paper-search skills update --targets claude
 ```
 
-Kimi Code、Qwen Code 使用 `--targets agents`，将 Skill 安装到共享目录。TRAE、CodeBuddy 的接入方式见下方 [Agent Skill](#agent-skill)。
-
 也可以把下面这段话发给你的 AI 工具，让它帮你装：
 
 ```text
-请帮我安装 PaperSearch：运行 npm install -g papersearch，再按 README 的 Agent Skill 说明为你自己安装随包 Skill（Kimi Code、Qwen Code 用 agents，Claude Code 用 claude，Codex 用 codex，Cursor 用 cursor；TRAE、CodeBuddy 使用各自的 Skill 目录），最后运行 paper-search doctor --format text，告诉我哪些功能能用、还缺哪些 key；再问我下载的论文默认放在哪个文件夹，用 paper-search config set DEFAULT_DOWNLOAD_PATH 保存。API key 我会自己在终端运行 paper-search setup 输入，不要让我发到聊天里。
+请帮我安装 PaperSearch：运行 npm install -g papersearch，再按 README 的 Agent Skill 说明为你自己安装随包 Skill，最后运行 paper-search doctor --format text，告诉我哪些功能能用、还缺哪些 key；再问我下载的论文默认放在哪个文件夹，用 paper-search config set DEFAULT_DOWNLOAD_PATH 保存。API key 我会自己在终端运行 paper-search setup 输入，不要让我发到聊天里。
 ```
 
 **从旧包 `paper-search-cli` 升级**：先运行 `npm uninstall -g paper-search-cli`，再 `npm install -g papersearch`。两个包提供同一个 `paper-search` 命令，不能同时装；配置、Skill、学校登录和下载记录都会保留。
 
-**以后升级**：`npm install -g papersearch@latest`。升级后第一次运行 `paper-search` 时，它会自动把你装过的 Skill 更新到新版本。
+**以后升级**：`npm install -g papersearch@latest`。有新版本时，命令会在终端提示；升级后第一次运行时，装过的 Skill 会自动更新。
 
 ## 常见任务
 
@@ -138,7 +141,7 @@ paper-search failures --format text
 |---|---|---|
 | 能不能直接用 | 装好就能用 | 要另外安装：`paper-search carsi install` |
 | 能拿到什么 | 开放获取的正文 | 你的学校订阅的正文；有规则的出版社还能取补充材料 |
-| 怎么拿 | 程序直接下载，通常几秒，不用登录：来源自带的下载、元数据里的 PDF 地址、PubMed Central、Unpaywall、出版社接口（你自己的 Elsevier/Springer key）；最后是默认开启的 Sci-Hub 兜底 | 打开一个浏览器，经 CARSI 登录你的学校，在出版社网站上取 PDF |
+| 怎么拿 | 程序直接下载，通常几秒，不用登录：来源自带的下载、元数据里的 PDF 地址、PubMed Central、Unpaywall、出版社接口（你自己的 Elsevier/Springer key）；最后是默认开启的 Sci-Hub 兜底 | 打开 Chrome，经 CARSI 登录你的学校，在出版社网站上取 PDF |
 | 你要做的事 | 无 | 在浏览器里登录学校；程序自动过验证，需要人工接管时再按提示操作 |
 
 两种方式用同一个下载命令：先试开放下载，拿不到时，装了机构下载才继续用学校权限。
@@ -150,28 +153,32 @@ paper-search failures --format text
 
 ### 下载结果
 
-下载目录分两部分：`papers/` 放论文，每篇一个文件夹，正文按“期刊_年份_标题”命名，补充材料在该篇的 `supplements/` 里并保留原文件名；`diagnostics/` 放运行记录、附件清单和截图，查问题时用。文件夹名末尾的短标识用来区分同名论文。缺少期刊或年份时写“未知期刊”“未知年份”。旧版本下载的文件不会自动搬动，命令返回的 JSON 里写着每个文件的实际位置。
+下载目录分两部分：`papers/` 放论文，每篇一个文件夹，正文按“期刊_年份_标题”命名，补充材料在该篇的 `supplements/` 里并保留原文件名；`diagnostics/` 放运行记录、附件清单和截图，查问题时用。文件夹名末尾的短标识用来区分同名论文。缺少期刊或年份时写“未知期刊”“未知年份”。命令返回的 JSON 里写着每个文件的实际位置。
 
 ## 机构下载扩展
 
+开放渠道拿不到的论文，可以用学校的订阅下载：程序打开 Chrome，经 CARSI（中国高校身份联盟）登录你的学校，在出版社网站上取正文和补充材料。
+
+先装好 [Google Chrome](https://www.google.com/chrome/)，再运行：
+
 ```bash
-paper-search carsi install
-paper-search carsi status --format text
+paper-search carsi install                # 安装时选择你的学校
+paper-search carsi status --format text   # 查看是否装好
 ```
 
-- 安装时会问你的学校（CARSI 成员学校，中文名、英文名或域名都可以），并下载专用浏览器 Camoufox，共约 3 GB；macOS 上 `--browser ego` 改用 ego lite，约 0.5 GB。`--skip-school` 可以以后再选学校。
-- 目前用 CARSI（中国高校身份联盟）登录学校；出版社的机构列表里没有 CARSI 或你的学校时，程序会立即说明。
-- 自动过验证：程序自动定位并点击验证框，网站放行后继续下载。每次验证等待最多尝试 3 次，两次至少间隔 3 秒；点击或勾选本身不代表验证已经通过。
-- 下载时屏幕角落会出现进度胶囊：显示进度、正在下正文还是附录、哪家出版社；需要你登录或验证时变成琥珀色，背景与边缘轻柔呼吸，并在开启系统通知时发送通知；点击“请登录学校”等提醒可切到当前任务的下载浏览器。鼠标指上去展开，可以跳过本篇、标记本刊或出版社无权限、终止整个任务、报告问题，右上角齿轮调整等待时间和默认下载文件夹，“–”最小化；按住胶囊或展开卡片的非按钮区域可拖动。停在学校登录页默认最多等 3 分钟，停在其他页面（人机验证、出版社页面等）默认 1 分钟后结束这一篇。
-- 默认下载浏览器在后台继续运行，启动、点击和跳转时不主动抢前台，也不会自动最小化或隐藏窗口；需要登录或验证时由胶囊提示，点击提醒即可切到浏览器处理。完成检查但页面未列出附件会显示“已检查，页面未列出补充材料”，不计为失败；登录未完成、暂不支持发现附件或下载失败会分别说明。
-- 默认下载文件夹可在胶囊设置中选择或输入，也可运行 `paper-search config set DEFAULT_DOWNLOAD_PATH "/完整路径/论文"`。保存后用于新任务；`--save-path` 或 `savePath` 可为单次任务指定其他目录，正在运行的批次保持原目录。
-- 自 0.4.9 起，仅在当前页面出现登录控件或验证确需接管时提醒；空闲时间和学校域名本身不再触发人工提醒。齿轮中的“验证提醒前最多等”默认 30 秒，可设为 1–600 秒；实际交接时间不晚于剩余等待预算的一半。验证框尚未出现、正在加载或已勾选处理中时继续自动观察；已知控件无法操作时提示检查，并保留原总时限。
-- 自 0.4.9 起，把胶囊拖到屏幕边缘附近松手，会贴到对应边，展开时朝屏幕内部打开。沿左、右边可停在任意可用高度，收起后保留松手位置。跨屏拖动以松手时指针所在的屏幕为准。
-- 机构登录中，你在专用登录页输入、选择或点击控件，或点击胶囊接管后，暂停登录等待倒计时；输入间的停顿不消耗剩余时间。离开人工登录步骤后继续计时；无人操作仍按原限时结束。
-- macOS 通知改用 PaperSearch 自己的名称和图标，点击通知与点击胶囊提醒共用当前任务的浏览器恢复入口。首次配置机构下载扩展时可选择是否开启系统通知，新配置默认关闭；胶囊齿轮里的“系统通知”开关点击即保存，已有选择在升级后保留。关闭通知仍保留琥珀色呼吸提醒。无需另外安装通知工具；开启后横幅显示仍遵循 macOS 通知权限与专注模式设置。
-- 能取哪些出版社的正文和补充材料，见 [出版社支持表](skills/paper-search/references/publisher-support.md)。正文和补充材料都实测取得的有 Elsevier、Wiley、Springer Nature、OUP、Wolters Kluwer、Taylor & Francis、Sage、ACS、NEJM、ASCE、Dove 等，另已实测取得 ASH、Thieme、PLOS、Copernicus、Annual Reviews、IOP、AMS、APS、Optica、IEEE、World Scientific、MDPI、Frontiers 的补充材料及论文关联的 Figshare 附件；尚未取得的附件入口仍在补全；表里没有的网站按通用规则尝试。
-- `paper-search carsi update` 在 PaperSearch 升级后更新扩展，`paper-search carsi uninstall` 卸载（默认保留浏览器和学校配置）。
-- Windows：PowerShell 拦住 `npm.ps1` 时改用 `npm.cmd` 或命令提示符；下载要在桌面会话里运行，经 SSH 或系统服务启动时浏览器窗口打不开。
+装好后照常让 AI 下载论文：
+
+- **第一次需要登录时**，在打开的浏览器里登录学校，之后会记住登录状态。
+- **人机验证**由程序自动点击，过不去时再提醒你。
+- **进度胶囊**在屏幕角落显示进度；需要你登录或验证时变成琥珀色，点一下就切到浏览器。鼠标指上去可以跳过本篇或终止任务，齿轮里可以改等待时间、默认下载文件夹和系统通知。
+- **浏览器在后台工作**，不会跳到前台打扰你。
+- **下载结束**后，胶囊列出成功和失败的篇目及原因；更详细的原因用 `paper-search failures --format text` 查看。
+
+<p align="center"><img src="assets/progress-capsule.png" width="840" alt="进度胶囊：下载中、需要你登录、鼠标指上去展开、结束时列出成功失败和原因"></p>
+
+能取哪些出版社的正文和补充材料，见 [出版社支持表](skills/paper-search/references/publisher-support.md)。
+
+更新扩展：`paper-search carsi update`；卸载：`paper-search carsi uninstall`。Windows 的 PowerShell 拦住 `npm` 时，改用 `npm.cmd`。
 
 ## 检索来源
 
@@ -211,7 +218,7 @@ paper-search config list --pretty
 paper-search config set SEMANTIC_SCHOLAR_API_KEY <你的 key>
 ```
 
-配置文件在 `~/.config/paper-search-cli/config.json`（权限 `0600`；文件夹沿用旧名，升级不丢设置），`config list` 和 `doctor` 会把 key 脱敏显示。
+配置文件在 `~/.config/paper-search-cli/config.json`（权限 `0600`），`config list` 和 `doctor` 会把 key 脱敏显示。
 
 | 配置项 | 用途 | 什么时候配置 |
 |---|---|---|
@@ -227,6 +234,7 @@ paper-search config set SEMANTIC_SCHOLAR_API_KEY <你的 key>
 | `GOOGLE_SCHOLAR_PROXY_URL` | Google Scholar 的出口代理 | 直连反复被拦时，用有授权的代理 |
 | `PAPER_SEARCH_CARSI_ENABLED` | 机构下载扩展的开关 | `paper-search carsi install` 自动设置 |
 | `PAPER_SEARCH_SKILL_AUTO_UPDATE` | 设为 `false` 时，升级后不再自动更新已安装的 Skill | 默认开启，想自己管理 Skill 时设置 |
+| `PAPER_SEARCH_UPDATE_NOTIFY` | 设为 `false` 时，不再提示有新版本 | 默认开启，不想看到提示时设置 |
 
 申请入口：[EasyScholar](https://www.easyscholar.cc/console/user/open) · [Semantic Scholar](https://www.semanticscholar.org/product/api) · [Unpaywall](https://unpaywall.org/products/api) · [CORE](https://core.ac.uk/services/api) · [NCBI](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/) · [Web of Science](https://developer.clarivate.com/apis) · [IEEE Xplore](https://developer.ieee.org/docs/read/Searching_the_IEEE_Xplore_Metadata_API) · [Elsevier](https://dev.elsevier.com/apikey/manage) · [Springer Nature](https://dev.springernature.com/) · [OpenAIRE](https://develop.openaire.eu/)
 
@@ -243,31 +251,11 @@ paper-search skills status --pretty
 paper-search skills update --targets claude
 ```
 
-国内 AI 工具可以按以下方式加载同一份 Skill：
+`--targets` 可选 `codex`、`claude`、`cursor`、`gemini`、`antigravity`、`agents`（共享目录 `~/.agents/skills/`）。其他读取 Skill 文件夹的 AI 工具，把随包 Skill 复制到它的 Skill 目录即可：`npm root -g` 可查看全局 npm 目录，随包 Skill 位于其下的 `papersearch/skills/paper-search/`；复制时保留完整文件夹及 `references/`，更新时从新版本复制。安装后新开 AI 会话即可使用。
 
-| 工具 | 接入方式 |
-|---|---|
-| [Kimi Code](https://www.kimi.com/code/docs/kimi-code-cli/customization/skills.html)、[Qwen Code](https://github.com/QwenLM/qwen-code/blob/main/docs/users/features/skills.md) | 运行 `paper-search skills update --targets agents`，安装到它们共同支持的 `~/.agents/skills/paper-search/` |
-| [TRAE](https://docs.trae.ai/ide/skills?_lang=zh) | 将随包 Skill 文件夹复制到项目的 `.trae/skills/paper-search/` |
-| [CodeBuddy](https://www.codebuddy.ai/docs/zh/ide/Features/Skills) | 将随包 Skill 文件夹复制到项目的 `.codebuddy/skills/paper-search/` |
-
-`npm root -g` 可查看全局 npm 目录；随包 Skill 位于其下的 `papersearch/skills/paper-search/`。复制时保留完整文件夹及 `references/`，更新时从新版本复制。安装后新开 AI 会话即可使用。
-
-- 支持的目标：`agents`、`codex`、`claude`、`cursor`、`gemini`、`antigravity`、`all`。更新会覆盖包里管理的文件，保留你在 Skill 目录里自己加的文件。
-- **升级后自动更新**：通过内置目标安装的 Skill，会在升级 PaperSearch 后第一次运行 `paper-search`（`skills`、`setup` 除外）时更新到新版本：只更新原来装过的位置；被替换的旧文件备份在 `~/.local/share/paper-search-cli/skill-backups/`；并在 stderr 写一行说明。一个都没装时只提示一次怎么装。不想自动更新：`paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false`。
+- `--targets all` 会同步到所有内置位置。更新会覆盖包里管理的文件，保留你在 Skill 目录里自己加的文件。
+- 升级 PaperSearch 后第一次运行时，装过的 Skill 会自动更新，被替换的旧文件备份在 `~/.local/share/paper-search-cli/skill-backups/`。不想自动更新：`paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false`。
 - `paper-search doctor` 显示内置安装目标中的 Skill 位置和版本状态。
-
-### 新版提醒（0.4.8 新增）
-
-发现 npm 上有新的稳定版本时，日常调用会在终端提示当前版本、最新版本和升级命令。在线任务期间异步检查，成功结果缓存 24 小时；检查失败不会影响文献任务，命令结束即取消未完成的检查。提醒写入 stderr，stdout 的 JSON 不变；离线管理命令只使用缓存，CI、帮助和配置命令不自动提醒。
-
-```bash
-paper-search update check --format text
-paper-search config set PAPER_SEARCH_UPDATE_NOTIFY false  # 关闭自动检查和提醒
-paper-search config set PAPER_SEARCH_UPDATE_NOTIFY true   # 重新开启
-```
-
-不会自动安装更新。升级 CLI 后，已安装的 Skill 会按现有规则同步；机构下载扩展仍用 `paper-search carsi update` 更新。此开关与胶囊的系统通知开关独立。
 
 ## 命令
 
@@ -278,7 +266,7 @@ paper-search config set PAPER_SEARCH_UPDATE_NOTIFY true   # 重新开启
 | `paper-search download` | 下载已核验论文的 PDF |
 | `paper-search run <工具>` | 精确调用某个工具，参数用 `--arg` 或 `--json-args` |
 | `paper-search failures` | 汇总下载失败的原因 |
-| `paper-search update check` | 检查 npm 稳定新版（0.4.8 新增） |
+| `paper-search update check` | 检查是否有新版本 |
 | `paper-search carsi` | 机构下载扩展的安装、状态、更新、卸载 |
 | `paper-search setup` / `config` | 配置 key、Skill 和扩展 |
 | `paper-search doctor` | 健康检查：配置、可用功能、Skill 和扩展的状态 |
@@ -304,8 +292,7 @@ paper-search config set PAPER_SEARCH_UPDATE_NOTIFY true   # 重新开启
 
 - 接下来的重点：批量下载更稳、新电脑安装更顺；在 PDF 之外交付全文包（原始 XML/HTML、Markdown 和正文图片）。详见 [路线图](docs/ROADMAP.zh.md)。
 - 想了解原理和代码结构：[架构说明](docs/ARCHITECTURE.zh.md)。
-- 下载失败或想要支持某家出版社：使用“下载失败 / 想支持某家出版社”Issue 模板，说明版本、系统、网站和 DOI。
-- 0.4.8 新增：`paper-search failures --export ./failure-report.zip` 导出最近一批机构下载失败记录；可加 `--run <运行ID> --doi <DOI>` 筛选，也包含正文成功但附件失败的条目。请先检查包内 `summary.md`、HTML 与截图中的个人信息，再手动附到 Issue。导出只处理副本，不改原记录、不重跑或上传；旧记录没有的 HTML 会标为缺失。已安装版本没有该命令时，先提供版本和现象，勿上传原始诊断。
+- 下载失败或想要支持某家出版社：使用“下载失败 / 想支持某家出版社”Issue 模板，说明版本、系统、网站和 DOI。可以用 `paper-search failures --export ./failure-report.zip` 导出失败记录，先检查包里的 `summary.md` 和截图有没有个人信息，再附到 Issue。
 - 想自己加出版社规则：见 [carsi/CONTRIBUTING.md](carsi/CONTRIBUTING.md)。
 
 ## 使用边界

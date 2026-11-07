@@ -1,6 +1,6 @@
 import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, } from "node:fs";
 import { dirname, join } from "node:path";
-import { egoAppCandidates, PYTHON_VERSION, runtimePaths, runtimeRoot, UV_ARCHIVES, uvArchiveUrl, UV_VERSION, } from "./runtime.js";
+import { camoufoxBuildDir, CHROME_DOWNLOAD_URL, chromeCandidates, egoAppCandidates, PYTHON_VERSION, runtimePaths, runtimeRoot, UV_ARCHIVES, uvArchiveUrl, UV_VERSION, } from "./runtime.js";
 export const INSTALL_STEPS = ["preflight", "uv", "python", "backend", "browser", "config", "school", "notifications", "check"];
 export class InstallError extends Error {
     step;
@@ -24,6 +24,14 @@ export function readInstallRecord(paths) {
 export async function installCarsi(host, options, context) {
     const paths = runtimePaths(runtimeRoot(host.env, host.home), host.platform);
     let record = readInstallRecord(paths);
+    if (record?.browser === "camoufox" && !options.force) {
+        // Installed with Camoufox: its environment has no Patchright. Everything
+        // from Python on is done again (ADR 0016).
+        record.browser = options.browser;
+        for (const step of ["python", "backend", "browser", "config", "check"])
+            delete record.steps[step];
+        delete record.finishedAt;
+    }
     if (record?.finishedAt && record.browser === options.browser && !options.force) {
         host.log(`机构下载扩展已安装（${record.finishedAt}）。查看：paper-search carsi status；重装：加 --force。`);
         return { status: "already_installed", record, paths };
@@ -47,11 +55,11 @@ export async function installCarsi(host, options, context) {
     mkdirSync(paths.root, { recursive: true });
     host = withLog(host, paths);
     const steps = {
-        preflight: () => preflight(host, paths, options),
+        preflight: () => preflight(host, paths, options, context),
         uv: async () => { record.uv = await prepareUv(host, paths); },
         python: () => preparePython(host, paths, record),
         backend: () => installBackend(host, paths, options, context, record),
-        browser: () => installBrowser(host, paths, options, record),
+        browser: () => installBrowser(host, paths, options, context, record),
         config: () => writeConfig(host, paths, options, context, record),
         school: () => askSchool(host, paths, options, context, record),
         notifications: () => askNotifications(host, paths, context, record),
@@ -96,34 +104,51 @@ const STEP_LABELS = {
     uv: "准备 uv",
     python: `准备 Python ${PYTHON_VERSION} 和虚拟环境`,
     backend: "安装机构下载后端和依赖",
-    browser: "下载 Camoufox 浏览器",
+    browser: "检查 Google Chrome",
     config: "写入配置",
     school: "学校",
     notifications: "系统通知偏好",
     check: "自检",
 };
 function describePlan(host, paths, options) {
-    const camoufox = options.browser === "camoufox";
     host.log("将要安装 PaperSearch 机构下载扩展：");
     host.log(`  安装目录：${paths.root}（uv、Python ${PYTHON_VERSION}、虚拟环境、安装记录）`);
-    host.log(camoufox
-        ? "  Camoufox 浏览器：Camoufox 自己的缓存目录（本机其他用 Camoufox 的程序共用）"
-        : "  浏览器：使用你的 ego lite，不下载 Camoufox");
+    host.log(options.browser === "chrome"
+        ? "  浏览器：使用你电脑上的 Google Chrome（下载时用单独的浏览器资料，不动你日常用的 Chrome），不另下载浏览器"
+        : "  浏览器：使用你的 ego lite，不另下载浏览器");
     host.log("  学校配置和登录会话：保留在原数据目录，不受安装影响");
-    host.log(`  需要下载约 ${camoufox ? "3 GB" : "0.5 GB"}；会把 PaperSearch 配置改为启用这个后端`);
+    host.log("  需要下载约 0.5 GB；会把 PaperSearch 配置改为启用这个后端");
 }
-async function preflight(host, paths, options) {
+const CHROME_MISSING = `没有找到 Google Chrome：请先从 ${CHROME_DOWNLOAD_URL} 安装 Chrome，再运行 paper-search carsi install`;
+const CHROME_GONE = `没有找到 Google Chrome：机构下载要用它，请从 ${CHROME_DOWNLOAD_URL} 安装`;
+/** Chrome at its usual place, or at ``chrome_executable`` in the backend's config. */
+function chromeFound(host, context) {
+    if (host.platform === "linux")
+        return true; // the backend searches PATH; the browser step checks
+    let configured = "";
+    try {
+        configured = String(JSON.parse(readFileSync(join(context.dataDir, "config.json"), "utf8")).chrome_executable ?? "");
+    }
+    catch {
+        // no backend config yet
+    }
+    return [configured.trim(), ...chromeCandidates(host.platform, host.home, host.env)].some((path) => path && existsSync(path));
+}
+async function preflight(host, paths, options, context) {
     if (!UV_ARCHIVES[`${host.platform}-${host.arch}`]) {
         throw new Error(`此系统暂不支持（${host.platform}-${host.arch}）`);
     }
     if (options.browser === "ego") {
         if (host.platform !== "darwin")
-            throw new Error("ego lite 目前只支持 macOS；请用 --browser camoufox");
+            throw new Error("ego lite 目前只支持 macOS；请用 --browser chrome");
         if (!egoAppCandidates(host.home).some((app) => existsSync(app))) {
             throw new Error("没有找到 ego lite（~/Applications 或 /Applications 下的 “ego lite.app”）");
         }
     }
-    const need = options.browser === "camoufox" ? 4 * GB : 1 * GB;
+    else if (!chromeFound(host, context)) {
+        throw new Error(CHROME_MISSING);
+    }
+    const need = 1 * GB;
     const free = host.freeBytes(paths.root);
     if (free < need) {
         throw new Error(`磁盘剩余 ${(free / GB).toFixed(1)} GB，至少需要 ${need / GB} GB`);
@@ -175,7 +200,8 @@ async function installBackend(host, paths, options, context, record, reinstall =
         recursive: true,
         filter: (path) => !/(?:^|[\\/])(?:__pycache__|\.venv|tests|build|[^\\/]+\.egg-info)(?:$|[\\/])/.test(path.slice(source.length)),
     });
-    const extras = options.browser === "camoufox" ? "camoufox,ego" : "ego";
+    // Patchright, which drives either browser, is a base dependency; ego adds its relay.
+    const extras = "ego";
     // The backend keeps its version number across PaperSearch releases, so an
     // update reinstalls it explicitly; its dependencies follow pyproject's pins and ranges.
     const reinstallArgs = reinstall ? ["--reinstall-package", "paper-search-carsi"] : [];
@@ -185,36 +211,43 @@ async function installBackend(host, paths, options, context, record, reinstall =
         "import importlib.metadata as m; print(m.version('paper-search-carsi'))"]), "后端没有装好")).stdout.trim();
     record.executable = paths.executable;
 }
+// The backend's own look at the browsers (backend.browser_check), with its config.
 const BROWSER_PROBE = [
     "import json",
     "from paper_search_carsi.browser import backend as b",
-    "try:",
-    "    from camoufox.pkgman import INSTALL_DIR",
-    "    cache = str(INSTALL_DIR)",
-    "except ImportError:",
-    "    cache = ''",
-    "d = b.pinned_camoufox_dir()",
-    "print(json.dumps({'pinned': b.CAMOUFOX_BROWSER, 'installed': d.name if d else '', 'ego': b.ego_app_version(), 'cache': cache}))",
+    "from paper_search_carsi.config import load_config",
+    "c = load_config()",
+    "print(json.dumps({'chrome': b.browser_check(c), 'ego': b.ego_app_version(c)}))",
 ].join("\n");
-async function browserProbe(host, paths) {
-    const result = await check(host.run(paths.venvPython, ["-c", BROWSER_PROBE]), "读取浏览器版本失败");
+async function browserProbe(host, paths, context) {
+    const result = await check(host.run(paths.venvPython, ["-c", BROWSER_PROBE], { env: { CARSI_DATA_DIR: context.dataDir } }), "读取浏览器版本失败");
     return JSON.parse(result.stdout.trim().split("\n").pop() || "{}");
 }
-async function installBrowser(host, paths, options, record) {
-    if (options.browser === "camoufox") {
-        // Without a version, fetch takes the build paired with the pinned camoufox package.
-        await check(host.run(paths.venvPython, ["-m", "camoufox", "fetch"], { echo: true }), "下载 Camoufox 浏览器失败");
-    }
-    const probe = await browserProbe(host, paths);
-    if (options.browser === "ego")
-        delete record.camoufoxBrowser;
-    if (options.browser === "camoufox") {
-        if (!probe.installed)
-            throw new Error(`下载后没有找到锁定版本的 Camoufox 浏览器（${probe.pinned}）`);
-        record.camoufoxBrowser = probe.installed;
+function outdatedChrome(chrome) {
+    return `Google Chrome ${chrome.version} 低于测试过的 ${chrome.tested}：请先更新 Chrome（菜单 → 帮助 → 关于 Google Chrome）`;
+}
+async function installBrowser(host, paths, options, context, record) {
+    const probe = await browserProbe(host, paths, context);
+    if (options.browser === "chrome") {
+        if (!probe.chrome?.browser)
+            throw new Error(CHROME_MISSING);
+        record.chrome = { path: probe.chrome.path, version: probe.chrome.version };
+        host.log(`  Google Chrome ${probe.chrome.version || "（版本未知）"}：${probe.chrome.path}；${probe.chrome.driver}`);
+        if (probe.chrome.outdated)
+            host.log(`  注意：${outdatedChrome(probe.chrome)}`);
     }
     if (probe.ego)
         record.ego = probe.ego;
+    if (record.camoufoxBrowser) {
+        // Not deleted here: other programs on this computer may use Camoufox's cache.
+        const old = camoufoxBuildDir(host.platform, record.camoufoxBrowser, host.home, host.env);
+        if (existsSync(old)) {
+            const note = `以前下载的 Camoufox 浏览器不再使用，可以手动删除：${old}（本机其他用 Camoufox 的程序可能也在用）`;
+            host.log(`  ${note}`);
+            warn(record, note);
+        }
+        delete record.camoufoxBrowser;
+    }
 }
 async function writeConfig(host, paths, options, context, record) {
     const current = context.getConfig("PAPER_SEARCH_CARSI_EXECUTABLE");
@@ -333,9 +366,9 @@ async function selfCheck(host, paths, context, record) {
 }
 /**
  * After a PaperSearch upgrade: the backend and its dependencies from the new
- * package, the paired Camoufox build when the pin moved, and the handshake.
- * The school, logins and ego lite are left alone; an older Camoufox build stays
- * in the shared cache, where other programs may use it.
+ * package, the browser check, and the handshake. The school, logins, Chrome and
+ * ego lite are left alone. An install from before Chrome gets a new Python
+ * environment first (its Camoufox build stays where it is, named for the user).
  */
 export async function updateCarsi(host, options, context) {
     const paths = runtimePaths(runtimeRoot(host.env, host.home), host.platform);
@@ -349,14 +382,21 @@ export async function updateCarsi(host, options, context) {
     }
     host = withLog(host, paths);
     appendLog(paths, `== update ${record.paperSearchVersion} -> ${context.paperSearchVersion} ${context.now().toISOString()}`);
-    const settings = { browser: record.browser, yes: true, force: false, skipSchool: true };
+    const legacy = record.browser === "camoufox";
+    const settings = { browser: legacy ? "chrome" : record.browser,
+        yes: true, force: false, skipSchool: true };
     try {
         if (record.uv && record.uv !== "uv" && !existsSync(record.uv))
             record.uv = await prepareUv(host, paths);
+        if (legacy) {
+            host.log("== 改用 Google Chrome：重建 Python 环境（不再下载 Camoufox）");
+            await preparePython(host, paths, record);
+            record.browser = "chrome";
+        }
         host.log("== 更新机构下载后端和依赖");
         await installBackend(host, paths, settings, context, record, true);
-        host.log(`== ${record.browser === "ego" ? "检测 ego lite" : "检查 Camoufox 浏览器"}`);
-        await installBrowser(host, paths, settings, record);
+        host.log(`== ${settings.browser === "ego" ? "检测 ego lite" : STEP_LABELS.browser}`);
+        await installBrowser(host, paths, settings, context, record);
         host.log("== 自检");
         await selfCheck(host, paths, context, record);
     }
@@ -372,9 +412,10 @@ export async function updateCarsi(host, options, context) {
     return { status: "updated", record, paths };
 }
 /**
- * Remove the runtime and turn the integration off. The Camoufox build this
- * extension installed and the user's data (school, logins) are kept unless the
- * user chooses to remove them; ego lite is the user's own and never touched.
+ * Remove the runtime and turn the integration off. The user's data (school,
+ * logins) is kept unless the user chooses to remove it; Chrome and ego lite are
+ * the user's own and never touched. A Camoufox build left by an install from
+ * before Chrome is named for the user, never deleted here.
  */
 export async function uninstallCarsi(host, options, context) {
     const paths = runtimePaths(runtimeRoot(host.env, host.home), host.platform);
@@ -383,14 +424,9 @@ export async function uninstallCarsi(host, options, context) {
         return { status: "not_installed", removed: [], kept: [] };
     }
     const record = readInstallRecord(paths);
-    // Where Camoufox keeps the build (asked of the environment before it goes).
-    let browserDir = "";
-    if (record?.camoufoxBrowser && existsSync(paths.venvPython)) {
-        const probe = await browserProbe(host, paths).catch(() => undefined);
-        if (probe?.cache)
-            browserDir = join(probe.cache, "browsers", "official", record.camoufoxBrowser);
-    }
-    const hasBrowser = Boolean(browserDir) && existsSync(browserDir);
+    const oldBrowser = record?.camoufoxBrowser
+        ? camoufoxBuildDir(host.platform, record.camoufoxBrowser, host.home, host.env) : "";
+    const hasOldBrowser = Boolean(oldBrowser) && existsSync(oldBrowser);
     const hasData = existsSync(context.dataDir);
     const configured = context.getConfig("PAPER_SEARCH_CARSI_EXECUTABLE");
     const ours = configured === paths.executable;
@@ -399,17 +435,15 @@ export async function uninstallCarsi(host, options, context) {
     host.log(ours
         ? "  PaperSearch 配置：关闭机构下载，清除后端路径"
         : `  PaperSearch 配置：不改（用的是另一个后端：${configured || "未配置"}）`);
-    if (hasBrowser)
-        host.log(`  Camoufox 浏览器 ${record?.camoufoxBrowser}：默认保留（本机其他用 Camoufox 的程序可能也在用）`);
     if (hasData)
         host.log(`  学校配置和登录会话（${context.dataDir}）：默认保留`);
-    if (record?.browser === "ego")
-        host.log("  ego lite 是你自己的浏览器，不受影响");
+    host.log(record?.browser === "ego" ? "  ego lite 是你自己的浏览器，不受影响" : "  Google Chrome 是你自己的浏览器，不受影响");
+    if (hasOldBrowser)
+        host.log(`  以前下载的 Camoufox 浏览器（${oldBrowser}）：不再使用，这里不删，可以手动删除`);
     if (!options.yes && !(await host.confirm("确认卸载？[y/N] "))) {
         host.log("已取消，没有删除任何东西。");
         return { status: "cancelled", removed: [], kept: [] };
     }
-    const removeBrowser = hasBrowser && (options.removeBrowser || (!options.yes && await host.confirm(`也删除 Camoufox 浏览器 ${record?.camoufoxBrowser}？本机其他用 Camoufox 的程序可能也在用。[y/N] `)));
     const removeData = hasData && (options.removeData || (!options.yes && await host.confirm("也删除学校配置和登录会话？删除后要重新配置学校、重新登录。[y/N] ")));
     const removed = [];
     const kept = [];
@@ -423,10 +457,8 @@ export async function uninstallCarsi(host, options, context) {
     else {
         kept.push(`PaperSearch 配置（后端：${configured || "未配置"}）`);
     }
-    if (hasBrowser)
-        (removeBrowser ? removed : kept).push(browserDir);
-    if (removeBrowser)
-        rmSync(browserDir, { recursive: true, force: true });
+    if (hasOldBrowser)
+        kept.push(oldBrowser);
     if (hasData)
         (removeData ? removed : kept).push(context.dataDir);
     if (removeData)
@@ -442,7 +474,7 @@ export async function carsiStatus(host, context) {
     const notes = [];
     let versions;
     if (existsSync(paths.venvPython)) {
-        versions = await browserProbe(host, paths).catch(() => undefined);
+        versions = await browserProbe(host, paths, context).catch(() => undefined);
     }
     const complete = Boolean(record?.finishedAt) && executableExists;
     const upToDate = record?.paperSearchVersion === context.paperSearchVersion;
@@ -452,10 +484,17 @@ export async function carsiStatus(host, context) {
         const done = INSTALL_STEPS.filter((step) => record.steps[step]).length;
         notes.push(`安装没有完成（${done}/${INSTALL_STEPS.length} 步）：再运行 paper-search carsi install 接着装`);
     }
-    if (complete && !upToDate)
+    if (complete && record?.browser === "camoufox") {
+        notes.push("机构下载已改用 Google Chrome，不再用 Camoufox：运行 paper-search carsi update");
+    }
+    else if (complete && !upToDate) {
         notes.push(`PaperSearch 已是 ${context.paperSearchVersion}，扩展是 ${record?.paperSearchVersion} 时装的：运行 paper-search carsi update`);
-    if (complete && record?.browser === "camoufox" && versions && !versions.installed) {
-        notes.push(`锁定版本的 Camoufox 浏览器（${versions.pinned}）不在本机：运行 paper-search carsi update --force`);
+    }
+    if (complete && record?.browser !== "ego" && versions?.chrome) {
+        if (!versions.chrome.browser)
+            notes.push(CHROME_GONE);
+        else if (versions.chrome.outdated)
+            notes.push(outdatedChrome(versions.chrome));
     }
     if (complete && configuredExecutable !== paths.executable)
         notes.push(`PaperSearch 用的是另一个后端：${configuredExecutable || "（未配置）"}`);
@@ -477,11 +516,16 @@ export function renderStatusText(status) {
         `  安装目录：${status.root}（${(status.runtimeBytes / GB).toFixed(2)} GB）`,
     ];
     if (r) {
-        lines.push(`  浏览器：${r.browser === "camoufox"
-            ? `camoufox${r.camoufoxBrowser ? `（${r.camoufoxBrowser}）` : ""}`
-            : `ego lite${status.versions?.ego || r.ego ? `（${status.versions?.ego || r.ego}）` : ""}`}`);
-        if (status.versions) {
-            lines.push(`  锁定的 Camoufox 浏览器：${status.versions.pinned}，本机${status.versions.installed ? `有（${status.versions.installed}）` : "没有"}`);
+        const chrome = status.versions?.chrome;
+        lines.push(`  浏览器：${r.browser === "ego"
+            ? `ego lite${status.versions?.ego || r.ego ? `（${status.versions?.ego || r.ego}）` : ""}`
+            : r.browser === "camoufox" ? "camoufox（已停用，运行 paper-search carsi update 改用 Google Chrome）" : "Google Chrome"}`);
+        if (chrome) {
+            lines.push(chrome.browser
+                ? `  Google Chrome：${chrome.version || "版本未知"}（${chrome.path}；测试过的版本 ${chrome.tested}）`
+                : "  Google Chrome：没有找到");
+            if (chrome.driver)
+                lines.push(`  驱动：${chrome.driver}`);
         }
         lines.push(`  ego lite：${status.versions?.ego || r.ego || "未检测到"}`);
         lines.push(`  Python：${r.python || "-"}；后端：${r.backend || "-"}；uv：${r.uv || "-"}`);

@@ -5,7 +5,7 @@ description = "Institutional (publisher-authorized) PDF and supplementary-file d
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
-# Ranges below the next major version; the browser stack is pinned below (ADR 0013).
+# Ranges below the next major version; the browser driver is pinned (ADR 0013, 0016).
 dependencies = [
     "requests>=2.31,<3",
     "requests[socks]>=2.31,<3",
@@ -15,14 +15,14 @@ dependencies = [
     "pymupdf>=1.24,<3",
     # The progress capsule (progress_capsule.py): the system web engine through pywebview.
     "pywebview>=6.2,<7",
+    # Drives the user's installed Google Chrome, and ego over remote debugging:
+    # Playwright with Chromium's automation traces removed (ADR 0016).
+    "patchright==1.64.4",
 ]
 
 [project.optional-dependencies]
-# Pinned together, stable releases only: camoufox 0.5.8 pairs with browser
-# 156.0.1-beta.36 (browser/backend.py CAMOUFOX_BROWSER), driven by Playwright 1.62.0.
-camoufox = ["camoufox[geoip]==0.5.8", "playwright==1.62.0"]
-# ego backend: one shared remote-debugging connection (browser/ego_relay.py), driven by Playwright.
-ego = ["websockets>=13,<18", "playwright==1.62.0"]
+# ego backend: one shared remote-debugging connection (browser/ego_relay.py).
+ego = ["websockets>=13,<18"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
@@ -37,7 +37,7 @@ where = ["."]
 include = ["paper_search_carsi*"]
 
 [tool.setuptools.package-data]
-paper_search_carsi = ["publishers/builtin/*.json", "publishers/schema.json", "data/*.json", "assets/*.png", "assets/*.html", "assets/papersearch-notifier", "assets/quiet-browser/*"]
+paper_search_carsi = ["publishers/builtin/*.json", "publishers/schema.json", "data/*.json", "assets/*.png", "assets/*.html", "assets/papersearch-notifier"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -53,8 +53,11 @@ def _institutional_summary(cfg: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _environment_check(cfg: dict[str, Any]) -> tuple[bool, list[dict[str, str]]]:
+def _environment_check(cfg: dict[str, Any]) -> tuple[bool, list[dict[str, str]], dict[str, Any]]:
+    """(ready, checks, browser): ``browser`` is the chrome backend's browser
+    (backend.browser_check) when that backend is configured, else {}."""
     checks: list[dict[str, str]] = []
+    browser: dict[str, Any] = {}
 
     def add(item: str, ok: bool, detail: str) -> None:
         checks.append({"item": item, "status": "ok" if ok else "missing", "detail": detail})
@@ -64,10 +67,16 @@ def _environment_check(cfg: dict[str, Any]) -> tuple[bool, list[dict[str, str]]]
     add("config_file", (data_dir / "config.json").exists(), str(data_dir / "config.json"))
 
     try:
-        from .browser.backend import is_available, resolve_backend
+        from .browser.backend import BACKEND_CHROME, CHROME_MISSING, browser_check, is_available, resolve_backend
 
         backend = resolve_backend(cfg)
-        add("browser_backend", bool(is_available(backend)), backend)
+        if backend == BACKEND_CHROME:
+            browser = browser_check(cfg)
+            found = f"{browser['browser']} {browser['version']} ({browser['path']}), {browser['driver']}"
+            add("browser_backend", bool(is_available(backend, cfg)),
+                f"chrome: {found}" if browser["browser"] else f"chrome: {CHROME_MISSING}")
+        else:
+            add("browser_backend", bool(is_available(backend, cfg)), backend)
     except Exception as exc:  # pragma: no cover - import problems are themselves a finding
         add("browser_backend", False, f"{type(exc).__name__}")
 
@@ -82,7 +91,7 @@ def _environment_check(cfg: dict[str, Any]) -> tuple[bool, list[dict[str, str]]]
     for item in ("output_dir", "cache_dir"):
         value = cfg.get(item) or ""
         add(item, bool(value), value)
-    return all(c["status"] == "ok" for c in checks), checks
+    return all(c["status"] == "ok" for c in checks), checks, browser
 
 
 def _carsi_school_list(cfg: dict[str, Any]) -> tuple[list[Any], dict[str, Any] | None]:
@@ -168,8 +177,14 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         save_config(cfg)
 
     if args.check:
-        ready, checks = _environment_check(cfg)
-        print(json.dumps({"ready": ready, "checks": checks, "settings": _institutional_summary(cfg)}, ensure_ascii=False, indent=2))
+        ready, checks, browser = _environment_check(cfg)
+        report: dict[str, Any] = {"ready": ready, "checks": checks, "settings": _institutional_summary(cfg)}
+        if browser:
+            report["browser"] = browser
+        if browser.get("outdated"):
+            report["warnings"] = [f"Google Chrome {browser['version']} 低于测试过的 {browser['tested']}："
+                                  "请先更新 Chrome（菜单 → 帮助 → 关于 Google Chrome）"]
+        print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0 if ready else 2
 
     print(json.dumps({"updated": changed, "settings": _institutional_summary(cfg)}, ensure_ascii=False, indent=2))
@@ -478,7 +493,7 @@ def main(argv: list[str] | None = None) -> int:
 
     cs = sub.add_parser("cold-start", help="forget school sessions in the download browser (lists first)")
     cs.add_argument("--yes", action="store_true", help="delete without asking")
-    cs.add_argument("--profile", help="another Camoufox profile directory (default: the download profile)")
+    cs.add_argument("--profile", help="another Chrome profile directory (default: the download profile)")
     cs.add_argument("--cache-dir", help="the cache whose saved cookie files to filter "
                     "(default: the configured one; none with --profile)")
     cs.set_defaults(func=_cmd_cold_start)

@@ -11,8 +11,10 @@ on every update, so readers never see a torn write.
 
 from __future__ import annotations
 
+import html
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -188,12 +190,16 @@ class BatchContext:
 
 
 def _batch_state(batch_id: str) -> dict[str, Any] | None:
-    """The running report of this batch, if the previous item left one."""
+    """This batch's report, if an earlier item or stretch left one.
+
+    A finished stretch counts too: the institutional stretch of a batch ends
+    before its supplementary files and the caller's final summary, and the
+    batch keeps its start time (and run) across them."""
     try:
         state = json.loads(progress_path().read_text(encoding="utf-8"))
     except Exception:
         return None
-    if isinstance(state, dict) and state.get("batch_id") == batch_id and state.get("status") == "running":
+    if isinstance(state, dict) and state.get("batch_id") == batch_id and state.get("status") in ("running", "done"):
         return state
     return None
 
@@ -216,7 +222,8 @@ def _adopt_batch(batch_id: str, total: int, counts: tuple[int | None, int | None
         _STARTED_MONO = time.monotonic()
         if previous is None:
             previous = {
-                "task": "机构 PDF 批量下载",
+                # A lone download comes as a batch of one (its finished card gets the reason).
+                "task": "机构 PDF 批量下载" if total > 1 else "机构 PDF 下载",
                 "done": 0, "success": 0, "failed": 0,
                 "started_at": datetime.now().isoformat(timespec="seconds"),
                 "schema_version": 1,
@@ -238,17 +245,23 @@ def _adopt_batch(batch_id: str, total: int, counts: tuple[int | None, int | None
             **fields,
         }
         _STATE.pop("finished_at", None)
+        _STATE.pop("results", None)
         _write_state()
 
 
 def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int, *,
-               current: str = "", finished: bool = False) -> bool:
-    """Record batch totals for items finished without the backend, or the batch end."""
+               current: str = "", finished: bool = False, results: Any = None) -> bool:
+    """Record batch totals for items finished without the backend, or the batch end.
+
+    ``results`` (the batch end only) is the caller's summary of every item,
+    for the finished window: see ``_batch_results``. It updates an existing
+    report and never opens a window for a batch the backend did not show."""
     ctx = BatchContext.from_args(batch_id, max(1, min(done, total)), total, done, succeeded, failed)
     if ctx is None or done > total:
         return False
+    summary = _batch_results(results) if finished and results is not None else None
     previous = _batch_state(ctx.batch_id)
-    if finished and previous is None and done == 0:
+    if finished and previous is None and (done == 0 or summary is not None):
         return False
     _adopt_batch(ctx.batch_id, total, (done, succeeded, failed),
                  **({"current": current} if current else {}),
@@ -259,10 +272,78 @@ def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int
         if finished:
             _STATE.update(status="done", awaiting_next=False,
                           finished_at=datetime.now().isoformat(timespec="seconds"))
+            if summary is not None:
+                started = summary.pop("started", None)
+                if started is not None and started < str(_STATE.get("started_at") or "~"):
+                    _STATE["started_at"] = started  # the caller's open stages ran before the window
+                if summary.pop("stopped", False):
+                    _STATE["status"] = "cancelled"
+                folder = summary.pop("folder", None)
+                if folder:
+                    _STATE["output_dir"] = folder  # the whole batch, not the last paper's folder
+                _STATE["results"] = summary
         else:
             _STATE.update(awaiting_next=True)
         _write_state()
     return True
+
+
+FAILURE_CLASSES = ("no_access", "user_or_external", "unsupported", "unexplained")
+_RESULT_CONTENTS = ("main", "supplements", "both")
+_MAX_RESULT_FAILURES = 1000  # the caller's batch limit
+_MAX_RESULT_TEXT = 300
+
+
+def _batch_results(raw: Any) -> dict[str, Any] | None:
+    """The caller's end-of-batch summary, checked and bounded for the window.
+
+    Wire shape (PaperSearch writes it, the window only lays it out):
+    ``content``; ``folder`` (the batch's download folder, absolute);
+    ``started`` (epoch seconds the batch began); ``stopped``;
+    ``main`` (main texts saved), ``supplements`` (attachment files saved),
+    ``no_supplements`` (pages that listed none); ``sources`` ([label, count]);
+    ``failures`` ([{cls, reason, title, journal, doi, note}]) with ``cls`` one
+    of FAILURE_CLASSES and a short ``reason`` text. Anything else is dropped.
+    """
+    if not isinstance(raw, dict):
+        return None
+
+    def count(value: Any) -> int:
+        return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 1_000_000 else 0
+
+    def text(value: Any) -> str:
+        # Crossref's titles and journals can keep HTML entities ("Arthritis &amp; Rheumatology")
+        # and markup ("<i>Glossostemon bruguieri</i>"); the card shows plain text.
+        if not isinstance(value, str):
+            return ""
+        return " ".join(re.sub(r"<[^<>]{1,40}>", "", html.unescape(value)).split())[:_MAX_RESULT_TEXT]
+
+    summary: dict[str, Any] = {
+        "content": raw.get("content") if raw.get("content") in _RESULT_CONTENTS else "main",
+        "main": count(raw.get("main")),
+        "supplements": count(raw.get("supplements")),
+        "no_supplements": count(raw.get("no_supplements")),
+        "sources": [[text(s[0]), count(s[1])] for s in (raw.get("sources") or [])[:8]
+                    if isinstance(s, list) and len(s) == 2 and text(s[0]) and count(s[1])]
+        if isinstance(raw.get("sources"), list) else [],
+        "failures": [],
+        "stopped": raw.get("stopped") is True,
+    }
+    failures = raw.get("failures")
+    for item in (failures if isinstance(failures, list) else [])[:_MAX_RESULT_FAILURES]:
+        if not isinstance(item, dict) or not text(item.get("reason")):
+            continue
+        summary["failures"].append({
+            "cls": item.get("cls") if item.get("cls") in FAILURE_CLASSES else "unexplained",
+            **{key: text(item.get(key)) for key in ("reason", "title", "journal", "doi", "note")},
+        })
+    folder = raw.get("folder")
+    if isinstance(folder, str) and 0 < len(folder) <= 4096 and os.path.isabs(folder):
+        summary["folder"] = folder
+    started = raw.get("started")
+    if isinstance(started, (int, float)) and not isinstance(started, bool) and 0 < time.time() - started < 31 * 86400:
+        summary["started"] = datetime.fromtimestamp(started).isoformat(timespec="seconds")
+    return summary
 
 
 @contextmanager
@@ -286,7 +367,7 @@ def tracked_download(current: str, output_dir: Any = None, batch: BatchContext |
         done = batch.done if batch.done is not None else (None if _batch_state(batch.batch_id) else batch.index - 1)
         _adopt_batch(batch.batch_id, batch.total, (done, batch.succeeded, batch.failed),
                      current=current, stage="starting",
-                     phase=f"第 {batch.index}/{batch.total} 篇：进入机构访问")
+                     phase=f"第 {batch.index}/{batch.total} 篇：进入机构访问" if batch.total > 1 else "进入机构访问")
         _notify_stage("starting", current)
     update(content=content if content in ("main", "supplements", "both") else "main")
     if output_dir:

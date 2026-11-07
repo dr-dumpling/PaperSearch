@@ -49,9 +49,14 @@ describe("supplementary files", () => {
           succeeded: mode === "per_item" ? 2 : 1, failed: mode === "per_item" ? 0 : 1 },
       ]);
       expect(requests.every(r => r.supplements === "only")).toBe(true);
-      expect(sequence).toEqual(["visit:10.1000/a", "visit:10.1000/b", "visit:10.1000/c", "finished"]);
-      expect(updates.at(-1)).toEqual(expect.objectContaining({ total: 3, done: 3, finished: true,
+      // The last visit ends the attachment stretch; then the batch's outcome for the finished window.
+      expect(sequence).toEqual(["visit:10.1000/a", "visit:10.1000/b", "visit:10.1000/c", "finished", "finished"]);
+      expect(updates.at(-2)).toEqual(expect.objectContaining({ total: 3, done: 3, finished: true,
         succeeded: mode === "per_item" ? 3 : 2, failed: mode === "per_item" ? 0 : 1 }));
+      expect(updates.at(-1)?.results).toEqual(content === "supplements"
+        ? expect.objectContaining({ content, main: 0, supplements: 0, no_supplements: 2,
+            failures: [{ cls: "unexplained", reason: "附录没下载成功", doi: "10.1000/b" }] })
+        : expect.objectContaining({ content, main: 3, failures: [] }));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

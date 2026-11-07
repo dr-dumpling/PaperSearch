@@ -1,7 +1,7 @@
 """End an item whose browser call never returns.
 
-On Camoufox a Playwright call can wait forever for an answer (2026-10-31,
-after a Cloudflare check had passed): the backend sits at CPU 0 and the batch
+A driver call can wait forever for an answer (2026-10-31, on the earlier
+Firefox-based browser, after a Cloudflare check had passed): the backend sits at CPU 0 and the batch
 waits for its 20-minute item timeout. Every sync Playwright call is timed
 here; one still running after ``LIMIT_SEC`` is logged with its caller and
 cancelled, and it and every later browser call of this process raise
@@ -66,6 +66,10 @@ class BrowserOperationTimeout(BrowserUnresponsive):
     """The whole page operation exhausted its budget across browser calls."""
 
 
+class BrowserBudgetExhausted(BrowserOperationTimeout):
+    """No time remained to send another call; the driver did not stall."""
+
+
 @contextmanager
 def operation(seconds: float, label: str):
     """One monotonic deadline shared by all calls and retries in this scope."""
@@ -111,65 +115,67 @@ def _timeout_error() -> BrowserUnresponsive:
 
 
 def install(limit_sec: float = LIMIT_SEC) -> None:
-    """Time every sync Playwright call of this process (once)."""
+    """Time every sync driver call of this process (once)."""
     global _installed
     if _installed:
         return
-    from playwright._impl import _sync_base
+    from .driver import sync_bases
 
-    original = _sync_base.SyncBase._sync
-
-    def timed_sync(self: Any, coro: Any) -> Any:
-        name = getattr(coro, "__qualname__", "") or type(coro).__name__
-        if fired is not None:
-            coro.close()
-            raise _timeout_error()
-        if interrupted is not None:
-            coro.close()
-            raise interrupted
-        if _soon and not _running_soon:
-            try:
-                _run_soon_calls()
-            except BaseException:
-                coro.close()
-                raise
-        key = id(coro)
-        started = time.monotonic()
-        _inflight[key] = (started, name, traceback.format_stack(limit=8)[:-1],
-                          getattr(self, "_loop", None), coro)
-        budgets = getattr(_local, "budgets", [])
-        if budgets:
-            _call_deadlines[key] = tuple(min(budgets, key=lambda budget: budget[0]))
-        ended = "returned"
-        try:
-            # Refuse to start another candidate after the shared budget expired.
-            if key in _call_deadlines and started >= _call_deadlines[key][0]:
-                check(limit_sec)
+    def timing(original: Any) -> Any:
+        def timed_sync(self: Any, coro: Any) -> Any:
+            name = getattr(coro, "__qualname__", "") or type(coro).__name__
+            if fired is not None:
                 coro.close()
                 raise _timeout_error()
-            return original(self, coro)
-        except asyncio.CancelledError:
-            ended = "cancelled"
-            if fired is not None:
-                raise _timeout_error() from None
             if interrupted is not None:
-                raise interrupted from None
-            raise
-        except BaseException as exc:
-            ended = type(exc).__name__
-            raise
-        finally:
-            _inflight.pop(key, None)
-            _call_deadlines.pop(key, None)
-            elapsed = time.monotonic() - started
-            _period["calls"] += 1
-            _period["seconds"] += elapsed
-            if elapsed > _period["slowest_sec"]:
-                _period["slowest"], _period["slowest_sec"] = name, elapsed
-            if elapsed > SLOW_CALL_SEC and on_slow_call is not None:
-                _report_slow(name, elapsed, ended)
+                coro.close()
+                raise interrupted
+            if _soon and not _running_soon:
+                try:
+                    _run_soon_calls()
+                except BaseException:
+                    coro.close()
+                    raise
+            key = id(coro)
+            started = time.monotonic()
+            budgets = getattr(_local, "budgets", [])
+            if budgets:
+                deadline, label = min(budgets, key=lambda budget: budget[0])
+                # An unsent call cannot indicate a stalled driver. Keep the browser
+                # usable outside this operation, including cleanup and the next item.
+                if started >= deadline:
+                    coro.close()
+                    raise BrowserBudgetExhausted(f"{label} exhausted its page budget before {name}")
+                _call_deadlines[key] = (deadline, label)
+            _inflight[key] = (started, name, traceback.format_stack(limit=8)[:-1],
+                              getattr(self, "_loop", None), coro)
+            ended = "returned"
+            try:
+                return original(self, coro)
+            except asyncio.CancelledError:
+                ended = "cancelled"
+                if fired is not None:
+                    raise _timeout_error() from None
+                if interrupted is not None:
+                    raise interrupted from None
+                raise
+            except BaseException as exc:
+                ended = type(exc).__name__
+                raise
+            finally:
+                _inflight.pop(key, None)
+                _call_deadlines.pop(key, None)
+                elapsed = time.monotonic() - started
+                _period["calls"] += 1
+                _period["seconds"] += elapsed
+                if elapsed > _period["slowest_sec"]:
+                    _period["slowest"], _period["slowest_sec"] = name, elapsed
+                if elapsed > SLOW_CALL_SEC and on_slow_call is not None:
+                    _report_slow(name, elapsed, ended)
+        return timed_sync
 
-    _sync_base.SyncBase._sync = timed_sync
+    for base in sync_bases():
+        base._sync = timing(base._sync)
     _installed = True
     threading.Thread(target=_watch, args=(limit_sec,), name="browser-watchdog", daemon=True).start()
 

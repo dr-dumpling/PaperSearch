@@ -238,7 +238,7 @@ def fetch_with_browser(
     *,
     stream: bool = False,
 ) -> requests.Response | None:
-    """Fetch URL using Camoufox to bypass Cloudflare challenges."""
+    """Fetch URL in the shared browser to pass Cloudflare challenges."""
     from .browser.engine import solve_url, is_available
     if not is_available(config):
         return None

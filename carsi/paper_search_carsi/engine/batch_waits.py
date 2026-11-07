@@ -125,6 +125,7 @@ class UserWaitMixin:
         except Exception:
             reporter = None
         shown = ""  # "verification" | "login" | "unknown"
+        verification_tab = None
         try:
             while time.time() < deadline:
                 self._check_user_decision(result, page)
@@ -154,7 +155,8 @@ class UserWaitMixin:
                     if (urlparse(str(candidate.url or "")).hostname or "").lower() == suspect_host:
                         self._raise_on_publisher_access_blocked(candidate)
                     try:
-                        if self._is_challenge_page(candidate):
+                        if (self._is_challenge_page(candidate)
+                                or (candidate is verification_tab and self._challenge_continues(candidate))):
                             state, tab = "verification", candidate
                             break
                         if self._pdf_step_needs_login(candidate):
@@ -191,6 +193,7 @@ class UserWaitMixin:
                     captured["suspect_block"] = None
                     return False
                 if state == "verification":
+                    verification_tab = tab
                     self._raise_on_publisher_access_blocked(tab)
                     result._attention_page = tab
                     activity.observe(tab)
@@ -437,8 +440,9 @@ class UserWaitMixin:
         if deadline is None:
             if getattr(result, "_verification_attention", False):
                 progress_reporter.clear_attention(key)
-                if (progress_reporter.read_state() or {}).get("stage") == "waiting_verification":
-                    progress_reporter.report_stage("checking_access", current=result.doi)
+                progress = progress_reporter.read_state() or {}
+                if progress.get("stage") == "waiting_verification":
+                    progress_reporter.update(stage="checking_access", phase="安全验证等待已结束，正在检查页面")
             result._verification_attention = False
         elif time.time() < getattr(result, "_verification_notify_at", 0):
             return
@@ -470,8 +474,7 @@ class UserWaitMixin:
                 shell = self._challenge_shell(page)
                 if not shell:
                     self._raise_on_publisher_access_blocked(page)
-                if (shell or self._is_challenge_page(page)
-                        or (waited and challenges.continues_manual_challenge(self._title(page)))):
+                if shell or self._is_challenge_page(page) or (waited and self._challenge_continues(page)):
                     if not waited:
                         deadline = self._wait_deadline(result, deadline)
                         started, phase_before = time.time(), self._phase(result, "verification")
@@ -511,6 +514,12 @@ class UserWaitMixin:
                     if wait_ms <= 0:
                         break
                     _observe_preview(page)  # the verification page, for anyone checking in
+                    remaining = watchdog.operation_remaining()
+                    if remaining is not None and wait_ms >= remaining * 1000:
+                        # No room for another polling interval. A scheduled
+                        # delay running into the deadline is not a driver hang.
+                        raise watchdog.BrowserBudgetExhausted(
+                            "article page budget exhausted before next verification poll")
                     page.wait_for_timeout(wait_ms)
                     continue
                 if waited:
@@ -520,8 +529,7 @@ class UserWaitMixin:
                     self._event(result, "challenge_resolved", getattr(page, "url", ""))
                 return True
             self._raise_on_publisher_access_blocked(page)
-            passed = not (self._is_challenge_page(page)
-                          or (waited and challenges.continues_manual_challenge(self._title(page))))
+            passed = not (self._is_challenge_page(page) or (waited and self._challenge_continues(page)))
             if passed:
                 result.state = state_before
             else:
@@ -548,6 +556,12 @@ class UserWaitMixin:
                 activity.close()
             if getattr(result, "_attention_page", None) is page:
                 result._attention_page = None
+
+    def _challenge_continues(self, page: Any) -> bool:
+        # Only after a recognized challenge: the outer page can change title
+        # before its second, user-operated prompt is gone.
+        return (challenges.continues_manual_challenge(self._title(page))
+                or challenge_interaction.has_visible_recaptcha(page))
 
     def _challenge_shell(self, page: Any) -> bool:
         """Read only URL/title while a verification interstitial is active."""

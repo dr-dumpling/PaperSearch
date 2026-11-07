@@ -55,7 +55,7 @@ class BlankPageTests(unittest.TestCase):
         self.assertEqual(result.events[-1]["detail"], "blank page: 25 s, ended: text shown")
 
     def test_navigation_during_the_text_probe_does_not_mean_the_page_is_ready(self):
-        from playwright.sync_api import Error
+        from patchright.sync_api import Error
         d = PublisherBatchDownloader(config={}, profile=ELSEVIER_PROFILE)
         result = DownloadResult(doi="10.1515/x", status="failed")
         page, clock = self.page([Error("Execution context was destroyed, most likely because of a navigation"), 0, 120])

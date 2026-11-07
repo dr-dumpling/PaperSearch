@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from playwright.sync_api import Error, TimeoutError
+from patchright.sync_api import Error, TimeoutError
 
 from paper_search_carsi.browser import challenge_interaction as interaction, watchdog
 from paper_search_carsi.engine import batch_waits
@@ -41,7 +41,7 @@ def widget(*, url=FRAME, count=1):
     control = controls.first
     control.is_visible.return_value = control.is_enabled.return_value = True
     control.is_checked.return_value = False
-    return SimpleNamespace(frames=[frame], evaluate=Mock()), frame, element, control
+    return SimpleNamespace(frames=[frame], evaluate=Mock(), context=SimpleNamespace()), frame, element, control
 
 
 @pytest.mark.parametrize("url", [

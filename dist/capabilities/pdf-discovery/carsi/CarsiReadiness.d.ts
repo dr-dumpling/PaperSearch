@@ -1,4 +1,5 @@
 import type { CarsiBatchPosition, CarsiReadiness, CarsiToolDefinition } from "./types.js";
+export declare const CLOSE_BATCH_BROWSER = "carsi_close_batch_browser";
 /** The MCP server name of the bundled backend (carsi/). */
 export declare const ACCEPTED_SERVER_NAMES: Set<string>;
 /** Request policy sent to the backend. legal_only is the baseline every backend must accept. */
@@ -16,6 +17,9 @@ export interface CarsiBatchSupport {
     /** The download tool declares the user_wait field. */
     userWaitField: boolean;
     diagnosticsDirField?: boolean;
+    keepBrowser?: boolean;
+    /** carsi_batch_progress declares ``results`` (the finished window's summary). */
+    progressResults?: boolean;
 }
 export declare function selectCarsiBatchSupport(tools: readonly CarsiToolDefinition[], strategy: CarsiDownloadStrategy): CarsiBatchSupport;
 export declare function validateCarsiContract(serverName: string | undefined, tools: readonly CarsiToolDefinition[]): CarsiReadiness;

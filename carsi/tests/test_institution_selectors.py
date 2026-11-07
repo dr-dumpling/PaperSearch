@@ -133,7 +133,7 @@ class EntityIdEntryTests(unittest.TestCase):
         self.assertFalse(d._click_unique_institution_entry(page, DownloadResult(doi="10.1/x", status="failed"), page.url))
 
     def test_the_entry_gets_a_real_click_and_a_scripts_click_only_when_that_fails(self):
-        from playwright.sync_api import TimeoutError as PlaywrightTimeout
+        from patchright.sync_api import TimeoutError as PlaywrightTimeout
         items = [{"i": 0, "t": "Example University", "h": "", "ids": ""}]
         d, page = self.chooser(items)
         self.assertTrue(d._click_unique_institution_entry(page, DownloadResult(doi="10.1/x", status="failed"), page.url))
@@ -199,7 +199,7 @@ class EntityIdEntryTests(unittest.TestCase):
         self.assertIn("institution_list_not_ready", [e["state"] for e in result.events])
 
     def test_an_unreadable_search_box_does_not_stall_the_choice(self):
-        from playwright.sync_api import TimeoutError as PlaywrightTimeout
+        from patchright.sync_api import TimeoutError as PlaywrightTimeout
         d = downloader("Example University")
         d._click_unique_institution_entry = Mock(side_effect=[False, True])
         d._institution_search_selectors = lambda page: ("input#organisation",)
@@ -433,9 +433,9 @@ class ChallengePageTests(unittest.TestCase):
 
 class LeftPageTests(unittest.TestCase):
     def test_a_navigation_that_cuts_off_the_wait_has_left_the_page(self):
-        from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeout
+        from patchright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeout
         page = Mock()
-        page.wait_for_url.side_effect = PlaywrightError("NS_BINDING_ABORTED; maybe frame was detached?")
+        page.wait_for_url.side_effect = PlaywrightError("net::ERR_ABORTED; maybe frame was detached?")
         self.assertTrue(PublisherBatchDownloader._left_page(page, "https://site.example/action/ssostart"))
         page.wait_for_url.side_effect = PlaywrightTimeout("Timeout 5000ms exceeded.")
         self.assertFalse(PublisherBatchDownloader._left_page(page, "https://site.example/action/ssostart"))

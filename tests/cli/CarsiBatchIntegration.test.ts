@@ -1,7 +1,8 @@
 import { spawnSync } from "child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { pathToFileURL } from "url";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { textPdf } from "../fixtures/textPdf.js";
 
@@ -20,19 +21,22 @@ describe("CARSI serial batch through the CLI", () => {
     const binDir = join(tempDir, "bin");
     const logPath = join(tempDir, "fake.log");
     const pdfPath = join(tempDir, "fake.pdf");
-    const wrapper = join(binDir, "paper-search-carsi");
+    const windows = process.platform === "win32";
+    const wrapper = join(binDir, windows ? "paper-search-carsi.cmd" : "paper-search-carsi");
     const fixture = join(process.cwd(), "tests/fixtures/carsi/fake/fake-carsi-mcp.mjs");
     mkdirSync(binDir, { recursive: true });
     writeFileSync(pdfPath, textPdf([["Example article", "https://doi.org/10.1000/one"]]));
     writeFileSync(
       wrapper,
-      `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(fixture)} --scenario ${scenario} --log ${shellQuote(logPath)} --file ${shellQuote(pdfPath)} "$@"\n`,
+      windows
+        ? `@echo off\r\n"${process.execPath}" "${fixture}" --scenario ${scenario} --log "${logPath}" --file "${pdfPath}" %*\r\n`
+        : `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(fixture)} --scenario ${scenario} --log ${shellQuote(logPath)} --file ${shellQuote(pdfPath)} "$@"\n`,
     );
     chmodSync(wrapper, 0o755);
     writeFileSync(join(tempDir, "config.json"), JSON.stringify({ PAPER_SEARCH_CARSI_EXECUTABLE: wrapper }));
     const env: NodeJS.ProcessEnv = {
       ...process.env,
-      PATH: "",
+      PATH: windows ? process.env.PATH : "",
       HOME: tempDir,
       XDG_DATA_HOME: join(tempDir, "xdg"),
       PAPER_SEARCH_CONFIG_FILE: join(tempDir, "config.json"),
@@ -44,15 +48,19 @@ describe("CARSI serial batch through the CLI", () => {
     delete env.PAPER_SEARCH_CARSI_EXECUTABLE;
     const result = spawnSync(
       process.execPath,
-      ["--import", "tsx", "--import", join(process.cwd(), "tests/fixtures/carsi/fake/empty-pmc.mjs"), "src/cli.ts", "run", tool, "--json-args", JSON.stringify(args)],
+      ["--import", "tsx", "--import", pathToFileURL(join(process.cwd(), "tests/fixtures/carsi/fake/empty-pmc.mjs")).href,
+        "src/cli.ts", "run", tool, "--json-args", JSON.stringify(args)],
       { cwd: process.cwd(), env, encoding: "utf8", timeout: 60_000 },
     );
-    const calls = readFileSync(logPath, "utf8")
+    if (!existsSync(logPath)) {
+      throw new Error(`Fake CARSI did not start (exit ${result.status}): ${result.error || result.stderr || result.stdout}`);
+    }
+    const events = readFileSync(logPath, "utf8")
       .trim()
       .split("\n")
-      .map((line) => JSON.parse(line))
-      .filter((event) => event.event === "call");
-    return { result, calls };
+      .map((line) => JSON.parse(line));
+    return { result, calls: events.filter((event) => event.event === "call"),
+      starts: events.filter((event) => event.event === "start").length };
   }
 
   it("download_batch sends every item's position and reports the batch end", () => {
@@ -76,9 +84,32 @@ describe("CARSI serial batch through the CLI", () => {
       expect.objectContaining({ identifier: "10.1000/two", batch_index: 2, batch_total: 2, batch_done: 1, batch_succeeded: 1 }),
     ]);
     expect(downloads[0].batch_id).toBe(downloads[1].batch_id);
-    expect(calls.filter((call) => call.tool === "carsi_batch_progress").map((call) => call.arguments)).toEqual([
+    // The stretch's end, then the whole batch for the finished window; this
+    // backend declares no ``results`` field, so it gets the totals only.
+    const progress = calls.filter((call) => call.tool === "carsi_batch_progress").map((call) => call.arguments);
+    expect(progress).toEqual([
+      expect.objectContaining({ batch_id: downloads[0].batch_id, total: 2, done: 2, succeeded: 1, failed: 1, finished: true }),
       expect.objectContaining({ batch_id: downloads[0].batch_id, total: 2, done: 2, succeeded: 1, failed: 1, finished: true }),
     ]);
+    expect(progress[1]).not.toHaveProperty("results");
+    expect(result.stderr).toContain("[批量] 机构下载 2/2：10.1000/two");
+  });
+
+  it("keeps one backend through the CLI progress wrapper until the batch ends", () => {
+    const { result, calls, starts } = run("batch_browser", "download_batch", {
+      items: [
+        { source: "no_searcher", paperId: "10.1000/one" },
+        { source: "no_searcher", paperId: "10.1000/two" },
+      ],
+      mode: "entitled_only",
+      savePath: join(tempDir, "out"),
+      useSciHub: false,
+    });
+    expect(result.status).toBe(0);
+    expect(starts).toBe(1);
+    expect(calls.filter((call) => call.tool === "carsi_download").map((call) => call.arguments.keep_browser))
+      .toEqual([true, true]);
+    expect(calls.at(-1)?.tool).toBe("carsi_close_batch_browser");
     expect(result.stderr).toContain("[批量] 机构下载 2/2：10.1000/two");
   });
 

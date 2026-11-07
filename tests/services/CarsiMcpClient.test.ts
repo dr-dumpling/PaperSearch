@@ -825,6 +825,30 @@ describe("CarsiMcpClient", () => {
     await expectAllChildrenExited();
   });
 
+  it.each(["normal", "cancelled", "verification_timeout"])("keeps one backend and lock through a %s batch", async (mode) => {
+    const client = fakeClient(mode === "verification_timeout" ? "batch_browser_verification_timeout" : "batch_browser");
+    const lock = join(profileDir, ".paper-search-download.lock");
+    const batch = { id: "batch-browser", index: 1, total: 2, done: 0, succeeded: 0, failed: 0 };
+    const run = client.withBatchSession(async (backend) => {
+      expect(await backend.downloadLegalDoi({ identifier: "10.1000/first", outputDir: tempDir, batch }))
+        .toMatchObject(mode === "verification_timeout"
+          ? { kind: "attempt_error", code: "download_timeout" } : { kind: "success" });
+      expect(existsSync(lock)).toBe(true);
+      if (mode === "cancelled") throw new Error("batch cancelled");
+      expect(await backend.downloadLegalDoi({ identifier: "10.1000/second", outputDir: tempDir,
+        batch: { ...batch, index: 2, done: 1, succeeded: 1 } })).toMatchObject({ kind: "success" });
+    });
+    if (mode === "cancelled") await expect(run).rejects.toThrow("batch cancelled");
+    else await run;
+    expect(readLog().filter((row) => row.event === "start")).toHaveLength(1);
+    const calls = readLog().filter((row) => row.event === "call");
+    expect(calls.filter((row) => row.tool === "carsi_download").map((row) => row.arguments?.keep_browser))
+      .toEqual(mode === "cancelled" ? [true] : [true, true]);
+    expect(calls.at(-1)?.tool).toBe("carsi_close_batch_browser");
+    expect(existsSync(lock)).toBe(false);
+    await expectAllChildrenExited();
+  });
+
   function fakeClient(
     scenario: string,
     overrides: {

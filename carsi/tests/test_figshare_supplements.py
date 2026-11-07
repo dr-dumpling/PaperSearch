@@ -121,7 +121,7 @@ def test_deadline_and_resource_limit_are_visible():
 
 @pytest.mark.skipif(os.getenv('CARSI_LOCAL_BROWSER_TEST') != '1', reason='local browser fixture opt-in')
 def test_real_dom_article_link_without_publisher_specific_hook(tmp_path):
-    from playwright.sync_api import sync_playwright
+    from patchright.sync_api import sync_playwright
     with sync_playwright() as driver:
         browser = driver.chromium.launch(channel='chrome', headless=True)
         try:
@@ -142,7 +142,7 @@ def test_real_dom_article_link_without_publisher_specific_hook(tmp_path):
 
 @pytest.mark.skipif(os.getenv('CARSI_LOCAL_BROWSER_TEST') != '1', reason='local browser fixture opt-in')
 def test_real_dom_references_are_not_supplement_candidates():
-    from playwright.sync_api import sync_playwright
+    from patchright.sync_api import sync_playwright
 
     reference = 'https://doi.org/10.6084/m9.figshare.24512944.v3'
     with sync_playwright() as driver:
@@ -172,7 +172,7 @@ def test_real_dom_references_are_not_supplement_candidates():
 
 @pytest.mark.skipif(os.getenv('CARSI_LOCAL_BROWSER_TEST') != '1', reason='local browser fixture opt-in')
 def test_real_dom_explicit_supplement_label_can_supply_missing_backlink():
-    from playwright.sync_api import sync_playwright
+    from patchright.sync_api import sync_playwright
 
     with sync_playwright() as driver:
         browser = driver.chromium.launch(channel='chrome', headless=True)

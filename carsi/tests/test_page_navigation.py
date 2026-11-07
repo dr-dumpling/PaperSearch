@@ -47,7 +47,7 @@ def opened(page, **kwargs):
 
 class OpenPageTests(unittest.TestCase):
     def test_aborted_redirect_continues_only_after_a_main_frame_commit(self):
-        from playwright.sync_api import Error
+        from patchright.sync_api import Error
         for committed in (False, True):
             with self.subTest(committed=committed):
                 page = page_with([["interactive", 3000]])
@@ -57,23 +57,67 @@ class OpenPageTests(unittest.TestCase):
                 def goto(*args, **kwargs):
                     if committed:
                         callbacks['framenavigated'](page.main_frame)
-                    raise Error('Page.goto: NS_ERROR_ABORT')
+                    raise Error('Page.goto: net::ERR_ABORTED at https://publisher.example/article')
                 page.goto.side_effect = goto
                 if committed:
                     opened(page, ready_ms=250)
                 else:
-                    with self.assertRaisesRegex(Error, 'NS_ERROR_ABORT'):
+                    with self.assertRaisesRegex(Error, 'ERR_ABORTED'):
                         opened(page, ready_ms=250)
                 page.goto.assert_called_once()
                 page.remove_listener.assert_called_once_with('framenavigated',callbacks['framenavigated'])
 
     def test_network_errors_remain_errors_even_after_a_document_commit(self):
-        from playwright.sync_api import Error
+        from patchright.sync_api import Error
         page=page_with([["interactive",3000]])
-        page.goto.side_effect=Error('Page.goto: NS_ERROR_CONNECTION_REFUSED')
+        page.goto.side_effect=Error('Page.goto: net::ERR_CONNECTION_REFUSED at https://publisher.example/')
         with self.assertRaisesRegex(Error,'CONNECTION_REFUSED'):
             opened(page,ready_ms=250)
         page.remove_listener.assert_called_once()
+
+    def test_a_dropped_connection_is_tried_again(self):
+        from patchright.sync_api import Error
+        dropped = Error('Page.goto: net::ERR_CONNECTION_CLOSED at https://doi.org/10.1000/xyz')
+        page = page_with([["interactive", 3000]])
+        page.goto.side_effect = [dropped, dropped, "response"]
+        with patch.object(batch_common.time, "time", lambda: page.clock[0]):
+            self.assertEqual(open_page(page, ARTICLE, ready_ms=250), "response")
+        self.assertEqual(page.goto.call_count, 3)
+        self.assertEqual([c.args[0] for c in page.wait_for_timeout.call_args_list[:2]], [2_000, 5_000])
+        # Still dropped after the retries: the publisher did not answer.
+        page = page_with([["interactive", 3000]])
+        page.goto.side_effect = [dropped, dropped, dropped]
+        with self.assertRaisesRegex(Error, 'ERR_CONNECTION_CLOSED'):
+            opened(page, ready_ms=250)
+        self.assertEqual(page.goto.call_count, 3)
+        page.remove_listener.assert_called_once()
+
+    def test_the_error_page_cutting_a_retry_short_is_still_the_dropped_connection(self):
+        from patchright.sync_api import Error
+        dropped = Error('Page.goto: net::ERR_CONNECTION_CLOSED at https://doi.org/10.1080/x')
+        aborted = Error('Page.goto: net::ERR_ABORTED at https://doi.org/10.1080/x')
+        page = page_with([["interactive", 3000]])
+        page.goto.side_effect = [dropped, aborted, "response"]
+        with patch.object(batch_common.time, "time", lambda: page.clock[0]):
+            self.assertEqual(open_page(page, ARTICLE, ready_ms=250), "response")
+        # All three tries cut: reported as the dropped connection, a network failure.
+        page = page_with([["interactive", 3000]])
+        page.goto.side_effect = [dropped, aborted, aborted]
+        with self.assertRaisesRegex(Error, 'ERR_CONNECTION_CLOSED') as caught:
+            opened(page, ready_ms=250)
+        self.assertTrue(batch_common._is_network_failure(caught.exception))
+        self.assertEqual(page.goto.call_count, 3)
+
+    def test_errors_that_retrying_does_not_fix_end_at_once(self):
+        from patchright.sync_api import Error, TimeoutError
+        for error in (Error('Page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://x.example/'),
+                      TimeoutError('Page.goto: Timeout 60000ms exceeded.'), RuntimeError('net::ERR_CONNECTION_CLOSED')):
+            with self.subTest(error=str(error)):
+                page = page_with([["interactive", 3000]])
+                page.goto.side_effect = error
+                with self.assertRaises(type(error)):
+                    opened(page, ready_ms=250)
+                page.goto.assert_called_once()
 
     def test_the_navigation_commits_and_a_parsed_page_goes_on_at_once(self):
         page = page_with([["interactive", 3000]])
@@ -124,7 +168,7 @@ class PumpUntilTests(unittest.TestCase):
 class OpenPagePageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         cls.driver = sync_playwright().start()
         cls.browser = cls.driver.chromium.launch(channel="chrome", headless=True)
 
@@ -147,12 +191,16 @@ class OpenPagePageTests(unittest.TestCase):
             const end = performance.now() + 3500;
             while (performance.now() < end) {}
             window.busy = false;
-        }, 0); }""")
+        }, 0); }""", isolated_context=False)
         page.wait_for_timeout(100)
         started = time.monotonic()
         self.assertEqual(PublisherBatchDownloader._title(page), "")
         self.assertLess(time.monotonic() - started, 2.5)
-        page.wait_for_function("() => window.busy === false", timeout=5_000)
+        # Patchright's wait_for_function cannot see the page's own globals: poll its world.
+        until = time.monotonic() + 5
+        while page.evaluate("() => window.busy", isolated_context=False) is not False:
+            self.assertLess(time.monotonic(), until)
+            page.wait_for_timeout(50)
         self.assertEqual(PublisherBatchDownloader._title(page), "Article title")
 
     def test_svg_icon_titles_do_not_replace_the_document_title(self):

@@ -19,6 +19,7 @@ import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { sanitizeDoi } from "../../../infrastructure/security/SecurityUtils.js";
 import { decodeCarsiProgress } from "./CarsiProgress.js";
 import {
+  CLOSE_BATCH_BROWSER,
   createCarsiDownloadArguments,
   selectCarsiBatchSupport,
   selectCarsiDownloadStrategy,
@@ -50,7 +51,7 @@ export const CARSI_CLEANUP_TIMEOUT_MS = 5_000;
 
 const CARSI_BACKEND_SOURCE = "carsi";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.4.9";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.4.10";
 
 interface ActiveSession {
   client: Client;
@@ -204,6 +205,30 @@ export class CarsiMcpClient implements CarsiBackend {
   private readonly toolTimeoutMs: number;
   private readonly downloadTimeoutMs: number;
   private readonly cleanupTimeoutMs: number;
+  private keepBatchBrowser = false;
+  private retainedSession?: ActiveSession;
+
+  async withBatchSession<T>(run: (backend: CarsiBackend) => Promise<T>): Promise<T> {
+    const scoped = new CarsiMcpClient({
+      command: this.command, args: this.args, profileDir: this.profileDir,
+      startupTimeoutMs: this.startupTimeoutMs, toolTimeoutMs: this.toolTimeoutMs,
+      downloadTimeoutMs: this.downloadTimeoutMs, cleanupTimeoutMs: this.cleanupTimeoutMs,
+    });
+    scoped.keepBatchBrowser = true;
+    try {
+      return await run(scoped);
+    } finally {
+      const session = scoped.retainedSession;
+      if (session) {
+        await scoped.closeBatchBrowser(session);
+        if (await scoped.closeSession(session)) {
+          unlinkSync(join(scoped.profileDir, ".paper-search-download.lock"));
+        } else {
+          throw new CarsiCleanupError();
+        }
+      }
+    }
+  }
 
   constructor(options: CarsiMcpClientOptions = {}) {
     this.command = options.command || "paper-search-carsi";
@@ -268,19 +293,21 @@ export class CarsiMcpClient implements CarsiBackend {
     // holds a profile: the browser may outlive the process that started it.
     const lockPath = join(this.profileDir, ".paper-search-download.lock");
     try {
-      mkdirSync(this.profileDir, { recursive: true, mode: 0o700 });
-      if (existsSync(lockPath) && isStaleDownloadLock(lockPath, this.profileDir)) {
-        unlinkSync(lockPath);
-        process.stderr.write("[CARSI] 已回收上次异常退出留下的下载锁。\n");
-      }
-      const descriptor = openSync(lockPath, "wx", 0o600);
-      try {
-        writeFileSync(descriptor, `${JSON.stringify({ pid: process.pid })}\n`);
-      } catch (error) {
-        unlinkSync(lockPath);
-        throw error;
-      } finally {
-        closeSync(descriptor);
+      if (!this.retainedSession) {
+        mkdirSync(this.profileDir, { recursive: true, mode: 0o700 });
+        if (existsSync(lockPath) && isStaleDownloadLock(lockPath, this.profileDir)) {
+          unlinkSync(lockPath);
+          process.stderr.write("[CARSI] 已回收上次异常退出留下的下载锁。\n");
+        }
+        const descriptor = openSync(lockPath, "wx", 0o600);
+        try {
+          writeFileSync(descriptor, `${JSON.stringify({ pid: process.pid })}\n`);
+        } catch (error) {
+          unlinkSync(lockPath);
+          throw error;
+        } finally {
+          closeSync(descriptor);
+        }
       }
     } catch (error) {
       return attemptError(
@@ -292,11 +319,11 @@ export class CarsiMcpClient implements CarsiBackend {
       );
     }
 
-    let session: ActiveSession | undefined;
+    let session = this.retainedSession;
     let outcome: CarsiInvocationOutcome;
 
     try {
-      session = await this.openSession(request.signal);
+      session ??= await this.openSession(request.signal);
       if (session.readiness.state !== "available") {
         outcome = { kind: "backend_unavailable", readiness: session.readiness };
       } else {
@@ -317,6 +344,12 @@ export class CarsiMcpClient implements CarsiBackend {
       }
     }
 
+    if (session && this.keepBatchBrowser && session.batchSupport.keepBrowser && request.batch &&
+        !session.transport.exitedUnexpectedly && canReuseBatchBrowser(outcome)) {
+      this.retainedSession = session;
+      return outcome;
+    }
+    this.retainedSession = undefined;
     if (session && !(await this.closeSession(session))) {
       return {
         kind: "backend_unavailable",
@@ -347,8 +380,8 @@ export class CarsiMcpClient implements CarsiBackend {
   }
 
   /**
-   * Update the backend's progress window for a serial batch. Uses a short
-   * session of its own and no profile lock: it never touches the browser.
+   * Update batch progress on the retained session, or on a short progress-only
+   * session if the browser has not been opened.
    */
   async reportBatchProgress(
     update: CarsiBatchUpdate,
@@ -368,10 +401,10 @@ export class CarsiMcpClient implements CarsiBackend {
       return false;
     }
     const current = update.current ? sanitizeDoi(update.current) : undefined;
-    let session: ActiveSession | undefined;
+    let session = this.retainedSession;
     let updated = false;
     try {
-      session = await this.openSession(signal);
+      session ??= await this.openSession(signal);
       if (
         session.readiness.state === "available" &&
         session.batchSupport.progressTool
@@ -388,6 +421,8 @@ export class CarsiMcpClient implements CarsiBackend {
               failed: update.failed,
               current: current?.valid ? current.sanitized.toLowerCase() : "",
               finished: update.finished,
+              ...(update.finished && update.results && session.batchSupport.progressResults
+                ? { results: update.results } : {}),
             },
           },
           undefined,
@@ -399,7 +434,7 @@ export class CarsiMcpClient implements CarsiBackend {
     } catch {
       updated = false;
     }
-    if (session && !(await this.closeSession(session))) return false;
+    if (session && session !== this.retainedSession && !(await this.closeSession(session))) return false;
     return updated;
   }
 
@@ -445,15 +480,18 @@ export class CarsiMcpClient implements CarsiBackend {
       const downloadResult = await session.client.callTool(
         {
           name: "carsi_download",
-          arguments: createCarsiDownloadArguments(
-            identifier,
-            request.outputDir,
-            session.downloadStrategy,
-            session.batchSupport.downloadFields ? request.batch : undefined,
-            session.batchSupport.supplementsField ? request.supplements : undefined,
-            session.batchSupport.userWaitField ? request.userWait : undefined,
-            session.batchSupport.diagnosticsDirField ? request.diagnosticsDir : undefined,
-          ),
+          arguments: {
+            ...createCarsiDownloadArguments(
+              identifier,
+              request.outputDir,
+              session.downloadStrategy,
+              session.batchSupport.downloadFields ? request.batch : undefined,
+              session.batchSupport.supplementsField ? request.supplements : undefined,
+              session.batchSupport.userWaitField ? request.userWait : undefined,
+              session.batchSupport.diagnosticsDirField ? request.diagnosticsDir : undefined,
+            ),
+            ...(this.keepBatchBrowser && session.batchSupport.keepBrowser && request.batch ? { keep_browser: true } : {}),
+          },
         },
         undefined,
         {
@@ -615,6 +653,15 @@ export class CarsiMcpClient implements CarsiBackend {
     return this.closeRaw(session.client, session.transport);
   }
 
+  private async closeBatchBrowser(session: ActiveSession): Promise<void> {
+    try {
+      await session.client.callTool({ name: CLOSE_BATCH_BROWSER, arguments: {} }, undefined,
+        requestOptions(this.cleanupTimeoutMs));
+    } catch {
+      // Closing the owning process also closes its Playwright pipe.
+    }
+  }
+
   private async closeRaw(
     client: Client,
     transport: TrackedStdioClientTransport,
@@ -643,11 +690,22 @@ export class CarsiMcpClient implements CarsiBackend {
   }
 }
 
+function canReuseBatchBrowser(outcome: CarsiInvocationOutcome): boolean {
+  if (outcome.kind === "backend_unavailable") return false;
+  const broken = (code?: string) => code === "browser_unresponsive" || code === "browser_operation_timeout";
+  if (broken(outcome.trace?.state) || outcome.supplements?.some((file) => broken(file.reason))) return false;
+  if (outcome.kind === "success") return true;
+  // A site's verification timeout ended normally. Only a stalled transport
+  // (no completed browser diagnostic) needs a new process for the next item.
+  return !broken(outcome.code) && outcome.code !== "cancelled" && outcome.code !== "invalid_download_result" &&
+    (outcome.code !== "download_timeout" || outcome.trace?.state === "challenge_or_viewer_timeout");
+}
+
 /**
  * True when the lock's recorded owner process no longer exists and no
  * browser profile under ``profileDir/browser_profiles`` is held by a live
- * process (Firefox keeps a ``lock`` symlink to "host:+pid"). Anything
- * unreadable or unexpected counts as not stale.
+ * process (Chrome keeps a ``SingletonLock`` symlink to "host-pid" on macOS and
+ * Linux). Anything unreadable or unexpected counts as not stale.
  */
 export function isStaleDownloadLock(lockPath: string, profileDir: string): boolean {
   let owner: number;
@@ -667,11 +725,11 @@ export function isStaleDownloadLock(lockPath: string, profileDir: string): boole
   for (const entry of entries) {
     let target: string;
     try {
-      target = readlinkSync(join(profiles, entry, "lock"));
+      target = readlinkSync(join(profiles, entry, "SingletonLock"));
     } catch {
-      continue; // no Firefox lock in this profile
+      continue; // no Chrome lock in this profile
     }
-    const pid = Number(/\+(\d+)$/.exec(target)?.[1]);
+    const pid = Number(/-(\d+)$/.exec(target)?.[1]);
     if (!Number.isSafeInteger(pid) || pid <= 0 || processAlive(pid)) return false;
   }
   return true;

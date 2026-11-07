@@ -9,6 +9,7 @@ import ctypes
 import os
 import subprocess
 import threading
+from collections.abc import Callable
 from concurrent.futures import Future
 from typing import Any
 
@@ -70,7 +71,7 @@ def _browser_pids(page: Any, config: dict) -> list[int]:
     return found
 
 
-def _activate_windows(pids: list[int], title: str = "") -> bool:
+def _activate_windows(pids: list[int], window_title: Callable[[], str]) -> bool:
     from ctypes import wintypes
 
     user = ctypes.WinDLL("user32", use_last_error=True)
@@ -98,14 +99,17 @@ def _activate_windows(pids: list[int], title: str = "") -> bool:
     user.EnumWindows(visit, 0)
     if not found:
         return False
-    matches = []
-    for hwnd in found:
-        text = ctypes.create_unicode_buffer(1024)
-        user.GetWindowTextW(hwnd, text, len(text))
-        if title and text.value.casefold().startswith(title.casefold()):
-            matches.append(hwnd)
+    # The window whose caption starts with the waiting tab's title, else any.
+    candidates = []
+    title = window_title().casefold()
+    if title:
+        for hwnd in found:
+            caption = ctypes.create_unicode_buffer(1024)
+            user.GetWindowTextW(hwnd, caption, len(caption))
+            if caption.value.casefold().startswith(title):
+                candidates.append(hwnd)
+    candidates = candidates or found
     active = user.GetForegroundWindow()
-    candidates = matches or found
     hwnd = active if active in candidates else candidates[0]
     if user.IsIconic(hwnd):
         user.ShowWindow(hwnd, 9)  # SW_RESTORE, only this browser's minimized window
@@ -145,7 +149,7 @@ def activate_mac(pid: int) -> bool:
         else:
             activated = bool(app.activateWithOptions_(AppKit.NSApplicationActivateIgnoringOtherApps
                                                      | AppKit.NSApplicationActivateAllWindows))
-        # Activation alone leaves miniaturized Firefox windows in the Dock.
+        # Activation alone leaves miniaturized windows in the Dock.
         # The same reopen event as a Dock click restores them. Address the
         # existing PID, so a stale request can never launch another browser.
         return activated and _reopen_mac(pid)
@@ -190,12 +194,14 @@ def show(page: Any, config: dict) -> None:
     page.bring_to_front()  # select this task's tab; macOS activation is done by the capsule
     if os.name != "nt":
         return
-    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+    from .driver import TimeoutError as PlaywrightTimeoutError
 
-    try:
-        title = page.locator('head > title').first.text_content(timeout=1000) or ""
-    except PlaywrightTimeoutError:
-        title = ""  # a title is optional; native activation still selects the task browser
-    if _activate_windows(_browser_pids(page, config), title.strip()):
+    def window_title() -> str:
+        try:
+            return (page.locator('head > title').first.text_content(timeout=1000) or "").strip()
+        except PlaywrightTimeoutError:
+            return ""
+
+    if _activate_windows(_browser_pids(page, config), window_title):
         return
     raise RuntimeError("the download browser window could not be activated")

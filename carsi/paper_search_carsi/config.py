@@ -23,7 +23,7 @@ DEFAULT_SCIHUB_DOMAINS = [
     # ALTCHA-protected (stable; used as manual-download hint)
     "https://sci-hub.ru",
     "https://sci-hub.ee",
-    # Cloudflare-protected (requires Camoufox JS challenge bypass)
+    # Cloudflare-protected (requires a browser to pass the JS challenge)
     "https://sci-hub.st",
     # Reported intermittent (2026-06); kept but deprioritized
     "https://sci-hub.mksa.top",
@@ -87,9 +87,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "min_pdf_size_bytes": 10000,
     "browser_headless": False,
     "browser_humanize": True,
-    # 浏览器后端，二选一：camoufox（默认，反指纹 Firefox，经 Playwright 自动化）
-    # 或 ego（ego-lite 浏览器，经 ego-browser CLI 驱动）。旧值 patchright/cloakbrowser 自动按 camoufox 处理。
-    "browser_backend": "camoufox",
+    # 浏览器后端，二选一：chrome（默认，本机安装的 Google Chrome，经 Patchright 驱动）
+    # 或 ego（正在运行的 ego-lite 浏览器，经远程调试连接）。旧值 camoufox/patchright/cloakbrowser 自动按 chrome 处理。
+    "browser_backend": "chrome",
+    # 装在别处的 Google Chrome 的程序路径；留空时在默认安装位置找。
+    "chrome_executable": "",
     # 批量下载时每 N 篇回收一次浏览器上下文（cookie 内存交接，登录态不丢）。
     # 0 = 关闭。长批次（上千篇）建议 100-200，避免 Chrome 长会话内存漂移。
     "browser_restart_every": 0,

@@ -16,6 +16,7 @@ from urllib.parse import urlencode
 import requests
 
 from ..browser import watchdog
+from ..browser.driver import is_driver_error
 from ..browser.challenges import looks_like_challenge
 
 
@@ -129,9 +130,8 @@ def _observe_preview(page: Any) -> None:
 
 
 def _is_browser_error(exc: BaseException, name: str = "") -> bool:
-    """A Playwright/Patchright error (optionally of class ``name``), not a program bug."""
-    return (type(exc).__module__.startswith(("playwright.", "patchright."))
-            and (not name or type(exc).__name__ == name))
+    """A driver error (optionally of class ``name``), not a program bug."""
+    return is_driver_error(exc, name)
 
 
 def page_title(page: Any) -> str:
@@ -158,11 +158,10 @@ def _is_navigation_cut(exc: BaseException) -> bool:
     return _is_browser_error(exc) and any(marker in str(exc) for marker in _NAVIGATION_CUT)
 
 
-# The publisher's site did not answer: Firefox's and Chromium's network errors,
-# and a page load that ran out of time. Not a program error (thieme-connect.de's
-# empty response and pubs.acs.org's 60 s loads, 2026-11-01).
-_NETWORK_FAILURE = ("NS_ERROR_NET_", "NS_ERROR_CONNECTION_REFUSED", "NS_ERROR_UNKNOWN_HOST",
-                    "NS_ERROR_PROXY_", "net::ERR_")
+# The publisher's site did not answer: Chromium's network errors, and a page
+# load that ran out of time. Not a program error (thieme-connect.de's empty
+# response and pubs.acs.org's 60 s loads, 2026-11-01).
+_NETWORK_FAILURE = ("net::ERR_",)
 
 
 def _is_network_failure(exc: BaseException) -> bool:
@@ -218,12 +217,54 @@ _DOCUMENT_STATE_JS = """() => [document.readyState,
     document.readyState === 'loading' && document.body ? document.body.textContent.length : 0]"""
 
 
+# A connection the network dropped before the site answered: Chromium's codes for a
+# closed, reset or timed-out connection, a failed proxy tunnel or name lookup, a
+# broken protocol stream. A system proxy in front of doi.org dropped 1 of 6
+# connections and 3 articles failed on it, each fine on the next try (Windows,
+# 2026-11-07); such a navigation is tried again after these pauses.
+_DROPPED_CONNECTION = (
+    "net::ERR_CONNECTION_CLOSED", "net::ERR_CONNECTION_RESET", "net::ERR_CONNECTION_TIMED_OUT",
+    "net::ERR_TIMED_OUT", "net::ERR_EMPTY_RESPONSE", "net::ERR_NETWORK_CHANGED",
+    "net::ERR_PROXY_CONNECTION_FAILED", "net::ERR_TUNNEL_CONNECTION_FAILED", "net::ERR_NAME_NOT_RESOLVED",
+    "net::ERR_SSL_PROTOCOL_ERROR", "net::ERR_HTTP2_PROTOCOL_ERROR", "net::ERR_QUIC_PROTOCOL_ERROR",
+)
+DROPPED_CONNECTION_RETRY_MS = (2_000, 5_000)
+
+
+def goto_retrying(page: Any, url: str, *, timeout_ms: int, wait_until: str = "commit",
+                  started: float | None = None, **kwargs: Any) -> Any:
+    """``page.goto``, again after a dropped connection while ``timeout_ms`` (counted
+    from ``started``, default now) allows. Every navigation of the download goes
+    through here: the article (``open_page``), its PDF, supplement tabs."""
+    started = time.monotonic() if started is None else started
+    dropped: BaseException | None = None
+    for attempt, pause_ms in enumerate((*DROPPED_CONNECTION_RETRY_MS, None)):
+        spent_ms = int((time.monotonic() - started) * 1000) if attempt else 0  # the first try: the whole budget
+        try:
+            return page.goto(url, wait_until=wait_until, timeout=max(1_000, timeout_ms - spent_ms), **kwargs)
+        except Exception as exc:
+            message = str(exc) if _is_browser_error(exc) else ""
+            if any(code in message for code in _DROPPED_CONNECTION):
+                dropped = exc
+            elif not (dropped and "net::ERR_ABORTED" in message):
+                raise
+            # After a dropped connection Chromium's error page reloads by itself and
+            # can cut the next try short (net::ERR_ABORTED): still the dropped
+            # connection, and reported as such (T&F through doi.org, Windows 2026-11-07).
+            spent_ms = int((time.monotonic() - started) * 1000)
+            if pause_ms is None or spent_ms + pause_ms >= timeout_ms:
+                raise dropped from (exc if exc is not dropped else None)
+            logger.info("   [Navigation] %s; trying again in %d s", message.splitlines()[0][:200], pause_ms // 1000)
+            page.wait_for_timeout(pause_ms)
+    raise AssertionError("unreachable")
+
+
 def open_page(page: Any, url: str, *, timeout_ms: int = 60_000, ready_ms: int = 15_000, **kwargs: Any) -> Any:
     """Go to ``url`` and on as soon as its document can be read: the navigation
-    commits within ``timeout_ms``, then at most ``ready_ms`` until the document is
-    parsed or its text stops growing; a verification page is left untouched at
-    once. The caller checks the page state it needs (``settle``, the access rule,
-    the verification wait). Returns the response."""
+    commits within ``timeout_ms`` (a dropped connection is tried again), then at
+    most ``ready_ms`` until the document is parsed or its text stops growing; a
+    verification page is left untouched at once. The caller checks the page state
+    it needs (``settle``, the access rule, the verification wait). Returns the response."""
     committed = False
 
     def navigated(frame: Any) -> None:
@@ -235,13 +276,12 @@ def open_page(page: Any, url: str, *, timeout_ms: int = 60_000, ready_ms: int = 
     page.on("framenavigated", navigated)
     try:
         try:
-            response = page.goto(url, wait_until="commit", timeout=timeout_ms, **kwargs)
+            response = goto_retrying(page, url, timeout_ms=timeout_ms, started=started, **kwargs)
         except Exception as exc:
             # A script redirect can replace the requested navigation before goto
-            # returns (Firefox NS_ERROR_ABORT). Continue only after an observed
+            # returns (net::ERR_ABORTED). Continue only after an observed
             # top-level document commit; the caller still checks identity/access.
-            if not _is_browser_error(exc) or not any(
-                    marker in str(exc) for marker in ("NS_ERROR_ABORT", "net::ERR_ABORTED")):
+            if not _is_browser_error(exc) or "net::ERR_ABORTED" not in str(exc):
                 raise
             left = max(0, min(ready_ms, timeout_ms - int((time.monotonic() - started) * 1000)))
             if not committed and not pump_until(page, lambda: committed, left):

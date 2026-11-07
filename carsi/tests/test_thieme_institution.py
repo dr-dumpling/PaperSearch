@@ -19,7 +19,7 @@ CHOOSER = 'https://profile.thieme.de/HTML/sso/ejournals/shibboleth.htm'
 class ThiemeInstitutionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         cls.driver=sync_playwright().start()
         cls.browser=cls.driver.chromium.launch(channel='chrome',headless=True)
 
@@ -176,7 +176,7 @@ class ThiemeInstitutionTests(unittest.TestCase):
     def test_a_step_interrupted_by_the_pages_navigation_is_looked_at_again(self):
         # The engine calls the chooser step every second; a read that meets the page
         # reloading after Continue ("Execution context was destroyed") is not the end.
-        from playwright.sync_api import Error as PlaywrightError
+        from patchright.sync_api import Error as PlaywrightError
         from unittest.mock import Mock
         self.downloader.adapter.choose_institution = Mock(side_effect=PlaywrightError(
             "Locator.all_text_contents: Execution context was destroyed, most likely because of a navigation"))

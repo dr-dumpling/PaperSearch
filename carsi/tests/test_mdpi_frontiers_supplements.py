@@ -43,7 +43,7 @@ class PublisherSupplementTests(unittest.TestCase):
 @unittest.skipUnless(os.environ.get('CARSI_LOCAL_BROWSER_TEST') == '1', 'local browser fixture opt-in')
 class PublisherSupplementDOMTests(unittest.TestCase):
     def test_real_page_markup_keeps_labels_and_excludes_references(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as driver:
             browser = driver.chromium.launch(channel='chrome', headless=True)
             try:

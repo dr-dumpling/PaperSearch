@@ -8,7 +8,7 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
-from ...engine.batch_common import _is_browser_error
+from ...engine.batch_common import _is_browser_error, goto_retrying
 
 HOSTS = {"ovid.com", "www.ovid.com"}
 _ARTICLE = re.compile(r"/jnls/[^/]+/(?:abstract|fulltext|pdf)/")
@@ -47,7 +47,7 @@ class OvidSite:
             if isinstance(href, str) and self.d._article_pdf_url_matches(href, result.doi):
                 self.d._event(result, "pdf_button_clicked", "ovid-article-pdf")
                 try:
-                    page.goto(href, wait_until="commit", timeout=self.d.pdf_timeout_ms, referer=article)
+                    goto_retrying(page, href, timeout_ms=self.d.pdf_timeout_ms, referer=article)
                 except Exception as exc:
                     if not _is_browser_error(exc):
                         raise

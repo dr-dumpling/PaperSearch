@@ -4,6 +4,7 @@ import { resolvePlatformId } from "../../registry/platformMetadata.js";
 import { createDefaultDownloadTiers, downloadWithFallback, } from "./OpenAccessFallbackService.js";
 import { RunLedger } from "../../infrastructure/runlog/RunLedger.js";
 import { downloadBatch, downloadBatchItem, downloadSupplementsOnly, } from "./batch.js";
+import { asWindowBatch } from "./batchSummary.js";
 function jsonTextResponse(text) {
     return {
         content: [
@@ -24,14 +25,14 @@ async function recordedDownload(options, download) {
         ...(options.savePath ? { savePath: options.savePath } : {}),
     });
     if (!ledger)
-        return download(options);
+        return download({ ...options, savePath: options.savePath });
     const item = {
         index: options.batch?.index ?? 1,
         paperId: options.paperId,
         ...(options.doi ? { doi: options.doi } : {}),
         ...(options.title ? { title: options.title } : {}),
     };
-    const result = await download({ ...options, onStage: (record) => ledger.stage(item, record) });
+    const result = await download({ ...options, savePath: options.savePath, onStage: (record) => ledger.stage(item, record) });
     ledger.item(item, result);
     ledger.close();
     return { ...result, runLog: ledger.dir };
@@ -47,15 +48,16 @@ export async function handleDownloadPaper(args, searchers, carsiBackend) {
         savePath: resolvedSavePath,
         useEntitledAccess,
         useSciHub: true,
-    }, (options) => downloadWithFallback(searchers, options, createDefaultDownloadTiers(carsiBackend)));
+    }, (options) => asWindowBatch(options, carsiBackend, (windowed) => downloadWithFallback(searchers, windowed, createDefaultDownloadTiers(carsiBackend))));
     return jsonTextResponse(`Download paper ${result.status}.\n\n${JSON.stringify(result, null, 2)}`);
 }
 export async function handleDownloadWithFallback(args, searchers, carsiBackend) {
     const tiers = createDefaultDownloadTiers(carsiBackend);
-    const result = await recordedDownload(args, async (options) => {
+    // A caller's own serial batch reports each item; a lone download is a batch of one.
+    const download = async (options, callerBatch) => {
         if (options.content === "supplements")
             return downloadSupplementsOnly(options, carsiBackend, searchers);
-        const outcome = options.batch
+        const outcome = callerBatch && options.batch
             ? await downloadBatchItem(searchers, { ...options, batch: options.batch }, tiers, carsiBackend)
             : await downloadWithFallback(searchers, options, tiers);
         if (options.content === "both" && outcome.status === "ok" && !outcome.supplements) {
@@ -65,7 +67,10 @@ export async function handleDownloadWithFallback(args, searchers, carsiBackend) 
                 return { ...outcome, supplements: extra.supplements };
         }
         return outcome;
-    });
+    };
+    const result = await recordedDownload(args, (options) => options.batch
+        ? download(options, true)
+        : asWindowBatch(options, carsiBackend, (windowed) => download(windowed, false)));
     return jsonTextResponse(`Download with fallback ${result.status}.\n\n${JSON.stringify(result, null, 2)}`);
 }
 export async function handleDownloadBatch(args, searchers, carsiBackend) {

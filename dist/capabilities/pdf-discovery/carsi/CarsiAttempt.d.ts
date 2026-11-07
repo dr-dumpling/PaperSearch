@@ -1,3 +1,4 @@
+export declare function carsiShortReason(code: string | undefined, unknown?: string): string;
 export declare function carsiAttemptDetails(code: string, trace?: {
     stoppedHost?: string;
 }): {

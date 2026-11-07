@@ -141,7 +141,7 @@ class OxfordLoginRetryTests(unittest.TestCase):
         self.d.adapter.advance_login.assert_not_called()
 
     def test_certificate_and_policy_errors_are_not_retryable(self):
-        from playwright._impl._errors import Error
+        from patchright._impl._errors import Error
         for message in ('net::ERR_CERT_AUTHORITY_INVALID', 'net::ERR_BLOCKED_BY_ADMINISTRATOR'):
             self.assertFalse(self.d.adapter.retryable_navigation_error(Error(message)))
         self.assertTrue(self.d.adapter.retryable_navigation_error(Error('net::ERR_CONNECTION_TIMED_OUT')))

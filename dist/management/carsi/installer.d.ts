@@ -6,7 +6,7 @@ import { type RuntimePaths } from "./runtime.js";
  * step that failed. Everything outside the process goes through the host, so
  * tests run the steps without network, downloads or windows.
  */
-export type InstallBrowser = "camoufox" | "ego";
+export type InstallBrowser = "chrome" | "ego";
 export declare const INSTALL_STEPS: readonly ["preflight", "uv", "python", "backend", "browser", "config", "school", "notifications", "check"];
 export type InstallStep = (typeof INSTALL_STEPS)[number];
 export interface InstallOptions {
@@ -62,7 +62,8 @@ export interface InstallContext {
 export interface InstallRecord {
     schema: 1;
     paperSearchVersion: string;
-    browser: InstallBrowser;
+    /** "camoufox" in installs from before Chrome (ADR 0016); install and update move them to "chrome". */
+    browser: InstallBrowser | "camoufox";
     startedAt: string;
     finishedAt?: string;
     steps: Partial<Record<InstallStep, string>>;
@@ -70,6 +71,12 @@ export interface InstallRecord {
     python?: string;
     backend?: string;
     executable?: string;
+    /** The user's Google Chrome as the browser step found it. */
+    chrome?: {
+        path: string;
+        version: string;
+    };
+    /** Installs from before Chrome: the Camoufox build they downloaded (left for the user to delete). */
     camoufoxBrowser?: string;
     ego?: string;
     school?: string;
@@ -90,17 +97,22 @@ export declare function installCarsi(host: InstallerHost, options: InstallOption
     paths: RuntimePaths;
 }>;
 interface BrowserProbe {
-    pinned: string;
-    installed: string;
+    /** The Chrome the backend would run ("" browser when none) and its version against the tested one. */
+    chrome: {
+        browser: string;
+        path: string;
+        version: string;
+        tested: string;
+        outdated: boolean;
+        driver: string;
+    };
     ego: string;
-    /** Camoufox's own cache directory ("" without the camoufox package). */
-    cache: string;
 }
 /**
  * After a PaperSearch upgrade: the backend and its dependencies from the new
- * package, the paired Camoufox build when the pin moved, and the handshake.
- * The school, logins and ego lite are left alone; an older Camoufox build stays
- * in the shared cache, where other programs may use it.
+ * package, the browser check, and the handshake. The school, logins, Chrome and
+ * ego lite are left alone. An install from before Chrome gets a new Python
+ * environment first (its Camoufox build stays where it is, named for the user).
  */
 export declare function updateCarsi(host: InstallerHost, options: {
     force: boolean;
@@ -110,15 +122,15 @@ export declare function updateCarsi(host: InstallerHost, options: {
     paths: RuntimePaths;
 }>;
 export interface UninstallOptions {
-    /** Do not ask; keep the shared Camoufox browser and the user's data unless told to remove them. */
+    /** Do not ask; keep the user's data unless told to remove it. */
     yes: boolean;
-    removeBrowser: boolean;
     removeData: boolean;
 }
 /**
- * Remove the runtime and turn the integration off. The Camoufox build this
- * extension installed and the user's data (school, logins) are kept unless the
- * user chooses to remove them; ego lite is the user's own and never touched.
+ * Remove the runtime and turn the integration off. The user's data (school,
+ * logins) is kept unless the user chooses to remove it; Chrome and ego lite are
+ * the user's own and never touched. A Camoufox build left by an install from
+ * before Chrome is named for the user, never deleted here.
  */
 export declare function uninstallCarsi(host: InstallerHost, options: UninstallOptions, context: InstallContext): Promise<{
     status: "uninstalled" | "cancelled" | "not_installed";

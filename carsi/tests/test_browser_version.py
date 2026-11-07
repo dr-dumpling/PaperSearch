@@ -1,4 +1,4 @@
-"""The pinned Camoufox build is launched by path, and every download records its browser (ADR 0013)."""
+"""The user's Chrome is recorded with every download, and checked against the tested version (ADR 0013)."""
 import json
 import plistlib
 import tempfile
@@ -11,35 +11,56 @@ from paper_search_carsi.engine.batch import DownloadResult, PublisherBatchDownlo
 from paper_search_carsi.publishers.profiles import get_publisher_profile
 
 
-class PinnedCamoufoxTests(unittest.TestCase):
+def mac_app(root: Path, name: str, version: str) -> Path:
+    app = root / f"{name}.app"
+    (app / "Contents" / "MacOS").mkdir(parents=True)
+    with open(app / "Contents" / "Info.plist", "wb") as handle:
+        plistlib.dump({"CFBundleShortVersionString": version}, handle)
+    executable = app / "Contents" / "MacOS" / name
+    executable.write_text("")
+    return executable
+
+
+class ChromeVersionTests(unittest.TestCase):
     def setUp(self):
         backend._launched.clear()
         self.addCleanup(backend._launched.clear)
-        self.cache = Path(tempfile.mkdtemp())
-        official = self.cache / "browsers" / "official"
-        # A newer prerelease is installed next to it; only the pinned stable build counts.
-        for name in ("158.0-beta.40-1a2b3c4d", f"{backend.CAMOUFOX_BROWSER}-0ad5663e"):
-            (official / name).mkdir(parents=True)
+        self.root = Path(tempfile.mkdtemp())
 
-    def options(self):
-        with patch("camoufox.pkgman.INSTALL_DIR", self.cache), \
-                patch("camoufox.pkgman.launch_path", side_effect=lambda path: str(path / "camoufox")):
-            return backend._camoufox_options(False, None, None, True, {})
+    def test_the_mac_bundle_says_the_version_without_a_launch(self):
+        executable = mac_app(self.root, "Google Chrome", "156.0.8078.81")
+        with patch.object(backend.sys, "platform", "darwin"):
+            self.assertEqual(backend.chrome_version(executable), "156.0.8078.81")
+            with patch.object(backend, "find_chrome", return_value=executable), \
+                    patch.object(backend, "patchright_version", return_value="1.64.4"):
+                self.assertEqual(backend.browser_info({}), {"backend": "chrome", "app": "Google Chrome",
+                                                            "version": "156.0.8078.81", "driver": "patchright 1.64.4"})
 
-    def test_the_pinned_build_is_launched_by_path_and_recorded(self):
-        with patch("camoufox.pkgman.INSTALL_DIR", self.cache):
-            self.assertEqual(backend.pinned_camoufox_dir().name, f"{backend.CAMOUFOX_BROWSER}-0ad5663e")
-        opts = self.options()
-        self.assertTrue(opts["executable_path"].endswith(f"{backend.CAMOUFOX_BROWSER}-0ad5663e/camoufox"))
-        self.assertEqual(backend.browser_info(), {"backend": "camoufox", "pinned": "yes",
-                                                  "version": f"{backend.CAMOUFOX_BROWSER}-0ad5663e"})
+    def test_windows_takes_the_newest_version_folder_next_to_the_program(self):
+        application = self.root / "Google" / "Chrome" / "Application"
+        for name in ("155.0.7000.10", "156.0.8078.80", "SetupMetrics"):
+            (application / name).mkdir(parents=True)
+        (application / "chrome.exe").write_text("")
+        with patch.object(backend.sys, "platform", "win32"):
+            self.assertEqual(backend.chrome_version(application / "chrome.exe"), "156.0.8078.80")
 
-    def test_without_the_pinned_build_the_active_one_is_used_and_said_so(self):
-        (self.cache / "browsers" / "official" / f"{backend.CAMOUFOX_BROWSER}-0ad5663e").rmdir()
-        with patch.object(backend, "_active_camoufox_version", return_value="158.0-beta.40"):
-            opts = self.options()
-            self.assertNotIn("executable_path", opts)
-            self.assertEqual(backend.browser_info(), {"backend": "camoufox", "pinned": "no", "version": "158.0-beta.40"})
+    def test_chrome_older_than_the_tested_version_is_reported(self):
+        for version, outdated in (("156.0.8078.81", False), ("156.0.8078.80", False), ("156.0.8000.1", True),
+                                  ("155.0.7000.1", True), ("", False)):
+            executable = mac_app(Path(tempfile.mkdtemp()), "Google Chrome", version)
+            with self.subTest(version=version), patch.object(backend.sys, "platform", "darwin"), \
+                    patch.object(backend, "find_chrome", return_value=executable), \
+                    patch.object(backend, "patchright_version", return_value="1.64.4"):
+                check = backend.browser_check({})
+                self.assertEqual((check["browser"], check["version"], check["outdated"]),
+                                 ("Google Chrome", version, outdated))
+                self.assertEqual((check["tested"], check["path"], check["driver"]),
+                                 (backend.TESTED_CHROME, str(executable), "patchright 1.64.4"))
+
+    def test_without_a_browser_the_check_finds_none(self):
+        with patch.object(backend, "find_chrome", return_value=None):
+            check = backend.browser_check({})
+        self.assertEqual((check["browser"], check["outdated"]), ("", False))
 
 
 class EgoVersionTests(unittest.TestCase):
@@ -55,7 +76,7 @@ class EgoVersionTests(unittest.TestCase):
 class RecordedBrowserTests(unittest.TestCase):
     def test_the_diagnostic_keeps_the_browser(self):
         d = PublisherBatchDownloader({}, profile=get_publisher_profile("taylor & francis"))
-        d.browser = {"backend": "camoufox", "pinned": "yes", "version": "156.0.1-beta.36-0ad5663e"}
+        d.browser = {"backend": "chrome", "app": "Google Chrome", "version": "156.0.8078.81", "driver": "patchright 1.64.4"}
         d._access_state = Mock(return_value=("unknown", []))
         page = Mock(url="https://www.tandfonline.com/doi/full/10.1080/x")
         result = DownloadResult(doi="10.1080/x", status="failed", reason="pdf_not_captured", state="pdf_not_captured")

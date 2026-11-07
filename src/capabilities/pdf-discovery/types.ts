@@ -73,6 +73,9 @@ export interface DownloadWithFallbackResult {
   arxivId?: string;
   publishedDoi?: string;
   status: "ok" | "error";
+  /** The paper's title and journal as looked up for naming its folder, when known. */
+  title?: string;
+  journal?: string;
   path?: string;
   /** Present only when the saved full text is not a PDF (e.g. Springer TDM JATS XML). */
   format?: "jats-xml";

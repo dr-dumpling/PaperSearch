@@ -442,7 +442,7 @@ if __name__ == "__main__":
 class ElsevierViewPdfTests(unittest.TestCase):
     def test_a_view_pdf_link_to_another_pii_is_never_clicked(self):
         # Journal of Hepatology: a related article's "View PDF" won on position.
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         from paper_search_carsi.adapters.elsevier.sciencedirect import _VIEW_PDF_JS
         own = "/science/article/pii/S0168827824002770/pdfft?md5=a"
         html = f"""<body style="margin:0">
@@ -468,7 +468,7 @@ class ElsevierViewPdfTests(unittest.TestCase):
         self.assertIsNone(none_left)
 
     def test_a_supplementary_pdf_link_is_not_the_articles_pdf(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         from paper_search_carsi.adapters.elsevier.sciencedirect import _VIEW_PDF_JS
         html = """<body><a id="supp" class="anchor download-link"
             href="https://ars.els-cdn.com/content/image/1-s2.0-S0168827824002770-mmc1.pdf">Download: Download Acrobat PDF file (10MB)</a>
@@ -691,7 +691,7 @@ class ElsevierDoiPathJournalSiteTests(unittest.TestCase):
 @unittest.skipUnless(__import__("os").environ.get("CARSI_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
 class ElsevierDoiPathPdfTests(unittest.TestCase):
     def test_only_this_articles_doi_pdf_link_is_clicked(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         from paper_search_carsi.engine.batch import DownloadResult, PublisherBatchDownloader
         doi = "10.1016/j.jaccas.2026.110553"
         html = f"""<body>
@@ -790,7 +790,7 @@ class ScienceDirectSignedOutTests(unittest.TestCase):
             "Huazhong University of Science and Technology Tongji Medical College Union Hospital"), 1)
 
     def test_an_entry_that_goes_on_by_itself_gets_no_continue_click(self):
-        from playwright.sync_api import TimeoutError as PlaywrightTimeout
+        from patchright.sync_api import TimeoutError as PlaywrightTimeout
         d = self.downloader()
         d._event, d._click_optional_continue = Mock(), Mock()
         listed = [{"i": 0, "t": self.HMLU}, {"i": 1, "t": "National Hong Mu-lan University"}]
@@ -873,7 +873,7 @@ class SchoolChooserRulesTests(unittest.TestCase):
 
     def test_a_remembered_school_page_that_moves_on_by_itself_is_no_error(self):
         # 2026-11-01: OpenAthens forwarded to the remembered school while it was clicked.
-        from playwright.sync_api import TimeoutError as PlaywrightTimeout
+        from patchright.sync_api import TimeoutError as PlaywrightTimeout
         d = self.downloader()
         d._event = Mock()
         entry = Mock(**{"is_visible.return_value": True, "inner_text.return_value": "Hong Mu-lan University",

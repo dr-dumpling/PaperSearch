@@ -76,7 +76,7 @@ class NativeViewerCaptureTests(unittest.TestCase):
 
 
 class ClickedPdfInViewerTests(unittest.TestCase):
-    """ARD on Camoufox: the clicked 8 MB PDF was on screen, yet downloaded again over HTTP (~50 s)."""
+    """ARD on Firefox: the clicked 8 MB PDF was on screen, yet downloaded again over HTTP (~50 s)."""
 
     def capture(self, viewer: bool):
         from test_chromium_pdf_capture import article_pdf
@@ -114,7 +114,7 @@ class ClickedPdfInViewerTests(unittest.TestCase):
         body = article_pdf()
         d = PublisherBatchDownloader(config={}, profile=ELSEVIER_PROFILE, require_interactive_browser=True)
         tab = Mock(); tab.url = "https://pdf.sciencedirectassets.com/x/main.pdf"; tab.is_closed.return_value = False
-        tab.context.browser = None  # Camoufox persistent context
+        tab.context.browser = None  # a Firefox persistent context
         tab.context.pages = [tab]
         d._pdf_viewer_present = Mock(return_value=True)
         d._capture_loaded_pdf_viewer = Mock(return_value=body)
@@ -137,7 +137,7 @@ class ClickedPdfInViewerTests(unittest.TestCase):
         d = PublisherBatchDownloader(config={}, profile=get_publisher_profile("karger"),
                                      require_interactive_browser=True)
         tab = Mock(); tab.url = pdf_url; tab.is_closed.return_value = False
-        tab.context.browser = None  # Camoufox persistent context
+        tab.context.browser = None  # a Firefox persistent context
         tab.context.pages = [tab]
         d._pdf_viewer_present = Mock(return_value=True)
         d._capture_loaded_pdf_viewer = Mock(return_value=body)

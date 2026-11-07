@@ -12,7 +12,7 @@ describe("run ledger failure class", () => {
     const diagnostic = join(diagDir, "diagnostic.json");
     writeFileSync(diagnostic, JSON.stringify({
       state: "sso_required", adapter: "TaylorFrancisAdapter",
-      browser: { backend: "camoufox", pinned: "yes", version: "156.0.1-beta.36-0ad5663e" },
+      browser: { backend: "chrome", app: "Google Chrome", version: "156.0.8078.81", driver: "patchright 1.64.4" },
       final_url: "https://www.tandfonline.com/doi/full/10.1080/01616412.2026.2757106",
       events: [{ state: "sso_entry_clicked" }, { state: "user_wait_expired" }, { state: "login_wait_ended", detail: "publisher" }],
     }));
@@ -27,7 +27,7 @@ describe("run ledger failure class", () => {
     expect(line.stages[0]).toMatchObject({
       failureClass: "unexplained", stoppedAt: "login_wait_ended：publisher",
       backend: { diagnostic: { adapter: "TaylorFrancisAdapter",
-        browser: { backend: "camoufox", pinned: "yes", version: "156.0.1-beta.36-0ad5663e" } } },
+        browser: { backend: "chrome", app: "Google Chrome", version: "156.0.8078.81", driver: "patchright 1.64.4" } } },
     });
     expect(readFileSync(join(ledger.dir, "timeline.log"), "utf8")).toContain("login_not_reached class=unexplained");
   });

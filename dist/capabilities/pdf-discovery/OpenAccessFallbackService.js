@@ -77,6 +77,10 @@ export async function downloadWithFallback(searchers, options, tiers = createDef
     context.title ||= context.outputMetadata.title;
     context.titleLookedUp = true;
     const layout = createOutputLayout(savePath, context.doi || context.paperId, { ...context.outputMetadata, title: context.title }, !!context.arxivOnly);
+    const paper = {
+        ...(context.title ? { title: context.title } : {}),
+        ...(context.outputMetadata.journal ? { journal: context.outputMetadata.journal } : {}),
+    };
     context.savePath = layout.paperDir;
     context.diagnosticsDir = layout.diagnosticsDir;
     for (const tier of tiers) {
@@ -132,6 +136,7 @@ export async function downloadWithFallback(searchers, options, tiers = createDef
             discardReviews(reviewPaths, result.path);
             return {
                 status: "ok",
+                ...paper,
                 path: result.path,
                 ...(result.version ? { version: result.version, arxivId: result.arxivId } : {}),
                 ...(result.publishedDoi || context.arxivId && context.doi ? { publishedDoi: result.publishedDoi || context.doi } : {}),
@@ -147,6 +152,7 @@ export async function downloadWithFallback(searchers, options, tiers = createDef
     }
     return {
         status: "error",
+        ...paper,
         attempts,
         ...(review ? { review } : {}),
         ...(supplements ? { supplements } : {}),

@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 import time
 from typing import Any
-from urllib.parse import parse_qs, unquote, urlencode, urlparse
+from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse
 
 from .batch_common import DownloadResult, _is_browser_error, logger, open_page, pump_until, settle
 
@@ -86,6 +86,12 @@ class InstitutionMixin:
                 return True
             if self.institution_query and self._assist_configured_institution(page, result):
                 return True
+            if self.institution_query and self._select_carsi_federation_link(page, result, here):
+                return True
+            if self.institution_query and not getattr(result, "_institution_not_listed", False):
+                self._check_carsi_school_links(page, result, here)
+            if getattr(result, "_institution_not_listed", False):
+                return False
             if self.adapter.prepare_institution_choice(page, result) is False:
                 return False
             if self._open_seamlessaccess_chooser(page, result):
@@ -225,6 +231,8 @@ class InstitutionMixin:
         return null;
     }"""
     _CARSI_OPTION = re.compile(r"\bCARSI\b", re.I)
+    _FEDERATION_LINK_LIST = "ul.federation--list"
+    _FEDERATION_SCHOOL_LIST = "ul.federation--list-inner"
     # How long one pass waits for the school's option once the federation is chosen
     # (ACS answered after 35-50 s, 2026-11-02; the login loop asks again).
     LIST_WAIT_SEC = 15
@@ -324,6 +332,61 @@ class InstitutionMixin:
         """Record that the program chose CARSI on page ``here`` (``_federation_choice_page``)."""
         result._federation_pages = getattr(result, "_federation_pages", set()) | {here}
         self._event(result, "institution_federation_selected", detail)
+
+    def _select_carsi_federation_link(self, page: Any, result: DownloadResult, url: str) -> bool:
+        if not self._on_publisher_host(url):
+            return False
+        listing = page.locator(self._FEDERATION_LINK_LIST).first
+        try:
+            if listing.is_visible() is not True:
+                return False
+            links = listing.get_by_role("link", name=self._CARSI_OPTION)
+            if links.count() != 1:
+                return False
+            href = links.first.get_attribute("href", timeout=800)
+            if not href or not self._manual_institution_target_allowed(urljoin(url, href)):
+                return False
+            here = self._federation_choice_page(page, result)
+            if here is None or not self._click_control(page, links.first, result, "choose CARSI federation"):
+                return False
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            self._event(result, "institution_step_interrupted", type(exc).__name__)
+            return False
+        self._federation_chosen(result, here, f"carsi: federation link @ {url}")
+        return True
+
+    def _check_carsi_school_links(self, page: Any, result: DownloadResult, url: str) -> None:
+        """Only a complete link directory can establish absence after choosing CARSI."""
+        if not self._on_publisher_host(url):
+            return
+        try:
+            listing = page.locator(self._FEDERATION_SCHOOL_LIST).first
+            if listing.is_visible() is not True:
+                return
+            heading = page.get_by_role("heading", level=1, name=self._CARSI_OPTION).first
+            if heading.is_visible() is not True or self._is_challenge_page(page):
+                return
+            rows = listing.locator(":scope > li")
+            entries = page.evaluate(self._ENTRIES_JS, self._FEDERATION_SCHOOL_LIST + " > li > a[href]")
+            if (not entries or len(entries) != rows.count()
+                    or listing.evaluate("""el => !!el.closest('[aria-busy=true]') ||
+                        !!el.closest('section')?.querySelector('input:not([type=hidden]), [aria-busy=true], [rel=next]')""",
+                                        timeout=800)):
+                return
+            # Even a partial name match is enough to leave the choice open for the user.
+            entity_id = self._entity_id()
+            names = {self._canonical_school_name(name) for name in self._institution_names()} - {""}
+            if any(self._institution_entry_score(entry, entity_id)
+                   or self._canonical_school_name(entry["t"]) in names for entry in entries):
+                return
+            self._event(result, "auto_institution_not_found", f"{self.institution_query} (CARSI list, {len(entries)} schools) @ {url}")
+            result._institution_not_listed = True
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            self._event(result, "institution_step_interrupted", type(exc).__name__)
 
     def _close_blank_overlay(self, page: Any, result: DownloadResult) -> None:
         try:
@@ -487,6 +550,11 @@ class InstitutionMixin:
                     .filter(it => it.t && it.t.length <= 160);
             }"""
 
+    def _institution_entry_score(self, entry: dict, entity_id: str) -> int:
+        if self._carries_entity_id(str(entry.get("ids") or ""), entity_id):
+            return 4
+        return self._institution_match_score(entry.get("t", ""))
+
     def _click_unique_institution_entry(self, page: Any, result: DownloadResult, url: str) -> bool:
         """Click the single best visible entry for the configured school.
 
@@ -506,12 +574,7 @@ class InstitutionMixin:
             return False
         entity_id = self._entity_id()
 
-        def score(item: dict) -> int:
-            if self._carries_entity_id(str(item.get("ids") or ""), entity_id):
-                return 4
-            return self._institution_match_score(item.get("t", ""))
-
-        scored = [(score(it), it) for it in items if isinstance(it, dict)]
+        scored = [(self._institution_entry_score(it, entity_id), it) for it in items if isinstance(it, dict)]
         top = max([score for score, _ in scored] or [0])
         best = [it for score, it in scored if score == top]
         same = (len(best) == 1 or top == 4
@@ -543,8 +606,8 @@ class InstitutionMixin:
             # leaves the option unselected even though no error is raised.
             # This is only the already matched institution, never a challenge
             # widget, credential field or another default choice.
-            # Omit MouseEventInit.view: Camoufox rejects the evaluation
-            # world's window as a Window, and the selection does not need it.
+            # Omit MouseEventInit.view: an isolated evaluation world's window
+            # can be rejected as a Window, and the selection does not need it.
             try:
                 clicked = page.evaluate("""() => {
                     const el = document.querySelector('[data-paper-search-entry]');
@@ -595,10 +658,54 @@ class InstitutionMixin:
                 return False
             if not _is_browser_error(exc):
                 raise
-            # The wait was cut off by the navigation itself (Firefox's
-            # NS_BINDING_ABORTED, a detached frame: an Atypon chooser going on to
-            # the school failed the article, 2026-11-01): the page has gone on.
+            # The wait was cut off by the navigation itself (an aborted
+            # navigation, a detached frame: an Atypon chooser going on to the
+            # school failed the article, 2026-11-01): the page has gone on.
             return True
+
+    _NO_INSTITUTION_SEARCH_RESULTS = re.compile(
+        r"^(?:no (?:institutions?|results?|matches) found(?:[.!]?$|\s+for\b)"
+        r"|we couldn['’]t find any results? for\b)", re.I)
+    _INSTITUTION_LIST_LINK = re.compile(r"^(?:select|choose) (?:your|an) institution from (?:a|the) list$", re.I)
+
+    def _handle_institution_search_miss(self, page: Any, result: DownloadResult, url: str) -> bool:
+        """Use a visible negative result for our search, and try an offered list first."""
+        if (not (self._on_publisher_host(url) or self._is_federation_chooser(url))
+                or self._is_challenge_page(page)
+                or any(e["state"] == "auto_institution_list_opened" and e.get("detail") == url for e in result.events)):
+            return False
+        queries = {e.get("detail", "") for e in result.events if e["state"] == "auto_institution_search"}
+        try:
+            notice = page.get_by_text(self._NO_INSTITUTION_SEARCH_RESULTS).filter(visible=True).first
+            if notice.is_visible() is not True:
+                return False  # no candidate yet does not establish an empty result
+            message = notice.inner_text(timeout=800)
+            named = re.split(r"\bfor\b", message, maxsplit=1, flags=re.I)[1:]
+            for selector in self._institution_search_selectors(page):
+                box = page.locator(selector).first
+                if box.is_visible() is not True:
+                    continue
+                typed = str(box.input_value(timeout=800) or "").strip()
+                if f"{typed} @ {url}" not in queries:
+                    continue
+                if named and self._canonical_school_name(named[0]) != self._canonical_school_name(typed):
+                    continue  # the reply names a different query
+                listing = page.get_by_role("link", name=self._INSTITUTION_LIST_LINK).filter(visible=True).first
+                if listing.is_visible() is True:
+                    href = listing.get_attribute("href", timeout=800)
+                    if (href and self._manual_institution_target_allowed(urljoin(url, href))
+                            and self._click_control(page, listing, result, "open institution list")):
+                        self._event(result, "auto_institution_list_opened", url)
+                        return True
+                    return False  # there is another route; don't call the school missing
+                self._event(result, "auto_institution_not_found", f"{message[:120]} @ {url}")
+                result._institution_not_listed = True
+                return False
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            self._event(result, "institution_step_interrupted", type(exc).__name__)
+        return False
 
     def _assist_configured_institution(self, page: Any, result: DownloadResult) -> bool:
         """Pick the user's configured institution on the current page.
@@ -678,7 +785,9 @@ class InstitutionMixin:
         # 4. type the school into an empty institution search box (once per page);
         # never on a verification page, which the challenge wait takes first: a
         # search there found no school and ended the login (fixture, 2026-11-01).
-        if not self._is_challenge_page(page) and once("institution_search"):
+        if not once("institution_search"):
+            return self._handle_institution_search_miss(page, result, url)
+        if not self._is_challenge_page(page):
             if self._assist_carsi_discovery(page, result):
                 self._event(result, "auto_institution_search", f"carsi @ {url}")
                 return True

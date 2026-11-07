@@ -7,5 +7,5 @@ export function createCarsiBackend(command) {
     });
 }
 export { resolveDefaultCarsiProfileDir } from "./CarsiMcpClient.js";
-export { carsiAttemptDetails } from "./CarsiAttempt.js";
+export { carsiAttemptDetails, carsiShortReason } from "./CarsiAttempt.js";
 //# sourceMappingURL=index.js.map

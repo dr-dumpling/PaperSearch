@@ -15,8 +15,8 @@ function setup(owner: unknown, browserLock?: string) {
   const lock = join(dir, ".paper-search-download.lock");
   writeFileSync(lock, typeof owner === "string" ? owner : JSON.stringify({ pid: owner }));
   if (browserLock !== undefined) {
-    mkdirSync(join(dir, "browser_profiles", "publisher-camoufox"), { recursive: true });
-    symlinkSync(browserLock, join(dir, "browser_profiles", "publisher-camoufox", "lock"));
+    mkdirSync(join(dir, "browser_profiles", "publisher-chrome"), { recursive: true });
+    symlinkSync(browserLock, join(dir, "browser_profiles", "publisher-chrome", "SingletonLock"));
   }
   return { dir, lock };
 }
@@ -26,9 +26,9 @@ describe("stale download lock", () => {
     const dead = deadPid();
     let s = setup(dead);
     expect(isStaleDownloadLock(s.lock, s.dir)).toBe(true);
-    s = setup(dead, `192.168.1.5:+${deadPid()}`);
+    s = setup(dead, `my-mac.local-${deadPid()}`);
     expect(isStaleDownloadLock(s.lock, s.dir)).toBe(true);
-    s = setup(dead, `192.168.1.5:+${process.pid}`);
+    s = setup(dead, `my-mac.local-${process.pid}`);
     expect(isStaleDownloadLock(s.lock, s.dir)).toBe(false);
   });
 

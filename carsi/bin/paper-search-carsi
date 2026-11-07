@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs the CLI from this checkout. Python: $CARSI_PYTHON, else the checkout's own
-# .venv (pip install -e ".[camoufox]" && python -m camoufox fetch).
+# .venv (pip install -e ".[ego,dev]"; the browser is the installed Google Chrome).
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 if [ -n "$CARSI_PYTHON" ]; then
   PY="$CARSI_PYTHON"

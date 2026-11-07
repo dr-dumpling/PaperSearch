@@ -7,16 +7,18 @@ start forgets:
   federation services that remember a school (CARSI, OpenAthens,
   SeamlessAccess, SAMS Sigma, Atypon's SSO hub);
 - the publishers' sessions and remembered schools;
-- every other site's cookies and site data: the Camoufox profile belongs to
+- every other site's cookies and site data: the Chrome profile belongs to
   the download engine alone, so the rest are journal sites (cell.com,
   thelancet.com, ...) and their trackers.
 
 It keeps bot-verification records (Cloudflare), personal publisher accounts
 and cookie-consent choices. Besides the profile's own cookie store it filters
 the files that put cookies back: the session cookies saved for the next
-launch and the saved publisher cookies.
-Firefox's session-restore files are removed whole. The plan lists hosts and
-cookie names only, never values; nothing is changed until it is confirmed.
+launch and the saved publisher cookies. IndexedDB goes per site. Chrome keeps
+every site's local storage in one database, which goes whole when it holds a
+site to forget (the kept categories live in cookies). Chrome's session-restore
+files and session storage are removed whole. The plan lists hosts and cookie
+names only, never values; nothing is changed until it is confirmed.
 """
 from __future__ import annotations
 
@@ -27,7 +29,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
 
-from .browser.backend import SESSION_COOKIES_FILE, _pid_alive, _profile_owner_pid, camoufox_profile_dir
+from .browser.backend import SESSION_COOKIES_FILE, chrome_profile_dir, profile_holder
 from .browser.cookies import _CLOUDFLARE_COOKIE_NAMES, PUBLISHER_DOMAINS
 from .engine.batch_institution import InstitutionMixin, _school_auth_patterns
 
@@ -82,17 +84,15 @@ class Classifier:
         return "other_site"
 
 
+_INDEXEDDB_DIR = re.compile(r"^https?_(.+)_\d+\.indexeddb\.(?:leveldb|blob)$")
+# A site's entry in Chrome's local storage database: "META:<origin>".
+_LOCAL_STORAGE_ORIGIN = re.compile(rb"META:https?://([a-z0-9.-]+)")
+
+
 def _storage_host(dirname: str) -> str:
-    """``https+++www.sciencedirect.com^partitionKey=...`` -> host; '' for non-web origins."""
-    origin = dirname.split("^", 1)[0]
-    if not origin.startswith(("https+++", "http+++")):
-        return ""
-    return origin.split("+++", 1)[1].split("+", 1)[0]
-
-
-def _webappsstore_host(origin_key: str) -> str:
-    """``moc.tcerideicneics.www.:https:443`` -> www.sciencedirect.com."""
-    return origin_key.split(":", 1)[0][::-1].lstrip(".")
+    """``https_www.sciencedirect.com_0.indexeddb.leveldb`` -> host; '' for anything else."""
+    found = _INDEXEDDB_DIR.match(dirname)
+    return found.group(1) if found else ""
 
 
 def _netscape_rows(path: Path) -> list[list[str]]:
@@ -107,19 +107,33 @@ class ColdStart:
 
     # -- reading ------------------------------------------------------------
 
-    def _cookie_rows(self) -> list[tuple[int, str, str]]:
-        path = self.profile / "cookies.sqlite"
-        if not path.exists():
-            return []
-        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
-            return list(db.execute("SELECT id, host, name FROM moz_cookies"))
+    @property
+    def _default(self) -> Path:
+        return self.profile / "Default"
 
-    def _webappsstore_rows(self) -> list[str]:
-        path = self.profile / "webappsstore.sqlite"
+    def _cookies_db(self) -> Path:
+        """Chrome's cookie store: ``Default/Network/Cookies`` (Windows), else ``Default/Cookies``."""
+        network = self._default / "Network" / "Cookies"
+        return network if network.exists() else self._default / "Cookies"
+
+    def _cookie_rows(self) -> list[tuple[int, str, str]]:
+        path = self._cookies_db()
         if not path.exists():
             return []
         with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
-            return [row[0] for row in db.execute("SELECT DISTINCT originKey FROM webappsstore2")]
+            return list(db.execute("SELECT rowid, host_key, name FROM cookies"))
+
+    def _local_storage_hosts(self) -> list[str]:
+        """The sites with an entry in Chrome's local storage database."""
+        hosts: set[str] = set()
+        store = self._default / "Local Storage" / "leveldb"
+        for path in sorted(store.iterdir()) if store.is_dir() else []:
+            if path.suffix in (".log", ".ldb"):
+                try:
+                    hosts.update(h.decode() for h in _LOCAL_STORAGE_ORIGIN.findall(path.read_bytes()))
+                except OSError:
+                    continue
+        return sorted(hosts)
 
     def _cookie_files(self) -> list[Path]:
         files = [self.profile / SESSION_COOKIES_FILE]
@@ -135,25 +149,25 @@ class ColdStart:
         return data, [c for c in cookies if isinstance(c, dict)]
 
     def _session_files(self) -> list[Path]:
-        backups = self.profile / "sessionstore-backups"
-        files = [self.profile / "sessionstore.jsonlz4"] + (sorted(backups.iterdir()) if backups.is_dir() else [])
-        return [f for f in files if f.is_file()]
+        """Chrome's session restore (tabs, and their session cookies) and session storage."""
+        sessions = self._default / "Sessions"
+        files = sorted(p for p in sessions.iterdir() if p.is_file()) if sessions.is_dir() else []
+        storage = self._default / "Session Storage"
+        return files + ([storage] if storage.is_dir() else [])
 
     # -- the plan -----------------------------------------------------------
 
     def plan(self) -> dict[str, Any]:
-        owner = _profile_owner_pid(str(self.profile))
         cookies: dict[str, dict[str, set[str]]] = {c: {} for c in DELETE + KEEP}
         for _id, host, name in self._cookie_rows():
             cookies[self.classify(host, name)].setdefault(host.lstrip("."), set()).add(name)
         site_data: dict[str, list[str]] = {"delete": [], "keep": []}
-        storage = self.profile / "storage" / "default"
+        storage = self._default / "IndexedDB"
         for entry in sorted(storage.iterdir()) if storage.is_dir() else []:
             host = _storage_host(entry.name)
             if host:
                 site_data["delete" if self.classify(host) in DELETE else "keep"].append(entry.name)
-        local = sorted({_webappsstore_host(k) for k in self._webappsstore_rows()
-                        if self.classify(_webappsstore_host(k)) in DELETE})
+        local = [h for h in self._local_storage_hosts() if self.classify(h) in DELETE]
         files = []
         for path in self._cookie_files():
             try:
@@ -168,11 +182,14 @@ class ColdStart:
                 lines = [r for r in _netscape_rows(twin) if len(r) >= 7 and not r[0].startswith("#")]
                 gone = sum(self.classify(r[0], r[5]) in DELETE for r in lines)
                 files.append({"path": str(twin), "action": "filter", "remove": gone, "keep": len(lines) - gone})
-        files += [{"path": str(p), "action": "delete", "why": "Firefox session restore (tabs and session cookies)"}
+        if local:
+            files.append({"path": str(self._default / "Local Storage"), "action": "delete",
+                          "why": "Chrome local storage, one database for all sites"})
+        files += [{"path": str(p), "action": "delete", "why": "Chrome session restore and session storage"}
                   for p in self._session_files()]
         return {
             "profile": str(self.profile),
-            "browser_running": bool(owner and _pid_alive(owner)),
+            "browser_running": bool(profile_holder(str(self.profile))),
             "delete": {c: {"hosts": len(cookies[c]), "cookies": sum(len(v) for v in cookies[c].values()),
                            "items": [{"host": h, "names": sorted(n)} for h, n in sorted(cookies[c].items())]}
                        for c in DELETE},
@@ -184,32 +201,26 @@ class ColdStart:
     # -- applying -----------------------------------------------------------
 
     def apply(self) -> dict[str, Any]:
-        owner = _profile_owner_pid(str(self.profile))
-        if owner and _pid_alive(owner):
-            raise RuntimeError(f"the download browser (pid {owner}) is using this profile; close it first")
+        holder = profile_holder(str(self.profile))
+        if holder:
+            raise RuntimeError(f"the download browser ({holder}) is using this profile; close it first")
         done: dict[str, Any] = {"cookies": 0, "site_data": 0, "local_storage": 0, "files": []}
-        path = self.profile / "cookies.sqlite"
+        path = self._cookies_db()
         if path.exists():
             gone = [i for i, host, name in self._cookie_rows() if self.classify(host, name) in DELETE]
             with sqlite3.connect(path) as db:
-                db.executemany("DELETE FROM moz_cookies WHERE id = ?", [(i,) for i in gone])
-            with sqlite3.connect(path) as db:
-                db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                db.executemany("DELETE FROM cookies WHERE rowid = ?", [(i,) for i in gone])
             done["cookies"] = len(gone)
-        storage = self.profile / "storage" / "default"
+        storage = self._default / "IndexedDB"
         for entry in sorted(storage.iterdir()) if storage.is_dir() else []:
             host = _storage_host(entry.name)
             if host and self.classify(host) in DELETE:
                 shutil.rmtree(entry)
                 done["site_data"] += 1
-        local = self.profile / "webappsstore.sqlite"
-        if local.exists():
-            keys = [k for k in self._webappsstore_rows() if self.classify(_webappsstore_host(k)) in DELETE]
-            with sqlite3.connect(local) as db:
-                db.executemany("DELETE FROM webappsstore2 WHERE originKey = ?", [(k,) for k in keys])
-            with sqlite3.connect(local) as db:
-                db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            done["local_storage"] = len(keys)
+        local = [h for h in self._local_storage_hosts() if self.classify(h) in DELETE]
+        if local:
+            shutil.rmtree(self._default / "Local Storage")
+            done["local_storage"] = len(local)
         for file in self._cookie_files():
             try:
                 data, rows = self._file_cookies(file)
@@ -226,7 +237,10 @@ class ColdStart:
                 twin.write_text("".join("\t".join(r) + "\n" for r in keep_txt), encoding="utf-8")
                 done["files"].append({"path": str(twin), "removed": len(rows_txt) - len(keep_txt)})
         for file in self._session_files():
-            file.unlink()
+            if file.is_dir():
+                shutil.rmtree(file)
+            else:
+                file.unlink()
             done["files"].append({"path": str(file), "removed": "file"})
         return done
 
@@ -239,7 +253,7 @@ def _write_json(path: Path, data: Any) -> None:
 
 
 def for_config(config: dict[str, Any], profile: str | None = None, cache_dir: str | None = None) -> ColdStart:
-    """The cold start for the configured download profile (Camoufox's own directory)
+    """The cold start for the configured download profile (Chrome's own directory)
     and the configured cache. Another profile comes with only the cache named for
     it: the configured cache belongs to the configured profile."""
     from .config import DATA_DIR
@@ -248,4 +262,4 @@ def for_config(config: dict[str, Any], profile: str | None = None, cache_dir: st
     if profile:
         return ColdStart(Path(profile), Path(cache_dir) if cache_dir else None, config)
     cache = cache_dir or config.get("cache_dir", str(DATA_DIR / "cache"))
-    return ColdStart(camoufox_profile_dir(_resolve_profile_dir(config)), Path(cache), config)
+    return ColdStart(chrome_profile_dir(_resolve_profile_dir(config)), Path(cache), config)

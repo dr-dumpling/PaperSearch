@@ -1,6 +1,6 @@
-"""Extract cookies via Camoufox for publisher access.
+"""Extract cookies via the download browser for publisher access.
 
-Opens a visible Camoufox window, lets user log in to their institution,
+Opens a visible browser window, lets user log in to their institution,
 then captures and saves publisher cookies for automated downloads.
 """
 
@@ -114,19 +114,19 @@ def extract_via_browser(
         Result dict with success, cookies_count, domains, etc.
     """
     try:
-        from .backend import launch
+        from .backend import CHROME_MISSING, launch
         from .backend import is_available as _browser_backend_available
-        if not _browser_backend_available():
+        if not _browser_backend_available(config=config):
             return {
                 "success": False,
                 "error": "no browser backend available",
-                "fix": "pip install 'camoufox[geoip]' && python -m camoufox fetch",
+                "fix": CHROME_MISSING,
             }
     except ImportError:
         return {
             "success": False,
             "error": "no browser backend available",
-            "fix": "pip install 'camoufox[geoip]' && python -m camoufox fetch",
+            "fix": "paper-search carsi update",
         }
 
     from ..config import DATA_DIR
@@ -189,7 +189,7 @@ def extract_via_browser(
         _save_cookies_json(save_cookies, cookie_file)
         _save_cookies_netscape(save_cookies, netscape_file)
 
-        # Import into Camoufox server if running
+        # Import into the shared browser if available
         browser_imported = 0
         try:
             from .engine import import_cookies, is_available
@@ -339,7 +339,7 @@ def publisher_login(
     Takes a DOI or publisher name, resolves to the article page, and opens
     a visible stealth browser. User clicks "Access through your institution",
     completes SSO login, then closes the browser. Cookies are captured and
-    imported into Camoufox for automated downloads.
+    imported into the download browser for automated downloads.
 
     Args:
         identifier: DOI (e.g. 10.1126/science.aec6396) or publisher name

@@ -8,14 +8,8 @@ import atexit
 from pathlib import Path
 from typing import Any
 
-try:
-    from .backend import launch
-    from .backend import BACKEND_CAMOUFOX
-    from .backend import is_available as _browser_backend_available
-    _HAS_CLOAKBROWSER = _browser_backend_available(BACKEND_CAMOUFOX)
-except ImportError:
-    launch = None  # type: ignore[assignment]
-    _HAS_CLOAKBROWSER = False
+from .backend import CHROME_MISSING, launch
+from .backend import is_available as _browser_backend_available
 from ..log import get_logger
 
 log = get_logger()
@@ -53,8 +47,8 @@ class PersistentBrowser:
 
     def _start(self, config: dict[str, Any] | None = None):
         """Start a new browser instance. Restores saved state if available."""
-        if not _HAS_CLOAKBROWSER:
-            raise RuntimeError("camoufox not installed. Run: pip install 'camoufox[geoip]' && python -m camoufox fetch")
+        if not _browser_backend_available(config=config):
+            raise RuntimeError(f"no browser backend available: {CHROME_MISSING}")
         log.info("   [browser] Starting persistent browser...")
         self._browser = launch(
             headless=False, humanize=True,
@@ -207,23 +201,23 @@ def _save_cookies_json(cookies: list[dict[str, Any]], cookie_file: Path) -> None
 
 
 def _save_cookies_netscape(cookies: list[dict[str, Any]], cookie_file: Path) -> None:
-    """Save cookies in Netscape format (Camoufox import compatible)."""
+    """Save cookies in Netscape format (the shared browser imports this format)."""
     from .cookies import cookies_to_netscape
     cookie_file.write_text(cookies_to_netscape(cookies), encoding="utf-8")
 
 
 def _import_to_browser(cookie_file: Path, config: dict[str, Any]) -> int:
-    """Import cookies into Camoufox. Returns count imported."""
+    """Import cookies into the shared browser. Returns count imported."""
     try:
         from .engine import import_cookies, is_available
         if not is_available(config):
-            log.info("   [browser] Camoufox not running, skipping auto-import")
+            log.info("   [browser] no browser backend, skipping auto-import")
             return 0
         count = import_cookies(cookie_file, config)
-        log.info(f"   [browser] Imported {count} cookies into Camoufox")
+        log.info(f"   [browser] Imported {count} cookies into the browser")
         return count
     except Exception as exc:
-        log.info(f"   [browser] Could not auto-import to Camoufox: {exc}")
+        log.info(f"   [browser] Could not auto-import to the browser: {exc}")
         return 0
 
 
@@ -246,7 +240,7 @@ def open_login_browser(
         cookie_file: Path to save captured cookies (JSON).
         detect_login: Optional callable(browser_context, page) -> bool for custom login detection.
         max_wait: Max seconds to wait for login.
-        auto_import: Whether to auto-import cookies into Camoufox.
+        auto_import: Whether to auto-import cookies into the shared browser.
         keep_alive: If True, return (True, context, page) without closing browser.
         publisher: Publisher name (unused; kept for callers).
 
@@ -257,8 +251,8 @@ def open_login_browser(
     print(f"\n  请在浏览器中登录 ({url})")
     print("  程序会自动检测登录完成...\n")
 
-    if not _HAS_CLOAKBROWSER:
-        log.info("   [browser] camoufox not installed")
+    if not _browser_backend_available(config=config):
+        log.info(f"   [browser] {CHROME_MISSING}")
         return (False, None, None, None) if keep_alive else False
 
     try:

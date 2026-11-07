@@ -380,7 +380,7 @@ class CandidatePagesTests(unittest.TestCase):
         self.assertEqual([c.args[0] for c in page.goto.call_args_list], adapter.supplements_page_urls.return_value[:1])
 
     def test_links_are_read_again_after_a_script_navigation(self):
-        from playwright.sync_api import Error
+        from patchright.sync_api import Error
         d = PublisherBatchDownloader({}, profile=get_publisher_profile("elsevier"))
         page = MagicMock()
         link = SupplementLink("https://ars.els-cdn.com/content/image/1-s2.0-S1-mmc1.pdf", "S1")
@@ -478,7 +478,7 @@ class FourPublishersLinksTests(unittest.TestCase):
 @unittest.skipUnless(os.environ.get("CARSI_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
 class WileyLinksTests(unittest.TestCase):
     def test_only_this_articles_supporting_information_rows(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         html = f"""<table><tr><td><a href="{SUPP}">art70156-sup-0001-Disclosureform.pdf</a></td><td>Disclosure Form</td></tr>
           <tr><td><a href="/action/downloadSupplement?doi=10.1002%2Fother.1&file=x.pdf">x.pdf</a></td><td>Other article</td></tr></table>
           <a href="https://evil.example/action/downloadSupplement?doi=10.1002%2Fart.70156&file=y.pdf">y</a>"""

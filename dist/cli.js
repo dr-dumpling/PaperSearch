@@ -66,9 +66,9 @@ Usage:
   paper-search status [--validate]
   paper-search doctor [--validate]
   paper-search failures [--run <id>|latest] [--since 2026-11-01] [--runs 5] [--doi <DOI>] [--export <file.zip>] [--all]
-  paper-search carsi <install|status> [--browser camoufox|ego] [--yes] [--force] [--skip-school]
+  paper-search carsi <install|status> [--browser chrome|ego] [--yes] [--force] [--skip-school]
   paper-search carsi update [--force]
-  paper-search carsi uninstall [--yes] [--remove-browser] [--remove-data]
+  paper-search carsi uninstall [--yes] [--remove-data]
   paper-search smoke --mock|--live
   paper-search skills <status|update|diff> [--targets agents,codex]
   paper-search tools
@@ -328,9 +328,13 @@ function carsiBackendForToolCall(tool, args) {
         !isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")) {
         return undefined;
     }
-    const backend = createCarsiBackend();
+    return withCliCarsiProgress(createCarsiBackend());
+}
+function withCliCarsiProgress(backend) {
+    const withBatchSession = backend.withBatchSession?.bind(backend);
     return {
         probe: (signal) => backend.probe(signal),
+        withBatchSession: withBatchSession && ((run) => withBatchSession((scoped) => run(withCliCarsiProgress(scoped)))),
         reportBatchProgress: async (update, signal) => (await backend.reportBatchProgress?.(update, signal)) ?? false,
         downloadLegalDoi: async (request) => {
             const controller = new AbortController();
@@ -730,14 +734,14 @@ async function offerCarsiInstall(session, flags) {
         return { installed: false, asked: false };
     const answer = flags.installCarsi === true
         ? "y"
-        : await session.line("Install the institutional download extension? It downloads papers through your school's subscription in a browser (about 3 GB to download). [y/N]: ");
+        : await session.line("Install the institutional download extension? It downloads papers through your school's subscription in your Google Chrome (about 0.5 GB to download). [y/N]: ");
     if (!/^y(es)?$/i.test(answer.trim()))
         return { installed: false, asked: true };
     try {
         const outcome = await installCarsi(
         // Confirmed by setup's question or by --install-carsi: not asked again (an agent's
         // setup without a terminal cancelled itself here, review 2026-11-02).
-        host, { browser: "camoufox", yes: false, confirmed: true, force: false, skipSchool: false }, context);
+        host, { browser: "chrome", yes: false, confirmed: true, force: false, skipSchool: false }, context);
         return { installed: outcome.status === "installed", asked: true, outcome: outcome.status };
     }
     catch (error) {
@@ -776,10 +780,11 @@ async function handleCarsiCommand(positionals, flags) {
     const context = carsiContext();
     try {
         if (sub === "install") {
-            if (flags.browser !== undefined && flags.browser !== "camoufox" && flags.browser !== "ego") {
-                return { ok: false, error: "--browser 只能是 camoufox 或 ego" };
+            // "camoufox", retired (ADR 0016), still means the default browser.
+            if (flags.browser !== undefined && !["chrome", "ego", "camoufox"].includes(String(flags.browser))) {
+                return { ok: false, error: "--browser 只能是 chrome 或 ego" };
             }
-            const browser = flags.browser === "ego" ? "ego" : "camoufox";
+            const browser = flags.browser === "ego" ? "ego" : "chrome";
             const outcome = await installCarsi(host, {
                 browser,
                 yes: flags.yes === true,
@@ -813,7 +818,6 @@ async function handleCarsiCommand(positionals, flags) {
         if (sub === "uninstall") {
             const outcome = await uninstallCarsi(host, {
                 yes: flags.yes === true,
-                removeBrowser: flags.removeBrowser === true,
                 removeData: flags.removeData === true,
             }, context);
             if (flags.format === "text") {

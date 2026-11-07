@@ -15,7 +15,7 @@ CHOOSER = 'https://journals.sagepub.com/action/ssostart?redirectUri=' + ARTICLE
 class ManualCarsiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         cls.driver = sync_playwright().start()
         cls.browser = cls.driver.chromium.launch(channel='chrome', headless=True)
 
@@ -67,7 +67,7 @@ class ManualCarsiTests(unittest.TestCase):
             '}, ' + str(delay_ms) + '); return false;">Access</a><div id="panel"></div>')
 
     def test_slow_sage_access_panel_is_waited_for(self):
-        # Right after a Cloudflare check the panel took longer than 5 s on Camoufox.
+        # Right after a Cloudflare check the panel took longer than 5 s (in Firefox).
         self.sage_panel(7000)
         self.page.goto(ARTICLE)
         self.assertTrue(self.downloader._click_sso_entry(self.page, self.result))

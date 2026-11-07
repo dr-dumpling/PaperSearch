@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 from weakref import WeakKeyDictionary
 
-from .watchdog import BrowserUnresponsive
+from .watchdog import BrowserUnresponsive, operation_remaining
 from ..entitlements import UserMarkedNoEntitlement
 
 _OBSERVERS = WeakKeyDictionary()
@@ -32,6 +32,7 @@ _KINDS = {'blank', 'article', 'pdf', 'login', 'other'}
 OBSERVE_INTERVAL_SEC = 4  # between unforced frames (waits refresh at most this often)
 MAX_KEPT_FRAMES = 5  # earlier page states kept per download, besides each tab's newest frame
 JPEG_QUALITY = 60
+SCREENSHOT_TIMEOUT_MS = 1500
 
 
 def _atomic(path: Path, data: bytes) -> None:
@@ -62,6 +63,7 @@ class BrowserPreview:
         self.observing = False
         self.paused = 0
         self._cdp = WeakKeyDictionary()
+        self._navigation_listeners = {}
         context.on('close', self.close)
         self._write([])
         context.on('page', self._attach_page)
@@ -74,22 +76,30 @@ class BrowserPreview:
             # browser calls. Capture at the next workflow observation instead.
             self.page_revisions[page] = self.page_revisions.get(page, 0) + 1
             self.last_observed = 0.0
+        self._navigation_listeners[page] = changed
         page.on('domcontentloaded', changed)
 
-    def close(self, *_args):
+    def close(self, *_args, browser_closed=True):
         self.closed = True
         try:
             if self._is_current():
-                self._write(self.pages)
+                self._write(self.pages, browser_closed=browser_closed)
         except OSError:
             logging.getLogger(__name__).warning('browser_preview_unavailable')
         finally:
+            self.context.remove_listener('close', self.close)
+            self.context.remove_listener('page', self._attach_page)
+            for page, changed in self._navigation_listeners.items():
+                page.remove_listener('domcontentloaded', changed)
+            self._navigation_listeners.clear()
+            if self._is_current():
+                _ACTIVE.pop(str(self.directory.resolve()))
             _OBSERVERS.pop(self.context, None)
 
     def _is_current(self):
         return _ACTIVE.get(str(self.directory.resolve())) == self.context_id
 
-    def _write(self, pages):
+    def _write(self, pages, *, browser_closed=False):
         # screenshot() can yield to another context's navigation callback.
         # Recheck at publication, not only when the observation starts.
         if not self._is_current():
@@ -99,13 +109,16 @@ class BrowserPreview:
         packet = {'schema_version': 1, 'run_id': self.run_id, 'identifier': self.identifier,
                   'context_id': self.context_id,
                   'owner_pid': os.getpid(), 'revision': self.revision,
-                  'observed_at': self.observed_at, 'browser_closed': self.closed, 'pages': pages}
+                  'observed_at': self.observed_at, 'browser_closed': browser_closed, 'pages': pages}
         _atomic(self.directory / 'current.json', json.dumps(packet).encode())
 
     def observe(self, *, force=False):
         if self.closed or not self._is_current() or self.observing or (not force and (
                 self.paused or time.monotonic() - self.last_observed < OBSERVE_INTERVAL_SEC)):
             return
+        remaining = operation_remaining()
+        if remaining is not None and remaining * 1000 <= SCREENSHOT_TIMEOUT_MS:
+            return  # Leave the remaining page time to the download, with the last preview intact.
         self.observing = True
         try:
             self._observe()
@@ -135,7 +148,7 @@ class BrowserPreview:
             data = session.send("Page.captureScreenshot",
                                 {"format": "jpeg", "quality": JPEG_QUALITY, "fromSurface": True})
             return base64.b64decode(data["data"])
-        return page.screenshot(timeout=1500, full_page=False, type="jpeg", quality=JPEG_QUALITY)
+        return page.screenshot(timeout=SCREENSHOT_TIMEOUT_MS, full_page=False, type="jpeg", quality=JPEG_QUALITY)
 
     def _observe(self):
         self.last_observed = time.monotonic()
@@ -363,13 +376,19 @@ def prune(directory: str | Path, keep: int = DEFAULT_KEEP_RUNS) -> list[str]:
 def ensure_enabled(context, config: dict | None = None):
     """Enable the preview for this download context unless turned off; never raises."""
     config = config or {}
-    if config.get("browser_preview") is False:
-        return None
-    existing = _OBSERVERS.get(context) if context is not None else None
-    if existing is not None:
-        return existing
-    directory = default_directory(config)
     try:
+        existing = _OBSERVERS.get(context) if context is not None else None
+        enabled = config.get("browser_preview") is not False
+        if existing is not None:
+            from .. import progress_reporter
+            identity = progress_reporter.read_state() or {}
+            if (enabled and existing.run_id == identity.get("run_id")
+                    and existing.identifier == str(identity.get("current") or "").lower()):
+                return existing
+            existing.close(browser_closed=False)
+        if not enabled:
+            return None
+        directory = default_directory(config)
         directory.mkdir(parents=True, mode=0o700, exist_ok=True)
         try:
             keep = int(config.get("browser_preview_keep_runs", DEFAULT_KEEP_RUNS))

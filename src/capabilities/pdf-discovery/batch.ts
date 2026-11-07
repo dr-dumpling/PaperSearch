@@ -16,6 +16,7 @@ import {
 } from "./OpenAccessFallbackService.js";
 import type { CarsiBackend } from "./carsi/index.js";
 import { fetchSupplementsOnly } from "./tiers/entitledAccess.js";
+import { batchFolder, reportBatchResults } from "./batchSummary.js";
 import type {
   DownloadContent,
   DownloadBatchPosition,
@@ -188,8 +189,11 @@ export async function downloadSupplementsOnly(
           ...(saved ? {} : { code: "supplements_failed" }),
         };
   request.onStage?.({ ...attempt, ...(trace ? { trace } : {}), startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt });
+  const title = request.title || metadata.title;
   return {
     status: saved || noneListed ? "ok" : "error",
+    ...(title ? { title } : {}),
+    ...(metadata.journal ? { journal: metadata.journal } : {}),
     attempts: [attempt, ...(filingFailed ? [{ stage: "output_layout", status: "error" as const,
       code: "output_layout_failed", message: "File organization failed; use the returned file paths." }] : [])],
     ...(files ? { supplements: files } : {}),
@@ -374,13 +378,18 @@ export async function downloadBatch(
   pause: (ms: number) => Promise<void> = wait,
 ): Promise<DownloadBatchResult> {
   options = { ...options, savePath: resolveDownloadPath(options.savePath) };
-  const result =
-    options.content === "supplements"
-      ? await downloadSupplementsBatch(options, backend, log, searchers)
+  const startedAt = Date.now();
+  const run = async (backend?: CarsiBackend) => {
+    const result = await (options.content === "supplements"
+      ? downloadSupplementsBatch(options, backend, log, searchers)
       : options.mode === "per_item"
-        ? await downloadPerItem(searchers, options, backend, log, createTiers, pause)
-        : await downloadTwoPhase(searchers, options, backend, log, createTiers,
-            options.mode === "entitled_only" ? "entitled_only" : "two_phase", pause);
+        ? downloadPerItem(searchers, options, backend, log, createTiers, pause)
+        : downloadTwoPhase(searchers, options, backend, log, createTiers,
+            options.mode === "entitled_only" ? "entitled_only" : "two_phase", pause));
+    await reportBatchResults(result, backend, startedAt, batchFolder(options.savePath!));
+    return result;
+  };
+  const result = await (backend?.withBatchSession ? backend.withBatchSession(run) : run(backend));
   const byClass = Object.entries(result.failureClasses ?? {})
     .map(([failureClass, count]) => `${FAILURE_CLASS_NAMES[failureClass as FailureClass]} ${count}`)
     .join("、");

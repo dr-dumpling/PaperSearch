@@ -5,7 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from paper_search_carsi.browser import backend
 
@@ -39,17 +39,22 @@ class ProfileReleaseTests(unittest.TestCase):
         self.lock(owner.pid)
         self.assertFalse(backend.wait_for_profile_release(str(self.dir), timeout=0.6))
 
+    def launched(self):
+        context = Mock(pages=[])
+        return patch.object(backend, "_launch_chrome_persistent", return_value=context), context
+
     def test_launch_persistent_context_waits_first(self):
-        with patch.object(backend, "wait_for_profile_release") as wait, \
-             patch.object(backend, "_launch_camoufox_persistent", return_value="ctx") as launch:
-            self.assertEqual(backend.launch_persistent_context(str(self.dir), config={}), "ctx")
-        wait.assert_called_once_with(str(backend.camoufox_profile_dir(self.dir)))
+        launching, context = self.launched()
+        with patch.object(backend, "wait_for_profile_release") as wait, launching as launch, \
+             patch.object(backend, "_keep_session_cookies"):
+            self.assertIs(backend.launch_persistent_context(str(self.dir), config={}), context)
+        wait.assert_called_once_with(str(backend.chrome_profile_dir(self.dir)))
         launch.assert_called_once()
 
-    def hold_parentlock(self, seconds):
-        """Another process holding Firefox's .parentlock (macOS has no lock symlink)."""
+    def hold_lockfile(self, seconds):
+        """Another process holding the profile's lockfile (Chrome keeps it open on Windows)."""
         import threading
-        lock = self.dir / ".parentlock"
+        lock = self.dir / "lockfile"
         lock.touch()
         code = ("import fcntl, os, sys, time; fd = os.open(sys.argv[1], os.O_RDWR); "
                 "fcntl.lockf(fd, fcntl.LOCK_EX); print('held', flush=True); time.sleep(float(sys.argv[2]))")
@@ -60,25 +65,26 @@ class ProfileReleaseTests(unittest.TestCase):
         return owner
 
     @unittest.skipIf(sys.platform == "win32", "fcntl locks")
-    def test_a_held_parentlock_is_waited_for_until_released(self):
-        (self.dir / ".parentlock").touch()
+    def test_a_held_lockfile_is_waited_for_until_released(self):
+        (self.dir / "lockfile").touch()
         self.assertEqual(backend.profile_holder(str(self.dir)), "")  # a file left behind holds nothing
-        self.hold_parentlock(1.2)
-        self.assertEqual(backend.profile_holder(str(self.dir)), ".parentlock held")
+        self.hold_lockfile(1.2)
+        self.assertEqual(backend.profile_holder(str(self.dir)), "lockfile held")
         self.assertTrue(backend.wait_for_profile_release(str(self.dir), timeout=10))
         self.assertEqual(backend.profile_holder(str(self.dir)), "")
 
     @unittest.skipIf(sys.platform == "win32", "fcntl locks")
-    def test_a_parentlock_held_too_long_lets_the_launch_report(self):
-        self.hold_parentlock(30)
+    def test_a_lockfile_held_too_long_lets_the_launch_report(self):
+        self.hold_lockfile(30)
         self.assertFalse(backend.wait_for_profile_release(str(self.dir), timeout=0.6))
 
     def test_the_launch_records_who_held_the_profile(self):
-        with patch.object(backend, "profile_holder", return_value=".parentlock held"), \
-             patch.object(backend, "wait_for_profile_release", return_value=True), \
-             patch.object(backend, "_launch_camoufox_persistent", return_value="ctx"):
+        launching, _context = self.launched()
+        with patch.object(backend, "profile_holder", return_value="lockfile held"), \
+             patch.object(backend, "wait_for_profile_release", return_value=True), launching, \
+             patch.object(backend, "_keep_session_cookies"):
             backend.launch_persistent_context(str(self.dir), config={})
-        self.assertEqual(backend.LAST_LAUNCH["holder"], ".parentlock held")
+        self.assertEqual(backend.LAST_LAUNCH["holder"], "lockfile held")
         self.assertTrue(backend.LAST_LAUNCH["released"])
         self.assertIn("waited", backend.LAST_LAUNCH)
 

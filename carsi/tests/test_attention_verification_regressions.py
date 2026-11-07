@@ -25,7 +25,7 @@ def test_inactive_first_widget_does_not_hide_an_actionable_second_widget():
 
 
 def test_closed_widget_uses_one_actionability_check_and_retains_readiness_on_timeout():
-    from playwright.sync_api import TimeoutError
+    from patchright.sync_api import TimeoutError
     page, _, element, _ = widget(count=0)
     element.click.side_effect = [TimeoutError('covered by a temporary overlay'), None]
     reasons = []
@@ -91,7 +91,7 @@ def test_clearing_a_login_prompt_restores_the_machine_stage(tmp_path, monkeypatc
 
 
 def test_humanized_motion_is_not_performed_twice_in_one_click_budget(monkeypatch):
-    from playwright.sync_api import TimeoutError
+    from patchright.sync_api import TimeoutError
     now = [0.0]
     monkeypatch.setattr(interaction, 'time', SimpleNamespace(monotonic=lambda: now[0]))
     page, _, element, _ = widget(count=0)

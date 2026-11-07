@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
+from paper_search_carsi.browser import watchdog
 from paper_search_carsi.engine.batch import PublisherBatchDownloader, DownloadResult, PaperRecord
 from paper_search_carsi.publishers.profiles import ELSEVIER_PROFILE
 
@@ -49,6 +50,19 @@ class PublisherManualWaitTests(unittest.TestCase):
         self.page.goto.assert_not_called()
         self.assertTrue(self.downloader._article_access_available(self.page))
         self.assertIn('challenge_resolved', [event['state'] for event in result.events])
+
+    def test_spent_article_budget_during_verification_is_not_a_browser_failure(self):
+        self.downloader.login_timeout_sec = 60
+        def verify_near_deadline(page, result):
+            with watchdog.operation(0.5, "_prepare_article"):
+                return self.downloader._wait_for_challenge(page, result)
+        self.downloader._ensure_login = verify_near_deadline
+        with tempfile.TemporaryDirectory() as temp:
+            result = self.downloader.fetch_one(self.page, PaperRecord(doi='10.1000/test'), Path(temp))
+        self.page.wait_for_timeout.assert_not_called()
+        self.assertEqual(result.reason, 'challenge_or_viewer_timeout')
+        self.assertEqual(result.state, 'challenge_or_viewer_timeout')
+        self.assertNotIn('browser_operation_timeout', [event['state'] for event in result.events])
 
     def test_content_error_at_landing_page_stops_before_login(self):
         self.downloader._body_text.return_value = 'CPE00001 There was a problem providing the content you requested'

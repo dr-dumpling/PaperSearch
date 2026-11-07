@@ -60,6 +60,8 @@ body.grow-up #root.animating > .surface { top: auto; bottom: 0; }
 
 .attention-target { appearance: none; box-sizing: content-box; padding: 0; border: none; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .pill-prompt { display: inline-flex; align-items: center; gap: 8px; }
+.attention-countdown { font-variant-numeric: tabular-nums; }
+.attention-countdown:empty { display: none; }
 .attention-target:focus-visible { outline: 2px solid var(--warn-dot); outline-offset: -2px; border-radius: 8px; }
 .pillrow { display: flex; align-items: center; gap: 8px; padding: 5px 14px 5px 6px; white-space: nowrap; height: 28px; }
 .pillrow.icon-first { padding-left: 12px; }
@@ -136,6 +138,32 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .attention-head { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; color: var(--fg); }
 .attention-head b { flex: 1; font-size: 12px; }
 #root.card.warn { background: var(--bg); }
+
+/* The finished card: totals, failures by reason, what was saved. No text wraps. */
+.done-stats { margin-top: 12px; }
+.sec { margin-top: 14px; }
+.sec-h { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: var(--dim); margin-bottom: 4px; }
+.sec-h b { color: var(--fg); font-weight: 600; font-size: 13px; }
+.saved-line { font-size: 12px; color: var(--dim); line-height: 1.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grp { border-top: 0.5px solid var(--line); padding: 8px 0; }
+.grp:last-child { border-bottom: 0.5px solid var(--line); }
+.grp .row { display: flex; align-items: center; gap: 6px; width: 100%; padding: 0; border: none; background: none;
+            font: inherit; color: inherit; text-align: left; white-space: nowrap; cursor: pointer; }
+.grp .row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.grp .row .reason { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.grp .row .n { font-weight: 600; }
+.grp .row svg.i { width: 14px; height: 14px; color: var(--faint); }
+.grp .m { font-size: 12px; color: var(--faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.paper-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 196px; overflow-y: auto; }
+.paper-list.scroll { -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent); mask-image: linear-gradient(to bottom, #000 80%, transparent); }
+.paper-list li { font-size: 12px; padding: 3px 0; }
+.paper-list .t, .paper-list .w { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.paper-list .w, .paper-list .more { color: var(--faint); }
+.tag { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 5px; flex: none; }
+.tag.no_access, .tag.other { background: var(--hover); color: var(--fg); }
+.tag.user_or_external { background: var(--warn-bg); color: var(--warn); }
+.tag.unsupported { background: rgba(37, 99, 235, 0.12); color: var(--accent); }
+.tag.unexplained { background: rgba(220, 38, 38, 0.12); color: var(--bad); }
 </style>
 </head>
 <body>
@@ -155,6 +183,7 @@ const ICONS = {
   dots: '<circle cx="6" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="18" cy="12" r="1"/>',
   left: '<path d="M15 6l-6 6 6 6"/>',
   right: '<path d="M9 6l6 6-6 6"/>',
+  down: '<path d="M6 9l6 6 6-6"/>',
   gear: gearPath(),
 };
 function gearPath() {
@@ -193,7 +222,7 @@ function pill() {
     const a = v.attention;
     return '<div class="pillrow icon-first capsule-drag-region">' + icon(a.login ? "lock" : "shield")
       + '<button type="button" class="pill-prompt attention-target" data-act="show_browser" title="点击切到下载浏览器" aria-label="打开下载浏览器">'
-      + "<b>" + esc(a.short) + "</b>" + (a.remaining ? "<span>" + esc(a.remaining) + "</span>" : "") + "</button></div>";
+      + '<b>' + esc(a.short) + '</b><span class="attention-countdown"></span></button></div>';
   }
   if (v.mode === "done") {
     // "完成 38/40  2 篇失败": papers saved out of all; a check unless nothing was saved.
@@ -275,12 +304,10 @@ function runningCard() {
 function attentionCard() {
   const a = V.attention;
   const title = a.short;
-  const detail = [a.message, a.remaining ? "剩 " + a.remaining : "",
-                  a.more ? "另有 " + a.more + " 项" : ""].filter(Boolean).join(" · ");
   let html = '<div class="card-body"><div class="attention-head capsule-drag-region"><b>PaperSearch</b>'
     + '<button class="iconbtn" data-act="minimize" aria-label="最小化">' + icon("minimize") + '</button>'
     + '<button class="iconbtn" data-act="close" aria-label="关闭">' + icon("close") + '</button></div>'
-    + '<button type="button" class="prompt attention-target" data-act="show_browser" title="' + esc(detail) + '" aria-label="打开下载浏览器">' + icon(a.login ? "lock" : "alert")
+    + '<button type="button" class="prompt attention-target" data-act="show_browser" aria-label="打开下载浏览器">' + icon(a.login ? "lock" : "alert")
     + '<div class="attention-copy"><div class="t">' + esc(title) + '</div><div class="s">点击打开浏览器，查看并继续</div></div><span class="attention-arrow" aria-hidden="true">›</span></button>';
   if (panel === "confirm") return html + actionsBlock() + "</div>";
   html += '<div class="actions"><button class="iconbtn" data-act="settings" aria-label="设置">' + icon("gear")
@@ -292,12 +319,45 @@ function attentionCard() {
   return html + "</div></div>";
 }
 
+const CLASS_TAGS = { no_access: "没权限", user_or_external: "外部原因", unsupported: "暂不支持", unexplained: "原因不明", other: "其他" };
+let openGroups = null, groupsRun = "";  // null: each reason row as the view opens it
+function groupOpen(i) {
+  if (groupsRun !== V.run_id) { openGroups = null; groupsRun = V.run_id; }
+  return openGroups ? openGroups.has(i) : !!V.summary.groups[i].open;
+}
+function toggleGroup(i) {
+  const opened = !groupOpen(i);
+  openGroups = new Set(opened ? [i] : []);  // one reason open at a time
+  render(true);
+}
+
+function reasonRow(g, i) {
+  const opened = groupOpen(i);
+  let html = '<div class="grp"><button type="button" class="row" data-act="group" data-group="' + i + '" aria-expanded="' + opened + '">'
+    + '<span class="tag ' + esc(g.cls) + '">' + esc(CLASS_TAGS[g.cls] || "") + '</span><span class="reason">' + esc(g.reason) + "</span>"
+    + '<span class="n">' + g.count + " 篇</span>" + icon(opened ? "down" : "right") + "</button>";
+  if (!opened) return html + (g.where ? '<div class="m">' + esc(g.where) + "</div>" : "") + "</div>";
+  return html + '<ul class="paper-list' + (g.papers.length > 5 ? " scroll" : "") + '">'
+    + g.papers.map((p) => '<li><div class="t">' + esc(p.title) + "</div>" + (p.where ? '<div class="w">' + esc(p.where) + "</div>" : "") + "</li>").join("")
+    + (g.more ? '<li class="more">另有 ' + g.more + " 篇未列出</li>" : "") + "</ul></div>";
+}
+
 function doneCard() {
-  const v = V;
-  const parts = [v.total ? "成功 " + v.ok : "", v.bad ? "失败 " + v.bad : "", v.elapsed ? "用时 " + v.elapsed : ""].filter(Boolean);
-  return '<div class="card-body">' + header(v.headline, parts.join(" · "), true)
-    + (v.completion_detail ? '<div class="prompt"><div>' + esc(v.completion_detail) + '</div></div>' : "")
-    + (v.folder ? '<div class="actions"><button class="btn link" data-act="folder">' + icon("folder") + "打开文件夹</button></div>" : "")
+  const v = V, s = v.summary;
+  let html = '<div class="card-body">' + header(v.headline, v.total ? "共 " + v.total + " 篇" : "", true)
+    + '<div class="stats done-stats"><div><b style="color:var(--ok)">' + v.ok + "</b><span>成功</span></div>"
+    + '<div><b' + (v.bad ? ' style="color:var(--bad)"' : "") + ">" + v.bad + "</b><span>失败</span></div>"
+    + "<div><b>" + esc(v.elapsed || "—") + "</b><span>用时</span></div></div>";
+  if (s && s.groups.length) {
+    html += '<div class="sec"><div class="sec-h"><b>未完成 ' + v.bad + " 篇</b><span>按原因</span></div>"
+      + s.groups.map(reasonRow).join("") + "</div>";
+  }
+  if (s && v.ok) {
+    html += '<div class="sec"><div class="sec-h"><b>已完成 ' + v.ok + " 篇</b></div>"
+      + s.saved.map((line) => '<div class="saved-line">' + esc(line) + "</div>").join("") + "</div>";
+  }
+  if (v.completion_detail) html += '<div class="line">' + esc(v.completion_detail) + "</div>";
+  return html + (v.folder ? '<div class="actions"><button class="btn link" data-act="folder">' + icon("folder") + "打开文件夹</button></div>" : "")
     + "</div>";
 }
 
@@ -329,6 +389,19 @@ function settingsCard() {
 
 let lastCls = "", hovering = false, closing = false, dragging = false, endingDrag = false;
 let dragReady = Promise.resolve();
+let attentionPointer = null;
+let renderedAttention = null;
+
+function updateAttentionCountdown() {
+  const a = V.attention;
+  const card = root.querySelector(".prompt.attention-target");
+  if (card) card.title = [a.message, a.remaining ? "剩 " + a.remaining : "",
+                         a.more ? "另有 " + a.more + " 项" : ""].filter(Boolean).join(" · ");
+  const countdown = root.querySelector(".attention-countdown");
+  if (!countdown || countdown.textContent === (a.remaining || "")) return false;
+  countdown.textContent = a.remaining || "";
+  return true;
+}
 
 function render(force) {
   if (closing || dragging) return;
@@ -341,12 +414,21 @@ function render(force) {
   else if (V.mode === "done") html = doneCard();
   else html = idleCard();
   const cls = shape + (V.mode === "attention" && panel !== "settings" ? " warn" : "");
-  if (!force && html === lastHtml && cls === lastCls) return;
+  const attention = V.mode === "attention" && panel !== "settings";
+  const sameTask = !attention || (renderedAttention?.current === V.current
+    && renderedAttention?.run_id === V.run_id);
+  const unchanged = !force && sameTask && html === lastHtml && cls === lastCls;
+  // Keep the real button (and its pointer/focus target) through countdown ticks.
+  if (unchanged && (!attention || !updateAttentionCountdown())) return;
   const previous = root.getBoundingClientRect();
   root.style.width = ""; root.style.height = "";
   root.style.removeProperty("--content-max-height");
-  root.className = cls + " capsule-drag-region" + (cls !== lastCls ? " fade" : "");
-  root.innerHTML = '<div class="surface">' + html + "</div>";
+  if (!unchanged) {
+    root.className = cls + " capsule-drag-region" + (cls !== lastCls ? " fade" : "");
+    root.innerHTML = '<div class="surface">' + html + "</div>";
+    if (attention) updateAttentionCountdown();
+    renderedAttention = attention ? V : null;
+  }
   lastHtml = html;
   lastCls = cls;
   fit(previous);
@@ -437,6 +519,7 @@ async function act(action, target) {
     case "minimize": open = false; panel = ""; render(true); return api().minimize();  // back as a capsule when restored
     case "close": closing = true; ++fitGeneration; clearInterval(pollTimer); clearTimeout(hoverTimer); clearTimeout(leaveTimer); return api().request_close();  // no call left waiting on a closed page
     case "folder": return api().open_folder();
+    case "group": return toggleGroup(Number(target.dataset.group));
     case "show_browser": {
       try { await inputActivation; }
       catch (error) { return say("未能激活进度窗口，请重试"); }
@@ -491,9 +574,14 @@ async function act(action, target) {
   }
 }
 
-const interactive = (target) => target.closest('button, input, select, textarea, a, [contenteditable="true"], [role="button"]');
+// A paper list scrolls; pressing in it must not drag the window.
+const interactive = (target) => target.closest('button, input, select, textarea, a, [contenteditable="true"], [role="button"], .paper-list');
 root.addEventListener("pointerdown", (event) => {
   if (event.button === 0 && api().activate_on_input) inputActivation = api().activate_on_input();
+  if (event.button === 0 && event.target.closest(".attention-target")) {
+    attentionPointer = event.pointerId;
+    clearTimeout(hoverTimer); clearTimeout(leaveTimer);
+  }
   if (event.button !== 0 || interactive(event.target)) return;
   dragging = true;
   ++hoverRequest;
@@ -555,7 +643,7 @@ function setHover(inside, force = false) {
   if (!force && hovering === inside && (!inside || open)) return;
   hovering = inside;
   clearTimeout(hoverTimer); clearTimeout(leaveTimer);
-  if (dragging) return;
+  if (dragging || attentionPointer !== null) return;
   if (inside) {
     hoverTimer = setTimeout(() => { if (!open) { open = true; render(true); } }, 100);
   } else {
@@ -586,7 +674,18 @@ async function observeHover(inside, force = false) {
   setHover(pointer.inside, force);
 }
 root.addEventListener("mouseenter", () => observeHover(true));
-root.addEventListener("mouseleave", () => observeHover(false));
+root.addEventListener("mouseleave", () => {
+  attentionPointer = null;
+  observeHover(false);
+});
+function endAttentionPress(event) {
+  if (attentionPointer === null || (event.pointerId !== undefined && attentionPointer !== event.pointerId)) return;
+  attentionPointer = null;
+  observeHover(root.matches(":hover"), true);
+}
+window.addEventListener("pointerup", endAttentionPress);
+window.addEventListener("pointercancel", endAttentionPress);
+window.addEventListener("blur", endAttentionPress);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && panel) { panel = ""; render(true); }
   if (event.key === "Enter" && panel === "settings") act("save");

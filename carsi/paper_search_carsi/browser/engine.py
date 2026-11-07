@@ -1,10 +1,9 @@
-"""Browser engine: Camoufox-based replacement for the old camofox daemon API.
+"""Browser engine: a shared browser for the routes outside the batch downloader.
 
-Provides the same public API as the old camofox.py (is_available, solve_url,
-get_cookies, get_html, import_cookies, evaluate_js, create_tab, close_tab,
-navigate_tab, get_snapshot, download_pdf_via_browser, fetch_url,
-get_captured_responses, close_all_tabs) but uses Camoufox's direct
-Playwright API instead of HTTP calls to an external daemon.
+Public API (is_available, solve_url, get_cookies, get_html, import_cookies,
+evaluate_js, create_tab, close_tab, navigate_tab, get_snapshot,
+download_pdf_via_browser, fetch_url, get_captured_responses, close_all_tabs)
+over the configured backend's Playwright API (backend.py).
 
 Uses a single shared browser instance with multiple tabs (pages). Cookies,
 login sessions, and Cloudflare bypass state are shared across all tabs.
@@ -28,14 +27,14 @@ from urllib.parse import urlparse
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Browser backend (Camoufox via Playwright; ego-lite has its own driver)
+# Browser backend (Chrome or ego-lite, both through Patchright)
 # ---------------------------------------------------------------------------
 # Everything in this module drives the Playwright sync API, shared by both
-# Camoufox and ego-lite. Backend selection lives in backend.py.
+# backends. Backend selection lives in backend.py.
 # ---------------------------------------------------------------------------
 
 from .backend import (  # noqa: E402
-    BACKEND_CAMOUFOX,
+    CHROME_MISSING,
     launch,
     launch_persistent_context,
     resolve_backend,
@@ -48,13 +47,14 @@ from .backend import (  # noqa: E402
 def _check_browser_backend(config: dict[str, Any] | None = None) -> bool:
     """True when the resolved backend can serve the Playwright API here.
 
-    Camoufox when installed; ego always (whether its remote debugging is on
-    is checked, with a hint for the user, when the browser is attached).
+    Chrome when installed; ego always (whether its remote
+    debugging is on is checked, with a hint for the user, when the browser is
+    attached).
     """
     from .backend import BACKEND_EGO, is_available
 
     backend = resolve_backend(config)
-    return backend == BACKEND_EGO or (backend == BACKEND_CAMOUFOX and is_available(BACKEND_CAMOUFOX))
+    return backend == BACKEND_EGO or is_available(backend, config)
 
 
 # ---------------------------------------------------------------------------
@@ -233,10 +233,7 @@ def _get_shared_browser(config: dict[str, Any] | None = None):
         )
 
     if not _check_browser_backend(config):
-        raise RuntimeError(
-            "no Playwright browser backend available. Run: pip install 'camoufox[geoip]' && python -m camoufox fetch "
-            "(browser_backend=ego routes through the ego driver instead)"
-        )
+        raise RuntimeError(f"no browser backend available: {CHROME_MISSING}")
 
     # scihub_browser_headless overrides browser_headless for THIS shared
     # browser (the grey-source racing engine). It exists because the racing
@@ -286,10 +283,7 @@ def get_persistent_context(
     stable identity across multiple download runs.
     """
     if not _check_browser_backend(config):
-        raise RuntimeError(
-            "no Playwright browser backend available. Run: pip install 'camoufox[geoip]' && python -m camoufox fetch "
-            "(browser_backend=ego routes through the ego driver instead)"
-        )
+        raise RuntimeError(f"no browser backend available: {CHROME_MISSING}")
 
     headless = False
     humanize = True
@@ -352,7 +346,7 @@ def shutdown_shared_browser():
 
 
 # ---------------------------------------------------------------------------
-# Public API — drop-in replacements for camofox.py functions
+# Public API
 # ---------------------------------------------------------------------------
 
 def is_available(config: dict[str, Any] | None = None) -> bool:
@@ -414,7 +408,7 @@ def solve_url(
     *,
     max_timeout: int = 60000,
 ) -> dict[str, Any] | None:
-    """Fetch URL via Camoufox shared browser. Returns dict with status/solution keys."""
+    """Fetch URL via the shared browser. Returns dict with status/solution keys."""
     page = None
     try:
         _, context = _get_shared_browser(config)
@@ -582,7 +576,7 @@ def download_pdf_via_browser(
     *,
     timeout: float = 60.0,
 ) -> bool:
-    """Download a PDF URL via Camoufox shared browser. Returns True on success.
+    """Download a PDF URL via the shared browser. Returns True on success.
 
     4-strategy cascade:
     1. Network response capture (from page.on("response"))

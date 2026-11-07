@@ -82,7 +82,7 @@ class SilenceTests(unittest.TestCase):
 
 class SlowBrowserCallTests(unittest.TestCase):
     def test_a_long_browser_call_is_reported_with_the_line_that_made_it(self):
-        from playwright._impl import _sync_base
+        from patchright._impl import _sync_base
         reports = []
 
         class Fake:

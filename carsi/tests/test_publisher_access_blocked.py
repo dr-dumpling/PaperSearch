@@ -105,10 +105,10 @@ class PublisherSideFailureTests(unittest.TestCase):
     setUp = PublisherAccessBlockedTests.setUp
 
     def test_a_site_that_does_not_answer_is_the_publishers_side(self):
-        from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeout
+        from patchright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeout
         self.d._publisher_access_blocked = Mock(return_value=False)
         self.d._hold_after_run = Mock()
-        for exc in (PlaywrightError("Page.goto: NS_ERROR_NET_EMPTY_RESPONSE\nCall log:"),
+        for exc in (PlaywrightError("Page.goto: net::ERR_EMPTY_RESPONSE at https://www.thieme-connect.de/\nCall log:"),
                     PlaywrightTimeout("Page.goto: Timeout 60000ms exceeded.")):
             self.d._ensure_login = Mock(side_effect=exc)
             with tempfile.TemporaryDirectory() as tmp:
@@ -135,7 +135,7 @@ class PublisherSideFailureTests(unittest.TestCase):
     def test_a_browser_closed_before_the_supplements_keeps_the_articles_result(self):
         # SID Symposium Digest: the window was closed during the login wait, and
         # TargetClosedError lost the item's result as source_exception (2026-11-02).
-        from playwright.sync_api import Error as PlaywrightError
+        from patchright.sync_api import Error as PlaywrightError
         context = SimpleNamespace(new_page=Mock(side_effect=PlaywrightError("Target page, context or browser has been closed")))
         self.result.state = self.result.reason = "login_page_closed"
         with tempfile.TemporaryDirectory() as tmp:

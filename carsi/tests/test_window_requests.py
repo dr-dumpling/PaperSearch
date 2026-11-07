@@ -74,7 +74,7 @@ class DataDirTest(unittest.TestCase):
 
 class WatchdogRequestTests(DataDirTest):
     def install_on(self, fake):
-        from playwright._impl import _sync_base
+        from patchright._impl import _sync_base
         for p in (patch.object(_sync_base, "SyncBase", fake), patch.object(watchdog, "_installed", False),
                   patch.object(watchdog.threading, "Thread")):
             p.start()
@@ -142,8 +142,10 @@ class SkipThisPaperTests(DataDirTest):
         d._show_download_browser(page, result)
         page.bring_to_front.assert_not_called()
         page.is_closed.return_value = False
+        result._verification_wait = Mock()
         with patch('paper_search_carsi.browser.foreground.show', side_effect=RuntimeError('fixture focus failure')):
             d._show_download_browser(page, result)
+        result._verification_wait.take_over.assert_not_called()
         self.assertIn('browser_focus_failed', [e['state'] for e in result.events])
 
     def test_focus_uses_the_tab_waiting_for_the_user_when_it_is_a_popup(self):

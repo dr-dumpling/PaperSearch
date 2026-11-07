@@ -1,15 +1,14 @@
-"""Browser backends: Camoufox (default) or ego-lite.
+"""Browser backends: Chrome (default) or ego-lite, both driven by Patchright.
 
-Exactly two backends are supported, selected by the ``browser_backend``
-config key:
+Two backends are supported, selected by the ``browser_backend`` config key:
 
-* ``camoufox`` (default) — an open-source anti-detect Firefox build driven
-  through the standard Playwright sync API (``launch*`` return ordinary
-  Playwright objects). Every Playwright-based route in this package runs on
-  it. It is Firefox, so Chromium-only features (CDP sessions, Chromium launch
-  flags) are skipped by their callers.
+* ``chrome`` (default) — the user's installed, self-updating Google Chrome,
+  launched with a profile of its own by Patchright
+  (Playwright with Chromium's automation traces removed). Only Chrome's public
+  switches: automated clicks do not activate its window, and the default
+  switches keep a covered window rendering, so it needs no helper.
 * ``ego`` — the user's own, already running ego-lite browser (a Chromium
-  fork), reached over the Chrome DevTools Protocol with Playwright's
+  fork), reached over the Chrome DevTools Protocol with Patchright's
   ``connect_over_cdp``. The user turns this on once (ego keeps it in Local
   State, devtools.remote_debugging.user-enabled) at
   ``chrome://inspect/#remote-debugging`` ("Allow remote debugging for this
@@ -18,8 +17,9 @@ config key:
   The package only ever sees and closes the tabs it opened (and their popups),
   never closes the browser, and does not save or restore cookies there.
 
-The former ``patchright`` and ``cloakbrowser`` values are accepted for old
-configs, logged, and mapped to ``camoufox``.
+The retired values ``camoufox``, ``patchright`` and ``cloakbrowser`` are
+accepted for old configs, logged once, and mapped to ``chrome``; the config
+file is left as it is.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import time
@@ -50,22 +51,22 @@ from .profiles import (
 
 logger = logging.getLogger(__name__)
 
-BACKEND_CAMOUFOX = "camoufox"
+BACKEND_CHROME = "chrome"
 BACKEND_EGO = "ego"
-# The Camoufox browser build this release is tested with: the stable build
-# paired with the pinned camoufox package (pyproject.toml; stable releases only,
-# ADR 0013). It is launched by path, so another program changing the shared
-# cache's active version does not change ours.
-CAMOUFOX_BROWSER = "156.0.1-beta.36"
 # The browser and version the last launch in this process used (browser_info).
 _launched: dict[str, str] = {}
-DEFAULT_BACKEND = BACKEND_CAMOUFOX
-SUPPORTED_BACKENDS = (BACKEND_CAMOUFOX, BACKEND_EGO)
-_RETIRED_BACKENDS = ("patchright", "cloakbrowser")
+DEFAULT_BACKEND = BACKEND_CHROME
+SUPPORTED_BACKENDS = (BACKEND_CHROME, BACKEND_EGO)
+_RETIRED_BACKENDS = ("camoufox", "patchright", "cloakbrowser")
+_retired_noted: set[str] = set()
 
-# A Firefox profile cannot share a directory with the Chromium profiles that
-# earlier backends left behind, so Camoufox keeps its own sibling directory.
-CAMOUFOX_PROFILE_SUFFIX = "-camoufox"
+# Chrome keeps its own profile, never the profile of the user's everyday Chrome.
+CHROME_PROFILE_SUFFIX = "-chrome"
+CHROME_DOWNLOAD_URL = "https://www.google.com/chrome/"
+CHROME_MISSING = (f"Google Chrome was not found: install it from {CHROME_DOWNLOAD_URL} "
+                  "(or set chrome_executable to the path of a Chrome installed elsewhere)")
+# The Chrome version this release was tested with (acceptance); older ones are reported.
+TESTED_CHROME = "156.0.8078.80"
 
 
 class EgoUnavailable(RuntimeError):
@@ -159,36 +160,121 @@ def ego_endpoint(config: dict[str, Any] | None = None) -> str | None:
     return f"ws://127.0.0.1:{lines[0]}{lines[1]}"
 
 
-def is_available(name: str | None = None) -> bool:
+def find_chrome(config: dict[str, Any] | None = None) -> Path | None:
+    """The installed Google Chrome for the ``chrome`` backend.
+
+    Config ``chrome_executable`` (the path of a Chrome installed elsewhere)
+    overrides. Chrome is the user's stable, self-updating browser; the backend
+    runs it with a profile of its own.
+    """
+    configured = str((config or {}).get("chrome_executable") or "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+        return path if path.exists() else None
+    if sys.platform == "darwin":
+        candidates = [Path(base) / "Google Chrome.app" / "Contents" / "MacOS" / "Google Chrome"
+                      for base in ("/Applications", str(Path.home() / "Applications"))]
+    elif os.name == "nt":
+        roots = [os.environ.get(key, "") for key in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")]
+        candidates = [Path(root) / "Google" / "Chrome" / "Application" / "chrome.exe" for root in roots if root]
+    else:
+        candidates = [Path(found) for found in (shutil.which(name) for name in
+                      ("google-chrome", "google-chrome-stable")) if found]
+    return next((c for c in candidates if c.exists()), None)
+
+
+def _version_key(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in re.findall(r"\d+", version)[:4])
+
+
+def chrome_version(executable: str | Path | None) -> str:
+    """The installed Chrome's version, read without starting it ("" when unknown).
+
+    macOS: the app bundle's Info.plist. Windows: the version folder next to the
+    program (``Application/156.0.8078.80``; the newest after an update). Linux:
+    ``--version``.
+    """
+    if executable is None:
+        return ""
+    path = Path(executable)
+    if sys.platform == "darwin":
+        import plistlib
+
+        bundle = next((p for p in path.parents if p.suffix == ".app"), None)
+        try:
+            with open((bundle or path) / "Contents" / "Info.plist", "rb") as handle:
+                return str(plistlib.load(handle).get("CFBundleShortVersionString") or "")
+        except (OSError, plistlib.InvalidFileException):
+            return ""
+    if sys.platform == "win32":
+        try:
+            folders = [p.name for p in path.parent.iterdir() if p.is_dir() and re.fullmatch(r"\d+(?:\.\d+){3}", p.name)]
+        except OSError:
+            return ""
+        return max(folders, key=_version_key, default="")
+    import subprocess
+
+    try:
+        answer = subprocess.run([str(path), "--version"], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    found = re.search(r"\d+(?:\.\d+){1,3}", answer or "")
+    return found.group(0) if found else ""
+
+
+def patchright_version() -> str:
+    """The installed Patchright, which drives both backends; "" when missing."""
+    try:
+        from importlib.metadata import version
+
+        return version("patchright")
+    except Exception:
+        return ""
+
+
+def browser_check(config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The Chrome the chrome backend would run, for health checks: where, its
+    version against the version this release was tested with, and the driver.
+    ``outdated``: older than the tested version."""
+    found = find_chrome(config)
+    driver = patchright_version()
+    report: dict[str, Any] = {"browser": "", "path": "", "version": "", "tested": TESTED_CHROME,
+                              "outdated": False, "driver": f"patchright {driver}" if driver else ""}
+    if found is None:
+        return report
+    version = chrome_version(found)
+    report.update(browser="Google Chrome", path=str(found), version=version,
+                  outdated=bool(version) and _version_key(version) < _version_key(TESTED_CHROME))
+    return report
+
+
+def is_available(name: str | None = None, config: dict[str, Any] | None = None) -> bool:
     """Whether a backend is installed. None → the default backend."""
     name = name or DEFAULT_BACKEND
-    if name == BACKEND_CAMOUFOX:
-        try:
-            import camoufox  # noqa: F401
-        except ImportError:
-            return False
-        return True
     if name == BACKEND_EGO:
-        return ego_user_data_dir().exists()
+        return ego_user_data_dir(config).exists() and bool(patchright_version())
+    if name == BACKEND_CHROME:
+        return find_chrome(config) is not None and bool(patchright_version())
     return False
 
 
 def resolve_backend(config: dict[str, Any] | None = None) -> str:
     """Effective backend from config.
 
-    Retired values (patchright, cloakbrowser) and unknown values map to
-    camoufox with a warning. ``ego`` without an ego-lite installation falls
-    back to camoufox with a warning; an installed ego whose remote debugging
-    is off stays selected and the launch explains how to turn it on. A
-    missing camoufox is not swapped for anything.
+    Retired values (camoufox, patchright, cloakbrowser) map to chrome, logged
+    once per process; unknown values map to chrome with a warning. ``ego``
+    without an ego-lite installation falls back to chrome with a warning; an
+    installed ego whose remote debugging is off stays selected and the launch
+    explains how to turn it on. A missing Chrome is not swapped for anything:
+    the launch says how to install it.
     """
     cfg = config or {}
     requested = str(cfg.get("browser_backend", DEFAULT_BACKEND) or DEFAULT_BACKEND).strip().lower()
     if requested in _RETIRED_BACKENDS:
-        logger.warning(
-            "browser_backend: '%s' is no longer supported, using %s (set browser_backend to "
-            "'camoufox' or 'ego')", requested, DEFAULT_BACKEND,
-        )
+        if requested not in _retired_noted:
+            _retired_noted.add(requested)
+            logger.warning("browser_backend: '%s' is retired, using %s (set browser_backend to 'chrome' or 'ego')",
+                           requested, DEFAULT_BACKEND)
         return DEFAULT_BACKEND
     if requested not in SUPPORTED_BACKENDS:
         logger.warning("browser_backend: unknown backend '%s', using %s", requested, DEFAULT_BACKEND)
@@ -198,9 +284,26 @@ def resolve_backend(config: dict[str, Any] | None = None) -> str:
         return DEFAULT_BACKEND
     return requested
 
+# What a backend offers beyond plain Playwright. Callers ask for a capability,
+# never for a backend's name, so a new backend only declares its own entry.
+#   batch_window: a serial batch keeps one browser window and tab from paper
+#     to paper (browser/batch_session.py); without it every paper opens and
+#     closes its own browser, as before.
+BACKEND_CAPABILITIES: dict[str, frozenset[str]] = {
+    BACKEND_CHROME: frozenset({"batch_window"}),
+    # The user's own running browser: one tab per paper until a batch there
+    # has been tried.
+    BACKEND_EGO: frozenset(),
+}
+
+
+def supports(capability: str, config: dict[str, Any] | None = None) -> bool:
+    """Whether the effective backend declares ``capability``."""
+    return capability in BACKEND_CAPABILITIES.get(resolve_backend(config), frozenset())
+
 
 def uses_playwright(config: dict[str, Any] | None = None) -> bool:
-    """Both backends are driven through the Playwright API."""
+    """Every backend is driven through the Playwright API (Patchright's)."""
     return resolve_backend(config) in SUPPORTED_BACKENDS
 
 
@@ -213,8 +316,8 @@ _EGO_HINT = ("在 ego 中打开 chrome://inspect/#remote-debugging，勾选 "
 
 
 def _connect_ego(config: dict[str, Any] | None) -> tuple[Any, Any]:
-    """(playwright, browser) connected to the running ego-lite."""
-    from playwright.sync_api import sync_playwright
+    """(driver, browser) connected to the running ego-lite."""
+    from patchright.sync_api import sync_playwright
 
     if not ego_running(config) and not _start_ego(config):
         raise EgoUnavailable(f"ego-lite is not running and could not be started with remote "
@@ -387,7 +490,7 @@ def _launch_ego_persistent(config: dict[str, Any] | None) -> Any:
             except Exception:
                 pass
         try:
-            # Playwright took over downloads for this context; give them back.
+            # The driver took over downloads for this context; give them back.
             browser.new_browser_cdp_session().send("Browser.setDownloadBehavior", {"behavior": "default"})
         except Exception as exc:
             logger.info("browser_backend: ego download behaviour not reset (%s)", type(exc).__name__)
@@ -423,110 +526,20 @@ def _launch_ego(config: dict[str, Any] | None) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Camoufox launchers
+# Chrome launchers
 # ---------------------------------------------------------------------------
 
-def _host_os() -> str:
-    """Camoufox fingerprint OS matching the real machine (fonts, UA, platform agree)."""
-    if sys.platform == "darwin":
-        return "macos"
-    if os.name == "nt":
-        return "windows"
-    return "linux"
-
-
 def _proxy_from_config(config: dict[str, Any] | None) -> Any:
-    """Playwright proxy dict from config, or None.
-
-    Firefox ignores Chromium's --proxy-server launch arg, so the configured
-    egress (browser_static_proxy, else network_proxy) is passed explicitly.
-    """
+    """The driver's proxy dict from config, or None: the configured egress
+    (browser_static_proxy, else network_proxy)."""
     cfg = config or {}
     proxy = (str(cfg.get("browser_static_proxy", "") or "").strip()
              or str(cfg.get("network_proxy", "") or "").strip())
     return {"server": proxy} if proxy else None
 
 
-def _camoufox_options(headless: bool, proxy: Any, args: list[str] | None, humanize: bool,
-                      kwargs: dict[str, Any]) -> dict[str, Any]:
-    if args:
-        # Callers pass Chromium flags; handed to Firefox they would be read as
-        # URLs to open. Camoufox configures its own anti-fingerprinting.
-        logger.debug("browser_backend: camoufox ignores %d Chromium arg(s)", len(args))
-    from camoufox import DefaultAddons
-
-    opts = dict(kwargs)
-    # The bundled uBlock addon is downloaded at build time and can fail or be
-    # rate-limited; download sessions do not need it.
-    opts.setdefault("exclude_addons", [DefaultAddons.UBO])
-    opts.setdefault("os", _host_os())
-    # No disk cache: a PDF cached by an earlier download is revalidated and
-    # comes back as 304 Not Modified, without a body to capture (Springer,
-    # 2026-10-31). The browser starts anew for every article, so its memory
-    # cache never holds an earlier article's PDF.
-    # Camoufox 156 with Fission loses cross-process Turnstile frames and sends
-    # input to their parent container. Keep CARSI's owned automation browser
-    # compatible with Juggler; explicit caller preferences still take priority.
-    opts["firefox_user_prefs"] = {
-        "browser.cache.disk.enable": False,
-        "fission.autostart": False,
-        # Keep this owned browser usable while the user works in another app.
-        "focusmanager.testmode": True,
-        "dom.disable_window_flip": True,
-        "browser.tabs.loadDivertedInBackground": True,
-        "browser.link.open_newwindow": 3,
-        "browser.link.open_newwindow.restriction": 0,
-        **(opts.get("firefox_user_prefs") or {}),
-        "papersearch.background.enabled": not headless,
-        "papersearch.background.bootstrap": False,
-    }
-    if not headless and opts.get("ignore_default_args") is not True:
-        # Playwright adds -foreground to every headed Firefox launch.
-        opts["ignore_default_args"] = list(dict.fromkeys([
-            *(opts.get("ignore_default_args") or []), "-foreground",
-        ]))
-    if not headless:
-        from .background import options as background_options
-        background_options(opts)
-    opts.update(headless=headless, humanize=humanize, proxy=proxy)
-    pinned = pinned_camoufox_dir()
-    if pinned is not None and "executable_path" not in opts:
-        from camoufox.pkgman import launch_path
-
-        try:
-            opts["executable_path"] = launch_path(pinned)
-        except Exception as exc:  # CamoufoxNotInstalled: a partial download
-            logger.info("browser_backend: pinned Camoufox %s not usable (%s); the active build is used",
-                        pinned.name, type(exc).__name__)
-    _launched.clear()
-    _launched.update(backend=BACKEND_CAMOUFOX, pinned="yes" if "executable_path" in opts else "no",
-                     version=pinned.name if pinned is not None and "executable_path" in opts
-                     else _active_camoufox_version())
-    return opts
-
-
-def pinned_camoufox_dir() -> Path | None:
-    """The installed ``CAMOUFOX_BROWSER``: ``<cache>/browsers/official/<version>-<sha8>``."""
-    try:
-        from camoufox.pkgman import INSTALL_DIR
-    except ImportError:
-        return None
-    found = sorted((Path(INSTALL_DIR) / "browsers" / "official").glob(f"{CAMOUFOX_BROWSER}-*"))
-    return found[-1] if found else None
-
-
-def _active_camoufox_version() -> str:
-    """The shared cache's active build, used when the pinned one is not installed."""
-    try:
-        from camoufox.pkgman import Version
-
-        return Version.from_path().full_string
-    except Exception:
-        return ""
-
-
 def _close_with_driver(target: Any, pw: Any) -> Any:
-    """Stop the Playwright driver when the browser/context closes."""
+    """Stop the driver when the browser/context closes."""
     original_close = target.close
 
     def _close_with_cleanup(*a: Any, **kw: Any) -> None:
@@ -542,70 +555,120 @@ def _close_with_driver(target: Any, pw: Any) -> Any:
     return target
 
 
-def _launch_camoufox(headless: bool, proxy: Any, args: list[str] | None, humanize: bool,
-                     **kwargs: Any) -> Any:
-    from camoufox import NewBrowser
-    from playwright.sync_api import sync_playwright
+def chrome_profile_dir(user_data_dir: str | Path) -> Path:
+    """Chrome's own profile directory next to the given one."""
+    path = Path(user_data_dir)
+    if path.name.endswith(CHROME_PROFILE_SUFFIX):
+        return path
+    return path.with_name(path.name + CHROME_PROFILE_SUFFIX)
 
-    opts = _camoufox_options(headless, proxy, args, humanize, kwargs)
+
+def _chrome_options(headless: bool, proxy: Any, args: list[str] | None,
+                    config: dict[str, Any] | None) -> dict[str, Any]:
+    """Launch options for the installed Chrome: its public switches only.
+
+    The driver's defaults already include --disable-backgrounding-occluded-windows,
+    --disable-renderer-backgrounding and --disable-background-timer-throttling,
+    so a covered window keeps rendering, and CDP input does not activate it.
+    Patchright itself adds --disable-blink-features=AutomationControlled and
+    drops --enable-automation.
+    """
+    executable = find_chrome(config)
+    if executable is None:
+        raise RuntimeError(f"browser_backend chrome: {CHROME_MISSING}")
+    switches = [arg for arg in (args or []) if not (proxy and arg.startswith("--proxy-server="))]
+    # Patchright's --disable-blink-features=AutomationControlled is on Chrome's
+    # list of unsupported flags, shown on a warning bar; Chrome's own
+    # --test-type switch skips that prompt.
+    switches = list(dict.fromkeys([*switches, "--test-type"]))
+    opts: dict[str, Any] = {"executable_path": str(executable), "headless": headless, "args": switches,
+                            # Without it the driver adds --no-sandbox, and Chrome shows a warning bar.
+                            "chromium_sandbox": True}
+    if proxy:
+        opts["proxy"] = proxy
+    if not headless:
+        opts["no_viewport"] = True  # the window's own size, as the user sees it
+    return opts
+
+
+def _note_chrome_launch(version: str, executable: str) -> None:
+    _launched.clear()
+    _launched.update(backend=BACKEND_CHROME, app=Path(executable).stem, version=str(version or ""),
+                     driver=f"patchright {patchright_version()}")
+
+
+def _launch_chrome(headless: bool, proxy: Any, args: list[str] | None, config: dict[str, Any] | None) -> Any:
+    from patchright.sync_api import sync_playwright
+
+    opts = _chrome_options(headless, proxy, args, config)
+    opts.pop("no_viewport", None)  # a context option, not a launch option
     pw = sync_playwright().start()
     try:
-        browser = NewBrowser(pw, **opts)
+        browser = pw.chromium.launch(**opts)
     except Exception:
         pw.stop()
         raise
+    _note_chrome_launch(browser.version, opts["executable_path"])
     return _close_with_driver(browser, pw)
 
 
-def _launch_camoufox_persistent(user_data_dir: str, headless: bool, proxy: Any,
-                                args: list[str] | None, humanize: bool, **kwargs: Any) -> Any:
-    from camoufox import NewBrowser
-    from playwright.sync_api import sync_playwright
+def _launch_chrome_persistent(profile: Path, headless: bool, proxy: Any, args: list[str] | None,
+                              config: dict[str, Any] | None) -> Any:
+    from patchright.sync_api import sync_playwright
 
-    opts = _camoufox_options(headless, proxy, args, humanize, kwargs)
-    if not headless:
-        # Gecko's automatic Troubleshoot Mode dialog blocks the download
-        # browser and disables its background helper. Keep recovery and the
-        # startup keyboard shortcut from opening it in this child only.
-        env = opts.get("env")
-        opts["env"] = {**(os.environ if env is None else env),
-                       "MOZ_DISABLE_AUTO_SAFE_MODE": "1", "MOZ_DISABLE_SAFE_MODE_KEY": "1"}
-    if os.name == "nt" and not headless:
-        # Let the owned helper create the first window without activation.
-        from .background import ADDON_DIR, install_startup_helper
-        install_startup_helper(Path(user_data_dir))
-        opts["addons"] = [p for p in opts["addons"] if str(p) != str(ADDON_DIR)]
-        opts["ignore_default_args"] = [*(opts.get("ignore_default_args") or []), "about:blank"]
-        opts["args"] = [*(opts.get("args") or []), "-silent"]
-        opts["firefox_user_prefs"].update({
-            "papersearch.background.bootstrap": True,
-            "xpinstall.signatures.required": False,
-            "extensions.autoDisableScopes": 0,
-            "extensions.enabledScopes": 1,
-            "extensions.startupScanScopes": 1,
-            # Gecko's first-profile video self-test opens an offscreen dialog
-            # that still steals focus before any download window is created.
-            "media.sanity-test.disabled": True,
-        })
+    opts = _chrome_options(headless, proxy, args, config)
     pw = sync_playwright().start()
     try:
-        context = NewBrowser(pw, persistent_context=True, user_data_dir=user_data_dir, **opts)
+        context = pw.chromium.launch_persistent_context(str(profile), **opts)
     except Exception:
         pw.stop()
         raise
+    _note_chrome_launch(getattr(context.browser, "version", ""), opts["executable_path"])
     return _close_with_driver(context, pw)
 
 
-def camoufox_profile_dir(user_data_dir: str | Path) -> Path:
-    """Camoufox's own profile directory next to the given (Chromium-era) one."""
-    path = Path(user_data_dir)
-    if path.name.endswith(CAMOUFOX_PROFILE_SUFFIX):
-        return path
-    return path.with_name(path.name + CAMOUFOX_PROFILE_SUFFIX)
+def _chrome_persistent(user_data_dir: str, *, headless: bool, proxy: Any, args: list[str] | None,
+                       config: dict[str, Any] | None) -> Any:
+    profile = chrome_profile_dir(user_data_dir)
+    profile.mkdir(parents=True, exist_ok=True)
+    holder = profile_holder(str(profile))
+    waited_from = time.monotonic()
+    released = wait_for_profile_release(str(profile))
+    LAST_LAUNCH.update(holder=holder or "free", waited=round(time.monotonic() - waited_from, 1), released=released)
+    if proxy is None:
+        proxy = _proxy_from_config(config)
+    context = _launch_chrome_persistent(profile, headless, proxy, args, config)
+    _keep_session_cookies(context, profile)
+    if not headless:
+        _open_tabs_in_background(context)
+    _reuse_startup_page(context)
+    return context
+
+
+def _open_tabs_in_background(context: Any) -> None:
+    """New tabs leave Chrome where the user put it.
+
+    The driver opens a page with Target.createTarget, which Chrome shows in the
+    foreground, bringing its window to the front: 3 of 3 times on macOS
+    (2026-11-07), once per supplements page and file. The same public command
+    with ``background`` left the user's front app in front 3 of 3 times, and
+    clicks in the new tab still worked.
+    """
+    session = context.browser.new_browser_cdp_session()
+    open_page = context.new_page
+
+    def new_page(*args: Any, **kwargs: Any) -> Any:
+        if args or kwargs:
+            return open_page(*args, **kwargs)
+        with context.expect_page() as created:
+            session.send("Target.createTarget", {"url": "about:blank", "background": True})
+        return created.value
+
+    context.new_page = new_page  # type: ignore[method-assign]
 
 
 # ---------------------------------------------------------------------------
-# Public entry points (Playwright sync API, Camoufox)
+# Public entry points (Playwright sync API, through Patchright)
 # ---------------------------------------------------------------------------
 
 def launch(
@@ -615,18 +678,17 @@ def launch(
     args: list[str] | None = None,
     humanize: bool = True,
     config: dict[str, Any] | None = None,
-    **kwargs: Any,
 ) -> Any:
-    """Launch Camoufox (or attach to ego); returns a ``playwright.sync_api.Browser``."""
+    """Launch Chrome (or attach to ego); returns a ``Browser``. ``humanize`` is kept for callers."""
     if resolve_backend(config) == BACKEND_EGO:
         return _launch_ego(config)
     if proxy is None:
         proxy = _proxy_from_config(config)
-    return _launch_camoufox(headless=headless, proxy=proxy, args=args, humanize=humanize, **kwargs)
+    return _launch_chrome(headless, proxy, args, config)
 
 
-# The last Camoufox launch of this process, for the article's record: who held
-# the profile, how long the launch waited for it, whether it was released.
+# The last launch of this process, for the article's record: who held the
+# profile, how long the launch waited for it, whether it was released.
 LAST_LAUNCH: dict[str, Any] = {}
 
 
@@ -638,45 +700,22 @@ def launch_persistent_context(
     args: list[str] | None = None,
     humanize: bool = True,
     config: dict[str, Any] | None = None,
-    **kwargs: Any,
 ) -> Any:
-    """Camoufox with a persistent profile, or the running ego; returns a ``BrowserContext``.
+    """Chrome with a persistent profile, or the running ego; returns a ``BrowserContext``.
 
-    Camoufox: the profile lives in a ``-camoufox`` sibling of ``user_data_dir``;
+    Chrome: the profile lives in a ``-chrome`` sibling of ``user_data_dir``;
     waits (bounded) for a previous browser process to release it. ego: the
     user's running browser and its own profile (``user_data_dir`` unused).
+    ``humanize`` is kept for callers.
     """
     LAST_LAUNCH.clear()
     if resolve_backend(config) == BACKEND_EGO:
         return _launch_ego_persistent(config)
-    profile = camoufox_profile_dir(user_data_dir)
-    profile.mkdir(parents=True, exist_ok=True)
-    # Each item runs in a new process with the same profile: the previous item's
-    # browser may still be closing; a launch then lost its pages a few seconds
-    # later (OUP and Wiley items, TargetClosedError at the first page, 2026-11-02).
-    holder = profile_holder(str(profile))
-    waited_from = time.monotonic()
-    released = wait_for_profile_release(str(profile))
-    LAST_LAUNCH.update(holder=holder or "free", waited=round(time.monotonic() - waited_from, 1), released=released)
-    if proxy is None:
-        proxy = _proxy_from_config(config)
-    from uuid import uuid4
-    background_session = uuid4().hex
-    if not headless:
-        kwargs["firefox_user_prefs"] = {**(kwargs.get("firefox_user_prefs") or {}),
-                                        "papersearch.background.session": background_session}
-    context = _launch_camoufox_persistent(
-        str(profile), headless=headless, proxy=proxy, args=args, humanize=humanize, **kwargs
-    )
-    if not callable(getattr(context, "close", None)):
-        return context
-    if not headless:
-        from .background import ready as background_ready
-        try:
-            background_ready(profile, background_session)
-        except Exception:
-            context.close()
-            raise
+    return _chrome_persistent(user_data_dir, headless=headless, proxy=proxy, args=args, config=config)
+
+
+def _keep_session_cookies(context: Any, profile: Path) -> None:
+    """Session cookies (a school login) survive a browser that closes between runs."""
     restored = _restore_session_cookies(context, profile)
     if restored:
         logger.info("browser_backend: restored %d session cookie(s) from the previous run", restored)
@@ -687,21 +726,17 @@ def launch_persistent_context(
         close(*a, **kw)
 
     context.close = _close_keeping_session  # type: ignore[method-assign]
-    _reuse_startup_page(context)
-    return context
 
 
 def _reuse_startup_page(context: Any) -> None:
-    """A persistent Firefox profile opens with one blank window; callers then
-    ask for a page and got a second window. The first ``new_page()`` now
-    returns that untouched startup page instead.
+    """A persistent profile opens with one blank window; callers then ask for a
+    page and got a second window. The first ``new_page()`` now returns that
+    untouched startup page instead.
 
-    Firefox on Windows cannot open a window once its last one is closed:
-    ``new_page()`` then fails with "window is null" (2026-11-01, the
-    supplements step after the main text had closed its page; macOS keeps a
-    hidden window, so it never showed there). Closing the last open page
-    therefore first opens a blank one, which the next ``new_page()`` returns;
-    the same on every system."""
+    Closing the last open page first opens a blank one, which the next
+    ``new_page()`` returns, so the browser keeps its window between steps (the
+    earlier Firefox-based browser could not open one on Windows once its last
+    had closed: "window is null", 2026-11-01)."""
     spare = [page for page in list(getattr(context, "pages", None) or [])
              if str(getattr(page, "url", "")) in ("about:blank", "")]
     open_page = context.new_page
@@ -740,12 +775,13 @@ def browser_info(config: dict[str, Any] | None = None) -> dict[str, str]:
     """The browser and version of this process's last launch, else what a launch
     would use; kept with each download's record (ADR 0013).
 
-    Camoufox: ``{"backend", "version", "pinned"}``; ego: ``{"backend", "app", "chromium"}``.
+    Chrome: ``{"backend", "app", "version", "driver"}`` (the user's browser,
+    recorded, not pinned); ego: ``{"backend", "app", "chromium"}``.
     """
     if _launched:
         return dict(_launched)
     if resolve_backend(config) == BACKEND_EGO:
         return {"backend": BACKEND_EGO, "app": ego_app_version(config), "chromium": ""}
-    pinned = pinned_camoufox_dir()
-    return {"backend": BACKEND_CAMOUFOX, "pinned": "yes" if pinned else "no",
-            "version": pinned.name if pinned else _active_camoufox_version()}
+    found = find_chrome(config)
+    return {"backend": BACKEND_CHROME, "app": found.stem if found else "", "version": chrome_version(found),
+            "driver": f"patchright {patchright_version()}"}

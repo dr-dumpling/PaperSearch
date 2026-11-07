@@ -8,18 +8,17 @@ PaperSearch 的机构授权下载后端，负责 CARSI 等联盟登录、出版�
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e ".[camoufox]"
-.venv/bin/python -m camoufox fetch     # 下载 Camoufox 浏览器本体（约 0.5 GB 压缩包）
+.venv/bin/pip install -e ".[ego,dev]"   # 含驱动 Patchright；浏览器用本机的 Google Chrome，不另下载
 ```
 
 `bin/paper-search-carsi` 优先使用仓库内的 `.venv`（可用 `CARSI_PYTHON` 指定其他解释器）。
 
 浏览器后端二选一，配置键 `browser_backend`：
 
-- `camoufox`（默认）：开源反指纹 Firefox，经 Playwright 自动化，全部浏览器路线都用它。持久化配置目录是原目录旁的 `-camoufox` 兄弟目录，首次使用需要重新登录一次机构。
-- `ego`（需要 agent 接手你正在用的浏览器时选用）：直接使用你日常运行的 ego-lite（Chromium 内核），Playwright 经 CDP 接管，沿用其中已有的登录；规则与适配器和 camoufox 同一套。在 ego 里打开 `chrome://inspect/#remote-debugging` 勾选 "Allow remote debugging for this browser instance"，勾选一次即保存在 ego 设置中，重启后仍有效；程序只操作并关闭自己开的标签页，不关闭浏览器，也不写入 Cookie。ego 的数据目录可用 `ego_user_data_dir` 指定；未安装 ego-lite 时自动回到 camoufox。
+- `chrome`（默认）：本机安装的 Google Chrome，由 Patchright 启动，全部浏览器路线都用它。用自己的浏览器资料（原目录旁的 `-chrome` 兄弟目录），不碰日常 Chrome 的资料；首次使用需要登录一次机构。没装 Chrome 时从 https://www.google.com/chrome/ 安装；装在别处时用 `chrome_executable` 指定程序路径。`setup --check` 显示 Chrome 的路径、版本和驱动版本，低于测试过的版本（156.0.8078.80）时提示先更新。
+- `ego`（需要 agent 接手你正在用的浏览器时选用）：直接使用你日常运行的 ego-lite（Chromium 内核），Patchright 经 CDP 接管，沿用其中已有的登录；规则与适配器和 chrome 同一套。在 ego 里打开 `chrome://inspect/#remote-debugging` 勾选 "Allow remote debugging for this browser instance"，勾选一次即保存在 ego 设置中，重启后仍有效；程序只操作并关闭自己开的标签页，不关闭浏览器，也不写入 Cookie。ego 的数据目录可用 `ego_user_data_dir` 指定；未安装 ego-lite 时自动回到 chrome。
 
-旧值 `patchright`、`cloakbrowser` 会记一条警告并按 `camoufox` 处理。
+旧值 `camoufox`、`patchright`、`cloakbrowser` 会记一条警告并按 `chrome` 处理。
 
 ## 使用
 
@@ -33,7 +32,7 @@ python3 -m venv .venv
 # 1. 选择机构入口：用 --institution 配置自己的学校（CARSI 成员学校的中文名、英文名或域名，在 CARSI 学校列表里查找后保存中英文名和 entityID），之后各出版社的选校页由程序自动选中（只点与它对应的那一项）；不配置则在登录窗口里手选
 paper-search-carsi setup --carsi            # 或 --carsi --institution "学校名"
 paper-search-carsi setup --list-carsi-schools 关键词   # 查 CARSI 成员学校
-paper-search-carsi setup --check            # 环境检查：数据目录、浏览器后端、入口是否配置
+paper-search-carsi setup --check            # 环境检查：数据目录、浏览器（Chrome 路径和版本）、入口是否配置
 
 # 2. 在弹出的浏览器窗口完成一次机构登录（凭证只在窗口里输入，CLI 不经手）
 paper-search-carsi login --doi 10.1016/...           # 打开这篇文章的出版社页面，在出版社的机构登录里选学校（CARSI）

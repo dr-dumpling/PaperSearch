@@ -7,10 +7,13 @@
 <p align="center"><b>Let your AI tools search the literature, verify citations, and download full texts and supplementary files.</b></p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch" alt="npm"></a>
-  <img src="https://img.shields.io/node/v/papersearch" alt="Node.js">
-  <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
-  <a href="https://linux.do"><img src="https://img.shields.io/badge/LinuxDo-community-1f6feb" alt="LinuxDo"></a>
+  <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch?style=flat-square" alt="npm"></a>
+  <a href="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml"><img src="https://img.shields.io/github/actions/workflow/status/dr-dumpling/PaperSearch/publish.yml?style=flat-square&amp;label=publish" alt="Publish workflow status"></a>
+  <a href="#institutional-download-extension"><img src="https://img.shields.io/badge/CARSI-institutional%20downloads-7284CE?style=flat-square" alt="CARSI institutional download extension"></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/node/v/papersearch?style=flat-square" alt="Required Node.js version"></a>
+  <a href="#agent-skill"><img src="https://img.shields.io/badge/Agent%20Skill-bundled-D97757?style=flat-square" alt="Bundled Agent Skill"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2F9E44?style=flat-square" alt="MIT license"></a>
+  <a href="https://linux.do"><img src="https://img.shields.io/badge/LinuxDo-community-1f6feb?style=flat-square" alt="LinuxDo community"></a>
 </p>
 
 <p align="center"><a href="README.md">简体中文</a> | English</p>
@@ -22,7 +25,7 @@ PaperSearch provides the `paper-search` command and a bundled Skill. Once instal
 - **Every paper checked**: each PDF's first page is checked against the DOI and title; a file of another article is not counted as a success.
 - **Ready to use**: one folder per paper named journal_year_title, with the main text and supplementary files together; papers not downloaded come with a reason.
 
-<p align="center"><img src="assets/overview.en.png" width="900" alt="What PaperSearch does: search papers, verify and trace citations, journal metrics, text snippets, full texts and supplementary files"></p>
+<p align="center"><img src="assets/overview.en.png" width="840" alt="What PaperSearch does: search papers, full-text snippets, journal metrics, citations and references, full texts and supplementary files"></p>
 
 [What you get](#what-you-get) | [Quick start](#quick-start) | [Common tasks](#common-tasks) | [How it works](#how-it-works) | [Institutional download extension](#institutional-download-extension) | [Search sources](#search-sources) | [Configuration](#configuration) | [Agent Skill](#agent-skill) | [Commands](#commands) | [Troubleshooting](#troubleshooting)
 
@@ -46,39 +49,39 @@ downloads/
 └── diagnostics/                                   run records, file manifests, screenshots
 ```
 
-During institutional downloads, a progress capsule in a corner of the screen shows progress, turns amber when you need to sign in or complete a verification, and opens into a card when you hover over it (its interface is in Chinese).
-
-<p align="center"><img src="assets/progress-capsule.en.png" width="820" alt="Progress capsule: downloading, sign in to your school, hover to expand, settings"></p>
-
 ## Quick start
 
-Requires Node.js 18 or later and npm.
+First-time installation requires Node.js 18 or later and npm. Copy one line to install `paper-search` and its Skill for Codex. For another AI tool, replace `codex` with its `--targets` value from [Agent Skill](#agent-skill).
 
-```bash
-npm install -g papersearch
-paper-search setup
-paper-search doctor --format text
+**macOS, Linux, or Windows Command Prompt:**
+
+```sh
+npm install -g papersearch && paper-search skills update --targets codex
 ```
 
-`paper-search setup` asks three things in turn: API keys and email; whether to install the Skill in a shared directory or tool-specific directories; and whether to install the institutional download extension. Each can be skipped. `doctor` shows what works now and what is still missing.
+**Windows PowerShell:**
 
-The Skill is the instruction file that teaches an AI tool to call `paper-search`; install it when you use an AI tool for literature work. If you skipped it, install it any time, with `--targets` set to your tool (`claude`, `codex`, `cursor`, `gemini`, `agents`, or `all`):
+```powershell
+npm.cmd install -g papersearch; if ($LASTEXITCODE -eq 0) { paper-search.cmd skills update --targets codex }
+```
+
+Start a new AI session after installing, and you can search for papers. For terminal use, installing `paper-search` alone is enough. Run `paper-search setup` when you need to configure API keys or email. For papers your school subscribes to, install the [institutional download extension](#institutional-download-extension). Run `paper-search doctor --format text` to check which features are available.
+
+If you already have `paper-search`, install the Skill on its own; the `--targets` values are listed under [Agent Skill](#agent-skill) below:
 
 ```bash
 paper-search skills update --targets claude
 ```
 
-For Kimi Code and Qwen Code, use `--targets agents` to install into the shared directory. See [Agent Skill](#agent-skill) below for TRAE and CodeBuddy.
-
 You can also send this to your AI tool and let it do the install:
 
 ```text
-Please install PaperSearch for me: run npm install -g papersearch, then install the bundled Skill for yourself using the README's Agent Skill instructions (agents for Kimi Code and Qwen Code, claude for Claude Code, codex for Codex, cursor for Cursor; TRAE and CodeBuddy use their own Skill directories), then run paper-search doctor --format text and tell me which features work and which keys are missing; then ask me which folder downloaded papers should go to by default and save it with paper-search config set DEFAULT_DOWNLOAD_PATH. I will enter API keys myself with paper-search setup in a terminal; do not ask me to paste them into the chat.
+Please install PaperSearch for me: run npm install -g papersearch, then install the bundled Skill for yourself using the README's Agent Skill instructions, then run paper-search doctor --format text and tell me which features work and which keys are missing; then ask me which folder downloaded papers should go to by default and save it with paper-search config set DEFAULT_DOWNLOAD_PATH. I will enter API keys myself with paper-search setup in a terminal; do not ask me to paste them into the chat.
 ```
 
 **Coming from the old package `paper-search-cli`**: run `npm uninstall -g paper-search-cli`, then `npm install -g papersearch`. Both provide the same `paper-search` command and cannot be installed together; your configuration, Skill, school login and download records stay.
 
-**Later upgrades**: `npm install -g papersearch@latest`. The first `paper-search` run after an upgrade brings the Skill you installed up to the new version.
+**Later upgrades**: `npm install -g papersearch@latest`. When a new version is out, commands say so in the terminal; the first run after an upgrade updates the Skill you installed.
 
 ## Common tasks
 
@@ -138,7 +141,7 @@ A literature request
 |---|---|---|
 | Available | As soon as PaperSearch is installed | After `paper-search carsi install` |
 | Gets | Open-access main text | Main text your school subscribes to; supplementary files from the publishers with rules for them |
-| How | Direct downloads, usually seconds, no login: the source's own download, PDF links in the metadata, PubMed Central, Unpaywall, publisher APIs (your own Elsevier/Springer keys); last, the Sci-Hub fallback, on by default | A browser signs in to your school through CARSI and takes the PDF from the publisher's site |
+| How | Direct downloads, usually seconds, no login: the source's own download, PDF links in the metadata, PubMed Central, Unpaywall, publisher APIs (your own Elsevier/Springer keys); last, the Sci-Hub fallback, on by default | Chrome signs in to your school through CARSI and takes the PDF from the publisher's site |
 | What you do | Nothing | Sign in to your school in the browser; verification is handled automatically, with a prompt when manual action is needed |
 
 Both use the same download command: open downloading first, and when it finds nothing, the institutional download if it is installed.
@@ -150,28 +153,32 @@ Both use the same download command: open downloading first, and when it finds no
 
 ### Download results
 
-A download folder has two parts. `papers/` holds the papers, one folder each, with the main text named journal_year_title and supplementary files under that paper's `supplements/` with their original names. `diagnostics/` holds run records, file manifests and screenshots, for tracking down problems. The short ID at the end of a folder name tells apart papers with the same title. A missing journal or year is written as unknown. Files downloaded by earlier versions are not moved; the JSON a command returns gives each file's actual location.
+A download folder has two parts. `papers/` holds the papers, one folder each, with the main text named journal_year_title and supplementary files under that paper's `supplements/` with their original names. `diagnostics/` holds run records, file manifests and screenshots, for tracking down problems. The short ID at the end of a folder name tells apart papers with the same title. A missing journal or year is written as unknown. The JSON a command returns gives each file's actual location.
 
 ## Institutional download extension
 
+Papers the open channels cannot get can come through your school's subscriptions: PaperSearch opens Chrome, signs in to your school through CARSI (the China higher-education identity federation), and takes the main text and supplementary files from the publisher's site.
+
+Install [Google Chrome](https://www.google.com/chrome/) first, then run:
+
 ```bash
-paper-search carsi install
-paper-search carsi status --format text
+paper-search carsi install                # choose your school during installation
+paper-search carsi status --format text   # check that it is ready
 ```
 
-- Installing asks for your school (a CARSI member school, by Chinese name, English name or domain) and downloads the dedicated Camoufox browser, about 3 GB in all; on macOS, `--browser ego` uses ego lite instead, about 0.5 GB. `--skip-school` leaves the school for later.
-- Schools sign in through CARSI (the Chinese university identity federation). When a publisher's institution list has no CARSI or no entry for your school, the program says so at once.
-- Automatic verification: verification checkboxes are located and clicked automatically, and downloads resume when the site grants access. Each verification wait allows up to three attempts, at least three seconds apart. A click or a checked box alone does not prove that verification has passed.
-- Downloads show a small progress capsule in a corner of the screen: progress, whether the main text or the supplementary files are being fetched, and the publisher; it turns amber with a gentle breathing glow and sends a system notification, if enabled, when you need to sign in or complete a verification. Click the reminder to switch to the current task’s download browser. Hover to open it: skip this paper, mark the journal or publisher as no access, stop the whole task, report a problem, change wait times and the default download folder (the gear at the top right), or minimize it (–). Drag the pill or a non-control area of the expanded card to move it. On the school's login page a paper waits up to 3 minutes by default; anywhere else (human checks, publisher pages, ...) it ends after 1 minute.
-- The default download browser keeps running in the background without requesting foreground focus on startup, clicks, or navigation. It does not automatically minimize or hide its window. The capsule alerts you when intervention is needed; click the reminder to switch to the browser when ready. A completed check with no listed supplementary files is not a failure. Incomplete sign-in, unsupported discovery, and download failures remain distinct results.
-- Choose or type the default download folder in capsule settings, or run `paper-search config set DEFAULT_DOWNLOAD_PATH "/absolute/path/papers"`. New tasks use the saved folder; `--save-path` or `savePath` overrides it for one task. A running batch keeps its original folder.
-- Since 0.4.9, prompts require a current login control or a verification step needing help. Idle time and school domains alone do not trigger human-action prompts. The verification reminder setting defaults to 30 seconds (1–600); handoff occurs by half of the remaining wait budget. Loading, absent and checked controls stay under automatic observation. Unavailable controls prompt a check without extending the overall deadline.
-- Since 0.4.9, you can drop the capsule near a screen edge to snap it there. It opens inward. Along the left or right edge, you can drop it at any available height, and collapsing returns it to that height. When dragging between displays, the display under the pointer at release determines where it lands.
-- typing, selecting or clicking a control in the dedicated sign-in page, or taking over through the capsule, pauses the remaining sign-in budget, including pauses between inputs. The timer resumes after leaving the manual sign-in step; an untouched sign-in still times out.
-- macOS notifications use PaperSearch’s name and icon. Notification clicks share the capsule reminder’s action for restoring the current task’s browser. The initial extension setup offers a notification choice; new configurations default to off, and upgrades preserve existing preferences. The System notifications switch in the capsule’s settings saves immediately. Turning it off keeps the amber reminder. No separate notification tool is required; enabled notifications still follow macOS notification permissions and Focus settings.
-- Which publishers' main texts and supplementary files it can fetch is in the [publisher support table](skills/paper-search/references/publisher-support.md) (Chinese). Both have been fetched from Elsevier, Wiley, Springer Nature, OUP, Wolters Kluwer, Taylor & Francis, Sage, ACS, NEJM, ASCE, Dove and others; supplementary files from ASH, Thieme, PLOS, Copernicus, Annual Reviews, IOP, AMS, APS, Optica, IEEE, World Scientific, MDPI and Frontiers, as well as Figshare files linked to a paper, have also been fetched; remaining attachment routes are still being completed; sites not in the table are tried with the shared rules.
-- `paper-search carsi update` updates the extension after a PaperSearch upgrade; `paper-search carsi uninstall` removes it (keeping the browser and the school settings by default).
-- Windows: if PowerShell blocks `npm.ps1`, use `npm.cmd` or Command Prompt; downloads must run in a desktop session, as a browser window cannot open from SSH or a system service.
+Then ask your AI tool to download papers as usual:
+
+- **The first time a login is needed**, sign in to your school in the browser that opens; the login is remembered.
+- **Human verification** is clicked automatically; you are asked only when it does not pass.
+- **The progress capsule** in a screen corner shows the progress. It turns amber when you need to sign in or verify; click it to switch to the browser. Hover over it to skip a paper or stop the task; the gear sets the waiting times, the default download folder and system notifications.
+- **The browser works in the background** and does not jump to the front.
+- **When the download ends**, the capsule lists what succeeded and what failed, with reasons; `paper-search failures --format text` gives the details.
+
+<p align="center"><img src="assets/progress-capsule.en.png" width="840" alt="The progress capsule: downloading, sign-in needed, expanded on hover, and the finished card with what failed and why"></p>
+
+Which publishers' main texts and supplementary files it can fetch is in the [publisher support table](skills/paper-search/references/publisher-support.md) (Chinese).
+
+Update the extension with `paper-search carsi update`; remove it with `paper-search carsi uninstall`. On Windows, if PowerShell blocks `npm`, use `npm.cmd`.
 
 ## Search sources
 
@@ -211,7 +218,7 @@ paper-search config list --pretty
 paper-search config set SEMANTIC_SCHOLAR_API_KEY <your key>
 ```
 
-The configuration file is `~/.config/paper-search-cli/config.json` (mode `0600`; the folder keeps its old name, so upgrades keep your settings). `config list` and `doctor` show keys masked.
+The configuration file is `~/.config/paper-search-cli/config.json` (mode `0600`). `config list` and `doctor` show keys masked.
 
 | Key | Use | When |
 |---|---|---|
@@ -227,6 +234,7 @@ The configuration file is `~/.config/paper-search-cli/config.json` (mode `0600`;
 | `GOOGLE_SCHOLAR_PROXY_URL` | Egress proxy for Google Scholar | When direct requests keep being challenged; use a proxy you are allowed to use |
 | `PAPER_SEARCH_CARSI_ENABLED` | Switch for the institutional download extension | Set by `paper-search carsi install` |
 | `PAPER_SEARCH_SKILL_AUTO_UPDATE` | `false` stops upgrades from updating the installed Skill | On by default; set it to manage the Skill yourself |
+| `PAPER_SEARCH_UPDATE_NOTIFY` | `false` stops the new-version notices | On by default; set it if you do not want the notices |
 
 Where to get keys: [EasyScholar](https://www.easyscholar.cc/console/user/open) · [Semantic Scholar](https://www.semanticscholar.org/product/api) · [Unpaywall](https://unpaywall.org/products/api) · [CORE](https://core.ac.uk/services/api) · [NCBI](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/) · [Web of Science](https://developer.clarivate.com/apis) · [IEEE Xplore](https://developer.ieee.org/docs/read/Searching_the_IEEE_Xplore_Metadata_API) · [Elsevier](https://dev.elsevier.com/apikey/manage) · [Springer Nature](https://dev.springernature.com/) · [OpenAIRE](https://develop.openaire.eu/)
 
@@ -243,31 +251,11 @@ paper-search skills status --pretty
 paper-search skills update --targets claude
 ```
 
-AI tools from Chinese providers can load the same Skill:
+`--targets` takes `codex`, `claude`, `cursor`, `gemini`, `antigravity` or `agents` (the shared `~/.agents/skills/` directory). For other AI tools that read Skill folders, copy the bundled Skill into their Skill directory: run `npm root -g` to locate the global npm directory; the bundled Skill is under `papersearch/skills/paper-search/` there. Copy the entire folder, including `references/`, and copy it again after an update. Start a new AI session after installation.
 
-| Tool | Setup |
-|---|---|
-| [Kimi Code](https://www.kimi.com/code/docs/kimi-code-cli/customization/skills.html), [Qwen Code](https://github.com/QwenLM/qwen-code/blob/main/docs/users/features/skills.md) | Run `paper-search skills update --targets agents` to install into the shared `~/.agents/skills/paper-search/` directory supported by both tools |
-| [TRAE](https://docs.trae.ai/ide/skills?_lang=zh) | Copy the bundled Skill folder to `.trae/skills/paper-search/` in your project |
-| [CodeBuddy](https://www.codebuddy.ai/docs/zh/ide/Features/Skills) | Copy the bundled Skill folder to `.codebuddy/skills/paper-search/` in your project |
-
-Run `npm root -g` to locate the global npm directory; the bundled Skill is under `papersearch/skills/paper-search/` there. Copy the entire folder, including `references/`, and copy it again after an update. Start a new AI session after installation.
-
-- Targets: `agents`, `codex`, `claude`, `cursor`, `gemini`, `antigravity`, `all`. Updating overwrites the files the package manages and keeps files you added to the Skill directory.
-- **Auto-update after upgrades**: Skills installed through the built-in targets are updated on the first `paper-search` run after an upgrade (other than `skills` and `setup`): only where they were installed; replaced files are backed up under `~/.local/share/paper-search-cli/skill-backups/`; one line on stderr says what changed. With no Skill installed in those locations, it says once how to install it. To turn it off: `paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false`.
+- `--targets all` syncs the Skill to all built-in locations. Updating overwrites the files the package manages and keeps files you added to the Skill directory.
+- The first run after upgrading PaperSearch updates the Skill you installed; replaced files are backed up under `~/.local/share/paper-search-cli/skill-backups/`. To turn this off: `paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false`.
 - `paper-search doctor` shows Skill locations and version status for the built-in installation targets.
-
-### Update notices (since 0.4.8)
-
-When npm has a newer stable version, ordinary invocations show the installed and latest versions and an upgrade command. Checks run alongside online tasks and cache successful results for 24 hours. Network failures do not affect paper tasks; unfinished checks are cancelled when the command ends. Notices go to stderr, preserving stdout JSON. Offline management commands use only cached results; CI, help and configuration commands do not show automatic notices.
-
-```bash
-paper-search update check --format text
-paper-search config set PAPER_SEARCH_UPDATE_NOTIFY false  # Disable automatic checks and notices
-paper-search config set PAPER_SEARCH_UPDATE_NOTIFY true   # Enable them again
-```
-
-Updates are never installed automatically. Installed Skills sync under the existing rules after a CLI upgrade; update the institutional extension separately with `paper-search carsi update`. This setting is independent of capsule/system notifications.
 
 ## Commands
 
@@ -278,7 +266,7 @@ Updates are never installed automatically. Installed Skills sync under the exist
 | `paper-search download` | Download the PDF of a verified paper |
 | `paper-search run <tool>` | Call one tool exactly, with `--arg` or `--json-args` |
 | `paper-search failures` | Why downloads failed, summarized |
-| `paper-search update check` | Check the stable npm release (since 0.4.8) |
+| `paper-search update check` | Check for a new version |
 | `paper-search carsi` | Install, check, update or remove the institutional download extension |
 | `paper-search setup` / `config` | Configure keys, the Skill and the extension |
 | `paper-search doctor` | Health check: configuration, available features, Skill and extension status |
@@ -304,8 +292,7 @@ Commands print JSON by default; `--pretty` formats it and `--format text` prints
 
 - Next: steadier batch downloads and smoother installs on new computers; beyond PDFs, a full-text package (the original XML/HTML, Markdown and the figures). See the [roadmap](docs/ROADMAP.zh.md) (Chinese).
 - How it works inside and where the code is: [architecture](docs/ARCHITECTURE.zh.md) (Chinese).
-- For failed downloads or publisher requests, use the download-failure issue template and provide the version, OS, website and DOI.
-- New in 0.4.8: `paper-search failures --export ./failure-report.zip` exports institutional failures from the latest run, including saved main texts with incomplete supplements. Add `--run <run-id> --doi <DOI>` to select a paper. Review `summary.md`, HTML and images for personal information before attaching the ZIP manually. Export sanitizes copies without modifying originals, retrying downloads or uploading anything. Missing HTML in older records is explicitly reported. If your installed version lacks this command, report the version and symptoms without uploading raw diagnostics.
+- For failed downloads or publisher requests, use the download-failure issue template and provide the version, OS, website and DOI. `paper-search failures --export ./failure-report.zip` exports the failure records; check the `summary.md` and screenshots in it for personal information before attaching it.
 - To add publisher rules yourself: see [carsi/CONTRIBUTING.md](carsi/CONTRIBUTING.md).
 
 ## Use responsibly

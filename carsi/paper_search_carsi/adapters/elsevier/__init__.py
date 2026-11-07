@@ -96,7 +96,7 @@ _ENTRY_JS = """
                           const targetUrl = new URL(href, location.href);
                           if (targetUrl.protocol !== 'https:' || !['auth.elsevier.com',
                               'www.sciencedirect.com', 'sciencedirect.com'].includes(targetUrl.hostname)) return null;
-                          // Not [...searchParams.keys()]: "not iterable" in Camoufox's evaluate,
+                          // Not [...searchParams.keys()]: "not iterable" in the Firefox build's evaluate,
                           // which kept every signed-out ScienceDirect entry from a click (2026-10-31).
                           if (/[?&](?:entityid|idp|institutionid|organizationid|homeorg)=/i.test(targetUrl.search)) return null;
                         }

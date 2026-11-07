@@ -18,7 +18,7 @@ _READ_ACTIVITY = """token => {
     if (!state || state.token !== token) {
         if (state) state.dispose();
         state = {token, count: 0};
-        // Camoufox also marks script events trusted. Require native input
+        // Some automation marks script events trusted. Require native input
         // metadata as well; submit/change alone cannot establish takeover.
         const events = ['input', 'keydown', 'pointerdown'];
         const record = event => {

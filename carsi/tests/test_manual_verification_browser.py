@@ -74,11 +74,62 @@ def test_multistep_image_verification_does_not_finish_after_begin(browser_page, 
     assert result._user_wait_deadline > clock[0]
 
 
+@pytest.mark.parametrize("step", ["article", "pdf"])
+def test_checkbox_then_second_prompt_hands_off_once(browser_page, monkeypatch, step):
+    from paper_search_carsi.browser import challenge_interaction
+    from test_challenge_interaction_browser import FRAME as CHECKBOX_FRAME
+
+    page = browser_page
+    page.context.route(CHECKBOX_FRAME, lambda route: route.fulfill(content_type="text/html", body="""
+        <input type="checkbox" onclick="parent.postMessage('next', '*')">"""))
+    page.set_content(f"""<title>Just a moment...</title><iframe src="{CHECKBOX_FRAME}"></iframe>
+        <script>addEventListener('message', e => {{
+            if (e.data !== 'next') return;
+            document.title = 'Article title';
+            document.body.innerHTML = '<iframe src="{FRAME}" title="reCAPTCHA"></iframe>'
+                + '<button id="finish">Continue</button>';
+            document.querySelector('#finish').onclick = () => {{
+                document.body.innerHTML = '<p>Article ready</p>';
+            }};
+        }});</script>""")
+    progress_reporter.start_task("fixture", 1, current="10.1007/fixture")
+    d = PublisherBatchDownloader({"browser_page_wait_timeout": 10, "browser_stall_notify_after": 0})
+    result = DownloadResult(doi="10.1007/fixture", status="failed", state="article_loaded")
+    original_click = challenge_interaction.click_checkbox
+    automatic_click = Mock(wraps=original_click)
+    monkeypatch.setattr(challenge_interaction, "click_checkbox", automatic_click)
+    manual_keys = []
+
+    def handle_second_prompt(*args):
+        attention = (progress_reporter.read_state() or {}).get("attention") or {}
+        if attention and page.locator("#finish").count() and not manual_keys:
+            assert result._attention_page is page
+            assert not any(e["state"] == "challenge_resolved" for e in result.events)
+            manual_keys.extend(attention)
+            page.locator("#finish").click()
+
+    monkeypatch.setattr(d, "_check_user_decision", handle_second_prompt)
+    if step == "article":
+        assert d._wait_for_challenge(page, result)
+    else:
+        captured = {"suspect_block": "verification"}
+        assert d._wait_out_suspect_block(page, result, captured, "verification",
+                                         "link.springer.com", time.time())
+        assert captured["suspect_block"] is None
+    assert automatic_click.call_count == 1
+    assert len(manual_keys) == 1
+    assert page.get_by_text("Article ready").is_visible()
+    assert not progress_reporter.read_state().get("attention")
+    assert result._attention_page is None
+    assert result.state == "article_loaded"
+
+
 @pytest.fixture
 def browser_page(tmp_path, monkeypatch):
-    from playwright.sync_api import sync_playwright
+    from patchright.sync_api import sync_playwright
 
     monkeypatch.setenv("CARSI_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("CARSI_PROGRESS_BAR", "0")
     # The fixture's manual click below must run on the browser thread. The
     # production request watcher is covered separately by test_window_requests.
     def synchronous_watch(d, page, result):
@@ -117,7 +168,7 @@ def test_stalled_verification_uses_the_configured_reminder_delay(browser_page, m
         assert result._attention_page is page
         view = progress_view.view(progress_reporter.read_state(), time.time())
         assert (view["mode"], view["tone"]) == ("attention", "warn")
-        assert "没有进展" in args[1]
+        assert "请在浏览器中检查并完成验证" in args[1]
         if complete:
             # A local fixture's user action; never used against a real CAPTCHA.
             page.get_by_role("button", name="Take me to my Content").click()
@@ -128,6 +179,7 @@ def test_stalled_verification_uses_the_configured_reminder_delay(browser_page, m
     assert any(e["state"] == "challenge_resolved" for e in result.events) is complete
     assert not any(e["state"] == "challenge_interaction" for e in result.events)
     assert progress_reporter.read_state()["attention"] == {}
+    assert progress_reporter.read_state()["phase"] != "等待人工安全验证"
     assert result._attention_page is None
 
 

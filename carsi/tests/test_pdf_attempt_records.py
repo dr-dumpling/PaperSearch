@@ -57,7 +57,7 @@ class TitleReadTests(unittest.TestCase):
             d._looks_like_logged_in(page, "https://fixture.example/login")
 
     def test_an_unavailable_title_is_optional_but_browser_interrupts_are_not(self):
-        from playwright.sync_api import TimeoutError
+        from patchright.sync_api import TimeoutError
         from paper_search_carsi.browser.watchdog import BrowserOperationTimeout
         page = MagicMock()
         page.locator.return_value.first.text_content.side_effect = TimeoutError("title not readable")

@@ -97,6 +97,79 @@ class BatchProgressTests(unittest.TestCase):
         self.assertEqual((snap["status"], snap["done"], snap["success"], snap["failed"]), ("done", 3, 2, 1))
         self.assertFalse(pr.sync_batch("b2", 3, 4, 4, 0))
 
+    def test_the_batch_end_keeps_the_batchs_start_time(self):
+        self.item(1, 2, True)
+        data = self.state(); data["started_at"] = "2026-11-07T10:00:00"
+        pr.progress_path().write_text(json.dumps(data), encoding="utf-8")
+        self.item(2, 2, False)
+        run_id = self.state()["run_id"]
+        self.new_process()
+        # The caller's batch end arrives after the last item already finished the report.
+        self.assertTrue(pr.sync_batch("b1", 2, 2, 1, 1, finished=True))
+        snap, _ = pr.read_snapshot()
+        self.assertEqual((snap["status"], snap["started_at"], snap["run_id"]), ("done", "2026-11-07T10:00:00", run_id))
+
+    def test_the_callers_summary_reaches_the_finished_window(self):
+        self.item(1, 2, True)
+        started = datetime.now() - timedelta(minutes=30)
+        folder = os.path.abspath("batch-downloads")
+        results = {
+            "content": "both", "folder": folder, "started": started.timestamp(), "stopped": False, "main": 1, "supplements": 3,
+            "no_supplements": 0, "sources": [["机构订阅", 1], ["bad", -1], "x"],
+            "failures": [{"cls": "no_access", "reason": "学校没有订阅", "title": "A  <i>paper</i>\n", "journal": "Arthritis &amp; Rheumatology",
+                          "doi": "10.1000/2", "extra": "dropped"},
+                         {"cls": "made_up", "reason": "下载时程序出错"}, {"cls": "no_access"}, "x"],
+        }
+        self.new_process()
+        self.assertTrue(pr.sync_batch("b1", 2, 2, 1, 1, finished=True, results=results))
+        snap, _ = pr.read_snapshot()
+        self.assertEqual(snap["started_at"], started.isoformat(timespec="seconds"))
+        self.assertEqual(snap["output_dir"], folder)  # the folder button opens the whole batch
+        self.assertEqual(snap["results"], {
+            "content": "both", "main": 1, "supplements": 3, "no_supplements": 0, "sources": [["机构订阅", 1]],
+            "failures": [
+                {"cls": "no_access", "reason": "学校没有订阅", "title": "A paper", "journal": "Arthritis & Rheumatology",
+                 "doi": "10.1000/2", "note": ""},
+                {"cls": "unexplained", "reason": "下载时程序出错", "title": "", "journal": "", "doi": "", "note": ""},
+            ]})
+        # A next item of the same batch starts without the old summary.
+        self.item(3, 3, True, done=2, succeeded=1, failed=1)
+        self.assertNotIn("results", self.state())
+
+    def test_a_relative_folder_is_not_trusted(self):
+        self.item(1, 1, True)
+        before = self.state().get("output_dir")
+        self.new_process()
+        self.assertTrue(pr.sync_batch("b1", 1, 1, 1, 0, finished=True, results={"folder": "papers"}))
+        self.assertEqual(self.state().get("output_dir"), before)
+
+    def test_a_lone_download_is_a_batch_of_one(self):
+        """PaperSearch runs a single download as a batch of one so its finished card gets the reason."""
+        batch = pr.BatchContext.from_args("solo", 1, 1, 0, 0, 0)
+        with pr.tracked_download("10.1000/solo", None, batch) as outcome:
+            snap = self.state()
+            self.assertEqual((snap["task"], snap["phase"]), ("机构 PDF 下载", "进入机构访问"))
+            # The publisher's hourly limit pauses a batch item; a lone download ends with the summary.
+            outcome["paused"] = "到了每小时下载上限"
+        self.assertEqual((self.state()["status"], self.state()["awaiting_next"]), ("running", True))
+        self.new_process()
+        failure = {"cls": "user_or_external", "reason": "到了每小时下载上限", "doi": "10.1000/solo"}
+        self.assertTrue(pr.sync_batch("solo", 1, 1, 0, 1, finished=True, results={"failures": [failure]}))
+        snap = pr.read_snapshot()[0]
+        self.assertEqual((snap["status"], snap["done"], snap["failed"]), ("done", 1, 1))
+        self.assertEqual(snap["results"]["failures"][0]["reason"], "到了每小时下载上限")
+
+    def test_a_stopped_batch_ends_as_stopped(self):
+        self.item(1, 3, False)
+        self.new_process()
+        self.assertTrue(pr.sync_batch("b1", 3, 3, 0, 3, finished=True,
+                                      results={"stopped": True, "failures": [{"cls": "user_or_external", "reason": "任务已终止"}]}))
+        self.assertEqual(pr.read_snapshot()[0]["status"], "cancelled")
+
+    def test_a_summary_never_opens_a_window_for_a_batch_it_did_not_show(self):
+        self.assertFalse(pr.sync_batch("unseen", 2, 2, 2, 0, finished=True, results={"main": 2}))
+        self.assertFalse(pr.progress_path().exists())
+
     def test_invalid_batch_arguments_fall_back_to_a_single_download(self):
         for args in (("", 1, 2), ("b", 0, 2), ("b", 3, 2), ("b", True, 2), ("b" * 200, 1, 2), (None, 1, 2), ("b", 1, "2")):
             with self.subTest(args=args):
@@ -108,8 +181,10 @@ class BatchProgressTests(unittest.TestCase):
             server.carsi_download("10.1000/1", None, batch_id="b3", batch_index=1, batch_total=2)
         snap, _ = pr.read_snapshot()
         self.assertEqual((snap["batch_id"], snap["done"], snap["total"], snap["status"]), ("b3", 1, 2, "running"))
-        self.assertEqual(json.loads(server.carsi_batch_progress("b3", 2, 2, 2, 0, finished=True)), {"updated": True})
-        self.assertEqual(pr.read_snapshot()[0]["status"], "done")
+        self.assertEqual(json.loads(server.carsi_batch_progress(
+            "b3", 2, 2, 2, 0, finished=True, results={"main": 2, "sources": [["开放获取", 2]]})), {"updated": True})
+        snap = pr.read_snapshot()[0]
+        self.assertEqual((snap["status"], snap["results"]["sources"]), ("done", [["开放获取", 2]]))
 
 
 if __name__ == "__main__":

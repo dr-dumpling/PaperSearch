@@ -12,6 +12,7 @@ import re
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
+from ...browser.driver import is_driver_error
 from ...engine.batch_common import open_page
 from ..base import register
 from ..platforms.silverchair import SilverchairAdapter
@@ -64,7 +65,7 @@ class KargerAdapter(SilverchairAdapter):
                 # The user can select a school while this observation
                 # runs. Keep waiting on the same page after navigation;
                 # do not reopen the chooser or restart authentication.
-                if (not type(exc).__module__.startswith("playwright.")
+                if (not is_driver_error(exc)
                         or not any(marker in str(exc) for marker in (
                             "Execution context was destroyed",
                             "Cannot find context with specified id",

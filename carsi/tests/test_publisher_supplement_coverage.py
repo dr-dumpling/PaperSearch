@@ -134,7 +134,7 @@ class PublisherSupplementTests(unittest.TestCase):
 @unittest.skipUnless(os.environ.get("CARSI_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
 class PublisherSupplementBrowserTests(unittest.TestCase):
     def test_atypon_follows_only_the_observed_supplement_page_for_this_article(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         from paper_search_carsi.adapters.platforms.atypon import AtyponAdapter
         doi = '10.1142/S1793545824410037'
         base = 'https://publisher.example'
@@ -165,7 +165,7 @@ class PublisherSupplementBrowserTests(unittest.TestCase):
                 browser.close()
 
     def test_remembered_school_widget_without_button_role_is_clicked_once(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         from unittest.mock import Mock
         from paper_search_carsi.engine.batch import DownloadResult
         with sync_playwright() as driver:
@@ -199,7 +199,7 @@ class PublisherSupplementBrowserTests(unittest.TestCase):
                 browser.close()
 
     def test_optica_reader_redirect_finishes_before_figshare_discovery(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as driver:
             browser = driver.chromium.launch(channel="chrome", headless=True)
             try:
@@ -219,7 +219,7 @@ class PublisherSupplementBrowserTests(unittest.TestCase):
                 browser.close()
 
     def test_ieee_already_open_remembered_modal_is_not_reopened(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         from paper_search_carsi.engine.batch import DownloadResult
         with sync_playwright() as driver:
             browser = driver.chromium.launch(channel="chrome", headless=True)
@@ -243,7 +243,7 @@ class PublisherSupplementBrowserTests(unittest.TestCase):
                 browser.close()
 
     def test_ieee_waits_for_the_observed_client_side_media_tab(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as driver:
             browser = driver.chromium.launch(channel="chrome", headless=True)
             try:
@@ -270,7 +270,7 @@ class PublisherSupplementBrowserTests(unittest.TestCase):
                 browser.close()
 
     def test_ieee_empty_article_metadata_and_unfinished_shell_are_distinct(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         doi = '10.1109/access.2025.3626630'
         article = 'https://ieeexplore.ieee.org/document/11219178'
         with sync_playwright() as driver:
@@ -300,7 +300,7 @@ class PublisherSupplementBrowserTests(unittest.TestCase):
                 browser.close()
 
     def test_silverchair_datasupplink_section_accepts_only_its_doi(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         from paper_search_carsi.adapters.platforms.silverchair import supplement_links
         doi = "10.1182/bloodadvances.2024014900"
         own = ("https://ash.silverchair-cdn.com/ash/content_public/journal/bloodadvances/9/8/"
@@ -319,7 +319,7 @@ class PublisherSupplementBrowserTests(unittest.TestCase):
                 browser.close()
 
     def test_real_dom_extraction_and_registry_select_the_observed_files(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         with sync_playwright() as driver:
             browser = driver.chromium.launch(channel="chrome", headless=True)
             try:

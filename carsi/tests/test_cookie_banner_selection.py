@@ -10,8 +10,8 @@ import time
 import unittest
 from unittest.mock import Mock
 
-from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import TimeoutError as PlaywrightTimeout
+from patchright.sync_api import Error as PlaywrightError
+from patchright.sync_api import TimeoutError as PlaywrightTimeout
 
 from paper_search_carsi.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_carsi.publishers.model import PublisherProfile
@@ -231,7 +231,7 @@ ONETRUST = ('<button id="onetrust-accept-btn-handler" onclick="window.answer=\'a
 class CookieBannerPageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         cls.driver = sync_playwright().start()
         cls.browser = cls.driver.chromium.launch(channel="chrome", headless=True)
 
@@ -261,7 +261,8 @@ class CookieBannerPageTests(unittest.TestCase):
         self.page.goto(ARTICLE)
 
     def answer(self):
-        return self.page.evaluate("() => window.answer || null")
+        # The fixture's own handlers set it in the page's world; Patchright evaluates in an isolated one.
+        return self.page.evaluate("() => window.answer || null", isolated_context=False)
 
     # NEJM's lightbox over the article (2026-11-03), its structure as recorded there.
     AD = ('<div class="fancybox-overlay fancybox-overlay-fixed" style="position:fixed;left:0;top:0;width:100%;'
@@ -371,7 +372,7 @@ class CookieBannerPageTests(unittest.TestCase):
                  '<button id="onetrust-reject-all-handler" onclick="window.count=(window.count||0)+1">Reject All</button>')
         self.open(BANNER.format(buttons=stays))
         self.assertEqual([self.d._dismiss_cookie_banners(self.page, self.r) for _ in range(4)], [True, True, False, False])
-        self.assertEqual(self.page.evaluate("() => window.count"), 2)
+        self.assertEqual(self.page.evaluate("() => window.count", isolated_context=False), 2)
         self.assertIsNone(self.answer())
         self.assertEqual([e["state"] for e in self.r.events],
                          ["cookie_banner_dismissed", "cookie_banner_dismissed", "cookie_banner_left"])

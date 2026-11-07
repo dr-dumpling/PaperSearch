@@ -596,6 +596,12 @@ class LoginMixin:
                     or any(self._CARSI_OPTION.search(label) for label in entries)):
                 continue
             return f"{name}: {', '.join(label[:40] for label in entries[:6])}"
+        if self._on_publisher_host(str(getattr(page, "url", "") or "")):
+            listing = page.locator(self._FEDERATION_LINK_LIST).first
+            if listing.is_visible() is True:
+                entries = [label.strip() for label in listing.get_by_role("link").all_text_contents() if label.strip()]
+                if len(entries) >= 2 and not any(self._CARSI_OPTION.search(label) for label in entries):
+                    return f"federation links: {', '.join(label[:40] for label in entries[:6])}"
         return ""
 
     def _openathens_lacks_school(self, page: Any) -> bool:
@@ -1265,6 +1271,23 @@ class LoginMixin:
             return True
         # Username-first and QR login pages may have no password box. Inspect
         # only visibility and labels; never collect input or QR contents.
+        try:
+            return self._idp_controls(page)
+        except Exception as exc:
+            if not _is_navigation_cut(exc):
+                raise
+            return self._read_cut_as_users_step("login controls", exc)
+
+    def _read_cut_as_users_step(self, what: str, exc: BaseException) -> bool:
+        """A read cut off by the page navigating (Ovid right after the remembered
+        school, on Chrome, 2026-11-07): this pass leaves the page to the user, as
+        ``_has_visible_editable_input`` does, and the next pass reads the new page."""
+        self._event(getattr(self, "_item_result", None), "page_read_interrupted",
+                    f"{what}, taken as the user's step: {type(exc).__name__}: {(str(exc).splitlines() or [''])[0][:160]}")
+        return True
+
+    @staticmethod
+    def _idp_controls(page: Any) -> bool:
         return page.evaluate("""() => {
             const visible = el => el.getClientRects().length > 0;
             const input = [...document.querySelectorAll('input')].some(el => visible(el)
@@ -1302,8 +1325,13 @@ class LoginMixin:
 
     def _school_password_box(self, page: Any, url: str) -> bool:
         """A password or one-time-code field that is not a personal account's box on the publisher's site."""
-        return bool(page.locator('input[type="password"]:visible, input[autocomplete="one-time-code"]:visible').count()
-                    and not self._personal_login_box(page, url))
+        try:
+            return bool(page.locator('input[type="password"]:visible, input[autocomplete="one-time-code"]:visible').count()
+                        and not self._personal_login_box(page, url))
+        except Exception as exc:
+            if not _is_navigation_cut(exc):
+                raise
+            return self._read_cut_as_users_step("password box", exc)
 
     def _personal_login_box(self, page: Any, url: str) -> bool:
         """A publisher account form can be on an article, login page or SSO host.

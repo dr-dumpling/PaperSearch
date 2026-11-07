@@ -21,7 +21,7 @@ PROFILE = PublisherProfile(name='Karger', article_url_template='https://doi.org/
 class KargerInstitutionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         cls.driver = sync_playwright().start()
         cls.browser = cls.driver.chromium.launch(channel='chrome', headless=True)
 
@@ -111,7 +111,7 @@ class KargerInstitutionTests(unittest.TestCase):
         self.assertEqual(sum(e['state']=='karger_institution_chooser_opened' for e in self.result.events),1)
 
     def test_school_navigation_during_observation_continues_same_login_request(self):
-        from playwright.sync_api import Error
+        from patchright.sync_api import Error
         # No configured school: the user picks one. (A configured school missing
         # from the list ends the login at once, 2026-11-01.)
         self.downloader.institution_query = ''
@@ -158,7 +158,7 @@ class KargerInstitutionTests(unittest.TestCase):
         self.assertEqual(sum(e['state']=='page_read_interrupted' for e in self.result.events), 1)
 
     def test_wayfinder_context_loss_preserves_page_and_next_user_input(self):
-        from playwright.sync_api import Error
+        from patchright.sync_api import Error
         chooser = 'https://wayfinder.openathens.net/fixture'
         self.html = '<input placeholder="Institution">'
         self.page.goto(chooser)
@@ -172,7 +172,7 @@ class KargerInstitutionTests(unittest.TestCase):
         self.assertEqual(self.requests, [chooser])
 
     def test_wayfinder_unrelated_errors_and_closed_pages_still_fail(self):
-        from playwright.sync_api import Error
+        from patchright.sync_api import Error
         self.page.goto('https://wayfinder.openathens.net/fixture')
         for error in (RuntimeError('Execution context was destroyed'),
                       Error('Target page, context or browser has been closed'),

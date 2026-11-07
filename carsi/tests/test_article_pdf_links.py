@@ -172,7 +172,7 @@ class SimpleLocator:
 @unittest.skipUnless(os.environ.get("CARSI_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
 class DynamicLinkBrowserTests(unittest.TestCase):
     def test_dom_reordering_does_not_change_the_clicked_pdf(self):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         d = PublisherBatchDownloader({}, profile=get_publisher_profile("taylor & francis"))
         with sync_playwright() as driver:
             browser = driver.chromium.launch(channel="chrome", headless=True)

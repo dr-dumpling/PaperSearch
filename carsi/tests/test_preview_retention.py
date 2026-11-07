@@ -82,6 +82,15 @@ class RetentionTests(unittest.TestCase):
                 with self.assertRaises(type(error)):
                     preview.observe_page(self.page, force=True)
 
+    def test_preview_leaves_the_remaining_page_budget_to_the_download(self):
+        from paper_search_carsi.browser.watchdog import operation
+        self.view.observe(force=True)
+        frame = self.view.pages[0]["image_name"]
+        with operation(0.5, "prepare article"), patch.object(self.view, "_capture") as capture:
+            self.view.observe(force=True)
+        capture.assert_not_called()
+        self.assertEqual(self.view.pages[0]["image_name"], frame)
+
     def test_a_successful_download_drops_its_frames(self):
         self.view.observe(force=True)
         self.page.url = "https://journal.example/fulltext/1"

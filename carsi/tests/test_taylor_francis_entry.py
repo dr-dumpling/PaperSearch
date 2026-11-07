@@ -15,7 +15,7 @@ OTHER = "/action/ssostart?redirectUri=%2Fdoi%2Ffull%2F10.1080%2F01616412.2026.27
 class TaylorFrancisEntryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         cls.driver = sync_playwright().start()
         cls.browser = cls.driver.chromium.launch(channel="chrome", headless=True)
 

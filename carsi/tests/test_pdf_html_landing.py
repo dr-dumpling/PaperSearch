@@ -77,7 +77,7 @@ class LandedOnHtmlTests(unittest.TestCase):
 class HtmlLandingPageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         cls.driver = sync_playwright().start()
         cls.browser = cls.driver.chromium.launch(channel="chrome", headless=True)
 

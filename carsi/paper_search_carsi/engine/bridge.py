@@ -465,9 +465,9 @@ def _try_browser_batch_download(
     config: dict[str, Any],
     profile: Any | None,
 ) -> dict[str, Any] | None:
-    """Try single-DOI download via PublisherBatchDownloader + Camoufox.
+    """Try single-DOI download via PublisherBatchDownloader in the download browser.
 
-    Uses the Camoufox state machine: navigate → SSO login → capture PDF → verify.
+    Uses the browser state machine: navigate → SSO login → capture PDF → verify.
     This is the most capable built-in path — handles Cloudflare, SSO redirects,
     and publisher-specific PDF extraction.
     """
@@ -482,8 +482,8 @@ def _try_browser_batch_download(
 
     try:
         from ..browser.backend import launch_persistent_context  # noqa: F401
-        # The configured browser: an ego-only install has no camoufox package
-        # (2026-11-01: the default-backend check skipped every ego download).
+        # The configured browser, not the default one (2026-11-01: the
+        # default-backend check skipped every ego download).
         from ..browser.engine import is_available as _browser_backend_available
         if not _browser_backend_available(config):
             log.info("   [Institutional] no browser backend available, skipping browser download")
@@ -519,24 +519,30 @@ def _try_browser_batch_download(
 
     from ..browser import watchdog
 
+    from ..browser.backend import supports
+    from ..browser.batch_session import active_batch
+
     supplements_mode = str(config.get("supplements") or "")
+    batch = active_batch.get() if supports("batch_window", config) else None
     try:
-        context = downloader._launch_context()
+        context = batch.open(downloader) if batch is not None else downloader._launch_context()
         try:
             if supplements_mode == "only":
                 result = DownloadResult(doi=doi, status="failed", state="supplements_only",
                                         reason="supplements_only", article_url=downloader._article_url(doi))
             else:
-                result = downloader.fetch_one(context, record, run_dir)
+                result = downloader.fetch_one(batch.page if batch is not None else context, record, run_dir)
                 if _browser_closed_at_start(result):
                     # The browser closed under the item's first page: the previous
                     # item's browser was still releasing the profile. Once more.
                     try:
-                        context.close()
+                        (batch.close if batch is not None else context.close)()
                     except Exception:
                         pass
-                    context = downloader._launch_context(relaunch="the browser closed at the first page")
-                    result = downloader.fetch_one(context, record, run_dir)
+                    relaunch = "the browser closed at the first page"
+                    context = (batch.open(downloader, relaunch=relaunch) if batch is not None
+                               else downloader._launch_context(relaunch=relaunch))
+                    result = downloader.fetch_one(batch.page if batch is not None else context, record, run_dir)
             if watchdog.fired and not result.ok:
                 # The browser call never returned and the driver was stopped:
                 # whatever the engine reported after that is a consequence.
@@ -571,10 +577,14 @@ def _try_browser_batch_download(
                         downloader._drop_snapshot_pictures(result)
                     _note_supplements(result, written)
         finally:
-            try:
-                context.close()
-            except Exception:
-                pass
+            if batch is not None:
+                if not watchdog.fired:
+                    batch.finish_item()
+            else:
+                try:
+                    context.close()
+                except Exception:
+                    pass
     except Exception as e:
         log.info("   [Institutional] Browser batch download error: %s", type(e).__name__)
         if isinstance(e, watchdog.BrowserOperationTimeout):

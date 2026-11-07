@@ -24,7 +24,7 @@ SESSION_COOKIES_MAX_AGE_SEC = 12 * 3600
 def _save_session_cookies(context: Any, profile: Path) -> None:
     """Keep session cookies (IdP and publisher logins) for the next launch.
 
-    Each paper runs in a new backend process and browser; Firefox drops
+    Each paper runs in a new backend process and browser; the browser drops
     cookies without an expiry when it closes, so every paper asked for the
     school login again. Only session cookies are kept: persistent ones are in
     the profile already. The file is readable by the user only.
@@ -66,26 +66,20 @@ def _restore_session_cookies(context: Any, profile: Path) -> int:
 
 
 def _profile_owner_pid(user_data_dir: str) -> int | None:
-    """PID of the browser holding this profile, if any.
-
-    Firefox (Camoufox) leaves a ``lock`` symlink to ``<host>:+<pid>``;
-    Chromium leaves ``SingletonLock`` to ``<host>-<pid>``.
-    """
-    for name in ("lock", "SingletonLock"):
-        try:
-            target = os.readlink(Path(user_data_dir) / name)
-        except OSError:
-            continue
-        match = re.search(r"[-+](\d+)$", target)
-        if match:
-            return int(match.group(1))
-    return None
+    """PID of the browser holding this profile, if any: Chromium's
+    ``SingletonLock`` symlink to ``<host>-<pid>`` (macOS and Linux)."""
+    try:
+        target = os.readlink(Path(user_data_dir) / "SingletonLock")
+    except OSError:
+        return None
+    match = re.search(r"-(\d+)$", target)
+    return int(match.group(1)) if match else None
 
 
 def _lock_file_held(path: Path) -> bool:
-    """Another process holds this lock file: Firefox's ``.parentlock`` on macOS
-    and Linux (an fcntl lock; macOS has no ``lock`` symlink), its ``parent.lock``
-    on Windows (opened without sharing). The lock is tested, never kept."""
+    """Another process holds this lock file: Chromium's ``lockfile`` on Windows,
+    which the running browser keeps open without write sharing (an fcntl lock
+    elsewhere). The lock is tested, never kept."""
     if not path.exists():
         return False
     try:
@@ -110,14 +104,13 @@ def _lock_file_held(path: Path) -> bool:
 
 
 def profile_holder(user_data_dir: str) -> str:
-    """Who still holds this profile ("" = nobody): a live ``lock`` owner, or a
-    lock file another process holds."""
+    """Who still holds this profile ("" = nobody): a live ``SingletonLock``
+    owner, or a ``lockfile`` another process holds (Windows)."""
     pid = _profile_owner_pid(user_data_dir)
     if pid is not None and _pid_alive(pid):
         return f"lock of pid {pid}"
-    for name in (".parentlock", "parent.lock"):
-        if _lock_file_held(Path(user_data_dir) / name):
-            return f"{name} held"
+    if _lock_file_held(Path(user_data_dir) / "lockfile"):
+        return "lockfile held"
     return ""
 
 

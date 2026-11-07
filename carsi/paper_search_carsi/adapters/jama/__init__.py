@@ -28,7 +28,9 @@ class JAMAAdapter(PublisherAdapter):
     binds_pdf_to_citation = True
     keeps_pdf_out_of_downloads = True
     binds_response_url = True
-    native_pdf_patterns = ("https://jamanetwork.com/journals/*/articlepdf/*",)
+    # The articlepdf address redirects to Silverchair's watermarked file, the
+    # response Chrome has to capture (Firefox read it from PDF.js, 2026-11-07).
+    native_pdf_patterns = ("https://jamanetwork.com/journals/*/articlepdf/*", "https://watermark*.silverchair.com/*")
     # Redirects have no body to validate. Native/HTTP final responses retain
     # the chain and decide whether it belongs to the article; do not
     # blacklist the legitimate origin.

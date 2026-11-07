@@ -1,4 +1,4 @@
-"""Profile-driven Camoufox batch downloader with retryable machine states.
+"""Profile-driven browser batch downloader with retryable machine states.
 
 ``PublisherBatchDownloader`` keeps the article flow (``fetch_one``) here and combines
 one mixin per responsibility from the ``batch_*.py`` modules: login, institution
@@ -48,6 +48,7 @@ from ..adapters import PublisherAdapter, adapter_class  # noqa: E402
 from .batch_common import (
     page_operation,  # re-exported: other modules import these from batch
     open_page,
+    goto_retrying,
     settle,
     _is_network_failure,
     DownloadResult,
@@ -146,8 +147,8 @@ class PublisherBatchDownloader(
             deadline = time.monotonic() + 60
             try:
                 referer = str(page.url)
-                tab.goto(url, timeout=60_000,
-                         **({"referer": referer} if referer.startswith(("http://", "https://")) else {}))
+                goto_retrying(tab, url, timeout_ms=60_000, wait_until="load",
+                              **({"referer": referer} if referer.startswith(("http://", "https://")) else {}))
             except Exception as exc:
                 if not _is_browser_error(exc):
                     raise
@@ -623,8 +624,11 @@ class PublisherBatchDownloader(
             self._write_diagnostic(page, result, run_dir)
             return result
         except watchdog.BrowserUnresponsive as exc:
-            result.reason = result.state = ("browser_operation_timeout" if isinstance(exc, watchdog.BrowserOperationTimeout)
-                                            else "browser_unresponsive")
+            if isinstance(exc, watchdog.BrowserBudgetExhausted) and result.state == "challenge_or_viewer_timeout":
+                result.reason = result.state
+            else:
+                result.reason = result.state = ("browser_operation_timeout" if isinstance(exc, watchdog.BrowserOperationTimeout)
+                                                else "browser_unresponsive")
             self._event(result, result.state, str(exc))
             self._write_diagnostic(page, result, run_dir)
             return result

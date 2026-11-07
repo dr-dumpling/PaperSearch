@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import Mock
 
 from paper_search_carsi.engine.batch import DownloadResult, PublisherBatchDownloader
-from paper_search_carsi.publishers.profiles import PUBLISHER_PROFILES
+from paper_search_carsi.publishers.profiles import PUBLISHER_PROFILES, get_publisher_profile
 
 THIEME = PUBLISHER_PROFILES["thieme"]
 CHOOSER = '''<title>Thieme - Shibboleth</title><h1>Institutional Login via Shibboleth</h1>
@@ -41,9 +41,11 @@ def assert_mousedown_chooser_navigates(test, page):
     test.assertTrue(any(e["state"] == "institution_entry_dispatched" for e in result.events))
 
 
-@unittest.skipUnless(os.environ.get("CARSI_LOCAL_BROWSER_TEST") == "1", "local Camoufox fixture opt-in")
-class CamoufoxChooserTests(unittest.TestCase):
-    def test_school_option_mousedown_fallback_works_in_camoufox(self):
+@unittest.skipUnless(os.environ.get("CARSI_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
+class BackendBrowserChooserTests(unittest.TestCase):
+    """The browser as the backend launches it (Chrome through Patchright)."""
+
+    def test_school_option_mousedown_fallback_works_in_the_backend_browser(self):
         from paper_search_carsi.browser.backend import launch
         browser = launch(headless=True, humanize=False, config={})
         self.addCleanup(browser.close)
@@ -51,6 +53,83 @@ class CamoufoxChooserTests(unittest.TestCase):
         page.route("**/*", lambda route: route.fulfill(content_type="text/html", body=MOUSEDOWN_CHOOSER))
         page.goto("https://publisher.example/chooser")
         assert_mousedown_chooser_navigates(self, page)
+
+    def test_explicit_empty_search_tries_the_federation_list_before_skipping(self):
+        from paper_search_carsi.browser.backend import launch
+        browser = launch(headless=True, humanize=False, config={})
+        self.addCleanup(browser.close)
+        page = browser.new_page(service_workers="block")
+        chooser = "https://www.worldscientific.com/action/ssostart"
+        alternate = "?mode=list"
+        school_list = "?mode=school"
+        login = "?mode=login"
+        entity_id = "https://idp.example.edu.cn/idp/shibboleth"
+        page.route("**/*", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=(
+            '<title>Choose federation</title><h1>Select your federation</h1><ul class="federation--list">'
+            '<li><a href="?fed=uk">UK Federation</a></li><li><a href="?fed=us">US Federation</a></li></ul>'
+            if route.request.url.endswith(alternate) else
+            '<title>Choose school</title><section><h1>China CERNET Federation (CARSI)</h1>'
+            '<ul class="federation--list-inner"></ul></section>'
+            if route.request.url.endswith(school_list) else
+            LOGIN if route.request.url.endswith(login) else
+            '<title>Find your institution</title><h1>Find your institution</h1>'
+            '<input aria-label="Type your institution name" value="Example University">'
+            '<h4 hidden>We couldn’t find any result for <em>Example University</em></h4>'
+            f'<a hidden href="{alternate}">Select your Institution from a list</a>')))
+        d = PublisherBatchDownloader({"publisher_institution_federation": "carsi", "idp_entity_id": entity_id},
+                                      profile=get_publisher_profile("world scientific"),
+                                      institution_query="Example University")
+        page.goto(chooser)
+
+        def searched():
+            result = DownloadResult(doi="10.1142/example", status="failed")
+            d._event(result, "auto_institution_search", f"Example University @ {chooser}")
+            return result
+
+        waiting = searched()
+        self.assertFalse(d._assist_configured_institution(page, waiting))
+        self.assertFalse(getattr(waiting, "_institution_not_listed", False))
+        page.locator("h4").evaluate("(el) => el.hidden = false")
+        page.locator("input").fill("Another University")
+        self.assertFalse(d._assist_configured_institution(page, waiting))
+        self.assertFalse(getattr(waiting, "_institution_not_listed", False))
+        page.locator("input").fill("Example University")
+
+        unavailable = searched()
+        self.assertFalse(d._assist_configured_institution(page, unavailable))
+        self.assertTrue(unavailable._institution_not_listed)
+
+        with_alternate = searched()
+        page.locator("a").evaluate("(el) => el.hidden = false")
+        self.assertTrue(d._assist_configured_institution(page, with_alternate))
+        page.wait_for_url(chooser + alternate)
+        self.assertFalse(getattr(with_alternate, "_institution_not_listed", False))
+        self.assertEqual(d._login_block_reason(page), "institution_federation_unavailable")
+        page.locator("ul").evaluate("(el, href) => { el.insertAdjacentHTML('beforeend', "
+                                    "'<li><a href=\"' + href + '\">China CERNET Federation (CARSI)</a></li>'); }",
+                                    school_list)
+        self.assertEqual(d._login_block_reason(page), "")
+        self.assertTrue(d._select_carsi_federation_link(page, with_alternate, page.url))
+        page.wait_for_url(chooser + school_list)
+        self.assertEqual(d._login_block_reason(page), "")
+
+        self.assertFalse(d._select_institution(page, with_alternate))
+        self.assertFalse(getattr(with_alternate, "_institution_not_listed", False))
+        page.locator("ul").evaluate("el => el.innerHTML = '<li><a href=\"?other\">Other University</a></li>'")
+        page.locator("section").evaluate("el => el.setAttribute('aria-busy', 'true')")
+        self.assertFalse(d._select_institution(page, with_alternate))
+        self.assertFalse(getattr(with_alternate, "_institution_not_listed", False))
+        page.locator("section").evaluate("el => el.removeAttribute('aria-busy')")
+
+        absent = searched()
+        self.assertFalse(d._select_institution(page, absent))
+        self.assertTrue(absent._institution_not_listed)
+        page.locator("ul").evaluate("(el, [href, id]) => el.insertAdjacentHTML('beforeend', "
+                                    "`<li><a href=\"${href}\" data-entity-id=\"${id}\">Alternate name</a></li>`)",
+                                    [login, entity_id])
+        self.assertTrue(d._select_institution(page, with_alternate))
+        page.wait_for_url(chooser + login)
+        self.assertFalse(getattr(with_alternate, "_institution_not_listed", False))
 
 
 class MockPageTests(unittest.TestCase):
@@ -93,7 +172,7 @@ class MockPageTests(unittest.TestCase):
 class RealPageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         cls.driver = sync_playwright().start()
         cls.browser = cls.driver.chromium.launch(channel="chrome", headless=True)
 

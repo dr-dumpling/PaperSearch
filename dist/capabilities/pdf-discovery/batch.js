@@ -6,6 +6,7 @@ import { RunLedger } from "../../infrastructure/runlog/RunLedger.js";
 import { classifyFailureCode, FAILURE_CLASS_NAMES, } from "../../infrastructure/runlog/failureClass.js";
 import { createDefaultDownloadTiers, downloadWithFallback, } from "./OpenAccessFallbackService.js";
 import { fetchSupplementsOnly } from "./tiers/entitledAccess.js";
+import { batchFolder, reportBatchResults } from "./batchSummary.js";
 export const MAX_BATCH_ITEMS = 1000;
 /**
  * One item of a serial batch. When the item reaches the entitled-access
@@ -98,8 +99,11 @@ export async function downloadSupplementsOnly(request, backend, searchers, paper
                 ...(saved ? {} : { code: "supplements_failed" }),
             };
     request.onStage?.({ ...attempt, ...(trace ? { trace } : {}), startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt });
+    const title = request.title || metadata.title;
     return {
         status: saved || noneListed ? "ok" : "error",
+        ...(title ? { title } : {}),
+        ...(metadata.journal ? { journal: metadata.journal } : {}),
         attempts: [attempt, ...(filingFailed ? [{ stage: "output_layout", status: "error",
                     code: "output_layout_failed", message: "File organization failed; use the returned file paths." }] : [])],
         ...(files ? { supplements: files } : {}),
@@ -226,11 +230,17 @@ function summary(mode, batchId, items, extra = {}) {
 /** Download a list serially; one batch id ties it to one progress window. */
 export async function downloadBatch(searchers, options, backend, log = (line) => process.stderr.write(`${line}\n`), createTiers = createDefaultDownloadTiers, pause = wait) {
     options = { ...options, savePath: resolveDownloadPath(options.savePath) };
-    const result = options.content === "supplements"
-        ? await downloadSupplementsBatch(options, backend, log, searchers)
-        : options.mode === "per_item"
-            ? await downloadPerItem(searchers, options, backend, log, createTiers, pause)
-            : await downloadTwoPhase(searchers, options, backend, log, createTiers, options.mode === "entitled_only" ? "entitled_only" : "two_phase", pause);
+    const startedAt = Date.now();
+    const run = async (backend) => {
+        const result = await (options.content === "supplements"
+            ? downloadSupplementsBatch(options, backend, log, searchers)
+            : options.mode === "per_item"
+                ? downloadPerItem(searchers, options, backend, log, createTiers, pause)
+                : downloadTwoPhase(searchers, options, backend, log, createTiers, options.mode === "entitled_only" ? "entitled_only" : "two_phase", pause));
+        await reportBatchResults(result, backend, startedAt, batchFolder(options.savePath));
+        return result;
+    };
+    const result = await (backend?.withBatchSession ? backend.withBatchSession(run) : run(backend));
     const byClass = Object.entries(result.failureClasses ?? {})
         .map(([failureClass, count]) => `${FAILURE_CLASS_NAMES[failureClass]} ${count}`)
         .join("、");

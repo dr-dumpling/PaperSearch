@@ -64,7 +64,7 @@ description: |
 | 在检索、施引扩展、期刊指标、PDF 获取、正文片段检索之间选路由；开放下载的各个渠道；核验论文身份 | `references/capability-routing.md` |
 | 核对命令、`paper-search run` 的工具名、参数和输出格式 | `references/cli-contract.md` |
 | 检索类命令出错（命令缺失、缺 key、限流、0 结果、Scholar 验证页） | `references/troubleshooting.md` |
-| 机构下载：安装或检查扩展、配置学校、选择浏览器（Camoufox / ego） | `references/carsi-setup.md` |
+| 机构下载：安装或检查扩展、配置学校、选择浏览器（Google Chrome / ego） | `references/carsi-setup.md` |
 | 机构下载：登录与验证、批量、进度窗口、失败分类、补充材料、确认下载成功 | `references/browser-download.md` |
 | 机构下载：某家出版社、某本期刊能不能下正文和补充材料，没有学校登录路线时怎么办 | `references/publisher-support.md` |
 
@@ -100,7 +100,7 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 
 ## 功能地图
 
-0.4.8 新增：`paper-search update check --format text` 检查 npm 稳定新版。日常命令的更新提示在 stderr，不能当作文献任务失败；可告知用户建议，未经用户授权不执行升级。`paper-search config set PAPER_SEARCH_UPDATE_NOTIFY false` 关闭自动检查与提醒，详见 `references/management-layer.md`。
+`paper-search update check --format text` 检查 npm 稳定新版。日常命令的更新提示在 stderr，不能当作文献任务失败；可告知用户建议，未经用户授权不执行升级。`paper-search config set PAPER_SEARCH_UPDATE_NOTIFY false` 关闭自动检查与提醒，详见 `references/management-layer.md`。
 
 本 Skill 有五个文献功能；`doctor`、`smoke`、`config`、`skills`、`carsi`、`failures` 是管理和诊断命令。
 
@@ -120,7 +120,7 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 
 | | 开放下载（默认） | 机构下载（可选扩展） |
 |---|---|---|
-| 能不能直接用 | 装好 `paper-search` 就能用 | 默认没装；`paper-search carsi install` 安装（下载约 3 GB，用 ego lite 时约 0.5 GB） |
+| 能不能直接用 | 装好 `paper-search` 就能用 | 默认没装；需要本机已装 Google Chrome，`paper-search carsi install` 安装（下载约 0.5 GB） |
 | 能拿到什么 | 开放获取的正文 | 用户学校订阅的正文；有规则的出版社还能取补充材料 |
 | 怎么拿 | 程序直接下载，通常几秒，不用登录：来源自带的下载、元数据里的 PDF 地址、PMC、Unpaywall、出版社接口（用户自己的 key）；最后是默认开启的 Sci-Hub 兜底（它不是开放获取，`useSciHub=false` 关闭） | 打开浏览器，经 CARSI 登录学校，在出版社网站取 PDF；账号密码由用户输入，后端尝试简单验证，必要时提示人工接管 |
 | 补充材料 | 不提供 | 有规则的出版社可以取，见 `references/publisher-support.md` |
@@ -151,7 +151,7 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 
 问的时候顺带说明：补充材料只有部分出版社支持，见 `references/publisher-support.md`。用户已经说明的不再问。机构下载没启用时只走开放下载、只下正文；用户要补充材料时，告诉用户需要先安装机构下载扩展（`references/carsi-setup.md`）。
 
-几十到几百篇用一次 `download_batch`，不要自己循环调用单篇下载。下载结束后运行 `paper-search failures --format text`，按失败类别向用户说明。0.4.8 新增：需要向维护者报告时用 `paper-search failures --export ./failure-report.zip` 导出副本，先核对包内公开检查清单；详见 `references/browser-download.md`。不自动上传或提交 issue。
+几十到几百篇用一次 `download_batch`，不要自己循环调用单篇下载。下载结束后运行 `paper-search failures --format text`，按失败类别向用户说明。需要向维护者报告时用 `paper-search failures --export ./failure-report.zip` 导出副本，先核对包内公开检查清单；详见 `references/browser-download.md`。不自动上传或提交 issue。
 
 ## 核心规则
 

@@ -20,7 +20,7 @@ FORM = ('<form onsubmit="event.preventDefault()"><label>Fixture account<input na
     ('elsevier', 'https://accounts.fixture.test/login'),
 ])
 def test_publisher_password_with_institution_route_is_not_a_school_login(site, url):
-    from playwright.sync_api import sync_playwright
+    from patchright.sync_api import sync_playwright
     with sync_playwright() as driver:
         browser = driver.chromium.launch(channel='chrome', headless=True)
         context = browser.new_context(service_workers='block')
@@ -62,7 +62,7 @@ def test_publisher_password_with_institution_route_is_not_a_school_login(site, u
 
 @pytest.mark.parametrize("target", ["main", "iframe", "popup"])
 def test_trusted_login_input_pauses_but_script_updates_and_focus_do_not(target):
-    from playwright.sync_api import sync_playwright
+    from patchright.sync_api import sync_playwright
 
     clock = [1000.0]
     with sync_playwright() as driver:
@@ -131,7 +131,7 @@ def test_trusted_login_input_pauses_but_script_updates_and_focus_do_not(target):
 
 
 def test_idp_redirect_and_unknown_relay_are_not_human_steps_but_real_controls_are():
-    from playwright.sync_api import sync_playwright
+    from patchright.sync_api import sync_playwright
     with sync_playwright() as driver:
         browser = driver.chromium.launch(channel='chrome', headless=True)
         context = browser.new_context(service_workers='block')

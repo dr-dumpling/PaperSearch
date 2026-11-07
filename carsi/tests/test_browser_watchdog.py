@@ -1,4 +1,4 @@
-"""A browser call that never returns ends the item, not the batch (Camoufox, 2026-10-31)."""
+"""A browser call that never returns ends the item, not the batch (2026-10-31)."""
 import tempfile
 import time
 import unittest
@@ -63,9 +63,12 @@ class WatchdogTests(unittest.TestCase):
                 Fake()._sync(evaluate())
                 Fake()._sync(evaluate())
                 late = evaluate()
-                with self.assertRaises(watchdog.BrowserOperationTimeout):
+                with self.assertRaises(watchdog.BrowserBudgetExhausted):
                     Fake()._sync(late)
-        self.assertEqual(sent, [106, 106])  # candidate two did not renew the deadline
+            with watchdog.operation(6, "next article"):
+                Fake()._sync(evaluate())
+        self.assertEqual(sent, [106, 106, 114])  # the expired call was skipped; the next article still runs
+        self.assertIsNone(watchdog.fired)
         self.assertIsNone(late.cr_frame)
         self.assertEqual(watchdog._call_deadlines, {})
         self.assertEqual(watchdog._inflight, {})
@@ -101,7 +104,7 @@ class WatchdogTests(unittest.TestCase):
         loop.call_soon_threadsafe.assert_not_called()
 
     def install_on(self, fake):
-        from playwright._impl import _sync_base
+        from patchright._impl import _sync_base
         patches = [patch.object(_sync_base, "SyncBase", fake), patch.object(watchdog, "_installed", False),
                    patch.object(watchdog.threading, "Thread")]
         for p in patches:
@@ -164,7 +167,7 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(out["supplements"][0]["reason"], "browser_unresponsive")
         downloader.collect_supplements.assert_not_called()
 
-    def test_an_ego_install_without_camoufox_still_downloads(self):
+    def test_an_ego_install_without_chrome_still_downloads(self):
         downloader = MagicMock()
         downloader.fetch_one.return_value = DownloadResult(doi="10.1/x", status="failed", state="pdf_not_captured",
                                                            reason="pdf_not_captured")

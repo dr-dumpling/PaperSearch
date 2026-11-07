@@ -10,6 +10,7 @@ import type {
 const DOWNLOAD_TOOL = "carsi_download";
 const CACHE_CLEAR_TOOL = "carsi_cache_clear";
 const BATCH_PROGRESS_TOOL = "carsi_batch_progress";
+export const CLOSE_BATCH_BROWSER = "carsi_close_batch_browser";
 const COMPATIBILITY_BATCH: CarsiBatchPosition = {
   id: "paper-search-compatibility",
   index: 1,
@@ -74,6 +75,9 @@ export interface CarsiBatchSupport {
   /** The download tool declares the user_wait field. */
   userWaitField: boolean;
   diagnosticsDirField?: boolean;
+  keepBrowser?: boolean;
+  /** carsi_batch_progress declares ``results`` (the finished window's summary). */
+  progressResults?: boolean;
 }
 
 export function selectCarsiBatchSupport(
@@ -82,6 +86,12 @@ export function selectCarsiBatchSupport(
 ): CarsiBatchSupport {
   const download = tools.find((tool) => tool.name === DOWNLOAD_TOOL);
   const progress = tools.filter((tool) => tool.name === BATCH_PROGRESS_TOOL);
+  const close = tools.filter((tool) => tool.name === CLOSE_BATCH_BROWSER);
+  const keepBrowser = !!download && close.length === 1 && acceptsDeclaredArguments(close[0].inputSchema, {}) &&
+    acceptsDeclaredArguments(download.inputSchema, {
+      ...createCarsiDownloadArguments(COMPATIBILITY_DOI, "output", strategy, COMPATIBILITY_BATCH),
+      keep_browser: true,
+    });
   return {
     downloadFields:
       !!download &&
@@ -121,6 +131,9 @@ export function selectCarsiBatchSupport(
       ),
     diagnosticsDirField: !!download && acceptsDeclaredArguments(download.inputSchema,
       createCarsiDownloadArguments(COMPATIBILITY_DOI, "output", strategy, undefined, undefined, undefined, "diagnostics")),
+    ...(keepBrowser ? { keepBrowser: true } : {}),
+    ...(progress.length === 1 && Object.hasOwn(progress[0].inputSchema.properties ?? {}, "results")
+      ? { progressResults: true } : {}),
     progressTool:
       progress.length === 1 &&
       acceptsDeclaredArguments(progress[0].inputSchema, {

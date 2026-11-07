@@ -125,7 +125,7 @@ paper-search carsi install
 paper-search doctor --pretty
 ```
 
-`install` 先列出要下载的内容和位置，再准备它自己的 Python、安装后端和浏览器，并启用它（`PAPER_SEARCH_CARSI_ENABLED=true`、`PAPER_SEARCH_CARSI_EXECUTABLE`）。PaperSearch 升级后，`status` 会提示何时运行 `paper-search carsi update`。用户在别处维护的后端用 `paper-search config set PAPER_SEARCH_CARSI_EXECUTABLE <路径>` 指定。学校、浏览器（Camoufox 或 ego）和账号见 `carsi-setup.md`；账号密码只在用户自己的浏览器里输入，不进聊天、配置、命令参数或日志。`doctor` 显示 `available` 只证明后端接口能用，不代表已登录学校或对某篇有权限。日常下载仍用 `paper-search download`、`paper-search run download_with_fallback` 或 `download_batch`，见 `browser-download.md`。
+`install` 先检查本机有 Google Chrome，列出要下载的内容和位置，再准备它自己的 Python、安装后端，并启用它（`PAPER_SEARCH_CARSI_ENABLED=true`、`PAPER_SEARCH_CARSI_EXECUTABLE`）。PaperSearch 升级后，`status` 会提示何时运行 `paper-search carsi update`。用户在别处维护的后端用 `paper-search config set PAPER_SEARCH_CARSI_EXECUTABLE <路径>` 指定。学校、浏览器（Google Chrome 或 ego）和账号见 `carsi-setup.md`；账号密码只在用户自己的浏览器里输入，不进聊天、配置、命令参数或日志。`doctor` 显示 `available` 只证明后端接口能用，不代表已登录学校或对某篇有权限。日常下载仍用 `paper-search download`、`paper-search run download_with_fallback` 或 `download_batch`，见 `browser-download.md`。
 
 ## 配置检查
 
@@ -148,7 +148,7 @@ paper-search doctor --pretty
 
 不要让用户把密钥贴到聊天里，不要把密钥写进 Skill、README、测试或日志。`doctor` 和 `config` 的输出会把已配置的密钥脱敏。
 
-## CLI 新版提醒（0.4.8 新增）
+## CLI 新版提醒
 
 日常在线任务可异步检查 npm `papersearch` 的稳定新版，成功结果缓存 24 小时，失败或未完成请求退避 1 小时。发现新版后，每次日常调用提示一次当前/最新版本和匹配安装渠道的升级命令；提醒在 stderr，stdout JSON 和原任务结果不变。离线管理命令不联网，CI、help/version/config/setup/update 不自动提醒。
 

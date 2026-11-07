@@ -25,29 +25,33 @@ COOKIES = [
 
 
 def build(root: Path) -> tuple[Path, Path]:
-    profile, cache = root / "publisher-camoufox", root / "cache"
-    (profile / "sessionstore-backups").mkdir(parents=True)
+    profile, cache = root / "publisher-chrome", root / "cache"
+    default = profile / "Default"
+    (default / "Sessions").mkdir(parents=True)
     cache.mkdir()
-    with sqlite3.connect(profile / "cookies.sqlite") as db:
-        db.execute("CREATE TABLE moz_cookies (id INTEGER PRIMARY KEY, originAttributes TEXT, name TEXT, value TEXT,"
-                   " host TEXT, path TEXT, expiry INTEGER)")
-        db.executemany("INSERT INTO moz_cookies (name, value, host, path, expiry) VALUES (?, 'v', ?, '/', 0)",
-                       [(n, h) for h, n in COOKIES])
-    with sqlite3.connect(profile / "webappsstore.sqlite") as db:
-        db.execute("CREATE TABLE webappsstore2 (originAttributes TEXT, originKey TEXT, scope TEXT, key TEXT, value TEXT)")
-        db.executemany("INSERT INTO webappsstore2 VALUES ('', ?, '', 'k', 'v')",
-                       [(h[::-1] + ".:https:443",) for h in ("service.seamlessaccess.org", "id.elsevier.com")])
-    for origin in ("https+++service.seamlessaccess.org", "https+++www.sciencedirect.com^partitionKey=x",
-                   "https+++id.elsevier.com", "moz-extension+++abc"):
-        (profile / "storage" / "default" / origin / "ls").mkdir(parents=True)
-        (profile / "storage" / "default" / origin / "ls" / "data.sqlite").write_text("x")
+    with sqlite3.connect(default / "Cookies") as db:
+        db.execute("CREATE TABLE cookies (creation_utc INTEGER NOT NULL, host_key TEXT NOT NULL,"
+                   " top_frame_site_key TEXT NOT NULL, name TEXT NOT NULL, value TEXT NOT NULL,"
+                   " encrypted_value BLOB NOT NULL, path TEXT NOT NULL)")
+        db.executemany("INSERT INTO cookies VALUES (?, ?, '', ?, '', x'00', '/')",
+                       [(i, h, n) for i, (h, n) in enumerate(COOKIES)])
+    for origin in ("https_service.seamlessaccess.org_0.indexeddb.leveldb",
+                   "https_www.sciencedirect.com_0.indexeddb.blob", "https_id.elsevier.com_0.indexeddb.leveldb",
+                   "chrome-extension_abc_0.indexeddb.leveldb"):
+        (default / "IndexedDB" / origin).mkdir(parents=True)
+        (default / "IndexedDB" / origin / "000003.log").write_text("x")
+    (default / "Local Storage" / "leveldb").mkdir(parents=True)
+    (default / "Local Storage" / "leveldb" / "000003.log").write_bytes(
+        b"\x00META:https://service.seamlessaccess.org\x00\x01k\x00META:https://id.elsevier.com\x00")
+    (default / "Session Storage").mkdir()
+    (default / "Session Storage" / "000003.log").write_text("x")
     session = [{"name": n, "value": "v", "domain": h, "path": "/"} for h, n in COOKIES]
     (profile / SESSION_COOKIES_FILE).write_text(json.dumps({"saved_at": 1, "cookies": session}))
     (cache / "publisher_cookies.json").write_text(json.dumps(session[:4]))
     (cache / "publisher_cookies.txt").write_text(
         "# Netscape HTTP Cookie File\n" + "".join(f"{h}\tTRUE\t/\tTRUE\t0\t{n}\tv\n" for h, n in COOKIES[:4]))
-    (profile / "sessionstore.jsonlz4").write_bytes(b"mozLz40\0")
-    (profile / "sessionstore-backups" / "previous.jsonlz4").write_bytes(b"mozLz40\0")
+    (default / "Sessions" / "Session_13438509334969058").write_bytes(b"SNSS")
+    (default / "Sessions" / "Tabs_13438509335217404").write_bytes(b"SNSS")
     return profile, cache
 
 
@@ -69,18 +73,19 @@ class ColdStartTests(unittest.TestCase):
                          {"verification": 1, "personal_account": 1, "consent": 1})
         self.assertNotIn('"v"', json.dumps(plan))  # no cookie value ever appears
         self.assertEqual(sorted(plan["site_data"]["delete"]),
-                         ["https+++service.seamlessaccess.org", "https+++www.sciencedirect.com^partitionKey=x"])
+                         ["https_service.seamlessaccess.org_0.indexeddb.leveldb",
+                          "https_www.sciencedirect.com_0.indexeddb.blob"])
         self.assertEqual(plan["site_data"]["local_storage_hosts"], ["service.seamlessaccess.org"])
         self.assertEqual(sorted(Path(f["path"]).name for f in plan["files"] if f["action"] == "delete"),
-                         ["previous.jsonlz4", "sessionstore.jsonlz4"])
-        with sqlite3.connect(self.profile / "cookies.sqlite") as db:
-            self.assertEqual(db.execute("SELECT count(*) FROM moz_cookies").fetchone()[0], len(COOKIES))
+                         ["Local Storage", "Session Storage", "Session_13438509334969058", "Tabs_13438509335217404"])
+        with sqlite3.connect(self.profile / "Default" / "Cookies") as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM cookies").fetchone()[0], len(COOKIES))
 
     def test_applying_keeps_verification_personal_accounts_and_consent(self):
         done = self.run.apply()
         self.assertEqual(done["cookies"], 7)
-        with sqlite3.connect(self.profile / "cookies.sqlite") as db:
-            left = set(db.execute("SELECT host, name FROM moz_cookies"))
+        with sqlite3.connect(self.profile / "Default" / "Cookies") as db:
+            left = set(db.execute("SELECT host_key, name FROM cookies"))
         self.assertEqual(left, {(".sciencedirect.com", "cf_clearance"), ("www.sciencedirect.com", "OptanonConsent"),
                                 ("id.elsevier.com", "ELS_SESSION")})
         saved = json.loads((self.profile / SESSION_COOKIES_FILE).read_text())
@@ -90,11 +95,13 @@ class ColdStartTests(unittest.TestCase):
                          {"cf_clearance", "OptanonConsent", "ELS_SESSION"})
         self.assertNotIn("SD_SESSION", (self.cache / "publisher_cookies.txt").read_text())
         self.assertIn("# Netscape", (self.cache / "publisher_cookies.txt").read_text())
-        storage = sorted(p.name for p in (self.profile / "storage" / "default").iterdir())
-        self.assertEqual(storage, ["https+++id.elsevier.com", "moz-extension+++abc"])
-        with sqlite3.connect(self.profile / "webappsstore.sqlite") as db:
-            self.assertEqual([r[0] for r in db.execute("SELECT originKey FROM webappsstore2")], ["moc.reivesle.di.:https:443"])
-        self.assertFalse((self.profile / "sessionstore.jsonlz4").exists())
+        storage = sorted(p.name for p in (self.profile / "Default" / "IndexedDB").iterdir())
+        self.assertEqual(storage, ["chrome-extension_abc_0.indexeddb.leveldb", "https_id.elsevier.com_0.indexeddb.leveldb"])
+        # One database for every site: it goes whole when it holds a site to forget.
+        self.assertFalse((self.profile / "Default" / "Local Storage").exists())
+        self.assertEqual(done["local_storage"], 1)
+        self.assertEqual(list((self.profile / "Default" / "Sessions").iterdir()), [])
+        self.assertFalse((self.profile / "Default" / "Session Storage").exists())
 
     def test_another_profile_leaves_the_configured_cache_alone(self):
         before = (self.cache / "publisher_cookies.json").read_text()
@@ -105,12 +112,20 @@ class ColdStartTests(unittest.TestCase):
         self.assertEqual((self.cache / "publisher_cookies.json").read_text(), before)
 
     def test_a_running_browser_blocks_the_cold_start(self):
-        os.symlink(f"host:+{os.getppid()}", self.profile / "lock")
+        os.symlink(f"host-{os.getppid()}", self.profile / "SingletonLock")
         self.assertTrue(self.run.plan()["browser_running"])
         with self.assertRaises(RuntimeError):
             self.run.apply()
-        with sqlite3.connect(self.profile / "cookies.sqlite") as db:
-            self.assertEqual(db.execute("SELECT count(*) FROM moz_cookies").fetchone()[0], len(COOKIES))
+        with sqlite3.connect(self.profile / "Default" / "Cookies") as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM cookies").fetchone()[0], len(COOKIES))
+
+    def test_windows_keeps_cookies_under_network(self):
+        network = self.profile / "Default" / "Network"
+        network.mkdir()
+        (self.profile / "Default" / "Cookies").rename(network / "Cookies")
+        self.assertEqual(self.run.apply()["cookies"], 7)
+        with sqlite3.connect(network / "Cookies") as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM cookies").fetchone()[0], 3)
 
 
 if __name__ == "__main__":

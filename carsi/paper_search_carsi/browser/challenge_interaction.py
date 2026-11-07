@@ -28,7 +28,9 @@ _OBSERVE_SCRIPT = """() => {
 
 def observe_checkbox(page: Any) -> None:
     """Observe readiness only; never read or write the verification response."""
-    page.evaluate(_OBSERVE_SCRIPT)
+    from .driver import main_world
+
+    page.evaluate(_OBSERVE_SCRIPT, **main_world(page))  # where the init script observes
 
 
 def prepare_context(context: Any) -> None:
@@ -65,24 +67,41 @@ def is_turnstile_frame(url: str) -> bool:
             and "/turnstile/" in parsed.path)
 
 
+# A page that navigated away while it was read: the next check reads the new page.
+_NAVIGATED = ("frame was detached", "frame has been detached", "element is not attached",
+              "execution context was destroyed")
+
+
 def is_image_verification(page: Any) -> bool:
     """Image puzzles expose controls but may have no readable instructions."""
-    return page.evaluate("""() => document.title.trim().toLowerCase() === 'human verification'
+    from .driver import Error
+
+    try:
+        return page.evaluate("""() => document.title.trim().toLowerCase() === 'human verification'
             && !document.querySelector('meta[name="citation_doi"]')
             && [...document.querySelectorAll('button, [role="button"], canvas, iframe')].some(el =>
                 el.getClientRects().length > 0)""") is True
+    except Error as exc:
+        # A passed verification navigates while it is being read (Wiley and
+        # ScienceDirect on Chrome, 2026-11-07): no puzzle on a page that is gone.
+        if any(text in str(exc).lower() for text in _NAVIGATED):
+            return False
+        raise
 
 
 def needs_manual_verification(page: Any) -> bool:
-    """A visible reCAPTCHA on an already recognised verification page.
+    """A puzzle or reCAPTCHA on an already recognised verification page.
 
     Reading a checked box or a response token cannot prove that the enclosing
     page's confirmation was submitted. Leave both actions to the user.
     """
-    from playwright.sync_api import Error
+    return is_image_verification(page) or has_visible_recaptcha(page)
 
-    if is_image_verification(page):
-        return True  # image/puzzle tasks are always left to the user
+
+def has_visible_recaptcha(page: Any) -> bool:
+    """Detect a reCAPTCHA prompt that remains after the outer page changes."""
+    from .driver import Error
+
     for frame in page.frames:
         parsed = urlsplit(str(frame.url or ""))
         if (parsed.scheme != "https" or parsed.hostname not in {
@@ -110,7 +129,7 @@ def click_checkbox(page: Any, *, timeout_ms: int, checkpoint: Callable[[], None]
     compact-height Cloudflare widget with its identifying iframe title can
     use its standard checkbox position. Expanded puzzles are left alone.
     """
-    from playwright.sync_api import Error, TimeoutError
+    from .driver import Error, TimeoutError, main_world
 
     def note(reason: str) -> None:
         if observation is not None:
@@ -159,7 +178,7 @@ def click_checkbox(page: Any, *, timeout_ms: int, checkpoint: Callable[[], None]
                     continue
                 readiness = element.evaluate("""iframe =>
                     window[Symbol.for('papersearch.turnstile.ready')]?.get(iframe.contentWindow) || 0
-                """)
+                """, **main_world(element))
                 if not readiness:
                     note("waiting_ready_signal")
                     continue  # loading/automatic check; no click has been attempted
@@ -181,7 +200,7 @@ def click_checkbox(page: Any, *, timeout_ms: int, checkpoint: Callable[[], None]
                     element.evaluate("""(iframe, revision) => {
                         const ready = window[Symbol.for('papersearch.turnstile.ready')];
                         if (ready?.get(iframe.contentWindow) === revision) ready.delete(iframe.contentWindow);
-                    }""", readiness)
+                    }""", readiness, **main_world(element))
                 except Error as exc:
                     if not any(text in str(exc).lower() for text in (
                             "frame was detached", "frame has been detached", "element is not attached",

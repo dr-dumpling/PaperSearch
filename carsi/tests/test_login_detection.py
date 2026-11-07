@@ -22,7 +22,7 @@ class LoginDetectionTests(unittest.TestCase):
         browser.new_context.return_value = context
         with tempfile.TemporaryDirectory() as cache_dir:
             with (
-                patch.object(browser_login, "_HAS_CLOAKBROWSER", True),
+                patch.object(browser_login, "_browser_backend_available", return_value=True),
                 patch.object(browser_login, "launch", return_value=browser),
                 patch.object(browser_login.time, "sleep"),
                 patch.object(browser_login, "_save_cookies_json") as save_json,

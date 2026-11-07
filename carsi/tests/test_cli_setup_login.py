@@ -126,6 +126,27 @@ class SetupLoginCliTests(unittest.TestCase):
         self.assertEqual(items["institutional_route"]["status"], "missing")
         self.assertIn("browser_backend", items)
 
+    def test_setup_check_reports_chrome_and_warns_when_it_is_older_than_tested(self):
+        import plistlib
+        app = Path(self.data_dir) / "elsewhere" / "Google Chrome.app" / "Contents"
+        program = app / "MacOS" / "Google Chrome"
+        (app / "MacOS" / "155.0.7000.1").mkdir(parents=True)  # Windows keeps a version folder beside chrome.exe
+        program.write_text("#!/bin/sh\necho 'Google Chrome 155.0.7000.1'\n")  # Linux asks --version
+        program.chmod(0o755)
+        with open(app / "Info.plist", "wb") as handle:  # macOS reads the bundle
+            plistlib.dump({"CFBundleShortVersionString": "155.0.7000.1"}, handle)
+        (Path(self.data_dir) / "config.json").write_text(json.dumps({"chrome_executable": str(program)}))
+        code, out, _ = run_cli(self.data_dir, "setup", "--check")
+        payload = json.loads(out)
+        self.assertEqual(payload["browser"], {"browser": "Google Chrome", "path": str(program), "version": "155.0.7000.1",
+                                              "tested": "156.0.8078.80", "outdated": True,
+                                              "driver": payload["browser"]["driver"]})
+        self.assertTrue(payload["browser"]["driver"].startswith("patchright "))
+        self.assertIn("155.0.7000.1 低于测试过的 156.0.8078.80", payload["warnings"][0])
+        items = {c["item"]: c for c in payload["checks"]}
+        self.assertEqual(items["browser_backend"]["status"], "ok")
+        self.assertIn(str(program), items["browser_backend"]["detail"])
+
     def test_login_without_doi_or_gateway_asks_for_a_doi(self):
         for setup in ((), ("setup", "--carsi")):
             if setup:

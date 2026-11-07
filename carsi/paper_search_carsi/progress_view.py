@@ -40,6 +40,14 @@ ACTION_FEEDBACK = {
 }
 
 TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled", "interrupted"})
+# The finished card lists failures by reason, not by paper, so it keeps the
+# same height for 20 or 500 papers: at most this many reason rows (the rest
+# under "其他原因"), each opened to its papers on a click; the papers of a few
+# failures are shown at once.
+MAX_REASON_ROWS = 5
+OPEN_FAILURES_UP_TO = 3
+MAX_LISTED_PAPERS = 200
+CLASS_ORDER = ("no_access", "user_or_external", "unsupported", "unexplained")
 DEFAULT_LINGER_SECONDS = 8.0
 NOTICE_SECONDS = 10.0  # how long the download's answer to a click stays on screen
 
@@ -141,6 +149,58 @@ def _time(value: Any) -> float | None:
         return None
 
 
+def _journals(failures: list[dict[str, Any]]) -> str:
+    """The journals of a reason row, most papers first: "Spine 8 · JBJS 4 等"."""
+    counts: dict[str, int] = {}
+    for item in failures:
+        if item.get("journal"):
+            counts[item["journal"]] = counts.get(item["journal"], 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: -kv[1])
+    return " · ".join(f"{name} {n}" for name, n in ranked[:2]) + (" 等" if len(ranked) > 2 else "")
+
+
+def summary_view(results: Any) -> dict[str, Any] | None:
+    """The finished card's lists, from the caller's end-of-batch summary.
+
+    ``groups``: one row per failure reason, most papers first, each with its
+    papers and whether it starts open; ``saved``: up to two short lines on what
+    was saved and where it came from (no line wraps in the narrow card)."""
+    if not isinstance(results, dict):
+        return None
+    failures = [f for f in results.get("failures") or [] if isinstance(f, dict)]
+    by_reason: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for item in failures:
+        by_reason.setdefault((str(item.get("cls")), str(item.get("reason"))), []).append(item)
+    rows = sorted(by_reason.items(), key=lambda kv: (
+        -len(kv[1]), CLASS_ORDER.index(kv[0][0]) if kv[0][0] in CLASS_ORDER else len(CLASS_ORDER)))
+    if len(rows) > MAX_REASON_ROWS:
+        rest = [item for _, items in rows[MAX_REASON_ROWS - 1:] for item in items]
+        rows = rows[:MAX_REASON_ROWS - 1] + [(("other", "其他原因"), rest)]
+    groups = []
+    for (cls, reason), items in rows:
+        papers = [{"title": str(item.get("title") or item.get("doi") or "未知论文"),
+                   "where": " · ".join(str(v) for v in (
+                       item.get("journal"), item.get("reason") if cls == "other" else "", item.get("note")) if v)}
+                  for item in items[:MAX_LISTED_PAPERS]]
+        groups.append({"cls": cls, "reason": reason, "count": len(items), "where": _journals(items),
+                       "papers": papers, "more": len(items) - len(papers),
+                       "open": len(failures) <= OPEN_FAILURES_UP_TO})
+
+    content = results.get("content")
+    main, files = _count(results.get("main")), _count(results.get("supplements"))
+    if content == "supplements":
+        first = [f"附录 {files} 个"]
+        none_listed = _count(results.get("no_supplements"))
+        if none_listed:
+            first.append(f"{none_listed} 篇未列出附录")
+    else:
+        first = [f"正文 {main} 篇"] + ([f"附录 {files} 个"] if content == "both" else [])
+    sources = [f"{s[0]} {_count(s[1])}" for s in results.get("sources") or []
+               if isinstance(s, list) and len(s) == 2 and _count(s[1])]
+    saved = [" · ".join(first)] + ([" · ".join(sources)] if sources and content != "supplements" else [])
+    return {"groups": groups, "saved": saved}
+
+
 def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
     """Everything the capsule shows for one snapshot of the progress file.
 
@@ -236,6 +296,7 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
         "elapsed": elapsed, "attention": prompt, "notice": notice,
         "completion_detail": str(state.get("phase") or "")
             if not running and state.get("stage") == "supplements_checked" else "",
+        "summary": summary_view(state.get("results")) if mode == "done" else None,
         "actions": running and bool(current) and not awaiting,
         "stop_left": max(0, total - done - 1),
         "folder": bool(state.get("output_dir")),

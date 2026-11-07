@@ -5,7 +5,7 @@ answers with the PDF. Karger's Cerebrovascular Diseases PDF did this on
 came after the check (200 application/pdf, 2.4 MB) was never read and the item
 ended "PDF not captured". The rule is the engine's: a site that binds its PDF to
 the citation (Karger) and one whose PDF address names the DOI (Springer) are
-both tried, in Chrome and in Firefox (Camoufox, headless, no saved profile).
+both tried, in Chrome (headless, no saved profile).
 
 CARSI_LOCAL_BROWSER_TEST=1 opts in; every request is answered locally."""
 import os
@@ -106,7 +106,7 @@ class CheckAtPdfAddress:
 class ChromeCheckAtPdfAddressTests(CheckAtPdfAddress, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         cls.driver = sync_playwright().start()
         cls.browser = cls.driver.chromium.launch(channel="chrome", headless=True)
 
@@ -114,64 +114,6 @@ class ChromeCheckAtPdfAddressTests(CheckAtPdfAddress, unittest.TestCase):
     def tearDownClass(cls):
         cls.browser.close()
         cls.driver.stop()
-
-
-@unittest.skipUnless(os.environ.get("CARSI_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
-class FirefoxCheckAtPdfAddressTests(CheckAtPdfAddress, unittest.TestCase):
-    """Camoufox as the backend launches it, headless, in a new temporary profile."""
-
-    @classmethod
-    def setUpClass(cls):
-        from paper_search_carsi.browser.backend import is_available, launch
-        if not is_available("camoufox"):
-            raise unittest.SkipTest("Camoufox is not installed")
-        cls.browser = launch(headless=True, humanize=False, config={})
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.browser.close()
-
-    def test_an_aborted_pdf_request_is_in_the_record(self):
-        """Karger, 2026-11-02: the PDF navigation ended NS_ERROR_ABORT after 46 s
-        and nothing told whether the click's request had failed too."""
-        self.abort_first = True
-        (body, _, _), result = self.capture(KARGER, control_navigates=True)
-        failed = [e["detail"] for e in result.events if e["state"] == "pdf_request_failed"]
-        self.assertEqual(self.answers[0], "aborted")
-        self.assertTrue(failed and KARGER.pdf in failed[0] and "NS_ERROR_ABORT" in failed[0], failed)
-
-    def test_a_pdf_already_open_after_login_is_captured_without_reload(self):
-        # A school login can return straight to PDF.js, which has no article
-        # links or citation metadata. Its response predates capture listeners.
-        for case in (THIEME, SPRINGER):
-            with self.subTest(site=case.profile.name):
-                self.case, self.body = case, article_pdf(case.doi)
-                self.answers.clear()
-                self.context.add_cookies([{"name": "check", "value": "passed", "url": case.pdf}])
-                self.page.goto(case.pdf, wait_until="domcontentloaded")
-                d = PublisherBatchDownloader({}, profile=case.profile, pdf_timeout_sec=10)
-                d._fetch_pdf_url_with_browser_state = Mock(side_effect=AssertionError("HTTP refetch forbidden"))
-                result = DownloadResult(doi=case.doi, status="failed", article_url=case.article)
-                body, url, blocked = d._capture_pdf(self.page, case.doi, result)
-                self.assertEqual((body, url, blocked), (self.body, case.pdf, None),
-                                 [event["state"] for event in result.events])
-                self.assertEqual(self.answers, [200], "the loaded PDF must not be requested twice")
-                d._fetch_pdf_url_with_browser_state.assert_not_called()
-                self.assertIn("pdf_native_viewer_captured", [event["state"] for event in result.events])
-
-    def test_a_loaded_pdf_for_another_article_is_not_captured(self):
-        self.case, self.body = THIEME, article_pdf(THIEME.doi)
-        self.context.add_cookies([{"name": "check", "value": "passed", "url": THIEME.pdf}])
-        self.page.goto(THIEME.pdf, wait_until="domcontentloaded")
-        doi = "10.1055/s-fixture-other"
-        d = PublisherBatchDownloader({}, profile=THIEME.profile, pdf_timeout_sec=10)
-        d._fetch_pdf_url_with_browser_state = Mock(side_effect=AssertionError("HTTP refetch forbidden"))
-        result = DownloadResult(doi=doi, status="failed", article_url=THIEME.article.replace(THIEME.doi, doi))
-        body, url, blocked = d._capture_pdf(self.page, doi, result)
-        self.assertEqual((body, url, blocked), (None, "", None))
-        self.assertEqual(self.answers, [200])
-        self.assertEqual(result.pdf_attempts, [])
-        d._fetch_pdf_url_with_browser_state.assert_not_called()
 
 
 if __name__ == "__main__":

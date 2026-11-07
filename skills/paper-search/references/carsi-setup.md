@@ -8,7 +8,7 @@
 paper-search carsi status --format text
 ```
 
-显示是否已装、安装目录、所用浏览器及版本、学校、PaperSearch 是否已启用它。
+显示是否已装、安装目录、所用浏览器（Google Chrome 的路径和版本、驱动版本）、学校、PaperSearch 是否已启用它。Chrome 低于测试过的版本时会提示先更新 Chrome。
 
 没有安装、而用户需要用学校权限下载时，先征得用户同意，再运行：
 
@@ -16,7 +16,8 @@ paper-search carsi status --format text
 paper-search carsi install
 ```
 
-- 安装前会列出安装位置和下载量（默认约 3 GB；`--browser ego` 只用用户自己的 ego lite，约 0.5 GB，仅 macOS），用户确认后才开始。`--yes` 跳过确认，只在用户明确同意后使用。
+- 需要本机已装 Google Chrome；没有时安装会停下并给出下载地址 https://www.google.com/chrome/，请用户装好 Chrome 后再运行同一命令。`--browser ego` 改用用户自己的 ego lite（仅 macOS）。
+- 安装前会列出安装位置和下载量（约 0.5 GB，不另下载浏览器），用户确认后才开始。`--yes` 跳过确认，只在用户明确同意后使用。
 - 用户不需要先装 Python；中途失败时，处理提示的问题后再运行同一命令，会从失败的那一步接着装。
 - 装完会自动启用（`PAPER_SEARCH_CARSI_ENABLED=true`、`PAPER_SEARCH_CARSI_EXECUTABLE` 指向新装的后端）。原来配置了别的后端时，会先问用户是否替换。
 - 安装时会问学校；`--skip-school` 跳过，之后再配置。
@@ -27,8 +28,8 @@ paper-search carsi install
 
 ## 更新与卸载
 
-- PaperSearch 升级后，`status` 提示扩展落后时运行 `paper-search carsi update`：重装后端和依赖，锁定的浏览器版本变了才下载新版；学校配置、登录会话和 ego lite 不动。已是最新时不做任何事；`--force` 强制重装。
-- 卸载：`paper-search carsi uninstall`。先列出要删和保留的内容，用户确认后删除安装目录；PaperSearch 配置指向这次安装的后端时，关闭机构下载并清除后端路径，指向别处时不改。Camoufox 浏览器（本机其他程序可能也在用）和学校配置、登录会话默认保留，会分别询问；`--yes` 时都保留，除非另加 `--remove-browser`、`--remove-data`。ego lite 不受影响。
+- PaperSearch 升级后，`status` 提示扩展落后时运行 `paper-search carsi update`：重装后端和依赖，检查 Chrome；学校配置、登录会话、Chrome 和 ego lite 不动。以前用 Camoufox 的安装会改用 Chrome，并写明旧 Camoufox 浏览器所在的目录，由用户决定是否手动删除。已是最新时不做任何事；`--force` 强制重装。
+- 卸载：`paper-search carsi uninstall`。先列出要删和保留的内容，用户确认后删除安装目录；PaperSearch 配置指向这次安装的后端时，关闭机构下载并清除后端路径，指向别处时不改。学校配置和登录会话默认保留，会询问；`--yes` 时保留，除非另加 `--remove-data`。Google Chrome 和 ego lite 不受影响。
 
 ## 学校
 
@@ -51,14 +52,14 @@ paper-search-carsi setup --carsi --institution "学校名"
 
 后端配置键 `browser_backend` 二选一：
 
-- `camoufox`（默认）：后端自己启动的独立浏览器（Firefox 内核），有单独的浏览器资料，不占用用户日常浏览器。第一次下载时用户在它的窗口里登录一次学校，之后保留。日常和批量下载用它。
+- `chrome`（默认）：用户本机的 Google Chrome，由后端用单独的浏览器资料启动，不动用户日常 Chrome 的资料和标签页。第一次下载时用户在它的窗口里登录一次学校，之后保留。日常和批量下载用它。Chrome 装在别处时：`paper-search-carsi config set chrome_executable <Chrome 程序路径>`。旧值 `camoufox` 按 `chrome` 处理。
 - `ego`：需要沿用用户 ego lite 里已有的登录时选用（Chromium 内核，用户和 agent 看的是同一个浏览器，仅 macOS）。用户须在 ego 打开 `chrome://inspect/#remote-debugging`，勾选一次 “Allow remote debugging for this browser instance”。每次连接（例如 ego 重启后）ego 会弹出一次“允许连接”，由用户确认；ego 窗口在后台时常被直接拒绝，下载会立即报错并写明原因，请用户把 ego 放到前台、点“允许”后重试。
 
 查看或切换：
 
 ```bash
 paper-search-carsi config get browser_backend
-paper-search-carsi config set browser_backend camoufox
+paper-search-carsi config set browser_backend chrome
 ```
 
 两套浏览器资料互不影响，切换不会删除另一套。用户没有要求时不擅自切换；也可以用 `paper-search carsi install --browser ego` 切换安装。

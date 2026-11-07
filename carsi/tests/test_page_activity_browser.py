@@ -12,7 +12,7 @@ from paper_search_carsi.browser.backend import launch
 from paper_search_carsi.engine.page_activity import PageActivity
 
 pytestmark = pytest.mark.skipif(os.environ.get("CARSI_LOCAL_BROWSER_TEST") != "1",
-                                reason="local Camoufox fixture opt-in")
+                                reason="local browser fixture opt-in")
 
 
 def test_slow_redirect_and_idle_document_do_not_invent_a_user_action(tmp_path, monkeypatch, caplog):
@@ -57,7 +57,7 @@ def test_slow_redirect_and_idle_document_do_not_invent_a_user_action(tmp_path, m
     browser = activity = watcher = None
     failures = []
     try:
-        browser = launch(headless=True, humanize=False, config={"browser_backend": "camoufox"})
+        browser = launch(headless=True, humanize=False, config={"browser_backend": "chrome"})
         context = browser.new_context()
         context.route("**/*", lambda route: route.continue_() if route.request.url.startswith(
             f"http://127.0.0.1:{server.server_port}/") else route.abort())

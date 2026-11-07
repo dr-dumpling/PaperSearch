@@ -11,11 +11,12 @@ export function createCarsiBackend(command?: string): CarsiBackend {
 
 export { resolveDefaultCarsiProfileDir } from "./CarsiMcpClient.js";
 
-export { carsiAttemptDetails } from "./CarsiAttempt.js";
+export { carsiAttemptDetails, carsiShortReason } from "./CarsiAttempt.js";
 
 export type {
   CarsiBackend,
   CarsiBatchPosition,
+  CarsiBatchResults,
   CarsiBatchUpdate,
   CarsiDownloadRequest,
   CarsiInvocationOutcome,

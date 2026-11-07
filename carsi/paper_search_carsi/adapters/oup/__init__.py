@@ -16,6 +16,7 @@ import time
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from ...browser.driver import is_driver_error
 from ...engine.batch_common import AWAY_WAIT_SEC, open_page
 from ...engine.router import _append_oxford_candidates
 from ..base import PublisherAdapter, SupplementLink, register
@@ -217,16 +218,14 @@ class OUPAdapter(PublisherAdapter):
     def retryable_navigation_error(exc: Exception) -> bool:
         if isinstance(exc, TimeoutError):
             return True
-        if not type(exc).__module__.startswith("playwright."):
+        if not is_driver_error(exc):
             return False
-        if type(exc).__name__ == "TimeoutError":
+        if is_driver_error(exc, "TimeoutError"):
             return True
         return any(marker in str(exc) for marker in (
             "net::ERR_CONNECTION_TIMED_OUT", "net::ERR_TIMED_OUT",
             "net::ERR_CONNECTION_RESET", "net::ERR_CONNECTION_CLOSED",
             "net::ERR_NETWORK_CHANGED", "net::ERR_EMPTY_RESPONSE",
-            # Firefox's word for a navigation another one replaced (AJE 1985, 2026-11-02).
-            "NS_BINDING_ABORTED",
             "Execution context was destroyed", "Frame was detached", "because of a navigation",
         ))
 

@@ -125,6 +125,7 @@ class UserRequestsMixin:
                 return
             from ..browser.foreground import show
 
+            show(page, self.config)
             wait = getattr(result, "_login_wait", None)
             if wait is not None and getattr(result, "_login_attention", ""):
                 wait.take_over()
@@ -132,7 +133,6 @@ class UserRequestsMixin:
             verification_wait = getattr(result, "_verification_wait", None)
             if verification_wait is not None:
                 verification_wait.take_over()
-            show(page, self.config)
         except (watchdog.BrowserUnresponsive, UserMarkedNoEntitlement):
             raise
         except Exception as exc:

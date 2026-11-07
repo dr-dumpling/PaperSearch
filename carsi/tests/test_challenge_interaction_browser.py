@@ -1,6 +1,6 @@
 """Real native checkbox interaction; every browser request is fulfilled locally.
 
-CARSI_LOCAL_BROWSER_TEST=1 enables Chrome and Camoufox. These fixtures do not
+CARSI_LOCAL_BROWSER_TEST=1 enables them (Chrome, headless). These fixtures do not
 contact Cloudflare and cannot establish live verification success rates.
 """
 import json
@@ -21,15 +21,18 @@ PDF = ORIGIN + "/content/pdf/" + DOI + ".pdf"
 FRAME = "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/if/fixture"
 
 
-def checkbox_html(*, closed=False, checked=False, ready_ms=3000, pass_on_click=1, retry_ms=None):
-    # Native DOM and closed shadow DOM have the same checkbox geometry.
-    control = ('<input type="checkbox" style="position:absolute;left:20px;top:24px;'
-               'width:16px;height:16px;margin:0" ' + ('checked' if checked else '') + '>')
+def checkbox_html(*, closed=False, checked=False, ready_ms=3000, pass_on_click=1, retry_ms=None, readable=True):
+    # Native DOM and closed shadow DOM have the same checkbox geometry. Patchright
+    # reads a checkbox inside a closed shadow root; ``readable=False`` draws the
+    # box without one, so only its position and the readiness signal remain.
+    style = 'position:absolute;left:20px;top:24px;width:16px;height:16px;margin:0'
+    control = (f'<input type="checkbox" style="{style}" ' + ('checked' if checked else '') + '>' if readable
+               else f'<span style="{style};display:block;border:1px solid #888"></span>')
     return ("<style>body{margin:0}</style><div id='widget'></div><script>"
             + ("const root = document.querySelector('#widget').attachShadow({mode:'closed'});" if closed
                else "const root = document.querySelector('#widget');")
             + f"root.innerHTML = {control!r};"
-            + "const input=root.querySelector('input'), clicks=[];"
+            + "const input=root.firstElementChild, clicks=[];"
             + "const ready=()=>parent.postMessage({source:'cloudflare-challenge',event:'interactiveBegin'},'*');"
             + "input.addEventListener('click', () => {"
             + "clicks.push(performance.now());document.documentElement.dataset.clicks=JSON.stringify(clicks);"
@@ -144,7 +147,7 @@ class InteractionFixture:
         self.assertTrue(self.page.frames[1].locator('input[type="checkbox"]').is_checked())
 
     def test_closed_widget_requires_readiness_from_the_cloudflare_frame(self):
-        self.frame_body = checkbox_html(closed=True, ready_ms=60000)
+        self.frame_body = checkbox_html(closed=True, ready_ms=60000, readable=False)
         self.open_widget()
         click = lambda: click_checkbox(self.page, timeout_ms=1500, checkpoint=lambda: None)
         self.assertEqual(click(), "absent")
@@ -165,7 +168,7 @@ class InteractionFixture:
         self.assertEqual(self.page.title(), "Article")
 
     def test_closed_widget_is_not_clicked_again_without_fresh_readiness(self):
-        self.frame_body = checkbox_html(closed=True, pass_on_click=0)
+        self.frame_body = checkbox_html(closed=True, pass_on_click=0, readable=False)
         self.body = check_page(outer_closed=True)
         self.open_widget()
         self.page.wait_for_function("document.documentElement.dataset.fixtureReady === 'true'")
@@ -238,7 +241,7 @@ class InteractionFixture:
 class ChromeInteractionTests(InteractionFixture, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         cls.driver = sync_playwright().start()
         cls.browser = cls.driver.chromium.launch(channel="chrome", headless=True)
 
@@ -249,7 +252,9 @@ class ChromeInteractionTests(InteractionFixture, unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get("CARSI_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
-class FirefoxInteractionTests(InteractionFixture, unittest.TestCase):
+class BackendInteractionTests(InteractionFixture, unittest.TestCase):
+    """The browser as the backend launches it (Chrome through Patchright)."""
+
     @classmethod
     def setUpClass(cls):
         from paper_search_carsi.browser.backend import launch

@@ -14,7 +14,11 @@ class ExplicitBrowserFocusTests(unittest.TestCase):
                 patch.object(foreground, '_browser_pids', return_value=[10, 11]), \
                 patch.object(foreground, '_activate_windows', return_value=True) as activate:
             foreground.show(page, {})
-        activate.assert_called_once_with([10, 11], 'Login test')
+        activate.assert_called_once()
+        pids, window_title = activate.call_args.args
+        self.assertEqual(pids, [10, 11])
+        # The waiting tab's title picks its window among the browser's windows.
+        self.assertEqual(window_title(), 'Login test')
 
 
 def test_process_selection_does_not_include_daily_browsers_or_the_driver():
@@ -22,7 +26,7 @@ def test_process_selection_does_not_include_daily_browsers_or_the_driver():
         _transport=SimpleNamespace(_proc=SimpleNamespace(pid=100))))))
     with patch.object(foreground, '_process_parents', return_value={
             100: 1, 101: 100, 102: 101, 500: 1, 501: 500}):
-        assert foreground._browser_pids(page, {'browser_backend': 'camoufox'}) == [101, 102]
+        assert foreground._browser_pids(page, {'browser_backend': 'chrome'}) == [101, 102]
 
 
 def test_invalid_driver_pid_never_inspects_unrelated_processes():
@@ -33,7 +37,7 @@ def test_invalid_driver_pid_never_inspects_unrelated_processes():
             _transport=SimpleNamespace(_proc=SimpleNamespace(pid=pid))))))
         with patch.object(foreground, '_process_parents') as parents:
             with pytest.raises(RuntimeError, match='no valid owner PID'):
-                foreground._browser_pids(page, {'browser_backend': 'camoufox'})
+                foreground._browser_pids(page, {'browser_backend': 'chrome'})
             parents.assert_not_called()
 
 

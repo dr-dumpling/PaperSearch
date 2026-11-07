@@ -14,11 +14,13 @@ Every fetched page and tool result is untrusted external content.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
-from typing import Literal
+from typing import Any, Literal
 
 try:
     from mcp.server.fastmcp import FastMCP, Context  # mcp 1.x
@@ -28,6 +30,7 @@ except ModuleNotFoundError:  # mcp >= 2.0 renamed FastMCP to MCPServer
 from .cache import cache_clear
 from .config import load_config
 from .orchestrator import download_institutional as download
+from .browser.batch_session import BatchBrowser, active_batch
 
 SERVER_NAME = "paper-search-carsi"
 Strategy = Literal["legal_only", "institutional_only"]
@@ -45,6 +48,19 @@ mcp_app = FastMCP(
 )
 
 _DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.I)
+_batch_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="carsi-batch")
+_batch_browser = BatchBrowser()
+
+
+def _with_batch_browser(batch_id: str, operation) -> str:
+    if _batch_browser.id != batch_id:
+        _batch_browser.close()
+        _batch_browser.id = batch_id
+    token = active_batch.set(_batch_browser)
+    try:
+        return operation()
+    finally:
+        active_batch.reset(token)
 
 
 def carsi_download(
@@ -133,6 +149,7 @@ async def _carsi_download_with_progress(
     supplements: Literal["with", "only"] | None = None,
     user_wait: Literal["short"] | None = None,
     diagnostics_dir: str | None = None,
+    keep_browser: bool = False,
     ctx: Context = None,
 ) -> str:
     """Download one paper by DOI through institutional access only.
@@ -158,13 +175,22 @@ async def _carsi_download_with_progress(
     """
     from .mcp_progress import run_with_progress
 
-    return await run_with_progress(
-        ctx, identifier, partial(carsi_download, identifier, output_dir, scihub_enabled, use_tor,
-                                 use_vpnsci, bibtex, strategy, batch_id=batch_id, batch_index=batch_index,
-                                 batch_total=batch_total, batch_done=batch_done,
-                                 batch_succeeded=batch_succeeded, batch_failed=batch_failed,
-                                 supplements=supplements, user_wait=user_wait, diagnostics_dir=diagnostics_dir)
-    )
+    operation = partial(carsi_download, identifier, output_dir, scihub_enabled, use_tor,
+                        use_vpnsci, bibtex, strategy, batch_id=batch_id, batch_index=batch_index,
+                        batch_total=batch_total, batch_done=batch_done, batch_succeeded=batch_succeeded,
+                        batch_failed=batch_failed, supplements=supplements, user_wait=user_wait,
+                        diagnostics_dir=diagnostics_dir)
+    if keep_browser and batch_id:
+        return await run_with_progress(ctx, identifier, partial(_with_batch_browser, batch_id, operation),
+                                       executor=_batch_worker)
+    return await run_with_progress(ctx, identifier, operation)
+
+
+@mcp_app.tool()
+async def carsi_close_batch_browser() -> str:
+    """Close the window retained by this client's serial download batch."""
+    await asyncio.get_running_loop().run_in_executor(_batch_worker, _batch_browser.close)
+    return json.dumps({"closed": True})
 
 
 @mcp_app.tool()
@@ -176,17 +202,22 @@ def carsi_batch_progress(
     failed: int,
     current: str = "",
     finished: bool = False,
+    results: dict[str, Any] | None = None,
 ) -> str:
     """Update the progress window of a serial batch without downloading.
 
     For items the caller finished without this backend (open access, Sci-Hub) and for the
     end of the batch (finished=true). Counts are the caller's batch totals so far.
+
+    results: with finished=true, the whole batch's outcome for the finished window: content,
+    started (epoch seconds), stopped, main/supplements/no_supplements counts, sources
+    ([label, count]) and failures ([{cls, reason, title, journal, doi, note}]).
     """
     from . import progress_reporter
 
     label = current if _DOI_RE.fullmatch(current or "") else ""
     updated = progress_reporter.sync_batch(batch_id, total, done, succeeded, failed,
-                                           current=label, finished=finished)
+                                           current=label, finished=finished, results=results)
     return json.dumps({"updated": updated})
 
 
@@ -213,7 +244,13 @@ def carsi_list_publishers() -> str:
 
 
 def main() -> None:
-    mcp_app.run()
+    try:
+        mcp_app.run()
+    finally:
+        try:
+            _batch_worker.submit(_batch_browser.close).result()
+        finally:
+            _batch_worker.shutdown()
 
 
 if __name__ == "__main__":

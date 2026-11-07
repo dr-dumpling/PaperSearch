@@ -42,7 +42,7 @@ class ServerContractTests(unittest.TestCase):
         self.assertEqual(
             set(self.out["tools"]),
             {"carsi_download", "carsi_cache_clear", "carsi_list_publishers",
-             "carsi_batch_progress"},
+             "carsi_batch_progress", "carsi_close_batch_browser"},
         )
 
     def test_download_schema_matches_paper_search_contract(self):

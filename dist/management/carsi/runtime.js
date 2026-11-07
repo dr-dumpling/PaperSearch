@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
  * Where the institutional extension is installed (ADR 0013): uv when the
  * machine has none, a managed Python, the virtual environment with the backend,
  * the install record and log. The user's data (school, logins) stays in the
- * backend's data directory, and the Camoufox browser in Camoufox's own cache.
+ * backend's data directory. The browser is the user's own Google Chrome (ADR 0016).
  */
 export const UV_VERSION = "0.13.6";
 /** uv's release archives and their SHA-256 (the release's .sha256 files, 2026-11-01). */
@@ -63,5 +63,34 @@ export function runtimePaths(root, platform) {
 /** ego lite, the user's own browser; only looked for on macOS (ADR 0013). */
 export function egoAppCandidates(home = homedir()) {
     return [join(home, "Applications", "ego lite.app"), "/Applications/ego lite.app"];
+}
+export const CHROME_DOWNLOAD_URL = "https://www.google.com/chrome/";
+/**
+ * Where Google Chrome installs itself, as the backend looks for it
+ * (browser/backend.py find_chrome); on Linux the backend searches PATH itself.
+ */
+export function chromeCandidates(platform, home = homedir(), env = process.env) {
+    if (platform === "darwin") {
+        return ["/Applications", join(home, "Applications")]
+            .map((base) => join(base, "Google Chrome.app", "Contents", "MacOS", "Google Chrome"));
+    }
+    if (platform === "win32") {
+        return [env.PROGRAMFILES, env["PROGRAMFILES(X86)"], env.LOCALAPPDATA]
+            .filter((root) => Boolean(root))
+            .map((root) => join(root, "Google", "Chrome", "Application", "chrome.exe"));
+    }
+    return [];
+}
+/**
+ * Where an install from before Chrome had its Camoufox browser build:
+ * Camoufox's own cache (platformdirs' user cache directory for "camoufox").
+ */
+export function camoufoxBuildDir(platform, build, home = homedir(), env = process.env) {
+    const cache = platform === "darwin"
+        ? join(home, "Library", "Caches", "camoufox")
+        : platform === "win32"
+            ? join(env.LOCALAPPDATA || join(home, "AppData", "Local"), "camoufox", "camoufox", "Cache")
+            : join(env.XDG_CACHE_HOME || join(home, ".cache"), "camoufox");
+    return join(cache, "browsers", "official", build);
 }
 //# sourceMappingURL=runtime.js.map

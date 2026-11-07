@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "@jest/globals";
@@ -25,9 +25,14 @@ interface Fake {
   context: InstallContext;
   root: string;
   logs: string[];
-  /** Camoufox's shared cache, with the pinned build in it. */
-  browserDir: string;
+  /** The user's Google Chrome (in ~/Applications, so the machine running the test does not matter). */
+  chrome: string;
+  /** Where an install from before Chrome left its Camoufox build. */
+  camoufoxDir: string;
 }
+
+const CHROME_CHECK = { browser: "Google Chrome", version: "156.0.8078.81", tested: "156.0.8078.80", outdated: false,
+  driver: "patchright 1.64.4" };
 
 /** A Mac without uv: every command answers as a working install would. */
 function fakeMachine(overrides: {
@@ -37,6 +42,7 @@ function fakeMachine(overrides: {
   answers?: string[];
   config?: Record<string, string>;
   notifications?: boolean;
+  chrome?: Partial<typeof CHROME_CHECK>;
 } = {}): Fake {
   const base = mkdtempSync(join(tmpdir(), "psc-install-"));
   const home = join(base, "home");
@@ -49,9 +55,10 @@ function fakeMachine(overrides: {
   writeFileSync(join(packageRoot, "carsi", "paper_search_carsi", "__pycache__", "x.pyc"), "");
   writeFileSync(join(packageRoot, "carsi", "tests", "test_x.py"), "");
   const root = join(data, "paper-search-cli", "carsi-runtime");
-  const cache = join(base, "camoufox-cache");
-  const browserDir = join(cache, "browsers", "official", "156.0.1-beta.36-0ad5663e");
-  mkdirSync(browserDir, { recursive: true });
+  const chrome = join(home, "Applications", "Google Chrome.app", "Contents", "MacOS", "Google Chrome");
+  mkdirSync(join(chrome, ".."), { recursive: true });
+  writeFileSync(chrome, "");
+  const camoufoxDir = join(home, "Library", "Caches", "camoufox", "browsers", "official", "156.0.1-beta.36-0ad5663e");
   const calls: string[] = [];
   const logs: string[] = [];
   const answers = [...(overrides.answers ?? ["红木兰大学"])];
@@ -85,8 +92,10 @@ function fakeMachine(overrides: {
       }
       if (name === "python" && args[0] === "--version") return { code: 0, stdout: "Python 3.12.7\n", stderr: "" };
       if (name === "python" && args[1]?.includes("importlib.metadata")) return { code: 0, stdout: "0.1.0\n", stderr: "" };
-      if (name === "python" && args[1]?.includes("pinned_camoufox_dir")) {
-        return { code: 0, stdout: JSON.stringify({ pinned: "156.0.1-beta.36", installed: "156.0.1-beta.36-0ad5663e", ego: "", cache }), stderr: "" };
+      if (name === "python" && args[1]?.includes("browser_check")) {
+        const found = existsSync(chrome) ? { ...CHROME_CHECK, path: chrome, ...overrides.chrome }
+          : { browser: "", path: "", version: "", tested: "156.0.8078.80", outdated: false, driver: "patchright 1.64.4" };
+        return { code: 0, stdout: JSON.stringify({ chrome: found, ego: "" }), stderr: "" };
       }
       if (name === "python" && args[1]?.includes("_any_institutional_configured")) {
         return { code: 0, stdout: JSON.stringify({ configured: false, school: "" }), stderr: "" };
@@ -116,10 +125,27 @@ function fakeMachine(overrides: {
     readiness: async () => ({ state: "available" }),
     now: () => new Date("2026-11-01T15:00:00Z"),
   };
-  return { host, calls, config, context, root, logs, browserDir };
+  return { host, calls, config, context, root, logs, chrome, camoufoxDir };
 }
 
-const YES: InstallOptions = { browser: "camoufox", yes: true, force: false, skipSchool: false };
+const YES: InstallOptions = { browser: "chrome", yes: true, force: false, skipSchool: false };
+
+/** An install finished by an earlier PaperSearch with Camoufox (before ADR 0016). */
+function legacyInstall(m: Fake): void {
+  mkdirSync(join(m.root, "venv", "bin"), { recursive: true });
+  writeFileSync(join(m.root, "venv", "bin", "python"), "");
+  writeFileSync(join(m.root, "venv", "bin", "paper-search-carsi"), "");
+  mkdirSync(m.camoufoxDir, { recursive: true });
+  writeFileSync(join(m.root, "install.json"), JSON.stringify({
+    schema: 1, paperSearchVersion: "0.3.3", browser: "camoufox", startedAt: "2026-11-01T10:00:00.000Z",
+    finishedAt: "2026-11-01T10:30:00.000Z", uv: "uv", python: "Python 3.12.7", backend: "0.1.0",
+    camoufoxBrowser: "156.0.1-beta.36-0ad5663e", school: "红木兰大学", notifications: false,
+    steps: Object.fromEntries(["preflight", "uv", "python", "backend", "browser", "config", "school", "notifications", "check"]
+      .map((step) => [step, "2026-11-01T10:00:00.000Z"])),
+  }));
+  m.config.PAPER_SEARCH_CARSI_EXECUTABLE = join(m.root, "venv", "bin", "paper-search-carsi");
+  m.config.PAPER_SEARCH_CARSI_ENABLED = "true";
+}
 
 describe("paper-search carsi install", () => {
   it.each([
@@ -155,11 +181,10 @@ describe("paper-search carsi install", () => {
       "uv python install 3.12",
       "uv venv <root>/venv --python 3.12",
       "python --version",
-      "uv pip install --python <root>/venv/bin/python <root>/src[camoufox,ego]",
+      "uv pip install --python <root>/venv/bin/python <root>/src[ego]",
       expect.stringMatching(/^python -c import importlib\.metadata/),
-      "python -m camoufox fetch",
-      expect.stringMatching(/^python -c import json/),
-      "paper-search-carsi config set browser_backend camoufox",
+      expect.stringMatching(/^python -c import json\nfrom paper_search_carsi\.browser/),
+      "paper-search-carsi config set browser_backend chrome",
       expect.stringMatching(/^python -c import json\nfrom paper_search_carsi\.config/),
       "paper-search-carsi setup --carsi --institution 红木兰大学",
       "paper-search-carsi config get progress_notify",
@@ -168,9 +193,12 @@ describe("paper-search carsi install", () => {
     const record = JSON.parse(readFileSync(join(m.root, "install.json"), "utf8"));
     expect(Object.keys(record.steps)).toEqual(["preflight", "uv", "python", "backend", "browser", "config", "school", "notifications", "check"]);
     expect(record).toMatchObject({
-      browser: "camoufox", python: "Python 3.12.7", backend: "0.1.0",
-      camoufoxBrowser: "156.0.1-beta.36-0ad5663e", school: "红木兰大学", finishedAt: "2026-11-01T15:00:00.000Z",
+      browser: "chrome", python: "Python 3.12.7", backend: "0.1.0", chrome: { path: m.chrome, version: "156.0.8078.81" },
+      school: "红木兰大学", finishedAt: "2026-11-01T15:00:00.000Z",
     });
+    expect(record.camoufoxBrowser).toBeUndefined();
+    expect(m.logs).toContain("== 检查 Google Chrome");
+    expect(m.logs).toContain(`  Google Chrome 156.0.8078.81：${m.chrome}；patchright 1.64.4`);
     expect(m.config).toEqual({
       PAPER_SEARCH_CARSI_EXECUTABLE: join(m.root, "venv", "bin", "paper-search-carsi"),
       PAPER_SEARCH_CARSI_ENABLED: "true",
@@ -201,7 +229,7 @@ describe("paper-search carsi install", () => {
     failing = false;
     m.calls.length = 0;
     expect((await installCarsi(m.host, YES, m.context)).status).toBe("installed");
-    expect(m.calls[0]).toBe("uv pip install --python <root>/venv/bin/python <root>/src[camoufox,ego]");
+    expect(m.calls[0]).toBe("uv pip install --python <root>/venv/bin/python <root>/src[ego]");
     expect(m.calls).not.toContain("uv python install 3.12");
   });
 
@@ -214,6 +242,45 @@ describe("paper-search carsi install", () => {
     expect(m.calls).not.toContain("tar -xzf <root>/bin/uv-aarch64-apple-darwin.tar.gz -C <root>/bin");
   });
 
+  it("needs Google Chrome and says where to get it", async () => {
+    const m = fakeMachine({ platform: "win32" });
+    m.host.env = { ...m.host.env, PROGRAMFILES: join(m.host.home, "Program Files"), LOCALAPPDATA: join(m.host.home, "AppData") };
+    const missing = `没有找到 Google Chrome：请先从 https://www.google.com/chrome/ 安装 Chrome，再运行 paper-search carsi install`;
+    await expect(installCarsi(m.host, YES, m.context)).rejects.toMatchObject({ step: "preflight", message: missing });
+    expect(m.calls).toEqual([]);
+    // Installed at the usual place, or where the backend's chrome_executable says.
+    const chrome = join(m.host.home, "AppData", "Google", "Chrome", "Application", "chrome.exe");
+    mkdirSync(join(chrome, ".."), { recursive: true });
+    writeFileSync(chrome, "");
+    await expect(installCarsi(m.host, YES, m.context)).rejects.not.toMatchObject({ step: "preflight" });
+    const elsewhere = fakeMachine({ platform: "win32" });
+    elsewhere.host.env = { ...elsewhere.host.env, PROGRAMFILES: join(elsewhere.host.home, "none") };
+    mkdirSync(elsewhere.context.dataDir, { recursive: true });
+    writeFileSync(join(elsewhere.context.dataDir, "config.json"), JSON.stringify({ chrome_executable: elsewhere.chrome }));
+    await expect(installCarsi(elsewhere.host, YES, elsewhere.context)).rejects.not.toMatchObject({ step: "preflight" });
+  });
+
+  it("stops at the browser step when the backend finds no Chrome, and reports an old one", async () => {
+    const m = fakeMachine({ chrome: { version: "155.0.7000.1", outdated: true } });
+    const outcome = await installCarsi(m.host, YES, m.context);
+    expect(outcome.status).toBe("installed");
+    const outdated = "Google Chrome 155.0.7000.1 低于测试过的 156.0.8078.80：请先更新 Chrome（菜单 → 帮助 → 关于 Google Chrome）";
+    expect(m.logs).toContain(`  注意：${outdated}`);
+    const status = await carsiStatus(m.host, m.context);
+    expect(status.notes).toContain(outdated);
+    expect(renderStatusText(status)).toContain(`  Google Chrome：155.0.7000.1（${m.chrome}；测试过的版本 156.0.8078.80）`);
+    expect(renderStatusText(status)).toContain("  驱动：patchright 1.64.4");
+    const gone = fakeMachine();
+    const run = gone.host.run;
+    gone.host.run = async (command, args, options) => {
+      if (args[0] === "-c" && args[1]?.includes("browser_check")) rmSync(gone.chrome, { force: true });
+      return run(command, args, options);
+    };
+    await expect(installCarsi(gone.host, YES, gone.context)).rejects.toMatchObject({
+      step: "browser", message: "没有找到 Google Chrome：请先从 https://www.google.com/chrome/ 安装 Chrome，再运行 paper-search carsi install",
+    });
+  });
+
   it("writes nothing when the user does not confirm", async () => {
     const m = fakeMachine({ answers: ["n"] });
     expect((await installCarsi(m.host, { ...YES, yes: false }, m.context)).status).toBe("cancelled");
@@ -224,7 +291,7 @@ describe("paper-search carsi install", () => {
   it("offers ego lite only on macOS, and only when it is there", async () => {
     const linux = fakeMachine({ platform: "linux" });
     await expect(installCarsi(linux.host, { ...YES, browser: "ego" }, linux.context))
-      .rejects.toMatchObject({ step: "preflight", message: "ego lite 目前只支持 macOS；请用 --browser camoufox" });
+      .rejects.toMatchObject({ step: "preflight", message: "ego lite 目前只支持 macOS；请用 --browser chrome" });
     const mac = fakeMachine();
     await expect(installCarsi(mac.host, { ...YES, browser: "ego" }, mac.context))
       .rejects.toMatchObject({ step: "preflight" });
@@ -232,11 +299,8 @@ describe("paper-search carsi install", () => {
     mac.calls.length = 0;
     expect((await installCarsi(mac.host, { ...YES, browser: "ego" }, mac.context)).status).toBe("installed");
     expect(mac.calls).toContain("uv pip install --python <root>/venv/bin/python <root>/src[ego]");
-    expect(mac.calls).not.toContain("python -m camoufox fetch");
     expect(mac.logs).toContain("== 检测 ego lite");
-    // Switching an existing Camoufox install to ego drops its Camoufox build from the record.
-    const record = JSON.parse(readFileSync(join(mac.root, "install.json"), "utf8"));
-    expect(record.camoufoxBrowser).toBeUndefined();
+    expect(mac.calls).toContain("paper-search-carsi config set browser_backend ego");
     expect(renderStatusText(await carsiStatus(mac.host, mac.context))).toContain("  浏览器：ego lite");
   });
 
@@ -327,10 +391,9 @@ describe("paper-search carsi install", () => {
     const outcome = await updateCarsi(m.host, { force: false }, m.context);
     expect(outcome.status).toBe("updated");
     expect(m.calls).toEqual([
-      "uv pip install --python <root>/venv/bin/python --reinstall-package paper-search-carsi <root>/src[camoufox,ego]",
+      "uv pip install --python <root>/venv/bin/python --reinstall-package paper-search-carsi <root>/src[ego]",
       expect.stringMatching(/^python -c import importlib\.metadata/),
-      "python -m camoufox fetch",
-      expect.stringMatching(/^python -c import json/),
+      expect.stringMatching(/^python -c import json\nfrom paper_search_carsi\.browser/),
       "python -c import tkinter",
     ]);
     expect(outcome.record).toMatchObject({ paperSearchVersion: "0.3.5", updatedAt: "2026-11-01T15:00:00.000Z", school: "红木兰大学" });
@@ -340,42 +403,98 @@ describe("paper-search carsi install", () => {
       .rejects.toMatchObject({ step: "update", message: "还没有装好：先运行 paper-search carsi install" });
   });
 
-  it("uninstalls, keeping the shared browser and the user's data unless asked", async () => {
+  it("uninstalls, keeping Chrome and the user's data unless asked", async () => {
     const m = fakeMachine();
     await installCarsi(m.host, YES, m.context);
     mkdirSync(m.context.dataDir, { recursive: true });
-    const kept = await uninstallCarsi(m.host, { yes: false, removeBrowser: false, removeData: false },
+    const kept = await uninstallCarsi(m.host, { yes: false, removeData: false },
       { ...m.context, now: m.context.now });
     expect(kept.status).toBe("cancelled");
     expect(existsSync(m.root)).toBe(true);
-    // Confirmed, then "no" to the browser and "no" to the data.
-    const answers = ["y", "n", "n"];
+    // Confirmed, then "no" to the data.
+    const answers = ["y", "n"];
     m.host.confirm = async () => answers.shift() === "y";
-    const outcome = await uninstallCarsi(m.host, { yes: false, removeBrowser: false, removeData: false }, m.context);
+    const outcome = await uninstallCarsi(m.host, { yes: false, removeData: false }, m.context);
     expect(outcome.status).toBe("uninstalled");
     expect(existsSync(m.root)).toBe(false);
     expect(m.config).toEqual({});
-    expect(existsSync(m.browserDir)).toBe(true);
+    expect(existsSync(m.chrome)).toBe(true);
     expect(existsSync(m.context.dataDir)).toBe(true);
-    expect(outcome.kept).toEqual([m.browserDir, m.context.dataDir]);
-    expect((await uninstallCarsi(m.host, { yes: true, removeBrowser: false, removeData: false }, m.context)).status)
+    expect(outcome.kept).toEqual([m.context.dataDir]);
+    expect(m.logs).toContain("  Google Chrome 是你自己的浏览器，不受影响");
+    expect((await uninstallCarsi(m.host, { yes: true, removeData: false }, m.context)).status)
       .toBe("not_installed");
   });
 
-  it("removes the browser and the data only when told to", async () => {
+  it("removes the data only when told to", async () => {
     const m = fakeMachine();
     await installCarsi(m.host, YES, m.context);
     mkdirSync(m.context.dataDir, { recursive: true });
-    const outcome = await uninstallCarsi(m.host, { yes: true, removeBrowser: true, removeData: true }, m.context);
-    expect(outcome.removed).toEqual([m.root, expect.stringContaining("PAPER_SEARCH_CARSI_ENABLED"), m.browserDir, m.context.dataDir]);
-    expect([m.root, m.browserDir, m.context.dataDir].map((path) => existsSync(path))).toEqual([false, false, false]);
+    const outcome = await uninstallCarsi(m.host, { yes: true, removeData: true }, m.context);
+    expect(outcome.removed).toEqual([m.root, expect.stringContaining("PAPER_SEARCH_CARSI_ENABLED"), m.context.dataDir]);
+    expect([m.root, m.context.dataDir, m.chrome].map((path) => existsSync(path))).toEqual([false, false, true]);
+  });
+
+  it("moves a Camoufox install to Chrome on update, leaving the old build for the user", async () => {
+    const m = fakeMachine();
+    legacyInstall(m);
+    const before = await carsiStatus(m.host, m.context);
+    expect(before.notes).toContain("机构下载已改用 Google Chrome，不再用 Camoufox：运行 paper-search carsi update");
+    expect(renderStatusText(before)).toContain("  浏览器：camoufox（已停用，运行 paper-search carsi update 改用 Google Chrome）");
+    m.calls.length = 0;
+    const outcome = await updateCarsi(m.host, { force: false }, m.context);
+    expect(outcome.status).toBe("updated");
+    expect(m.calls).toEqual([
+      "uv python install 3.12",
+      "uv venv <root>/venv --python 3.12",
+      "python --version",
+      "uv pip install --python <root>/venv/bin/python --reinstall-package paper-search-carsi <root>/src[ego]",
+      expect.stringMatching(/^python -c import importlib\.metadata/),
+      expect.stringMatching(/^python -c import json\nfrom paper_search_carsi\.browser/),
+      "python -c import tkinter",
+    ]);
+    const note = `以前下载的 Camoufox 浏览器不再使用，可以手动删除：${m.camoufoxDir}（本机其他用 Camoufox 的程序可能也在用）`;
+    expect(outcome.record).toMatchObject({ browser: "chrome", chrome: { path: m.chrome, version: "156.0.8078.81" },
+      warnings: [note], school: "红木兰大学" });
+    expect(outcome.record.camoufoxBrowser).toBeUndefined();
+    expect(existsSync(m.camoufoxDir)).toBe(true);
+    const after = renderStatusText(await carsiStatus(m.host, m.context));
+    expect(after).toContain("  浏览器：Google Chrome");
+    expect(after).toContain(`  注意：${note}`);
+  });
+
+  it("installs again from Python on when an old Camoufox install is installed over", async () => {
+    const m = fakeMachine({ answers: [""] });
+    legacyInstall(m);
+    m.calls.length = 0;
+    expect((await installCarsi(m.host, YES, m.context)).status).toBe("installed");
+    expect(m.calls.slice(0, 3)).toEqual(["uv python install 3.12", "uv venv <root>/venv --python 3.12", "python --version"]);
+    expect(m.calls).toContain("paper-search-carsi config set browser_backend chrome");
+    expect(m.calls).not.toContain("uv --version");
+    const record = JSON.parse(readFileSync(join(m.root, "install.json"), "utf8"));
+    expect(record).toMatchObject({ browser: "chrome", school: "红木兰大学" });
+    expect(record.camoufoxBrowser).toBeUndefined();
+    // The old build is named when the extension goes, never deleted.
+    const outcome = await uninstallCarsi(m.host, { yes: true, removeData: false }, m.context);
+    expect(outcome.kept).not.toContain(m.camoufoxDir);
+    expect(existsSync(m.camoufoxDir)).toBe(true);
+  });
+
+  it("names an old Camoufox build on uninstall without deleting it", async () => {
+    const m = fakeMachine();
+    legacyInstall(m);
+    const outcome = await uninstallCarsi(m.host, { yes: true, removeData: false }, m.context);
+    expect(outcome.status).toBe("uninstalled");
+    expect(outcome.kept).toContain(m.camoufoxDir);
+    expect(existsSync(m.camoufoxDir)).toBe(true);
+    expect(m.logs).toContain(`  以前下载的 Camoufox 浏览器（${m.camoufoxDir}）：不再使用，这里不删，可以手动删除`);
   });
 
   it("leaves another configured backend alone when uninstalling", async () => {
     const m = fakeMachine();
     await installCarsi(m.host, YES, m.context);
     m.config.PAPER_SEARCH_CARSI_EXECUTABLE = "/repo/carsi/bin/paper-search-carsi";
-    const outcome = await uninstallCarsi(m.host, { yes: true, removeBrowser: false, removeData: false }, m.context);
+    const outcome = await uninstallCarsi(m.host, { yes: true, removeData: false }, m.context);
     expect(m.config).toEqual({
       PAPER_SEARCH_CARSI_EXECUTABLE: "/repo/carsi/bin/paper-search-carsi",
       PAPER_SEARCH_CARSI_ENABLED: "true",

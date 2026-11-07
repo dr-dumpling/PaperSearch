@@ -115,6 +115,13 @@ if (
       batch_failed: z.number().int().nullable().optional(),
     });
   }
+  if (scenario.startsWith("batch_browser")) {
+    downloadShape.keep_browser = z.boolean().optional();
+    server.registerTool("carsi_close_batch_browser", { description: "Close retained browser", inputSchema: {} }, async () => {
+      log("call", { tool: "carsi_close_batch_browser" });
+      return { content: [{ type: "text", text: '{"closed":true}' }] };
+    });
+  }
 
   if (scenario !== "missing_download") {
     server.registerTool(
@@ -125,6 +132,13 @@ if (
       },
       async (args, extra) => {
         log("call", { tool: "carsi_download", arguments: args });
+
+        if (scenario === "batch_browser_verification_timeout" && args.identifier.endsWith("/first")) {
+          return { content: [{ type: "text", text: JSON.stringify({
+            success: false, identifier: args.identifier, error_type: "download_timeout",
+            artifacts: { state: "challenge_or_viewer_timeout" },
+          }) }] };
+        }
 
         if (scenario.startsWith("progress_")) {
           const token = extra._meta?.progressToken;

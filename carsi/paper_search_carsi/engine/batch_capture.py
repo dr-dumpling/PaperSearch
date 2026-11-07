@@ -32,6 +32,7 @@ from .batch_common import (
     _REFERENCE_AREA,
     _IP_BLOCK_STATUS_CODES,
     _is_browser_error,
+    goto_retrying,
 )
 
 
@@ -215,6 +216,9 @@ class CaptureMixin:
 
             with pause_preview(getattr(page, "context", None)):
                 body, url, block = self._capture_pdf_channels(page, doi, result)
+                if (body is None and not block and len(result.pdf_attempts) == tried_before
+                        and not result.reason and self._wait_for_pdf_candidates(page, doi, result)):
+                    body, url, block = self._capture_pdf_channels(page, doi, result)
             if body is None and not block and self._fallback_pdf is not None:
                 body, url = self._fallback_pdf
                 self._event(result, "pdf_saved_unconfirmed", f"{url} | no DOI or title on the first pages")
@@ -225,6 +229,38 @@ class CaptureMixin:
             return body, url, block
         finally:
             self._fallback_pdf = None
+
+    @staticmethod
+    def _chromium_pdf_patterns(native: tuple[str, ...]) -> list[dict[str, str]]:
+        """Responses Chrome pauses during the PDF step: the adapter's PDF addresses,
+        and every document the tab opens wherever it is served. A PDF address can
+        redirect to a delivery host no adapter lists (JAMA's articlepdf to
+        Silverchair's watermark host, 2026-11-07); the checks on each paused
+        response decide, and other documents go on at once."""
+        return [*({"urlPattern": pattern, "requestStage": "Response"} for pattern in native),
+                {"urlPattern": "*", "resourceType": "Document", "requestStage": "Response"}]
+
+    PDF_CANDIDATE_WAIT_MS = 8_000
+
+    def _wait_for_pdf_candidates(self, page: Any, doi: str, result: DownloadResult) -> bool:
+        """A page that offered no PDF address may still be loading or about to move
+        on: Thieme right after the school login, on its token address before the
+        article (2026-11-02 on Firefox, 2026-11-07 on Chrome). Look again for a
+        while; True once it offers one."""
+        def offered() -> bool:
+            try:
+                return bool(self._pdf_candidates(page, doi))
+            except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
+                return False  # the page is moving on: look at it again
+
+        started = time.time()
+        if not pump_until(page, offered, self.PDF_CANDIDATE_WAIT_MS, step_ms=500):
+            return False
+        self._event(result, "pdf_candidates_appeared",
+                    f"after {time.time() - started:.1f} s at {str(getattr(page, 'url', ''))[:160]}")
+        return True
 
     def _nothing_tried_evidence(self, page: Any, doi: str) -> str:
         """The page and its access verdict, and the PDF addresses it offered."""
@@ -407,7 +443,11 @@ class CaptureMixin:
                             status=event.get("responseStatusCode", 0), history=history,
                         )
                         final_pdf = (self._article_pdf_url_matches(url, doi, **article_options)
-                                     or self.adapter.is_pdf_cdn_url(url, doi))
+                                     or self.adapter.is_pdf_cdn_url(url, doi)
+                                     # The bound PDF's own file on the host its address redirects
+                                     # to, as _response_matches_article accepts it (JAMA's
+                                     # articlepdf -> Silverchair's watermarked copy, 2026-11-07).
+                                     or self._bound_pdf_copy(url, response, doi, article_options))
                         if (len(history) > 20 or not final_pdf
                                 or not self._response_matches_article(response, doi, **article_options)):
                             rejected_pdf_urls.update(self._response_urls(response))
@@ -557,8 +597,8 @@ class CaptureMixin:
         def on_request_failed(request: Any) -> None:
             # A request for a PDF address that ended without an answer: what the
             # browser said and after how long, for the record (Karger's PDF
-            # navigation ended NS_ERROR_ABORT after 46 s, and whether the click's
-            # own request had failed was not known, 2026-11-02).
+            # navigation ended aborted after 46 s, and whether the click's own
+            # request had failed was not known, 2026-11-02).
             try:
                 url = str(request.url)
                 if not self._is_pdf_candidate_url(url) or self._is_supplementary_url(url):
@@ -591,18 +631,14 @@ class CaptureMixin:
         try:
             native_pdf_patterns = ((self.adapter.metadata_pdf_patterns if metadata_pdf_urls else ())
                                    or self.adapter.native_pdf_patterns)
-            if native_pdf_patterns:
-                browser = getattr(page.context, "browser", None)
-                if browser is not None and browser.browser_type.name == "chromium":
-                    cdp_session = page.context.new_cdp_session(page)
-                    if self._uses_article_pdf_validation():
-                        cdp_session.on("Network.requestWillBeSent", on_native_request)
-                        cdp_session.send("Network.enable")
-                    cdp_session.on("Fetch.requestPaused", on_paused_response)
-                    cdp_session.send("Fetch.enable", {"patterns": [
-                        {"urlPattern": pattern, "requestStage": "Response"}
-                        for pattern in native_pdf_patterns
-                    ]})
+            browser = getattr(page.context, "browser", None)
+            if browser is not None and browser.browser_type.name == "chromium":
+                cdp_session = page.context.new_cdp_session(page)
+                if self._uses_article_pdf_validation():
+                    cdp_session.on("Network.requestWillBeSent", on_native_request)
+                    cdp_session.send("Network.enable")
+                cdp_session.on("Fetch.requestPaused", on_paused_response)
+                cdp_session.send("Fetch.enable", {"patterns": self._chromium_pdf_patterns(native_pdf_patterns)})
             self._return_to_record_article_if_needed(page, result, doi)
             # A login can return directly to a PDF before these listeners were
             # installed. PDF.js has no article button or metadata to discover.
@@ -697,8 +733,8 @@ class CaptureMixin:
                         return None, final_url, captured["block_reason"]
                     continue
                 try:
-                    response = page.goto(pdf_url, wait_until="commit", timeout=self.pdf_timeout_ms,
-                                         **({"referer": article_page} if article_page.startswith("https://") else {}))
+                    response = goto_retrying(page, pdf_url, timeout_ms=self.pdf_timeout_ms,
+                                             **({"referer": article_page} if article_page.startswith("https://") else {}))
                     if not self._resolve_suspect_block(page, result, captured):
                         return None, "", captured["block_reason"]
                     if captured["block_reason"]:
@@ -1142,7 +1178,7 @@ class CaptureMixin:
         try:
             with expect_download(timeout=self.pdf_timeout_ms) as download_info:
                 try:
-                    page.goto(pdf_url, wait_until="commit", timeout=self.pdf_timeout_ms)
+                    goto_retrying(page, pdf_url, timeout_ms=self.pdf_timeout_ms)
                 except Exception as exc:
                     if not self._is_download_navigation_abort(exc):
                         raise
@@ -1343,7 +1379,7 @@ class CaptureMixin:
                 deadline = time.time() + timeout_sec
                 attempted.clear()
                 continue
-            # Firefox/Camoufox can leave the native PDF.js shell visible while
+            # Firefox can leave the native PDF.js shell visible while
             # the document is already available (or while its loading task is
             # idle).  Read that document in the viewer's own realm before
             # falling back to a second HTTP request, which may lose the
@@ -1384,7 +1420,7 @@ class CaptureMixin:
                 const documentUri = String(nativeDocument?.documentURI || "");
                 const app = nativeWindow.PDFViewerApplication;
                 // Older builds expose the resource:// viewer shell; Firefox 156
-                // (Camoufox) keeps the https PDF URL on a document whose
+                // keeps the https PDF URL on a document whose
                 // contentType is application/pdf.
                 const isNativePdfViewer = nativeLocation.startsWith("resource://pdf.js/")
                     || documentUri.startsWith("resource://pdf.js/")

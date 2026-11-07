@@ -32,7 +32,7 @@ FULL_TEXT = '<title>Target article</title><section class="article-section__full"
 class WileyInstitutionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
         cls.driver = sync_playwright().start()
         cls.addClassCleanup(cls.driver.stop)
         cls.browser = cls.driver.chromium.launch(

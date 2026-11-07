@@ -105,6 +105,48 @@ class ViewTests(unittest.TestCase):
         self.assertEqual(pv.view(running(status="done"), NOW)["finished"], "完成")
         self.assertEqual([pv.fmt_clock(s) for s in (9, 161, 3723)], ["0:09", "2:41", "1:02:03"])
 
+    def test_finished_card_lists_failures_by_reason_not_by_paper(self):
+        def fail(cls, reason, journal="", n=1, **extra):
+            return [{"cls": cls, "reason": reason, "title": f"{reason} {i}", "journal": journal, "doi": "", "note": "",
+                     **extra} for i in range(n)]
+        failures = (fail("user_or_external", "等学校登录超时", "Thieme", 3)
+                    + fail("no_access", "学校没有订阅", "Spine", 4) + fail("no_access", "学校没有订阅", "JBJS", 8)
+                    + fail("unsupported", "找不到机构登录入口", "Emerald", 2)
+                    + fail("unexplained", "下载时程序出错") + fail("unexplained", "页面处理超时"))
+        results = {"content": "both", "main": 182, "supplements": 350, "no_supplements": 0,
+                   "sources": [["机构订阅", 140], ["开放获取", 42]], "failures": failures}
+        v = pv.view(running(status="done", total=200, done=200, success=182, failed=19, results=results), NOW)
+        groups = v["summary"]["groups"]
+        # Most papers first; past five rows the rest share one row, each paper keeping its reason.
+        self.assertEqual([(g["reason"], g["count"]) for g in groups],
+                         [("学校没有订阅", 12), ("等学校登录超时", 3), ("找不到机构登录入口", 2),
+                          ("下载时程序出错", 1), ("页面处理超时", 1)])
+        self.assertEqual(groups[0]["where"], "JBJS 8 · Spine 4")
+        self.assertEqual(len(groups[0]["papers"]), 12)
+        self.assertFalse(any(g["open"] for g in groups))
+        self.assertEqual(v["summary"]["saved"], ["正文 182 篇 · 附录 350 个", "机构订阅 140 · 开放获取 42"])
+
+        crowded = results | {"failures": failures + fail("unsupported", "没有有效 DOI", "", 1)}
+        groups = pv.view(running(status="done", results=crowded), NOW)["summary"]["groups"]
+        self.assertEqual([g["reason"] for g in groups][-1], "其他原因")
+        self.assertEqual(groups[-1]["count"], 2)
+        self.assertEqual(groups[-1]["papers"][0]["where"], "下载时程序出错")
+
+    def test_a_few_failures_open_at_once_and_supplement_batches_count_files(self):
+        few = {"content": "supplements", "main": 0, "supplements": 5, "no_supplements": 2, "sources": [],
+               "failures": [{"cls": "unexplained", "reason": "附录没下载成功", "title": "", "journal": "Spine",
+                             "doi": "10.1/x", "note": ""}]}
+        summary = pv.view(running(status="done", results=few), NOW)["summary"]
+        self.assertTrue(summary["groups"][0]["open"])
+        self.assertEqual(summary["groups"][0]["papers"], [{"title": "10.1/x", "where": "Spine"}])
+        self.assertEqual(summary["saved"], ["附录 5 个 · 2 篇未列出附录"])
+        main_only = few | {"content": "main", "main": 3, "sources": [["开放获取", 3]]}
+        self.assertEqual(pv.view(running(status="done", results=main_only), NOW)["summary"]["saved"],
+                         ["正文 3 篇", "开放获取 3"])
+        # Without the caller's summary (a single paper, an older caller) the card shows the totals only.
+        self.assertIsNone(pv.view(running(status="done"), NOW)["summary"])
+        self.assertIsNone(pv.view(running(results=few), NOW)["summary"])
+
     def test_the_downloads_answer_to_a_click_shows_briefly_for_the_same_paper(self):
         notice = {"text": "已跳过本篇", "at": NOW - 3, "current": "10.1002/ejhf.1"}
         self.assertEqual(pv.view(running(notice=notice), NOW)["notice"], "已跳过本篇")

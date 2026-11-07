@@ -11,7 +11,7 @@ from paper_search_carsi.publishers.profiles import ELSEVIER_PROFILE
 class NativeCaptureTests(unittest.TestCase):
     def test_blank_target_pdf_link_is_captured_in_observed_page(self):
         import fitz
-        from playwright.sync_api import sync_playwright
+        from patchright.sync_api import sync_playwright
 
         doc = fitz.open()
         for index in range(20):
