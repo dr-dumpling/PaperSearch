@@ -117,6 +117,35 @@ def _get(request: Any, url: str, entry: dict[str, Any], sleep) -> Any:
     return request.get(url, timeout=REQUEST_TIMEOUT_MS)
 
 
+# Response headers that name what answered instead of the file (a CDN's or a
+# firewall's challenge, a login service), kept for the record.
+_PAGE_HEADERS = ("server", "x-amzn-waf-action", "cf-mitigated", "location")
+
+
+def _page_evidence(response: Any) -> dict[str, Any]:
+    """What a page received instead of a file was: its status, final address
+    (no query), title and telling headers. Figshare's download address answered a
+    page and nothing said which (AIP, Royal Society, AACR; 2026-11-08)."""
+    evidence: dict[str, Any] = {"http_status": getattr(response, "status", None)}
+    url = str(getattr(response, "url", "") or "")
+    if url:
+        evidence["final_url"] = url.split("?", 1)[0][:300]
+    headers = getattr(response, "headers", None) or {}
+    named = {key: str(headers.get(key))[:120] for key in _PAGE_HEADERS if headers.get(key)}
+    if named:
+        evidence["page_headers"] = named
+    try:
+        text = response.body()[:65536].decode("utf-8", "replace")
+    except Exception:
+        return evidence
+    title = re.search(r"<title[^>]*>(.*?)</title>", text, re.I | re.S)
+    if title:
+        from html import unescape
+
+        evidence["page_title"] = " ".join(unescape(title.group(1)).split())[:160]
+    return evidence
+
+
 def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi: str, *,
             clock=time.monotonic, sleep=time.sleep,
             manifest_dir: Path | None = None,
@@ -171,8 +200,13 @@ def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi
                 elif length > MAX_FILE_BYTES:
                     entry.update(status="skipped", reason="too_large", size=length)
                 elif "text/html" in content_type.lower():
-                    # A login wall or landing page instead of the file.
-                    entry.update(status="failed", reason="html_page")
+                    # A login wall or landing page instead of the file: which one, for the record.
+                    # A firewall's human verification page is told apart (Figshare's AWS WAF,
+                    # 2026-11-08): the site stopped the request, the file may well exist.
+                    evidence = _page_evidence(response)
+                    headers = evidence.get("page_headers") or {}
+                    challenged = "challenge" in (headers.get("x-amzn-waf-action"), headers.get("cf-mitigated"))
+                    entry.update(status="failed", reason="verification_page" if challenged else "html_page", **evidence)
                 else:
                     name = _file_name(link.url, str(response.headers.get("content-disposition", "") or ""), taken,
                                       link.label, content_type)

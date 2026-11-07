@@ -422,8 +422,9 @@ class LoginMixin:
                     self._event(result, "login_state", marker)
                     last_state = marker
                     confirmation = self._idp_confirmation(page)
-                    if confirmation:
-                        # The user decides: the engine never agrees on their behalf.
+                    if confirmation and confirmation not in self.IDP_ACCEPTED_CONFIRMATIONS:
+                        # A second factor (Duo) is the user's; the agreements are
+                        # accepted below (_accept_idp_confirmation).
                         self._event(result, "idp_confirmation_required", confirmation)
                     page_since = time.time()
                 elif self._user_away:
@@ -438,6 +439,8 @@ class LoginMixin:
                         return False
                     continue
                 if self._return_from_login_site(page, result):
+                    continue
+                if self._accept_publisher_terms(page, result) or self._accept_idp_confirmation(page, result):
                     continue
                 if manual_selection:
                     if self._is_challenge_page(page):
@@ -563,6 +566,91 @@ class LoginMixin:
         : document.querySelector('[name="_shib_idp_consentOptions"], [name="_shib_idp_consentIds"]') ? 'attribute-release' : ''"""
     _IDP_ERROR_RE = re.compile(r"未知错误|系统错误|服务异常|认证失败|出错了|\b5\d{4}\b.{0,20}错误|an unexpected error|error code|system error", re.I)
 
+    # A publisher's own terms form on the way to the school: SIAM's SAML consent
+    # ("I have read and agree to the Terms and Conditions and Privacy Policy.",
+    # Atypon's /action/saml2post) held the login until the page wait ran out
+    # (2026-11-07). The user asked to have such forms accepted (2026-11-08). Only
+    # on the publisher's site; the school's own: ``_accept_idp_confirmation``.
+    _PUBLISHER_TERMS_JS = r"""() => {
+        const visible = el => !!el && el.getClientRects().length > 0;
+        for (const form of document.querySelectorAll('form')) {
+            if (!visible(form)) continue;
+            const text = (form.innerText || '').replace(/\s+/g, ' ').trim();
+            if (text.length > 300 || !/^I (?:have read and )?(?:agree|accept) to the ?Terms\b/i.test(text)) continue;
+            const yes = [...form.querySelectorAll('input[type=submit], button[type=submit], button:not([type])')]
+                .find(el => visible(el) && !/^\s*(?:no|cancel|decline)\b/i.test(el.value || el.innerText || ''));
+            if (!yes) continue;
+            yes.setAttribute('data-papersearch-terms', '1');
+            return text.slice(0, 120);
+        }
+        return '';
+    }"""
+    PUBLISHER_TERMS_TRIES = 2
+
+    def _accept_publisher_terms(self, page: Any, result: DownloadResult) -> bool:
+        """Agree to a publisher's terms form shown during the login; True when clicked."""
+        url = str(getattr(page, "url", "") or "")
+        if (not self._on_publisher_host(url) or self._is_idp_host(urlparse(url).netloc)
+                or sum(e["state"] == "publisher_terms_accepted" for e in result.events) >= self.PUBLISHER_TERMS_TRIES):
+            return False
+        try:
+            terms = page.evaluate(self._PUBLISHER_TERMS_JS)
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return False
+        if not terms or not self._click_control(page, page.locator('[data-papersearch-terms="1"]').first,
+                                                 result, "accept the publisher's terms"):
+            return False
+        self._event(result, "publisher_terms_accepted", f"{terms} @ {url[:160]}")
+        settle(page, 2_000)
+        return True
+
+    # The school's IdP asking to agree before it goes on (Shibboleth's attribute
+    # release and terms of use): accepted for the user too, as they asked
+    # (2026-11-08). The release keeps the choices the school preselected; the
+    # terms' own "I accept" box is ticked. A second factor (Duo) stays the user's,
+    # and so does a confirmation still shown after two accepts in one article.
+    IDP_ACCEPTED_CONFIRMATIONS = ("attribute-release", "terms-of-use")
+    IDP_CONFIRMATION_TRIES = 2
+    _IDP_ACCEPT_JS = r"""(kind) => {
+        const visible = el => !!el && el.getClientRects().length > 0;
+        const proceed = [...document.querySelectorAll('[name="_eventId_proceed"]')].find(visible);
+        if (!proceed) return false;
+        if (kind === 'terms-of-use' && proceed.form)
+            for (const box of proceed.form.querySelectorAll('input[type=checkbox][name="_shib_idp_consentIds"]'))
+                if (!box.checked && visible(box)) box.setAttribute('data-papersearch-idp', 'tick');
+        proceed.setAttribute('data-papersearch-idp', 'proceed');
+        return true;
+    }"""
+
+    def _accept_idp_confirmation(self, page: Any, result: DownloadResult) -> bool:
+        """Agree to the school's attribute release or terms of use; True when clicked.
+        Otherwise the user is told once that the page waits for them."""
+        kind = self._idp_confirmation(page)
+        if kind not in self.IDP_ACCEPTED_CONFIRMATIONS:
+            return False
+        url = str(getattr(page, "url", "") or "").split("?", 1)[0]
+        if sum(e["state"] == "idp_confirmation_accepted" for e in result.events) < self.IDP_CONFIRMATION_TRIES:
+            try:
+                ready = page.evaluate(self._IDP_ACCEPT_JS, kind)
+            except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
+                ready = False
+            if ready:
+                for box in page.locator('[data-papersearch-idp="tick"]').all():
+                    self._click_control(page, box, result, "tick the school's terms of use")
+                if self._click_control(page, page.locator('[data-papersearch-idp="proceed"]').first,
+                                       result, "accept the school's confirmation"):
+                    self._event(result, "idp_confirmation_accepted", f"{kind} @ {url[:160]}")
+                    settle(page, 2_000)
+                    return True
+        if getattr(result, "_idp_confirmation_left", "") != kind:
+            result._idp_confirmation_left = kind
+            self._event(result, "idp_confirmation_required", kind)
+        return False
+
     def _idp_confirmation(self, page: Any) -> str:
         """What the school's IdP asks the user to agree to, if anything: Shibboleth's
         attribute release or terms of use, or a Duo second factor."""
@@ -628,6 +716,7 @@ class LoginMixin:
         r"|sorry, you have been blocked|no institutions found|not registered for use with this service"
         r"|application you have accessed is not registered|may not be enabled for this type of authentication"
         r"|can't find your institution|access to this resource has been restricted by your organization|oa-ap-4032"
+        r"|不支持的请求|does not have access to this resource"
         r"|temporarily unavailable|verify you are human|are you a robot|checking your browser|正在进行安全验证", re.I)
 
     def _login_block_reason(self, page: Any) -> str:
@@ -641,7 +730,9 @@ class LoginMixin:
         if code == "login_page_closed":
             return "the browser window was closed"
         if code == "institution_pdf_entitlement_missing":
-            return self._denial_line(page)
+            line = self._denial_line(page)
+            if line:
+                return line
         lists = self._federation_list_lacks_carsi(page) if code == "institution_federation_unavailable" else ""
         if lists:
             return f"the federation list has no CARSI entry ({lists})"[:240]
@@ -698,6 +789,15 @@ class LoginMixin:
             return override
         if "unsupported request" in haystack and "not registered for use with this service" in haystack:
             return "institution_not_registered"
+        # The same Shibboleth page in Chinese: "Web登陆服务 - 不支持的请求" on the
+        # school's IdP, the school has not enabled this publisher (JAMA, 2026-11-07).
+        if "不支持的请求" in haystack and self._is_idp_host(urlparse(current_url).netloc):
+            return "institution_not_registered"
+        # LibLynx (De Gruyter's chooser) after the school was chosen: "<school> does
+        # not have access to this resource", the publisher denies the school (2026-11-07).
+        if ("does not have access to this resource" in haystack
+                and any(name.lower() in haystack for name in self._institution_names() if name)):
+            return "institution_pdf_entitlement_missing"
         if "application you have accessed is not registered" in haystack:
             return "institution_not_registered"
         if "your institution may not be enabled for this type of authentication" in haystack:
@@ -884,22 +984,27 @@ class LoginMixin:
 
     # Controls that open a site's access menu or login panel instead of a page:
     # "GET ACCESS" and "Login / Register" on ascelibrary.org (2026-11-02), "Access
-    # options", "Sign in". A link to a login page is not one of them.
+    # options", "Sign in". A link to a login page is not one of them. An access
+    # menu comes first: SIAM's "Register / Sign In", earlier on the page than its
+    # "Get Access", went to its personal account sign-in (2026-11-08).
     _ACCESS_MENU_JS = r"""() => {
         const shown = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
-        const MENU = /^(?:get access|access options|(?:log ?in|sign ?in)(?: ?\/ ?register)?|register ?\/ ?(?:log ?in|sign ?in))$/i;
+        const MENUS = [/^(?:get access|access options)$/i,
+                       /^(?:(?:log ?in|sign ?in)(?: ?\/ ?register)?|register ?\/ ?(?:log ?in|sign ?in))$/i];
         const TOGGLES = ['aria-haspopup', 'aria-expanded', 'aria-controls', 'data-toggle', 'data-bs-toggle', 'data-target'];
-        for (const el of document.querySelectorAll('button, [role="button"], a')) {
-            if (!shown(el) || el.closest('form')) continue;
-            const label = (el.innerText || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
-            // A screen-reader hint can be part of innerText ("Sign In Open Menu").
-            const menuLabel = label.replace(/\s+open menu$/i, '');
-            if (!MENU.test(menuLabel)) continue;
-            const href = (el.getAttribute('href') || '').trim();
-            if (el.tagName === 'A' && href && !href.startsWith('#') && !/^javascript:/i.test(href)
-                    && !TOGGLES.some(name => el.hasAttribute(name))) continue;
-            el.click();
-            return label;
+        for (const MENU of MENUS) {
+            for (const el of document.querySelectorAll('button, [role="button"], a')) {
+                if (!shown(el) || el.closest('form')) continue;
+                const label = (el.innerText || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+                // A screen-reader hint can be part of innerText ("Sign In Open Menu").
+                const menuLabel = label.replace(/\s+open menu$/i, '');
+                if (!MENU.test(menuLabel)) continue;
+                const href = (el.getAttribute('href') || '').trim();
+                if (el.tagName === 'A' && href && !href.startsWith('#') && !/^javascript:/i.test(href)
+                        && !TOGGLES.some(name => el.hasAttribute(name))) continue;
+                el.click();
+                return label;
+            }
         }
         return '';
     }"""

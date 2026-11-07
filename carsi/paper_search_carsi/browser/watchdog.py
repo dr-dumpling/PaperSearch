@@ -33,8 +33,10 @@ log = logging.getLogger(__name__)
 # timeout); waits for the user are made of short calls.
 LIMIT_SEC = 90
 
-_inflight: dict[int, tuple[float, str, list[str], Any, Any]] = {}
+_inflight: dict[int, tuple[float, str, list[str], Any, Any, Any]] = {}
 _call_deadlines: dict[int, tuple[float, str]] = {}
+# Calls dropped by :func:`abandon`: they end in :class:`CallAbandoned`.
+_abandoned: set[int] = set()
 _local = threading.local()
 _installed = False
 # A browser call longer than this is reported to ``on_slow_call(name, seconds,
@@ -68,6 +70,50 @@ class BrowserOperationTimeout(BrowserUnresponsive):
 
 class BrowserBudgetExhausted(BrowserOperationTimeout):
     """No time remained to send another call; the driver did not stall."""
+
+
+class CallAbandoned(Exception):
+    """A call whose answer is no longer wanted (:func:`abandon`)."""
+
+
+def _greenlet() -> Any:
+    """The greenlet making a call: the driver runs each event handler in its own."""
+    try:
+        from greenlet import getcurrent
+    except ImportError:
+        return None
+    return getcurrent()
+
+
+@contextmanager
+def owned_by(owners: set):
+    """Mark the calls this greenlet makes meanwhile as ``owners``' (see :func:`abandon`)."""
+    me = _greenlet()
+    owners.add(me)
+    try:
+        yield
+    finally:
+        owners.discard(me)
+
+
+def abandon(owners: set) -> int:
+    """Cancel the running calls of these greenlets without ending the browser: their
+    answer is no longer wanted. A response read in an event handler that never
+    returned was otherwise timed out 90 s later, and the article running then
+    (JAMA after AIAA's blocked PDF, 2026-11-08) ended as browser_unresponsive.
+    Returns how many were cancelled."""
+    count = 0
+    for key, entry in list(_inflight.items()):
+        if entry[5] is None or entry[5] not in owners:
+            continue
+        _abandoned.add(key)
+        _inflight.pop(key, None)
+        _call_deadlines.pop(key, None)
+        loop, coro = entry[3], entry[4]
+        if loop is not None and not loop.is_closed():
+            loop.call_soon_threadsafe(_cancel, coro)
+        count += 1
+    return count
 
 
 @contextmanager
@@ -148,12 +194,14 @@ def install(limit_sec: float = LIMIT_SEC) -> None:
                     raise BrowserBudgetExhausted(f"{label} exhausted its page budget before {name}")
                 _call_deadlines[key] = (deadline, label)
             _inflight[key] = (started, name, traceback.format_stack(limit=8)[:-1],
-                              getattr(self, "_loop", None), coro)
+                              getattr(self, "_loop", None), coro, _greenlet())
             ended = "returned"
             try:
                 return original(self, coro)
             except asyncio.CancelledError:
                 ended = "cancelled"
+                if key in _abandoned:
+                    raise CallAbandoned(name) from None
                 if fired is not None:
                     raise _timeout_error() from None
                 if interrupted is not None:
@@ -165,6 +213,7 @@ def install(limit_sec: float = LIMIT_SEC) -> None:
             finally:
                 _inflight.pop(key, None)
                 _call_deadlines.pop(key, None)
+                _abandoned.discard(key)
                 elapsed = time.monotonic() - started
                 _period["calls"] += 1
                 _period["seconds"] += elapsed
@@ -209,7 +258,7 @@ def check(limit_sec: float) -> bool:
     if not overdue:
         return False
     key, entry = min(overdue, key=lambda pair: pair[1][0])
-    started, name, stack, loop, coro = entry
+    started, name, stack, loop, coro, _ = entry
     fired = {"call": name, "seconds": int(now - started)}
     deadline = deadlines.get(key)
     if deadline and deadline[0] <= now and deadline[0] <= started + limit_sec:
@@ -230,7 +279,7 @@ def interrupt(exc: BaseException) -> None:
     call raise ``exc`` until :func:`clear_interrupt`."""
     global interrupted
     interrupted = exc
-    for _, _, _, loop, coro in list(_inflight.values()):
+    for _, _, _, loop, coro, _ in list(_inflight.values()):
         if loop is not None and not loop.is_closed():
             loop.call_soon_threadsafe(_cancel, coro)
 

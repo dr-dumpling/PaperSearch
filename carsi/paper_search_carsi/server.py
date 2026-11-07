@@ -203,6 +203,8 @@ def carsi_batch_progress(
     current: str = "",
     finished: bool = False,
     results: dict[str, Any] | None = None,
+    phase: str = "",
+    channel: str = "",
 ) -> str:
     """Update the progress window of a serial batch without downloading.
 
@@ -212,12 +214,16 @@ def carsi_batch_progress(
     results: with finished=true, the whole batch's outcome for the finished window: content,
     started (epoch seconds), stopped, main/supplements/no_supplements counts, sources
     ([label, count]) and failures ([{cls, reason, title, journal, doi, note}]).
+
+    phase: the status line while the batch waits for its next item, e.g. "开放获取：已查 15/40 篇".
+    channel: where the caller is fetching from, shown in place of a publisher, e.g. "开放获取".
     """
     from . import progress_reporter
 
     label = current if _DOI_RE.fullmatch(current or "") else ""
     updated = progress_reporter.sync_batch(batch_id, total, done, succeeded, failed,
-                                           current=label, finished=finished, results=results)
+                                           current=label, finished=finished, results=results,
+                                           phase=phase, channel=channel)
     return json.dumps({"updated": updated})
 
 

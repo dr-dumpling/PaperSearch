@@ -128,6 +128,32 @@ describe("ConfigService", () => {
     expect(readUserConfig()).toEqual({});
   });
 
+  it("names the file, line and column of a broken config without quoting it", () => {
+    // A literal backslash-n after the closing brace, as a mis-escaped script once wrote.
+    writeFileSync(getConfigPath(), '{\n  "EASYSCHOLAR_KEY": "secret-value"\n}\\n');
+
+    let message = "";
+    let code = "";
+    try {
+      readUserConfig();
+    } catch (error) {
+      message = (error as Error).message;
+      code = (error as { code?: string }).code ?? "";
+    }
+    expect(code).toBe("CONFIG_INVALID");
+    expect(message).toContain(`Config file is not valid JSON (line 3, column 2): ${getConfigPath()}`);
+    expect(message).toContain("run `paper-search setup` to create a new one");
+    expect(message).not.toContain("secret-value");
+
+    writeFileSync(getConfigPath(), "[]");
+    expect(() => readUserConfig()).toThrow(`Config file is not a JSON object: ${getConfigPath()}`);
+  });
+
+  it("reads a config saved with a UTF-8 BOM", () => {
+    writeFileSync(getConfigPath(), '\uFEFF{"DEFAULT_DOWNLOAD_PATH": "D:\\\\Papers"}\r\n');
+    expect(readUserConfig()).toEqual({ DEFAULT_DOWNLOAD_PATH: "D:\\Papers" });
+  });
+
   it("loads user config into missing environment variables without overriding shell env", () => {
     setUserConfigValue("SEMANTIC_SCHOLAR_API_KEY", "from-config");
     process.env.SEMANTIC_SCHOLAR_API_KEY = "from-env";

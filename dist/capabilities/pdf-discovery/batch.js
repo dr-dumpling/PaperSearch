@@ -5,9 +5,13 @@ import { randomUUID } from "node:crypto";
 import { RunLedger } from "../../infrastructure/runlog/RunLedger.js";
 import { classifyFailureCode, FAILURE_CLASS_NAMES, } from "../../infrastructure/runlog/failureClass.js";
 import { createDefaultDownloadTiers, downloadWithFallback, } from "./OpenAccessFallbackService.js";
+import { carsiShortReason } from "./carsi/index.js";
 import { fetchSupplementsOnly } from "./tiers/entitledAccess.js";
-import { batchFolder, reportBatchResults } from "./batchSummary.js";
+import { batchFolder, reportBatchResults, supplementShortfall } from "./batchSummary.js";
 export const MAX_BATCH_ITEMS = 1000;
+/** From this many items the progress window opens at the start, in the open-access stretch. */
+export const OPEN_PROGRESS_MIN_ITEMS = 5;
+const OPEN_CHANNEL = "开放获取";
 /**
  * One item of a serial batch. When the item reaches the entitled-access
  * backend, the backend records it in its progress window itself; items that
@@ -244,8 +248,19 @@ export async function downloadBatch(searchers, options, backend, log = (line) =>
     const byClass = Object.entries(result.failureClasses ?? {})
         .map(([failureClass, count]) => `${FAILURE_CLASS_NAMES[failureClass]} ${count}`)
         .join("、");
+    // Main text and supplementary files apart: "附录未下全 2 篇：网站人机验证拦截 2".
+    const shortfalls = new Map();
+    for (const item of result.content === "both" ? result.items : []) {
+        const code = supplementShortfall(item);
+        if (!code)
+            continue;
+        const reason = carsiShortReason(code, "附录没下载成功");
+        shortfalls.set(reason, (shortfalls.get(reason) ?? 0) + 1);
+    }
+    const missed = [...shortfalls.values()].reduce((sum, n) => sum + n, 0);
     log(`[批量] 完成：成功 ${result.succeeded}，失败 ${result.failed}，共 ${result.total} 篇` +
-        (byClass ? `。失败分类：${byClass}；详情：paper-search failures --format text` : ""));
+        (byClass ? `。失败分类：${byClass}；详情：paper-search failures --format text` : "") +
+        (missed ? `。附录未下全 ${missed} 篇：${[...shortfalls].map(([reason, n]) => `${reason} ${n}`).join("、")}` : ""));
     return result;
 }
 /** content "supplements": every item, one after another, supplementary files only. */
@@ -347,7 +362,13 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
     const entries = requests.map((request, offset) => runItem(offset + 1, request));
     const items = new Array(total);
     const pending = [];
-    // Phase 1: open stages for every item; no browser is needed yet.
+    // Phase 1: open stages for every item; no browser is needed yet. A large
+    // batch shows the window from here on: one count for the whole batch, where
+    // an item counts once its result is settled (with supplementary files too,
+    // an open-access item settles only after its files, in phase 3).
+    const settlesInOpen = options.content !== "both";
+    const openProgress = mode !== "entitled_only" && total >= OPEN_PROGRESS_MIN_ITEMS && !!backend?.reportBatchProgress;
+    let openFound = 0;
     if (mode === "entitled_only") {
         for (const [offset, request] of requests.entries()) {
             items[offset] = itemResult({ status: "error", attempts: [] }, offset + 1, request);
@@ -363,17 +384,29 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
         items[offset] = itemResult(result, offset + 1, request);
         if (result.status !== "ok")
             pending.push(offset);
-        else if (options.content !== "both")
-            ledger?.item(entries[offset], result);
+        else {
+            openFound += 1;
+            if (options.content !== "both")
+                ledger?.item(entries[offset], result);
+        }
+        if (openProgress) {
+            const settled = settlesInOpen ? openFound : 0;
+            await backend.reportBatchProgress({
+                id: batchId, total, done: settled, succeeded: settled, failed: 0,
+                current: request.doi || request.paperId, finished: false,
+                phase: `${OPEN_CHANNEL}：已查 ${offset + 1}/${total} 篇，找到 ${openFound} 篇`, channel: OPEN_CHANNEL,
+            }).catch(() => false);
+        }
     }
-    // Phase 2: entitled access only, for the items still missing; the backend
-    // window counts this stretch (k / M).
+    // Phase 2: entitled access only, for the items still missing.
     const remaining = pending.length;
     log(mode === "entitled_only"
         ? `[批量] 跳过开放来源，${remaining} 篇直接进入机构下载`
         : `[批量] 开放来源获取 ${total - remaining}/${total} 篇；` +
             (remaining ? `剩余 ${remaining} 篇进入机构下载` : "无需机构下载"));
     ledger?.phase(`机构下载 ${remaining} 篇`);
+    // The window counts the whole batch: items settled before this stretch come first.
+    const settledBefore = settlesInOpen ? total - remaining : 0;
     let succeeded = 0;
     let failed = 0;
     let away = false;
@@ -381,7 +414,8 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
     for (const [step, offset] of pending.entries()) {
         const request = requests[offset];
         log(`[批量] 机构下载 ${step + 1}/${remaining}：${request.doi || request.paperId}`);
-        const batch = { id: batchId, index: step + 1, total: remaining, done: step, succeeded, failed };
+        const batch = { id: batchId, index: settledBefore + step + 1, total, done: settledBefore + step,
+            succeeded: settledBefore + succeeded, failed };
         const result = await pastHourlyLimit(() => downloadBatchItem(searchers, recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entries[offset]), createTiers(backend).filter((tier) => tier.stage === "entitled_access" || mode !== "entitled_only" && tier.stage === "preprint"), backend), log, pause);
         if (result.status === "ok")
             succeeded += 1;
@@ -419,8 +453,9 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
         let supplementsFailed = 0;
         for (const [step, offset] of open.entries()) {
             log(`[批量] 补充材料 ${step + 1}/${open.length}：${requests[offset].doi || requests[offset].paperId}`);
-            const batch = { id: batchId, index: step + 1, total: open.length, done: step,
-                succeeded: supplementsSucceeded, failed: supplementsFailed };
+            // Every item of the entitled stretch has settled; these come after them.
+            const batch = { id: batchId, index: remaining + step + 1, total, done: remaining + step,
+                succeeded: succeeded + supplementsSucceeded, failed: failed + supplementsFailed };
             const request = { ...requests[offset], batch };
             const extra = await supplementsForOpenItem(items[offset], recorded(request, ledger, entries[offset]), backend, searchers);
             if (extra) {

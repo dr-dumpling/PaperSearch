@@ -90,9 +90,11 @@ describe('SemanticScholarSearcher', () => {
   });
 
   describe('searchSnippets', () => {
-    it('should require SEMANTIC_SCHOLAR_API_KEY', async () => {
-      await expect(searcher.searchSnippets({ query: 'mediation bootstrap', limit: 1 })).rejects.toThrow(
-        'search_semantic_snippets requires SEMANTIC_SCHOLAR_API_KEY'
+    it('should require SEMANTIC_SCHOLAR_API_KEY and say where to get it', async () => {
+      const attempt = searcher.searchSnippets({ query: 'mediation bootstrap', limit: 1 });
+      await expect(attempt).rejects.toThrow('Semantic Scholar API key not configured');
+      await expect(attempt).rejects.toThrow(
+        'Get one at https://www.semanticscholar.org/product/api, then run `paper-search setup SEMANTIC_SCHOLAR_API_KEY`'
       );
     });
 

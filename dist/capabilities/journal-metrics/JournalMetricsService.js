@@ -1,10 +1,11 @@
 import axios from 'axios';
+import { apiKeyHint } from '../../config/apiKeySignup.js';
 const EASYSCHOLAR_URL = 'https://www.easyscholar.cc/open/getPublicationRank';
 const REQUEST_DELAY_MS = 500;
 function easyScholarKey() {
     const key = process.env.EASYSCHOLAR_KEY || '';
     if (!key.trim()) {
-        throw new Error('EasyScholar API key not configured. Set EASYSCHOLAR_KEY with `paper-search setup EASYSCHOLAR_KEY`.');
+        throw new Error(`EasyScholar API key not configured. ${apiKeyHint('EASYSCHOLAR_KEY')}`);
     }
     return key.trim();
 }

@@ -3,6 +3,7 @@ import { isValidPdfFile } from "../../../infrastructure/pdf/PdfDownload.js";
 import { verifyPdfIdentity } from "../../../infrastructure/pdf/PdfIdentity.js";
 import { identityRejection } from "../identity.js";
 import { sanitizeDoi } from "../../../infrastructure/security/SecurityUtils.js";
+import { apiKeyHint } from "../../../config/apiKeySignup.js";
 import type {
   DownloadTier,
   DownloadTierContext,
@@ -72,7 +73,7 @@ async function tryPublisherApi(
   if (!adapter.configured(env)) {
     return {
       status: "skipped",
-      message: `${adapter.requiredConfigKey} not configured.`,
+      message: `${adapter.requiredConfigKey} not configured. ${apiKeyHint(adapter.requiredConfigKey)}`,
     };
   }
 

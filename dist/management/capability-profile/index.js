@@ -1,5 +1,6 @@
 import { CONFIG_KEYS, listConfigEntries } from "../config/index.js";
 import { getCapabilityProfileConfigKeysBySource, getCapabilityProfileSources, } from "../../registry/platformMetadata.js";
+import { apiKeySetupCommand, apiKeySignupUrl } from "../../config/apiKeySignup.js";
 const METADATA_FREE_SOURCES = getCapabilityProfileSources("metadata_free");
 const METADATA_ENTITLED_SOURCES = getCapabilityProfileSources("metadata_entitled");
 const OPEN_ACCESS_SOURCES = getCapabilityProfileSources("pdf_open_access");
@@ -66,6 +67,7 @@ function bodySnippetSearchEntry(configuredKeys) {
         configured: hasKey ? ["semantic_snippet_index"] : [],
         missing: hasKey ? [] : ["SEMANTIC_SCHOLAR_API_KEY"],
         requiredKeys: ["SEMANTIC_SCHOLAR_API_KEY"],
+        ...(hasKey ? {} : { keySetup: [keySetup("SEMANTIC_SCHOLAR_API_KEY")] }),
     };
 }
 function journalMetricsEntry(configuredKeys) {
@@ -79,7 +81,12 @@ function journalMetricsEntry(configuredKeys) {
         configured: hasKey ? ["easyscholar"] : [],
         missing: hasKey ? [] : ["EASYSCHOLAR_KEY"],
         requiredKeys: ["EASYSCHOLAR_KEY"],
+        ...(hasKey ? {} : { keySetup: [keySetup("EASYSCHOLAR_KEY")] }),
     };
+}
+function keySetup(key) {
+    const signupUrl = apiKeySignupUrl(key);
+    return { key, ...(signupUrl ? { signupUrl } : {}), command: apiKeySetupCommand(key) };
 }
 function pdfDiscoveryEntry(carsi) {
     return {

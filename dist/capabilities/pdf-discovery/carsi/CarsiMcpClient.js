@@ -17,7 +17,7 @@ export const CARSI_DOWNLOAD_TIMEOUT_MS = 1_200_000;
 export const CARSI_CLEANUP_TIMEOUT_MS = 5_000;
 const CARSI_BACKEND_SOURCE = "carsi";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.4.10";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.4.11";
 const NO_BATCH_SUPPORT = {
     downloadFields: false,
     supplementsField: false,
@@ -154,6 +154,8 @@ export class CarsiMcpClient {
     cleanupTimeoutMs;
     keepBatchBrowser = false;
     retainedSession;
+    /** Inside a batch, the session progress reports reuse until the first download. */
+    progressSession;
     async withBatchSession(run) {
         const scoped = new CarsiMcpClient({
             command: this.command, args: this.args, profileDir: this.profileDir,
@@ -165,6 +167,7 @@ export class CarsiMcpClient {
             return await run(scoped);
         }
         finally {
+            await scoped.closeProgressSession();
             const session = scoped.retainedSession;
             if (session) {
                 await scoped.closeBatchBrowser(session);
@@ -212,6 +215,8 @@ export class CarsiMcpClient {
             };
         }
         const identifier = validation.sanitized.toLowerCase();
+        // A download opens its own session and takes the profile lock as before.
+        await this.closeProgressSession();
         // Cross-process exclusion covers cache clear, browser use, and child cleanup.
         // A lock is reclaimed only when its owner has exited and no browser still
         // holds a profile: the browser may outlive the process that started it.
@@ -304,10 +309,15 @@ export class CarsiMcpClient {
             return false;
         }
         const current = update.current ? sanitizeDoi(update.current) : undefined;
-        let session = this.retainedSession;
+        let session = this.retainedSession ?? this.progressSession;
         let updated = false;
         try {
-            session ??= await this.openSession(signal);
+            if (!session) {
+                session = await this.openSession(signal);
+                // One backend process serves a batch's reports until its first download.
+                if (this.keepBatchBrowser)
+                    this.progressSession = session;
+            }
             if (session.readiness.state === "available" &&
                 session.batchSupport.progressTool) {
                 assertProtocolIntegrity(session.protocolState);
@@ -323,6 +333,8 @@ export class CarsiMcpClient {
                         finished: update.finished,
                         ...(update.finished && update.results && session.batchSupport.progressResults
                             ? { results: update.results } : {}),
+                        ...(!update.finished && session.batchSupport.progressPhase
+                            ? { phase: update.phase ?? "", channel: update.channel ?? "" } : {}),
                     },
                 }, undefined, requestOptions(this.toolTimeoutMs, signal));
                 assertProtocolIntegrity(session.protocolState);
@@ -331,10 +343,23 @@ export class CarsiMcpClient {
         }
         catch {
             updated = false;
+            if (session && session === this.progressSession) {
+                await this.closeProgressSession();
+                session = undefined;
+            }
         }
-        if (session && session !== this.retainedSession && !(await this.closeSession(session)))
+        if (session && session !== this.retainedSession && session !== this.progressSession &&
+            !(await this.closeSession(session)))
             return false;
         return updated;
+    }
+    async closeProgressSession() {
+        const session = this.progressSession;
+        if (!session)
+            return;
+        this.progressSession = undefined;
+        // Progress is optional: a failed cleanup does not fail the batch.
+        await this.closeSession(session).catch(() => false);
     }
     async clearThenDownload(session, identifier, request) {
         try {

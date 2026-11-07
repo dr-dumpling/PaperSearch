@@ -89,6 +89,7 @@ class DiagnosticsMixin:
                 "institution_search_submitted", "institution_search_retyped",
                 "institution_list_submitted", "institution_continue",
                 "login_round_trip_returned", "redirect_page_passed",
+                "publisher_terms_accepted", "idp_confirmation_accepted",
             }:
                 activity.progress()
             # Only publish fixed phase text; event details can contain signed URLs.
@@ -100,6 +101,8 @@ class DiagnosticsMixin:
                 "institution_entry_unresolved": ("官方机构入口尚未确认 CARSI", "checking_access"),
                 "login_state": ("检查机构登录页面", "checking_access"),
                 "idp_confirmation_required": ("请在浏览器里确认学校认证页的提示（信息发送同意、使用条款或二次验证）", "waiting_login"),
+                "idp_confirmation_accepted": ("已确认学校认证页的提示", "checking_access"),
+                "publisher_terms_accepted": ("已同意出版社的条款", "checking_access"),
                 "login_attempt_started": ("正在尝试机构登录", "checking_access"),
                 "login_retry_wait": ("机构登录暂未完成，准备重试", "checking_access"),
                 "login_navigation_interrupted": ("登录跳转中断，检查是否可重试", "checking_access"),

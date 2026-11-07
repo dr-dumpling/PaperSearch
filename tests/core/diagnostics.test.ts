@@ -105,6 +105,20 @@ describe('diagnostics', () => {
     expect(diagnostic?.actions.join('\n')).toContain('WOS_API_KEY');
   });
 
+  it('should tell where to get a missing snippet search key', () => {
+    delete process.env.SEMANTIC_SCHOLAR_API_KEY;
+    const diagnostic = diagnoseError(
+      { message: 'Semantic Scholar API key not configured; search_semantic_snippets needs SEMANTIC_SCHOLAR_API_KEY.' },
+      { tool: 'search_semantic_snippets' }
+    );
+
+    expect(diagnostic?.category).toBe('missing_config');
+    expect(diagnostic?.relatedConfigKeys).toContain('SEMANTIC_SCHOLAR_API_KEY');
+    expect(diagnostic?.actions).toContain(
+      'SEMANTIC_SCHOLAR_API_KEY: Get one at https://www.semanticscholar.org/product/api, then run `paper-search setup SEMANTIC_SCHOLAR_API_KEY` in your own terminal.'
+    );
+  });
+
   it('should diagnose missing IEEE API key for generic direct tools', () => {
     const diagnostic = diagnoseError(
       { message: 'IEEE API key is required. Please set IEEE_API_KEY environment variable.' },

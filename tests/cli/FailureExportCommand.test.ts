@@ -46,7 +46,7 @@ describe("failures export CLI", () => {
   it("reports an unavailable backend without starting a download", () => {
     const result = cli(["--export", join(root, "report.zip")], join(root, "absent-backend"));
     expect(result.status).not.toBe(0);
-    expect(result.stdout + result.stderr).toContain("无法启动机构下载扩展");
+    expect(result.stdout + result.stderr).toContain("无法启动学校订阅下载");
     expect(existsSync(join(root, "report.zip"))).toBe(false);
   });
 

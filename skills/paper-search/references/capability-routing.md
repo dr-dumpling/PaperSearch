@@ -9,7 +9,7 @@
 | 搜论文、找相关研究、核验 DOI/PMID、文献初筛 | `metadata_search` | `paper-search search` 集成入口 / `paper-search run search_*` 精确工具入口 | 只返回和核验论文元数据；Sci-Hub 不是检索来源 |
 | 扩展已知论文的引用网络 | `citation_expansion` | `paper-search run get_paper_citations` / `paper-search run get_paper_references` | 需要已知的 `paperId`、DOI 或 arXiv ID；返回施引文献或参考文献，不是关键词检索 |
 | 查影响因子、JCR/SSCI/中科院分区、JCI、ESI、预警、期刊等级 | `journal_metrics` | `paper-search journal-metrics` / `paper-search run query_journal_metrics` | 查期刊，不查论文；需要 `EASYSCHOLAR_KEY` |
-| 获取或下载已核验论文的 PDF 和补充材料 | `pdf_discovery` | `paper-search download` / `paper-search run download_with_fallback` / `download_batch` | 下载前先核验身份；开放渠道之后依次是 Sci-Hub（启用时）和机构下载扩展（启用时） |
+| 获取或下载已核验论文的 PDF 和补充材料 | `pdf_discovery` | `paper-search download` / `paper-search run download_with_fallback` / `download_batch` | 下载前先核验身份；开放渠道之后依次是 Sci-Hub（启用时）和学校订阅下载（启用时） |
 | 在正文片段里找 Methods 写法、参数、软件、模型或统计表述 | `body_snippet_search` | `paper-search run search_semantic_snippets` | 查 Semantic Scholar 开放获取片段索引；需要 `SEMANTIC_SCHOLAR_API_KEY`；不是全文解析 |
 
 ## 工作流边界
@@ -73,7 +73,7 @@ paper-search journal-metrics --file journals.txt --include-raw --pretty
 paper-search run query_journal_metrics --json-args '{"journals":["Nature"],"includeRaw":true}' --pretty
 ```
 
-需要 `EASYSCHOLAR_KEY`。没有时请用户在本机配置：
+需要 `EASYSCHOLAR_KEY`。没有时，把报错里的申请网址告诉用户，请用户在自己的终端配置：
 
 ```bash
 paper-search setup EASYSCHOLAR_KEY
@@ -149,7 +149,7 @@ PMID 要由 PubMed 确认；DOI 由 DOI 查询或 Crossref、OpenAlex、Semantic
 paper-search run search_semantic_snippets --arg query="comparative risk assessment methods uncertainty propagation" --arg limit=5 --arg fieldsOfStudy=Medicine --pretty
 ```
 
-`search_semantic_snippets` 需要 `SEMANTIC_SCHOLAR_API_KEY`，数量参数是 `limit`，不是 `maxResults`。
+`search_semantic_snippets` 需要 `SEMANTIC_SCHOLAR_API_KEY`，数量参数是 `limit`，不是 `maxResults`。没有 key 时，把报错里的申请网址和 `paper-search setup SEMANTIC_SCHOLAR_API_KEY` 告诉用户。
 
 只有 `snippetKind="body"` 的结果能作为正文片段证据；来自 `title` 或 `abstract` 的只是线索。引用或依赖某个片段前，核验题名、作者、年份、期刊或来源、DOI 或 PMID。
 

@@ -13,7 +13,11 @@ describe('JournalMetricsService', () => {
   it('requires an EasyScholar key', async () => {
     delete process.env.EASYSCHOLAR_KEY;
 
-    await expect(queryJournalMetrics({ journals: ['Nature'] })).rejects.toThrow('EasyScholar API key not configured');
+    const attempt = queryJournalMetrics({ journals: ['Nature'] });
+    await expect(attempt).rejects.toThrow('EasyScholar API key not configured');
+    await expect(attempt).rejects.toThrow(
+      'Get one at https://www.easyscholar.cc/console/user/open, then run `paper-search setup EASYSCHOLAR_KEY`'
+    );
   });
 
   it('queries EasyScholar and normalizes official rank fields', async () => {

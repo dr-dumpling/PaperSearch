@@ -62,6 +62,8 @@ class ServerContractTests(unittest.TestCase):
             self.assertIn(name, props)
         progress = self.out["tools"]["carsi_batch_progress"]
         self.assertEqual(set(progress["required"]), {"batch_id", "total", "done", "succeeded", "failed"})
+        for name in ("phase", "channel"):
+            self.assertIn(name, progress["properties"])
 
     def test_diagnostic_directory_is_an_optional_extension(self):
         schema = self.out["tools"]["carsi_download"]

@@ -82,6 +82,24 @@ class CapsulePageTests(unittest.TestCase):
             finally:
                 browser.close()
 
+    def test_the_downloading_paper_shows_its_browser(self):
+        """The paper on the expanded card is a link to its browser (user request,
+        2026-11-08); not while the open-access stretch has no browser."""
+        from patchright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'darwin')
+            try:
+                page.evaluate("() => { open=true; tick(); }")
+                page.wait_for_selector('.paper-link')
+                page.locator('.paper-link').click()
+                page.wait_for_function('requestedActions.length === 1')
+                self.assertEqual(page.evaluate('requestedActions[0]'), ['show_browser', '10.1000/drag', ''])
+                page.evaluate("async () => { testState.browser=false; await tick(); }")
+                page.wait_for_selector('.paper .name')
+                self.assertEqual(page.locator('.paper-link').count(), 0)
+            finally:
+                browser.close()
+
     def test_expanded_attention_fits_and_keeps_browser_action(self):
         from patchright.sync_api import sync_playwright
         with sync_playwright() as p:
@@ -444,6 +462,37 @@ class CapsulePageTests(unittest.TestCase):
                 page.wait_for_function("!root.classList.contains('animating')")
                 self.assertTrue(page.locator('#root').evaluate("el=>el.classList.contains('pill')"))
                 self.assertLess(page.locator('#root').bounding_box()['height'],70)
+            finally:
+                browser.close()
+
+    def test_finished_card_tells_main_text_and_supplementary_files_apart_briefly(self):
+        """Papers saved without every supplementary file: their own short section,
+        rows closed and without the journal line (user, 2026-11-08)."""
+        import time
+        from patchright.sync_api import sync_playwright
+        from paper_search_carsi.progress_view import view
+        now = time.time()
+        def item(reason, cls, title):
+            return {'cls': cls, 'reason': reason, 'title': title, 'journal': 'APL', 'doi': '', 'note': ''}
+        state = view(dict(status='done', run_id='r-apart', total=12, done=12, success=7, failed=5, output_dir='/tmp',
+                          results={'content': 'both', 'main': 7, 'supplements': 4, 'sources': [['机构订阅', 7]],
+                                   'failures': [item('学校没有订阅', 'no_access', 'No access')],
+                                   'supplement_failures': [item('网站人机验证拦截', 'user_or_external', 'Blocked file'),
+                                                           item('网站暂不支持附录', 'unsupported', 'No rule')]}), now)
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'darwin')
+            try:
+                page.evaluate("async state => { testState = state; open = true; await tick(); }", state)
+                page.wait_for_function("!root.classList.contains('animating')")
+                text = page.locator('#root').inner_text()
+                for expected in ('正文未下到 5 篇', '附录未下全 2 篇', '正文已保存', '网站人机验证拦截', '网站暂不支持附录'):
+                    self.assertIn(expected, text)
+                self.assertNotIn('未完成', text)
+                self.assertEqual(page.locator('.grp').count(), 3)
+                self.assertEqual(page.locator('.grp .m').count(), 0)  # main row open, supplement rows without a journal line
+                page.locator('[data-act=group][data-group="1"]').click()
+                page.wait_for_function("!root.classList.contains('animating')")
+                self.assertEqual(page.locator('.paper-list li .t').all_inner_texts(), ['Blocked file'])
             finally:
                 browser.close()
 

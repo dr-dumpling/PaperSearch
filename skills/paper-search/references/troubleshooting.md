@@ -3,8 +3,7 @@
 | 场景                                         | 处理                                                                                                                                                         |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 命令不存在                                   | 提示安装 `npm install -g papersearch`，见 `management-layer.md`                                                                                         |
-| API key 或 email 缺失                        | 提示运行 `paper-search setup` 或 `paper-search config`；不要索要或保存 key                                                                                   |
-| EasyScholar key 缺失                         | 提示运行 `paper-search setup EASYSCHOLAR_KEY`；不要让用户在聊天中发送 SecretKey                                                                              |
+| API key 或 email 缺失                        | 告诉用户三件事：这个功能要哪个 key；去哪里申请（报错或 `paper-search doctor --format text` 里给的网址）；申请后在自己的终端运行 `paper-search setup <KEY>` 填入。填好后重跑原来的命令。不要让用户在聊天里发送 key，也不要保存 key |
 | Google Scholar 返回 CAPTCHA/429 或异常流量页 | Scholar 是尽力而为的来源，默认 `0.5 RPS`、缓存成功结果，遇到验证页立即停止。等一段时间后用 `--platform googlescholar --max-results 1` 重试；必要时配置有授权的 `GOOGLE_SCHOLAR_PROXY_URL`。它不在 `--sources all` 默认列表中 |
 | Google Scholar 仍不可用、又不想配置 key      | 用 `paper-search search "<检索词>" --sources no-key --max-results 5 --pretty`（Crossref、PubMed、Europe PMC、arXiv、OpenReview）                                  |
 | 429 限流                                     | 降低 `--max-results`，换平台，或提示配置可选 key                                                                                                             |

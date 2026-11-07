@@ -78,6 +78,8 @@ export interface CarsiBatchSupport {
   keepBrowser?: boolean;
   /** carsi_batch_progress declares ``results`` (the finished window's summary). */
   progressResults?: boolean;
+  /** carsi_batch_progress declares ``phase`` and ``channel`` (the open-access stretch). */
+  progressPhase?: boolean;
 }
 
 export function selectCarsiBatchSupport(
@@ -134,6 +136,9 @@ export function selectCarsiBatchSupport(
     ...(keepBrowser ? { keepBrowser: true } : {}),
     ...(progress.length === 1 && Object.hasOwn(progress[0].inputSchema.properties ?? {}, "results")
       ? { progressResults: true } : {}),
+    ...(progress.length === 1 && ["phase", "channel"].every((name) =>
+      Object.hasOwn(progress[0].inputSchema.properties ?? {}, name))
+      ? { progressPhase: true } : {}),
     progressTool:
       progress.length === 1 &&
       acceptsDeclaredArguments(progress[0].inputSchema, {

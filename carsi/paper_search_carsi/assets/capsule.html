@@ -86,6 +86,10 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .paper .name { line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .paper .where { color: var(--faint); font-size: 12px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .paper .notice { color: var(--accent); font-size: 12px; margin-top: 3px; }
+.paper-link { display: block; width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 6px; }
+.paper-link .name, .paper-link .where, .paper-link .notice { display: block; }
+.paper-link:hover .name { text-decoration: underline; }
+.paper-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .steps { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .steps .bars { display: flex; gap: 3px; flex: 1; }
 .steps .bars span { flex: 1; height: 3px; border-radius: 2px; background: var(--track); }
@@ -254,9 +258,14 @@ function header(title, sub, closable) {
 function paperBlock() {
   const v = V;
   const note = flash.text && Date.now() < flash.until ? flash.text : v.notice;
-  let html = '<div class="paper"><div class="name">' + esc(v.title || v.current || "") + "</div>";
-  html += note ? '<div class="notice">' + esc(note) + "</div>"
-               : (v.where ? '<div class="where">' + esc(v.where) + (v.title && v.current ? " · " + esc(v.current) : "") + "</div>" : "");
+  // The paper being downloaded: a click shows its browser while it has one (user request, 2026-11-08).
+  const tag = v.browser ? "span" : "div";
+  let html = '<div class="paper">' + (v.browser
+    ? '<button type="button" class="paper-link" data-act="show_browser" title="点击切到下载浏览器" aria-label="切到下载浏览器">' : "")
+    + "<" + tag + ' class="name">' + esc(v.title || v.current || "") + "</" + tag + ">";
+  html += note ? "<" + tag + ' class="notice">' + esc(note) + "</" + tag + ">"
+               : (v.where ? "<" + tag + ' class="where">' + esc(v.where) + (v.title && v.current ? " · " + esc(v.current) : "") + "</" + tag + ">" : "");
+  if (v.browser) html += "</button>";
   if (v.step) {
     html += '<div class="steps"><div class="bars">' + v.steps.map((_, i) =>
       "<span" + (i < v.step.index ? ' class="done"' : i === v.step.index ? ' class="now"' : "") + "></span>").join("")
@@ -321,9 +330,11 @@ function attentionCard() {
 
 const CLASS_TAGS = { no_access: "没权限", user_or_external: "外部原因", unsupported: "暂不支持", unexplained: "原因不明", other: "其他" };
 let openGroups = null, groupsRun = "";  // null: each reason row as the view opens it
+// Main-text rows first, then the supplementary files' rows, numbered on.
+function allGroups() { return V.summary.groups.concat(V.summary.supplement_groups || []); }
 function groupOpen(i) {
   if (groupsRun !== V.run_id) { openGroups = null; groupsRun = V.run_id; }
-  return openGroups ? openGroups.has(i) : !!V.summary.groups[i].open;
+  return openGroups ? openGroups.has(i) : !!(allGroups()[i] || {}).open;
 }
 function toggleGroup(i) {
   const opened = !groupOpen(i);
@@ -331,12 +342,12 @@ function toggleGroup(i) {
   render(true);
 }
 
-function reasonRow(g, i) {
+function reasonRow(g, i, brief) {
   const opened = groupOpen(i);
   let html = '<div class="grp"><button type="button" class="row" data-act="group" data-group="' + i + '" aria-expanded="' + opened + '">'
     + '<span class="tag ' + esc(g.cls) + '">' + esc(CLASS_TAGS[g.cls] || "") + '</span><span class="reason">' + esc(g.reason) + "</span>"
     + '<span class="n">' + g.count + " 篇</span>" + icon(opened ? "down" : "right") + "</button>";
-  if (!opened) return html + (g.where ? '<div class="m">' + esc(g.where) + "</div>" : "") + "</div>";
+  if (!opened) return html + (g.where && !brief ? '<div class="m">' + esc(g.where) + "</div>" : "") + "</div>";
   return html + '<ul class="paper-list' + (g.papers.length > 5 ? " scroll" : "") + '">'
     + g.papers.map((p) => '<li><div class="t">' + esc(p.title) + "</div>" + (p.where ? '<div class="w">' + esc(p.where) + "</div>" : "") + "</li>").join("")
     + (g.more ? '<li class="more">另有 ' + g.more + " 篇未列出</li>" : "") + "</ul></div>";
@@ -349,8 +360,14 @@ function doneCard() {
     + '<div><b' + (v.bad ? ' style="color:var(--bad)"' : "") + ">" + v.bad + "</b><span>失败</span></div>"
     + "<div><b>" + esc(v.elapsed || "—") + "</b><span>用时</span></div></div>";
   if (s && s.groups.length) {
-    html += '<div class="sec"><div class="sec-h"><b>未完成 ' + v.bad + " 篇</b><span>按原因</span></div>"
-      + s.groups.map(reasonRow).join("") + "</div>";
+    const apart = s.supplement_groups && s.supplement_groups.length;
+    html += '<div class="sec"><div class="sec-h"><b>' + (apart ? "正文未下到 " : "未完成 ") + v.bad + " 篇</b><span>按原因</span></div>"
+      + s.groups.map((g, i) => reasonRow(g, i)).join("") + "</div>";
+  }
+  // Main text and supplementary files apart, kept short: closed rows, no journal line (user, 2026-11-08).
+  if (s && s.supplement_groups && s.supplement_groups.length) {
+    html += '<div class="sec"><div class="sec-h"><b>附录未下全 ' + s.supplement_missing + " 篇</b><span>正文已保存</span></div>"
+      + s.supplement_groups.map((g, i) => reasonRow(g, s.groups.length + i, true)).join("") + "</div>";
   }
   if (s && v.ok) {
     html += '<div class="sec"><div class="sec-h"><b>已完成 ' + v.ok + " 篇</b></div>"

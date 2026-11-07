@@ -250,12 +250,16 @@ def _adopt_batch(batch_id: str, total: int, counts: tuple[int | None, int | None
 
 
 def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int, *,
-               current: str = "", finished: bool = False, results: Any = None) -> bool:
+               current: str = "", finished: bool = False, results: Any = None,
+               phase: str = "", channel: str = "") -> bool:
     """Record batch totals for items finished without the backend, or the batch end.
 
     ``results`` (the batch end only) is the caller's summary of every item,
     for the finished window: see ``_batch_results``. It updates an existing
-    report and never opens a window for a batch the backend did not show."""
+    report and never opens a window for a batch the backend did not show.
+    ``phase`` replaces the waiting line and ``channel`` names where the caller
+    fetches from (its open-access stretch, before any publisher); both are
+    short single lines and are dropped at the batch end."""
     ctx = BatchContext.from_args(batch_id, max(1, min(done, total)), total, done, succeeded, failed)
     if ctx is None or done > total:
         return False
@@ -263,11 +267,13 @@ def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int
     previous = _batch_state(ctx.batch_id)
     if finished and previous is None and (done == 0 or summary is not None):
         return False
+    phase, channel = _short_line(phase), _short_line(channel)
     _adopt_batch(ctx.batch_id, total, (done, succeeded, failed),
                  **({"current": current} if current else {}),
                  stage="saved_pending_verification" if finished else "starting",
+                 channel="" if finished else channel,
                  phase=(f"批量下载结束：成功 {succeeded}，失败 {failed}" if finished
-                        else f"已完成 {done}/{total} 篇，等待下一篇"))
+                        else phase or f"已完成 {done}/{total} 篇，等待下一篇"))
     with _LOCK:
         if finished:
             _STATE.update(status="done", awaiting_next=False,
@@ -288,6 +294,13 @@ def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int
     return True
 
 
+def _short_line(value: Any, limit: int = 80) -> str:
+    """A caller's display text as one short line (empty when it is not text)."""
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split())[:limit]
+
+
 FAILURE_CLASSES = ("no_access", "user_or_external", "unsupported", "unexplained")
 _RESULT_CONTENTS = ("main", "supplements", "both")
 _MAX_RESULT_FAILURES = 1000  # the caller's batch limit
@@ -303,7 +316,9 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
     ``main`` (main texts saved), ``supplements`` (attachment files saved),
     ``no_supplements`` (pages that listed none); ``sources`` ([label, count]);
     ``failures`` ([{cls, reason, title, journal, doi, note}]) with ``cls`` one
-    of FAILURE_CLASSES and a short ``reason`` text. Anything else is dropped.
+    of FAILURE_CLASSES and a short ``reason`` text; ``supplement_failures``, the
+    same for papers whose main text was saved but not every supplementary file
+    (content "both"). Anything else is dropped.
     """
     if not isinstance(raw, dict):
         return None
@@ -327,16 +342,18 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
                     if isinstance(s, list) and len(s) == 2 and text(s[0]) and count(s[1])]
         if isinstance(raw.get("sources"), list) else [],
         "failures": [],
+        "supplement_failures": [],
         "stopped": raw.get("stopped") is True,
     }
-    failures = raw.get("failures")
-    for item in (failures if isinstance(failures, list) else [])[:_MAX_RESULT_FAILURES]:
-        if not isinstance(item, dict) or not text(item.get("reason")):
-            continue
-        summary["failures"].append({
-            "cls": item.get("cls") if item.get("cls") in FAILURE_CLASSES else "unexplained",
-            **{key: text(item.get(key)) for key in ("reason", "title", "journal", "doi", "note")},
-        })
+    for key in ("failures", "supplement_failures"):
+        listed = raw.get(key)
+        for item in (listed if isinstance(listed, list) else [])[:_MAX_RESULT_FAILURES]:
+            if not isinstance(item, dict) or not text(item.get("reason")):
+                continue
+            summary[key].append({
+                "cls": item.get("cls") if item.get("cls") in FAILURE_CLASSES else "unexplained",
+                **{field: text(item.get(field)) for field in ("reason", "title", "journal", "doi", "note")},
+            })
     folder = raw.get("folder")
     if isinstance(folder, str) and 0 < len(folder) <= 4096 and os.path.isabs(folder):
         summary["folder"] = folder
@@ -366,7 +383,7 @@ def tracked_download(current: str, output_dir: Any = None, batch: BatchContext |
     else:
         done = batch.done if batch.done is not None else (None if _batch_state(batch.batch_id) else batch.index - 1)
         _adopt_batch(batch.batch_id, batch.total, (done, batch.succeeded, batch.failed),
-                     current=current, stage="starting",
+                     current=current, stage="starting", channel="",
                      phase=f"第 {batch.index}/{batch.total} 篇：进入机构访问" if batch.total > 1 else "进入机构访问")
         _notify_stage("starting", current)
     update(content=content if content in ("main", "supplements", "both") else "main")

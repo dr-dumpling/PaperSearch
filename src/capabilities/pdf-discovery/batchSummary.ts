@@ -16,6 +16,20 @@ const SOURCE_LABELS: Readonly<Record<string, string>> = {
   scihub: "Sci-Hub",
 };
 const OPEN_ACCESS = "开放获取";
+/** Supplement outcomes that are no shortfall: the user or the batch ended them. */
+const NOT_A_SHORTFALL = new Set(["batch_stopped", "user_skipped", "cancelled"]);
+
+/**
+ * The reason a paper whose main text was saved still lacks supplementary files:
+ * its first file not saved, a real failure before "no rule for this site".
+ * A paper without its main text is told by its main text's reason instead.
+ */
+export function supplementShortfall(item: DownloadBatchItemResult): string | undefined {
+  if (item.status !== "ok") return undefined;
+  const missed = (item.supplements ?? []).filter((file) =>
+    file.status !== "saved" && file.reason && !NOT_A_SHORTFALL.has(file.reason));
+  return (missed.find((file) => file.reason !== "supplements_not_supported") ?? missed[0])?.reason;
+}
 
 /**
  * Tell the progress window how the whole batch ended: what was saved, and
@@ -94,6 +108,7 @@ export function batchResults(result: DownloadBatchResult, startedAt: number, fol
     no_supplements: 0,
     sources: [],
     failures: [],
+    supplement_failures: [],
   };
   for (const item of result.items) {
     const saved = item.supplements?.filter((file) => file.status === "saved").length ?? 0;
@@ -101,6 +116,16 @@ export function batchResults(result: DownloadBatchResult, startedAt: number, fol
     if (item.attempts.some((attempt) => attempt.code === "batch_stopped")) summary.stopped = true;
     if (item.status === "ok") {
       if (item.attempts.some((attempt) => attempt.code === "no_supplements")) summary.no_supplements += 1;
+      const shortfall = result.content === "both" ? supplementShortfall(item) : undefined;
+      if (shortfall) {
+        summary.supplement_failures.push({
+          cls: classifyFailureCode(shortfall),
+          reason: carsiShortReason(shortfall, "附录没下载成功"),
+          ...(item.title ? { title: item.title } : {}),
+          ...(item.journal ? { journal: item.journal } : {}),
+          ...(item.doi ? { doi: item.doi } : {}),
+        });
+      }
       if (result.content === "supplements" || !item.path) continue;
       summary.main += 1;
       const label = sourceLabel(item);

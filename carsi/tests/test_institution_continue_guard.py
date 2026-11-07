@@ -54,6 +54,126 @@ class BackendBrowserChooserTests(unittest.TestCase):
         page.goto("https://publisher.example/chooser")
         assert_mousedown_chooser_navigates(self, page)
 
+    def test_a_school_name_right_after_for_is_still_an_empty_result(self):
+        """RSNA writes "for<em>School</em>" with no space (2026-11-07); its search box,
+        once it holds the name, has no placeholder or label left to find it by
+        (Mac retest, 2026-11-08). The reply names the query instead."""
+        from paper_search_carsi.browser.backend import launch
+        browser = launch(headless=True, humanize=False, config={})
+        self.addCleanup(browser.close)
+        page = browser.new_page(service_workers="block")
+        from paper_search_carsi.publishers.site import site_profile
+        chooser, alternate = "https://pubs.example.org/action/ssostart", "?mode=list"
+        reply = ["Example University"]
+        page.route("**/*", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=(
+            '<title>Choose federation</title>' if route.request.url.endswith(alternate) else
+            '<title>Institutional Login</title><h1>Find your institution</h1>'
+            '<input type="text" class="ms-inv" value="Example University">'
+            f'<span class="ms-helper"><div class="ms-empty-res"><h4>We couldn’t find any result for<em>{reply[0]}</em></h4>'
+            f'<p>You can search for your Institution via Federation<a href="{alternate}">here</a></p></div></span>'
+            f'<div><span>or</span></div><a href="{alternate}">Select your institution from a list</a>')))
+        # A site without a profile of its own (RSNA): only the generic search boxes.
+        d = PublisherBatchDownloader({"publisher_institution_federation": "carsi"},
+                                      profile=site_profile("10.1148/example", "https://pubs.example.org/doi/10.1148/example"),
+                                      institution_query="Example University")
+        page.goto(chooser)
+        result = DownloadResult(doi="10.1148/example", status="failed")
+        d._event(result, "auto_institution_search", f"Example University @ {chooser}")
+        reply[0] = "Another University"  # an answer to somebody else's query: not ours
+        page.goto(chooser)
+        self.assertFalse(d._assist_configured_institution(page, result))
+        self.assertEqual(page.url, chooser)
+        reply[0] = "Example University"
+        page.goto(chooser)
+        self.assertTrue(d._assist_configured_institution(page, result))
+        page.wait_for_url(chooser + alternate)
+        self.assertTrue(any(e["state"] == "auto_institution_list_opened" for e in result.events))
+
+    def test_a_publisher_terms_form_is_accepted_but_not_on_the_school_idp(self):
+        """SIAM's SAML consent (Atypon's saml2post) is agreed to; the school's own pages are not."""
+        from paper_search_carsi.browser.backend import launch
+        browser = launch(headless=True, humanize=False, config={})
+        self.addCleanup(browser.close)
+        page = browser.new_page(service_workers="block")
+        form = ('<title>SAML Login</title><form method="get" class="saml__consent__form"><input type="hidden" name="agreed" value="1">'
+                '<p>I have read and agree to the<a href="/terms">Terms and Conditions</a>and'
+                '<a href="/terms">Privacy Policy.</a></p><input type="submit" value="Yes"><a href="/">No</a></form>')
+        page.route("**/*", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=(
+            "<title>Next</title>" if "agreed=1" in route.request.url else form)))
+        d = PublisherBatchDownloader({"publisher_institution_federation": "carsi",
+                                      "idp_entity_id": "https://idp.example.edu.cn/idp/shibboleth"},
+                                     profile=get_publisher_profile("world scientific"),
+                                     institution_query="Example University")
+        page.goto("https://www.worldscientific.com/action/saml2post")
+        result = DownloadResult(doi="10.1142/example", status="failed")
+        self.assertTrue(d._accept_publisher_terms(page, result))
+        page.wait_for_url("**agreed=1**")
+        self.assertEqual(result.events[-1]["state"], "publisher_terms_accepted")
+
+        page.goto("https://idp.example.edu.cn/idp/terms")
+        school = DownloadResult(doi="10.1142/example", status="failed")
+        self.assertFalse(d._accept_publisher_terms(page, school))
+        self.assertEqual(page.title(), "SAML Login")
+
+    def test_the_schools_release_and_terms_are_accepted_but_not_a_second_factor(self):
+        """Shibboleth's attribute release and terms of use, accepted for the user as
+        they asked (2026-11-08); the school's preselected choice is kept, Duo is theirs."""
+        from paper_search_carsi.browser.backend import launch
+        browser = launch(headless=True, humanize=False, config={})
+        self.addCleanup(browser.close)
+        page = browser.new_page(service_workers="block")
+        release = ('<title>Information Release</title><form method="get">'
+                   '<input type="checkbox" name="_shib_idp_consentIds" value="mail" checked disabled>'
+                   '<input type="radio" name="_shib_idp_consentOptions" value="_shib_idp_doNotRememberConsent">'
+                   '<input type="radio" name="_shib_idp_consentOptions" value="_shib_idp_rememberConsent" checked>'
+                   '<input type="submit" name="_eventId_AttributeReleaseRejected" value="Reject">'
+                   '<input type="submit" name="_eventId_proceed" value="Accept"></form>')
+        terms = ('<title>Terms of Use</title><form method="get"><p>Please accept the terms of use.</p>'
+                 '<input type="checkbox" name="_shib_idp_consentIds" value="terms" required>'
+                 '<input type="submit" name="_eventId_TermsRejected" value="Reject">'
+                 '<input type="submit" name="_eventId_proceed" value="Accept"></form>')
+        pages = {"/release": release, "/terms": terms,
+                 "/duo": "<title>Duo</title><p>Authentication with Duo is required for the requested service.</p>"}
+        page.route("**/*", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=(
+            "<title>Next</title>" if "_eventId_" in route.request.url
+            else pages.get(route.request.url.split("?")[0].rsplit("/idp", 1)[-1], "<title>Other</title>"))))
+        d = PublisherBatchDownloader({"publisher_institution_federation": "carsi",
+                                      "idp_entity_id": "https://idp.example.edu.cn/idp/shibboleth"},
+                                     profile=get_publisher_profile("world scientific"),
+                                     institution_query="Example University")
+        result = DownloadResult(doi="10.1142/example", status="failed")
+
+        page.goto("https://idp.example.edu.cn/idp/release")
+        self.assertTrue(d._accept_idp_confirmation(page, result))
+        page.wait_for_url("**_eventId_proceed**")
+        self.assertIn("_shib_idp_consentOptions=_shib_idp_rememberConsent", page.url)
+        self.assertNotIn("Rejected", page.url)
+
+        page.goto("https://idp.example.edu.cn/idp/terms")
+        self.assertTrue(d._accept_idp_confirmation(page, result))
+        page.wait_for_url("**_eventId_proceed**")
+        self.assertIn("_shib_idp_consentIds=terms", page.url)
+        self.assertEqual([e["detail"].split(" @ ")[0] for e in result.events if e["state"] == "idp_confirmation_accepted"],
+                         ["attribute-release", "terms-of-use"])
+
+        duo = DownloadResult(doi="10.1142/example", status="failed")
+        page.goto("https://idp.example.edu.cn/idp/duo")
+        self.assertFalse(d._accept_idp_confirmation(page, duo))
+        self.assertEqual(duo.events, [])
+
+        # Two accepts in one article: a page still asking is left to the user, told once.
+        page.goto("https://idp.example.edu.cn/idp/release")
+        self.assertFalse(d._accept_idp_confirmation(page, result))
+        self.assertFalse(d._accept_idp_confirmation(page, result))
+        self.assertEqual(page.title(), "Information Release")
+        self.assertEqual([e["state"] for e in result.events].count("idp_confirmation_required"), 1)
+
+        # The same form on a publisher's page is not the school's.
+        page.goto("https://www.worldscientific.com/idp/release")
+        other = DownloadResult(doi="10.1142/example", status="failed")
+        self.assertFalse(d._accept_idp_confirmation(page, other))
+        self.assertEqual(page.title(), "Information Release")
+
     def test_explicit_empty_search_tries_the_federation_list_before_skipping(self):
         from paper_search_carsi.browser.backend import launch
         browser = launch(headless=True, humanize=False, config={})

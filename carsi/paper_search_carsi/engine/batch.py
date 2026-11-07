@@ -289,7 +289,10 @@ class PublisherBatchDownloader(
             if not _is_browser_error(exc):
                 raise
             self._event(result, "supplements_failed", f"{type(exc).__name__}: {str(exc)[:160]}")
-            return [{"status": "failed", "reason": type(exc).__name__, "url": "", "label": ""}]
+            # The site did not answer, not the error's class name ("Error": pubs.acs.org
+            # closed the connection on every try, Windows 2026-11-07).
+            reason = "publisher_unreachable" if _is_network_failure(exc) else type(exc).__name__
+            return [{"status": "failed", "reason": reason, "url": "", "label": ""}]
         finally:
             user_watch.set()
             watchdog.clear_interrupt()
@@ -311,7 +314,10 @@ class PublisherBatchDownloader(
                 own = self.adapter.supplement_links(page, doi)
                 external = external_links(page, doi)
                 if own is None and external is None:
-                    return None
+                    from ..adapters.platforms.silverchair import declares_no_supplements
+
+                    # No rule found files, but the page itself may say there are none.
+                    return [] if declares_no_supplements(page, doi) else None
                 return list(dict.fromkeys([*(own or []), *(external or [])]))
             except Exception as exc:
                 if (attempt == 2 or not _is_browser_error(exc)

@@ -1,6 +1,6 @@
 {
   "name": "papersearch",
-  "version": "0.4.10",
+  "version": "0.4.11",
   "description": "PaperSearch: an agent-friendly command for searching and downloading academic papers from multiple sources.",
   "main": "dist/cli.js",
   "type": "module",
@@ -25,6 +25,7 @@
     "assets/",
     "skills/",
     "LICENSE",
+    "NOTICE",
     ".env.example",
     "carsi/pyproject.toml",
     "carsi/README.md",
@@ -43,7 +44,7 @@
     "nodejs",
     "typescript"
   ],
-  "author": "dianel; CLI adaptation by dr-dumpling",
+  "author": "dr-dumpling",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",

@@ -12,6 +12,7 @@ import { buildCapabilityProfile } from "./management/capability-profile/index.js
 import { resolveCarsiReadiness } from "./management/capability-profile/carsiReadiness.js";
 import { createCarsiBackend, } from "./capabilities/pdf-discovery/carsi/index.js";
 import { CONFIG_KEYS, getConfigPath, importEnvFile, initUserConfig, listConfigEntries, loadUserConfigIntoEnv, maskValue, readUserConfig, assertConfigKey, getConfigValue, setUserConfigValue, isConfigTrue, unsetUserConfigValue, } from "./management/config/index.js";
+import { apiKeySignupUrl } from "./config/apiKeySignup.js";
 import { setupGlobalProxy } from "./infrastructure/http/HttpClient.js";
 import { autoSyncSkill, defaultSkillTargetIds, describeSkillTargets, diffSkillTargets, installSkillTargets, parseSkillTargets, skillLocations, statusSkillTargets, } from "./management/skills/index.js";
 import { renderDoctorTextReport, renderSkillDiffTextReport, } from "./management/reports/index.js";
@@ -25,7 +26,14 @@ import { fileURLToPath } from "node:url";
 import { resolveRunLogRoot } from "./infrastructure/runlog/RunLedger.js";
 import { runLiveSmoke } from "./management/smoke/index.js";
 dotenv.config();
-loadUserConfigIntoEnv();
+// A broken config file is reported by main() like any other error, not as a stack trace.
+let configLoadError;
+try {
+    loadUserConfigIntoEnv();
+}
+catch (error) {
+    configLoadError = error;
+}
 setupGlobalProxy();
 class CliError extends Error {
     code;
@@ -594,7 +602,7 @@ const DEFAULT_SETUP_PROMPTS = [
     },
     {
         key: "PAPER_SEARCH_CARSI_ENABLED",
-        label: "Institutional download extension switch, set by paper-search carsi install; enter true only once the extension is installed",
+        label: "School subscription downloads (CARSI) switch, set by paper-search carsi install; enter true only once it is installed",
         secret: false,
     },
 ];
@@ -650,7 +658,8 @@ async function handleSetupCommand(positionals, flags) {
             const current = entry?.configured
                 ? ` current=${entry.value} source=${entry.source}`
                 : " not configured";
-            const question = `${prompt.label}\n${prompt.key} (${current})`;
+            const signupUrl = apiKeySignupUrl(prompt.key);
+            const question = `${prompt.label}\n${signupUrl ? `Get it at ${signupUrl}\n` : ""}${prompt.key} (${current})`;
             const answer = prompt.secret
                 ? await session.secret(question)
                 : await session.line(`${question}: `);
@@ -734,7 +743,7 @@ async function offerCarsiInstall(session, flags) {
         return { installed: false, asked: false };
     const answer = flags.installCarsi === true
         ? "y"
-        : await session.line("Install the institutional download extension? It downloads papers through your school's subscription in your Google Chrome (about 0.5 GB to download). [y/N]: ");
+        : await session.line("Install school subscription downloads (CARSI)? It downloads papers through your school's subscription in your Google Chrome (about 0.5 GB to download). [y/N]: ");
     if (!/^y(es)?$/i.test(answer.trim()))
         return { installed: false, asked: true };
     try {
@@ -769,7 +778,7 @@ function carsiContext() {
         now: () => new Date(),
     };
 }
-/** Install or inspect the institutional download extension (ADR 0013). */
+/** Install or inspect school subscription downloads (CARSI, ADR 0013). */
 async function handleCarsiCommand(positionals, flags) {
     const sub = positionals[0];
     let session;
@@ -822,7 +831,7 @@ async function handleCarsiCommand(positionals, flags) {
             }, context);
             if (flags.format === "text") {
                 return [
-                    outcome.status === "uninstalled" ? "已卸载机构下载扩展。" : outcome.status === "cancelled" ? "已取消。" : "没有安装。",
+                    outcome.status === "uninstalled" ? "已卸载学校订阅下载。" : outcome.status === "cancelled" ? "已取消。" : "没有安装。",
                     ...outcome.removed.map((item) => `  已删除：${item}`),
                     ...outcome.kept.map((item) => `  保留：${item}`),
                 ].join("\n");
@@ -1142,6 +1151,8 @@ async function main() {
     const parsed = parseCli(process.argv.slice(2));
     let update;
     try {
+        if (configLoadError)
+            throw configLoadError;
         maybePrintSetupHint(parsed);
         maybeAutoSyncSkill(parsed);
         const exempt = parsed.flags.help || parsed.flags.version || ["help", "version", "config", "setup", "update"].includes(parsed.command);
@@ -1165,7 +1176,7 @@ async function main() {
         }
     }
     catch (error) {
-        const diagnostic = diagnoseError(error, diagnosticContextFromCli(parsed.command, parsed.positionals, parsed.flags));
+        const diagnostic = error?.code === "CONFIG_INVALID" ? undefined : diagnoseError(error, diagnosticContextFromCli(parsed.command, parsed.positionals, parsed.flags));
         const errorPayload = {
             name: error?.name || "Error",
             code: error?.code || "ERROR",

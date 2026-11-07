@@ -62,6 +62,8 @@ export function selectCarsiBatchSupport(tools, strategy) {
         ...(keepBrowser ? { keepBrowser: true } : {}),
         ...(progress.length === 1 && Object.hasOwn(progress[0].inputSchema.properties ?? {}, "results")
             ? { progressResults: true } : {}),
+        ...(progress.length === 1 && ["phase", "channel"].every((name) => Object.hasOwn(progress[0].inputSchema.properties ?? {}, name))
+            ? { progressPhase: true } : {}),
         progressTool: progress.length === 1 &&
             acceptsDeclaredArguments(progress[0].inputSchema, {
                 batch_id: COMPATIBILITY_BATCH.id,

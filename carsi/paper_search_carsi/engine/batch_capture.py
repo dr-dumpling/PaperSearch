@@ -150,7 +150,7 @@ class CaptureMixin:
                  getattr(self, "_fallback_pdf", None))
         self._capture_doi = (doi or "").lower()
         self._expected_title = self._citation_title(page) or getattr(self, "_record_title", "")
-        self._show_title()
+        self._show_title(page)
         try:
             try:
                 tabs = [tab for tab in list(page.context.pages) if not tab.is_closed()]
@@ -208,7 +208,7 @@ class CaptureMixin:
         self._phase(result, "pdf")
         self._capture_doi = (doi or "").lower()
         self._expected_title = self._citation_title(page) or getattr(self, "_record_title", "")
-        self._show_title()
+        self._show_title(page)
         self._fallback_pdf = None
         tried_before = len(result.pdf_attempts)
         try:
@@ -311,9 +311,22 @@ class CaptureMixin:
             return ""
         return " ".join(value.split()) if isinstance(value, str) else ""
 
-    def _show_title(self) -> None:
-        """The article's title in the progress window, once its page names it."""
-        title = getattr(self, "_expected_title", "")
+    @staticmethod
+    def _dublin_core_title(page: Any) -> str:
+        """The article page's Dublin Core title (dc.Title), which Atypon sites such
+        as SIAM give without a citation_title (2026-11-08). For display only."""
+        try:
+            value = page.evaluate(
+                "() => (document.querySelector('meta[name=\"dc.title\" i]') || {}).content || ''")
+        except Exception:
+            return ""
+        return " ".join(value.split()) if isinstance(value, str) else ""
+
+    def _show_title(self, page: Any = None) -> None:
+        """The article's title in the progress window, once its page names it: the
+        title the identity check uses, else the page's Dublin Core title (only shown,
+        never checked against: the capsule showed the DOI instead, 2026-11-08)."""
+        title = getattr(self, "_expected_title", "") or (self._dublin_core_title(page) if page is not None else "")
         if not title or title == getattr(self, "_shown_title", ""):
             return
         self._shown_title = title
@@ -333,7 +346,7 @@ class CaptureMixin:
         """
         self._event(result, "pdf_capture_started")
         captured: dict[str, Any] = {"bytes": None, "url": "", "deferred_url": "", "block_reason": None,
-                                    "suspect_block": None}
+                                    "suspect_block": None, "closed": False, "readers": set()}
         cdp_session = None
         native_redirects: dict[str, list[Any]] = {}
         cdn_redirects: dict[str, list[Any]] = {}
@@ -387,7 +400,9 @@ class CaptureMixin:
             url = event.get("request", {}).get("url", "")
             response = SimpleNamespace(url=url, status=200, headers={}, history=history)
             urls = self._response_urls(response)
-            if (self.adapter.is_pdf_cdn_url(url, doi)
+            # Kept by address too: Chrome can answer the final PDF under another
+            # request id. The bound PDF's own file on its CDN is one (RSC, 2026-11-07).
+            if ((self.adapter.is_pdf_cdn_url(url, doi) or self._bound_pdf_copy(url, response, doi, article_options))
                     and self._response_matches_article(response, doi, **article_options)):
                 cdn_redirects[url] = list(history)
             if (any(hop in rejected_pdf_urls for hop in urls)
@@ -408,11 +423,16 @@ class CaptureMixin:
                     for header in event.get("responseHeaders", [])
                 }
                 url = event.get("request", {}).get("url", "")
+                history = native_redirects.get(event.get("networkId", ""), []) or cdn_redirects.get(url, [])
                 if (self.adapter.discards_unbound_pdfs
                         and "application/pdf" in headers.get("content-type", "").lower()
                         and (url in rejected_pdf_urls or self._is_supplementary_url(url)
                              or self._is_supplementary_url(headers.get("content-disposition", ""))
-                             or not self._article_pdf_url_matches(url, doi, **article_options))):
+                             or not (self._article_pdf_url_matches(url, doi, **article_options)
+                                     # The bound PDF's own file on the host its address redirects
+                                     # to (RSC's article-pdf -> rscj.silverchair-cdn.com, 2026-11-07).
+                                     or self._bound_pdf_copy(url, SimpleNamespace(url=url, history=history),
+                                                             doi, article_options)))):
                     rejected_pdf_urls.add(url)
                     return
                 if ("application/pdf" in headers.get("content-type", "").lower()
@@ -437,7 +457,6 @@ class CaptureMixin:
                     # response.body(). Apply the same article/attachment guards
                     # before reading the response through CDP instead.
                     if self._uses_article_pdf_validation():
-                        history = native_redirects.get(event.get("networkId", ""), []) or cdn_redirects.get(url, [])
                         response = SimpleNamespace(
                             url=url, headers=headers,
                             status=event.get("responseStatusCode", 0), history=history,
@@ -496,6 +515,12 @@ class CaptureMixin:
                         self._event(result, "browser_response_continue_error", type(exc).__name__)
 
         def on_response(response: Any) -> None:
+            # A response handled after this capture is over reads nothing: a body
+            # read that never returned there (after AIAA's blocked PDF) stopped the
+            # watchdog for the whole process, and the next article with it
+            # (Chicago, browser_unresponsive, 2026-11-07).
+            if captured["closed"]:
+                return
             # The tab's own document answers, for the attempt's record.
             try:
                 request = getattr(response, "request", None)
@@ -539,7 +564,8 @@ class CaptureMixin:
                                 if self._uses_article_pdf_validation() else True)
                     if relevant:
                         try:
-                            snippet = response.text()[:8192] if hasattr(response, "text") else response.body()
+                            with watchdog.owned_by(captured["readers"]):
+                                snippet = response.text()[:8192] if hasattr(response, "text") else response.body()
                         except Exception:
                             snippet = ""
                         text = self._visible_text_excerpt(snippet)
@@ -577,7 +603,7 @@ class CaptureMixin:
                 if self._should_defer_response_body(url):
                     captured["deferred_url"] = url
                     return
-                with transfer(result):
+                with transfer(result), watchdog.owned_by(captured["readers"]):
                     body = response.body()
                 # Body-level block-page detection (some block pages are 200
                 # with an HTML "IP Address Blocked" body).
@@ -819,6 +845,10 @@ class CaptureMixin:
                     if block_reason and not captured["block_reason"]:
                         captured["block_reason"] = block_reason
         finally:
+            captured["closed"] = True
+            # A response still being read is not wanted any more (see watchdog.abandon).
+            if watchdog.abandon(captured["readers"]):
+                self._event(result, "pdf_response_read_abandoned", "capture ended")
             finish()
             if cdp_session is not None:
                 try:

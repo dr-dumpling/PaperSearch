@@ -33,7 +33,7 @@ export async function installCarsi(host, options, context) {
         delete record.finishedAt;
     }
     if (record?.finishedAt && record.browser === options.browser && !options.force) {
-        host.log(`机构下载扩展已安装（${record.finishedAt}）。查看：paper-search carsi status；重装：加 --force。`);
+        host.log(`学校订阅下载已安装（${record.finishedAt}）。查看：paper-search carsi status；重装：加 --force。`);
         return { status: "already_installed", record, paths };
     }
     if (!record || options.force) {
@@ -111,7 +111,7 @@ const STEP_LABELS = {
     check: "自检",
 };
 function describePlan(host, paths, options) {
-    host.log("将要安装 PaperSearch 机构下载扩展：");
+    host.log("将要安装 PaperSearch 学校订阅下载（CARSI）：");
     host.log(`  安装目录：${paths.root}（uv、Python ${PYTHON_VERSION}、虚拟环境、安装记录）`);
     host.log(options.browser === "chrome"
         ? "  浏览器：使用你电脑上的 Google Chrome（下载时用单独的浏览器资料，不动你日常用的 Chrome），不另下载浏览器"
@@ -420,7 +420,7 @@ export async function updateCarsi(host, options, context) {
 export async function uninstallCarsi(host, options, context) {
     const paths = runtimePaths(runtimeRoot(host.env, host.home), host.platform);
     if (!existsSync(paths.root)) {
-        host.log("没有安装机构下载扩展。");
+        host.log("没有安装学校订阅下载。");
         return { status: "not_installed", removed: [], kept: [] };
     }
     const record = readInstallRecord(paths);
@@ -430,7 +430,7 @@ export async function uninstallCarsi(host, options, context) {
     const hasData = existsSync(context.dataDir);
     const configured = context.getConfig("PAPER_SEARCH_CARSI_EXECUTABLE");
     const ours = configured === paths.executable;
-    host.log("将要卸载 PaperSearch 机构下载扩展：");
+    host.log("将要卸载 PaperSearch 学校订阅下载（CARSI）：");
     host.log(`  删除安装目录：${paths.root}（${(directoryBytes(paths.root) / GB).toFixed(2)} GB）`);
     host.log(ours
         ? "  PaperSearch 配置：关闭机构下载，清除后端路径"
@@ -512,7 +512,7 @@ export async function carsiStatus(host, context) {
 export function renderStatusText(status) {
     const r = status.record;
     const lines = [
-        `机构下载扩展：${status.complete ? "已安装" : status.installed ? "安装未完成" : "未安装"}`,
+        `学校订阅下载：${status.complete ? "已安装" : status.installed ? "安装未完成" : "未安装"}`,
         `  安装目录：${status.root}（${(status.runtimeBytes / GB).toFixed(2)} GB）`,
     ];
     if (r) {

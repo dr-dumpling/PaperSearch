@@ -117,7 +117,7 @@ paper-search smoke --mock --pretty
 
 `npm install -g .` 把全局命令链接到这个仓库目录，之后仓库重新编译，全局命令随之变化。要装一个固定的版本，先运行 `npm pack`，再 `npm install -g <生成的 .tgz>`。发布前或在本机全局安装本地构建前，用这条路径验证仓库。
 
-机构下载扩展（CARSI 后端）与 PaperSearch 本体分开更新，只在用户要求时安装：
+学校订阅下载（CARSI 后端）与 PaperSearch 本体分开更新，只在用户要求时安装：
 
 ```bash
 paper-search carsi status --format text

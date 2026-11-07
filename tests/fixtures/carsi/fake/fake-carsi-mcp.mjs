@@ -302,6 +302,7 @@ if (
           failed: z.number().int(),
           current: z.string().optional(),
           finished: z.boolean().optional(),
+          ...(scenario.endsWith("_phase") ? { phase: z.string().optional(), channel: z.string().optional() } : {}),
         },
       },
       async (args) => {

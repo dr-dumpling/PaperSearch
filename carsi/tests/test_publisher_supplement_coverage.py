@@ -79,6 +79,34 @@ class PublisherSupplementTests(unittest.TestCase):
             ANNUAL_URL.split("?")[0],
         ])
 
+    def test_a_silverchair_page_that_hides_its_supplementary_material_has_none(self):
+        """pubs.aip.org marks the kinds an article has in its toolbar ("has-content")
+        and hides the others: "Supplementary Material" hidden means none (2026-11-08)."""
+        from unittest.mock import Mock
+        from paper_search_carsi.adapters.platforms.silverchair import declares_no_supplements
+        doi = "10.1063/5.0250823"
+        filters = [{"label": "Figures & tables", "hide": False, "has": True},
+                   {"label": "Video", "hide": True, "has": False},
+                   {"label": "Supplementary Material", "hide": True, "has": False}]
+
+        def page(data):
+            return Mock(evaluate=Mock(return_value=data))
+        self.assertTrue(declares_no_supplements(page({"doi": doi.upper(), "filters": filters}), doi))
+        shown = [dict(f, hide=False, has=True) if f["label"].startswith("Supplementary") else f for f in filters]
+        self.assertFalse(declares_no_supplements(page({"doi": doi, "filters": shown}), doi))
+        self.assertFalse(declares_no_supplements(page({"doi": "10.1063/5.0000000", "filters": filters}), doi))
+        not_rendered = [dict(f, hide=True, has=False) for f in filters]  # nothing marked: says nothing
+        self.assertFalse(declares_no_supplements(page({"doi": doi, "filters": not_rendered}), doi))
+        self.assertFalse(declares_no_supplements(page({"doi": doi, "filters": filters[:2]}), doi))
+
+        d = PublisherBatchDownloader({}, profile=get_publisher_profile("aip"))
+        scripts = Mock(side_effect=lambda script, *a: ({"doi": doi, "filters": filters} if "article-content-filter" in script
+                                                       else {"doi": doi, "links": [], "labelled": []}))
+        self.assertEqual(d._settled_supplement_links(Mock(evaluate=scripts), doi), [])
+        scripts = Mock(side_effect=lambda script, *a: ({"doi": doi, "filters": shown} if "article-content-filter" in script
+                                                       else {"doi": doi, "links": [], "labelled": []}))
+        self.assertIsNone(d._settled_supplement_links(Mock(evaluate=scripts), doi))
+
     def test_iop_uses_the_bound_data_page_and_preserves_transfer_signature(self):
         page = "https://iopscience.iop.org/article/" + IOP_DOI + "/data"
         data = {"doi": IOP_DOI, "rows": [
@@ -89,6 +117,11 @@ class PublisherSupplementTests(unittest.TestCase):
         ]}
         self.assertEqual([s.url for s in iop.supplement_links_from_page(data, page, IOP_DOI)], [IOP_URL])
         self.assertIsNone(iop.supplement_links_from_page(data, page, IOP_DOI + "x"))
+        # No supplementary data: the page does not exist; a broken page stays unknown.
+        self.assertEqual(iop.supplement_links_from_page({"status": 404, "doi": "", "rows": []}, page, IOP_DOI), [])
+        self.assertIsNone(iop.supplement_links_from_page({"status": 500, "doi": "", "rows": []}, page, IOP_DOI))
+        self.assertIsNone(iop.supplement_links_from_page({"status": 404, "doi": "", "rows": []},
+                                                         page.replace("/data", ""), IOP_DOI))
         self.assertIsNone(iop.supplement_links_from_page({**data, "doi": ""}, page, IOP_DOI))
         self.assertIsNone(iop.supplement_links_from_page(data, page.replace("iopscience.iop.org", "evil.example"), IOP_DOI))
         self.assertEqual(iop.supplement_links_from_page({**data, "rows": []}, page, IOP_DOI), [])

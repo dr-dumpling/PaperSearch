@@ -45,8 +45,14 @@ class ViewTests(unittest.TestCase):
         self.assertEqual(v["step"], {"index": 2, "label": "取 PDF"})
         self.assertEqual(v["elapsed"], "3:12")
         self.assertTrue(v["actions"])
+        self.assertTrue(v["browser"])  # the paper on the card shows its browser
         self.assertEqual(v["stop_left"], 27)
         self.assertTrue(v["folder"])
+
+    def test_no_browser_to_show_between_papers_or_in_the_open_access_stretch(self):
+        self.assertFalse(pv.view(running(awaiting_next=True), NOW)["browser"])
+        self.assertFalse(pv.view(running(publisher="", channel="开放获取"), NOW)["browser"])
+        self.assertFalse(pv.view(running(status="done"), NOW)["browser"])
 
     def test_supplements_part(self):
         v = pv.view(running(part="supplements", supplements_total=5, supplements_saved=2), NOW)
@@ -147,6 +153,24 @@ class ViewTests(unittest.TestCase):
         self.assertIsNone(pv.view(running(status="done"), NOW)["summary"])
         self.assertIsNone(pv.view(running(results=few), NOW)["summary"])
 
+    def test_main_text_and_supplementary_files_apart_and_short(self):
+        """Papers whose main text was saved but not every file: a section of their own,
+        its rows closed (user, 2026-11-08)."""
+        def item(reason, cls, journal):
+            return {"cls": cls, "reason": reason, "title": "T", "journal": journal, "doi": "", "note": ""}
+        results = {"content": "both", "main": 7, "supplements": 4, "no_supplements": 0, "sources": [],
+                   "failures": [item("学校没有订阅", "no_access", "Spine")],
+                   "supplement_failures": [item("网站人机验证拦截", "user_or_external", "APL")] * 2
+                                          + [item("网站暂不支持附录", "unsupported", "SIAM J")]}
+        summary = pv.view(running(status="done", results=results), NOW)["summary"]
+        self.assertTrue(summary["groups"][0]["open"])  # one main-text failure: open as before
+        self.assertEqual([(g["reason"], g["count"], g["open"]) for g in summary["supplement_groups"]],
+                         [("网站人机验证拦截", 2, False), ("网站暂不支持附录", 1, False)])
+        self.assertEqual(summary["supplement_missing"], 3)
+        main_only = results | {"content": "main", "supplement_failures": []}
+        summary = pv.view(running(status="done", results=main_only), NOW)["summary"]
+        self.assertEqual(summary["supplement_groups"], [])
+
     def test_the_downloads_answer_to_a_click_shows_briefly_for_the_same_paper(self):
         notice = {"text": "已跳过本篇", "at": NOW - 3, "current": "10.1002/ejhf.1"}
         self.assertEqual(pv.view(running(notice=notice), NOW)["notice"], "已跳过本篇")
@@ -224,6 +248,20 @@ class ApiTests(unittest.TestCase):
             api().act('show_browser', '10.1000/other', 'r1')
             state['status'] = 'done'
             api().act('show_browser', state['current'], 'r1')
+            request.assert_not_called()
+
+    def test_the_paper_on_the_card_shows_its_browser_without_a_reminder(self):
+        """A click on the downloading paper brings its browser up at any time (user
+        request, 2026-11-08), but not while the open-access stretch has none."""
+        state = running(run_id='r1', browser_pid=101)
+        with patch.object(capsule, 'read_state', return_value=state), \
+                patch('paper_search_carsi.browser.foreground.activate_mac', return_value=True), \
+                patch('paper_search_carsi.entitlements.request_action') as request:
+            self.assertEqual(api().act('show_browser', state['current'], 'r1'), pv.ACTION_FEEDBACK['show_browser'])
+            request.assert_called_once_with(state['current'], 'show_browser', 'r1')
+            request.reset_mock()
+            state.update(publisher='', channel='开放获取')
+            self.assertIn('没有打开浏览器', api().act('show_browser', state['current'], 'r1'))
             request.assert_not_called()
 
     def test_failed_native_activation_does_not_report_a_successful_request(self):

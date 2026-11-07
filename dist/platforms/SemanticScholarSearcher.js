@@ -13,6 +13,7 @@ import { ErrorHandler } from '../infrastructure/http/ErrorHandler.js';
 import { RequestCache } from '../infrastructure/cache/RequestCache.js';
 import { sanitizeDoi } from '../infrastructure/security/SecurityUtils.js';
 import { TIMEOUTS, USER_AGENT } from '../config/constants.js';
+import { apiKeyHint } from '../config/apiKeySignup.js';
 import { logDebug } from '../utils/Logger.js';
 import { downloadPdfFromUrl, safeFilename } from '../infrastructure/pdf/PdfDownload.js';
 export class SemanticScholarSearcher extends PaperSource {
@@ -166,7 +167,7 @@ export class SemanticScholarSearcher extends PaperSource {
     }
     async searchSnippets(options) {
         if (!this.apiKey) {
-            throw new Error('search_semantic_snippets requires SEMANTIC_SCHOLAR_API_KEY.');
+            throw new Error(`Semantic Scholar API key not configured; search_semantic_snippets needs SEMANTIC_SCHOLAR_API_KEY. ${apiKeyHint('SEMANTIC_SCHOLAR_API_KEY')}`);
         }
         await this.rateLimiter.waitForPermission();
         try {

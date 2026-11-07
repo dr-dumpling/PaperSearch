@@ -13,6 +13,7 @@ from ...engine.batch_common import open_page
 from ..base import PublisherAdapter, SupplementLink, register
 
 _SUPPLEMENT_ROWS_JS = """() => ({
+    status: performance.getEntriesByType('navigation')[0]?.responseStatus || 0,
     doi: document.querySelector('meta[name="citation_doi"]')?.content || '',
     rows: [...document.querySelectorAll('a[href]')].map(a => ({
         href: a.href, label: (a.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 240)
@@ -25,12 +26,17 @@ def supplement_links_from_page(data: dict, page_url: str, doi: str) -> list[Supp
 
     IOP's current file host uses signed URLs without a full DOI in the path.
     Bind the list to the article page and keep the signature for the transfer.
+    An article without supplementary data has no such page (404, "Page Not
+    Found") and no "Supplementary data" link on its own page (2026-11-07).
     """
     page = urlparse(page_url)
     citation = str(data.get("doi") or "").lower().removeprefix("https://doi.org/")
     if (page.scheme != "https" or page.netloc != "iopscience.iop.org"
-            or unquote(page.path).rstrip("/").lower() != f"/article/{doi.lower()}/data"
-            or citation != doi.lower()):
+            or unquote(page.path).rstrip("/").lower() != f"/article/{doi.lower()}/data"):
+        return None
+    if not citation and data.get("status") == 404:
+        return []
+    if citation != doi.lower():
         return None
     links: list[SupplementLink] = []
     seen: set[str] = set()

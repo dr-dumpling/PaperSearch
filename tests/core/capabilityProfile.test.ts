@@ -120,8 +120,22 @@ describe("capabilityProfile", () => {
     expect(byId.body_snippet_search.reason).toContain(
       "SEMANTIC_SCHOLAR_API_KEY",
     );
+    expect(byId.body_snippet_search.keySetup).toEqual([
+      {
+        key: "SEMANTIC_SCHOLAR_API_KEY",
+        signupUrl: "https://www.semanticscholar.org/product/api",
+        command: "paper-search setup SEMANTIC_SCHOLAR_API_KEY",
+      },
+    ]);
     expect(byId.journal_metrics.status).toBe("unavailable");
     expect(byId.journal_metrics.requiredKeys).toEqual(["EASYSCHOLAR_KEY"]);
+    expect(byId.journal_metrics.keySetup).toEqual([
+      {
+        key: "EASYSCHOLAR_KEY",
+        signupUrl: "https://www.easyscholar.cc/console/user/open",
+        command: "paper-search setup EASYSCHOLAR_KEY",
+      },
+    ]);
 
     expect(byId.pdf_discovery.status).toBe("available");
     expect(byId.pdf_discovery.sourceGroups?.open_access_sources).toEqual(

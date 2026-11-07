@@ -113,6 +113,33 @@ describe("CARSI serial batch through the CLI", () => {
     expect(result.stderr).toContain("[批量] 机构下载 2/2：10.1000/two");
   });
 
+  it.each([
+    ["batch_browser", false],
+    ["batch_browser_phase", true],
+  ])("%s: a large batch shows its open-access stretch through one backend before the first download", (scenario, phase) => {
+    const { result, calls, starts } = run(scenario as string, "download_batch", {
+      items: ["one", "two", "three", "four", "five"].map((id) => ({ source: "no_searcher", paperId: `10.1000/${id}` })),
+      savePath: join(tempDir, "out"),
+      useSciHub: false,
+    });
+    expect(result.status).toBe(0);
+    const progress = calls.filter((call) => call.tool === "carsi_batch_progress").map((call) => call.arguments);
+    // No open-access copy: nothing settles in the open stretch, and the school's stretch carries on.
+    expect(progress.slice(0, 5).map((args) => [args.done, args.total, args.finished])).toEqual(
+      [1, 2, 3, 4, 5].map(() => [0, 5, false]));
+    if (phase) {
+      expect(progress.slice(0, 5).map((args) => [args.phase, args.channel])).toEqual(
+        [1, 2, 3, 4, 5].map((k) => [`开放获取：已查 ${k}/5 篇，找到 0 篇`, "开放获取"]));
+    } else {
+      expect(progress[0]).not.toHaveProperty("phase");
+    }
+    const downloads = calls.filter((call) => call.tool === "carsi_download").map((call) => call.arguments);
+    expect(downloads.map((args) => [args.batch_index, args.batch_total])).toEqual(
+      [1, 2, 3, 4, 5].map((k) => [k, 5]));
+    // One backend for the open-access reports, then the download backend kept for the batch.
+    expect(starts).toBe(2);
+  });
+
   it("a backend without batch support gets the plain contract", () => {
     const { result, calls } = run("success", "download_with_fallback", {
       source: "no_searcher",

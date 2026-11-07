@@ -4,6 +4,8 @@ import type { DownloadTier } from "./DownloadTier.js";
 import type { CarsiBackend } from "./carsi/index.js";
 import type { DownloadContent, DownloadBatchPosition, DownloadWithFallbackOptions, DownloadWithFallbackResult } from "./types.js";
 export declare const MAX_BATCH_ITEMS = 1000;
+/** From this many items the progress window opens at the start, in the open-access stretch. */
+export declare const OPEN_PROGRESS_MIN_ITEMS = 5;
 export interface DownloadBatchItem {
     source?: string;
     paperId?: string;

@@ -10,6 +10,7 @@ import type {
 import type {
   CarsiBackend,
   CarsiBatchUpdate,
+  CarsiDownloadRequest,
 } from "../../src/capabilities/pdf-discovery/carsi/types.js";
 import {
   createCarsiDownloadArguments,
@@ -221,15 +222,15 @@ describe("serial download batch", () => {
       "entitled:10.1000/ok",
       "entitled:10.1000/fail",
     ]);
-    // the window counts the entitled stretch: 2 items
+    // the window counts the whole batch: the open-access item has settled first
     expect(entitled.map((c) => [c.batch?.index, c.batch?.total, c.batch?.done, c.batch?.succeeded])).toEqual([
-      [1, 2, 0, 0],
-      [2, 2, 1, 1],
+      [2, 3, 1, 1],
+      [3, 3, 2, 2],
     ]);
     expect(entitled[0].savePath).toContain("/tmp/own/papers/");
-    // The window counted the entitled stretch; its finished card covers all 3.
+    // Under five items the open-access stretch is not shown; the last entitled item ends the count.
     expect(updates).toEqual([
-      expect.objectContaining({ total: 2, done: 2, succeeded: 1, failed: 1, finished: true }),
+      expect.objectContaining({ total: 3, done: 3, succeeded: 2, failed: 1, finished: true }),
       expect.objectContaining({
         total: 3, done: 3, succeeded: 2, failed: 1, finished: true,
         results: expect.objectContaining({ main: 2, failures: [expect.objectContaining({ doi: "10.1000/fail" })] }),
@@ -241,6 +242,79 @@ describe("serial download batch", () => {
     expect(result.items[0].attempts.map((a) => a.stage)).toEqual(["unpaywall", "entitled_access"]);
     expect(result.items[1].attempts.map((a) => a.stage)).toEqual(["unpaywall"]);
     expect(lines).toContain("[批量] 开放来源获取 1/3 篇；剩余 2 篇进入机构下载");
+  });
+
+  it("two_phase: five or more items show the window from the open-access stretch on", async () => {
+    const entitled: DownloadTierContext[] = [];
+    const updates: CarsiBatchUpdate[] = [];
+    const tiers = (): DownloadTier[] => [
+      {
+        id: "oa",
+        stage: "unpaywall",
+        run: async (context) => context.doi?.includes("/oa")
+          ? { status: "ok", verified: true, path: "/tmp/oa.pdf", message: "ok" }
+          : { status: "skipped", message: "no oa" },
+      },
+      {
+        id: "entitled_access",
+        stage: "entitled_access",
+        run: async (context) => {
+          entitled.push(context);
+          return context.doi === "10.1000/ok"
+            ? { status: "ok", verified: true, path: "/tmp/ok.pdf", message: "ok" }
+            : { status: "error", message: "failed", code: "login_required" };
+        },
+      },
+    ];
+    await downloadBatch(
+      {} as never,
+      { items: ["oa1", "ok", "oa2", "oa3", "fail", "oa4"].map((id) => ({ doi: `10.1000/${id}` })), savePath: "/tmp/out" },
+      fakeBackend(updates),
+      () => {},
+      tiers,
+    );
+    expect(updates.slice(0, 6).map((u) => [u.done, u.total, u.succeeded, u.failed, u.finished, u.phase, u.channel])).toEqual([
+      [1, 6, 1, 0, false, "开放获取：已查 1/6 篇，找到 1 篇", "开放获取"],
+      [1, 6, 1, 0, false, "开放获取：已查 2/6 篇，找到 1 篇", "开放获取"],
+      [2, 6, 2, 0, false, "开放获取：已查 3/6 篇，找到 2 篇", "开放获取"],
+      [3, 6, 3, 0, false, "开放获取：已查 4/6 篇，找到 3 篇", "开放获取"],
+      [3, 6, 3, 0, false, "开放获取：已查 5/6 篇，找到 3 篇", "开放获取"],
+      [4, 6, 4, 0, false, "开放获取：已查 6/6 篇，找到 4 篇", "开放获取"],
+    ]);
+    // The school's stretch carries on from the four settled items.
+    expect(entitled.map((c) => [c.batch?.index, c.batch?.total, c.batch?.done, c.batch?.succeeded])).toEqual([
+      [5, 6, 4, 4],
+      [6, 6, 5, 5],
+    ]);
+    expect(updates.slice(6)).toEqual([
+      expect.objectContaining({ total: 6, done: 6, succeeded: 5, failed: 1, finished: true }),
+      expect.objectContaining({ total: 6, done: 6, succeeded: 5, failed: 1, finished: true, results: expect.any(Object) }),
+    ]);
+  });
+
+  it("two_phase with supplementary files: open-access items settle only after their files", async () => {
+    const updates: CarsiBatchUpdate[] = [];
+    const visits: Array<CarsiDownloadRequest["batch"]> = [];
+    const backend: CarsiBackend = {
+      ...fakeBackend(updates),
+      downloadLegalDoi: async (request) => {
+        visits.push(request.batch);
+        return { kind: "attempt_error", identifier: request.identifier, code: "supplements_only", message: "", supplements: [] };
+      },
+    };
+    const tiers = (): DownloadTier[] => [{ id: "oa", stage: "unpaywall",
+      run: async () => ({ status: "ok", verified: true, path: "/tmp/oa.pdf", message: "ok" }) }];
+    const result = await downloadBatch(
+      {} as never,
+      { content: "both", items: ["a", "b", "c", "d", "e"].map((id) => ({ doi: `10.1000/${id}` })), savePath: "/tmp/out" },
+      backend,
+      () => {},
+      tiers,
+    );
+    expect(updates.slice(0, 5).map((u) => [u.done, u.total, u.phase])).toEqual([1, 2, 3, 4, 5].map((k) =>
+      [0, 5, `开放获取：已查 ${k}/5 篇，找到 ${k} 篇`]));
+    expect(visits).toEqual([0, 1, 2, 3, 4].map((done) =>
+      expect.objectContaining({ id: result.batchId, index: done + 1, total: 5, done })));
   });
 
   it("after one article waited out on the user, later ones wait on them briefly", async () => {
@@ -427,6 +501,7 @@ describe("serial download batch", () => {
         { cls: "no_access", reason: "学校没有订阅", title: "A Denied Paper", doi: "10.1000/denied", note: "附录 1 个已保存" },
         { cls: "unsupported", reason: "没有有效 DOI" },
       ],
+      supplement_failures: [],  // main text only: no supplementary files to list
     });
     expect(results!.started).toBeGreaterThanOrEqual(before);
   });
@@ -535,6 +610,17 @@ describe("backend batch support", () => {
       inputSchema: { ...progress.inputSchema, properties: { ...progress.inputSchema.properties, results: { type: "object" } } },
     };
     expect(selectCarsiBatchSupport([download, withResults], "legal_only").progressResults).toBe(true);
+  });
+
+  it("sends the open-access phase and channel only to a backend that declares them", () => {
+    const download = { name: "carsi_download", inputSchema: { type: "object", properties: base } };
+    expect(selectCarsiBatchSupport([download, progress], "legal_only").progressPhase).toBeUndefined();
+    const withPhase = {
+      ...progress,
+      inputSchema: { ...progress.inputSchema, properties: { ...progress.inputSchema.properties,
+        phase: { type: "string" }, channel: { type: "string" } } },
+    };
+    expect(selectCarsiBatchSupport([download, withPhase], "legal_only").progressPhase).toBe(true);
   });
 
   it("adds the batch fields to the download arguments", () => {

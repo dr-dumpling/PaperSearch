@@ -119,6 +119,19 @@ class AccessMenuEntryTests(unittest.TestCase):
         states = [e["state"] for e in self.result.events]
         self.assertEqual(states[-2:], ["access_menu_opened", "sso_entry_clicked"])
 
+    def test_the_access_menu_comes_before_an_earlier_sign_in_menu(self):
+        """SIAM: "Register / Sign In" (a toggle that also leads to the personal
+        sign-in) comes first on the page, "Get Access" holds the institution entry
+        (2026-11-08)."""
+        self.html = ("<title>Article</title><h1>Article</h1>"
+                     f'<a href="{LOGIN_PAGE}" data-toggle="dropdown">Register / Sign In</a>'
+                     "<button onclick=\"document.getElementById('menu').hidden=false\">Get Access</button>" + MENU)
+        self.page.goto(ARTICLE)
+        self.assertTrue(self.d._click_sso_entry(self.page, self.result))
+        self.assertEqual(self.page.url, CHOOSER)
+        self.assertEqual(self.requests, [ARTICLE, CHOOSER])
+        self.assertEqual(self.result.events[0]["detail"], "Get Access")
+
     def test_a_login_register_toggle_works_the_same_way(self):
         self.html = ("<title>Article</title><h1>Article</h1>"
                      "<a href=\"#\" aria-haspopup=\"true\" onclick=\"document.getElementById('menu').hidden=false\">"

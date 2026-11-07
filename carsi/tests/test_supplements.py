@@ -51,6 +51,21 @@ class CollectTests(unittest.TestCase):
         manifest = json.loads((folder / "manifest.json").read_text())
         self.assertEqual([f["status"] for f in manifest["files"]], ["saved", "saved", "failed", "failed", "skipped"])
 
+    def test_a_page_instead_of_the_file_is_recorded_as_it_was(self):
+        """Which page Figshare's download address answered, for the record (2026-11-08)."""
+        page = SimpleNamespace(ok=True, status=202, url="https://ndownloader.figshare.com/files/51439886?token=secret",
+                               headers={"content-type": "text/html; charset=UTF-8", "x-amzn-waf-action": "challenge",
+                                        "server": "CloudFront"},
+                               body=lambda: b"<html><head><title>\n Human &amp; Verification </title></head></html>")
+        request = MagicMock(); request.get.return_value = page
+        files = supplements.collect(request, [SupplementLink("https://api.figshare.com/v2/file/download/51439886")],
+                                    self.out, DOI)
+        self.assertEqual(files[0]["reason"], "verification_page")  # the firewall's challenge, told apart
+        self.assertEqual({k: files[0][k] for k in ("http_status", "final_url", "page_title", "page_headers")}, {
+            "http_status": 202, "final_url": "https://ndownloader.figshare.com/files/51439886",
+            "page_title": "Human & Verification",
+            "page_headers": {"server": "CloudFront", "x-amzn-waf-action": "challenge"}})
+
     def test_a_dropped_connection_is_tried_once_more(self):
         dropped = Exception("APIRequestContext.get: Client network socket disconnected before secure TLS "
                             "connection was established\nCall log:")
@@ -215,6 +230,17 @@ class BridgeTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.pdf_path, "saved.pdf")
         self.assertEqual(files[0]["reason"], "browser_operation_timeout")
+
+    def test_a_site_that_does_not_answer_is_reported_as_unreachable(self):
+        """Not as the driver error's class name, "Error" (pubs.acs.org, Windows 2026-11-07)."""
+        from patchright.sync_api import Error
+        d = PublisherBatchDownloader({}, profile=get_publisher_profile("acs"))
+        result = DownloadResult(doi=DOI, status="success", state="pdf_response_captured", pdf_path="saved.pdf")
+        dropped = Error("Page.goto: net::ERR_CONNECTION_CLOSED at https://doi.org/" + DOI)
+        with patch("paper_search_carsi.engine.batch.open_page", side_effect=dropped):
+            files = d.collect_supplements(MagicMock(), DOI, Path("/tmp/out"), result)
+        self.assertTrue(result.ok)
+        self.assertEqual(files, [{"status": "failed", "reason": "publisher_unreachable", "url": "", "label": ""}])
 
     def test_default_collects_nothing(self):
         out, downloader = self.run_bridge("", DownloadResult(doi=DOI, status="failed", state="sso_required"))

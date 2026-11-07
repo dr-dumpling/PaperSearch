@@ -4,6 +4,7 @@ import {
   getCapabilityProfileSources,
 } from "../../registry/platformMetadata.js";
 import type { EntitledAccessReadiness } from "./carsiReadiness.js";
+import { apiKeySetupCommand, apiKeySignupUrl } from "../../config/apiKeySignup.js";
 
 export type CapabilityStatus = "available" | "degraded" | "unavailable";
 
@@ -22,10 +23,18 @@ export interface CapabilityEntry {
   sourceGroups?: Record<string, string[]>;
   requiredKeys?: string[];
   optionalKeys?: string[];
+  /** Where to get each missing required key and the command that enters it. */
+  keySetup?: KeySetup[];
   readiness?: {
     state: EntitledAccessReadiness["state"] | "not_evaluated";
     code: string;
   };
+}
+
+export interface KeySetup {
+  key: string;
+  signupUrl?: string;
+  command: string;
 }
 
 export interface CapabilityProfile {
@@ -130,6 +139,7 @@ function bodySnippetSearchEntry(configuredKeys: Set<string>): CapabilityEntry {
     configured: hasKey ? ["semantic_snippet_index"] : [],
     missing: hasKey ? [] : ["SEMANTIC_SCHOLAR_API_KEY"],
     requiredKeys: ["SEMANTIC_SCHOLAR_API_KEY"],
+    ...(hasKey ? {} : { keySetup: [keySetup("SEMANTIC_SCHOLAR_API_KEY")] }),
   };
 }
 
@@ -144,7 +154,13 @@ function journalMetricsEntry(configuredKeys: Set<string>): CapabilityEntry {
     configured: hasKey ? ["easyscholar"] : [],
     missing: hasKey ? [] : ["EASYSCHOLAR_KEY"],
     requiredKeys: ["EASYSCHOLAR_KEY"],
+    ...(hasKey ? {} : { keySetup: [keySetup("EASYSCHOLAR_KEY")] }),
   };
+}
+
+function keySetup(key: string): KeySetup {
+  const signupUrl = apiKeySignupUrl(key);
+  return { key, ...(signupUrl ? { signupUrl } : {}), command: apiKeySetupCommand(key) };
 }
 
 function pdfDiscoveryEntry(

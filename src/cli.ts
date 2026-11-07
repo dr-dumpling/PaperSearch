@@ -37,6 +37,7 @@ import {
   unsetUserConfigValue,
 } from "./management/config/index.js";
 import type { ConfigKey } from "./management/config/index.js";
+import { apiKeySignupUrl } from "./config/apiKeySignup.js";
 import { setupGlobalProxy } from "./infrastructure/http/HttpClient.js";
 import {
   autoSyncSkill,
@@ -72,7 +73,13 @@ import { resolveRunLogRoot } from "./infrastructure/runlog/RunLedger.js";
 import { runLiveSmoke } from "./management/smoke/index.js";
 
 dotenv.config();
-loadUserConfigIntoEnv();
+// A broken config file is reported by main() like any other error, not as a stack trace.
+let configLoadError: unknown;
+try {
+  loadUserConfigIntoEnv();
+} catch (error) {
+  configLoadError = error;
+}
 setupGlobalProxy();
 
 type FlagValue = boolean | string | string[];
@@ -785,7 +792,7 @@ const DEFAULT_SETUP_PROMPTS: SetupPrompt[] = [
   {
     key: "PAPER_SEARCH_CARSI_ENABLED",
     label:
-      "Institutional download extension switch, set by paper-search carsi install; enter true only once the extension is installed",
+      "School subscription downloads (CARSI) switch, set by paper-search carsi install; enter true only once it is installed",
     secret: false,
   },
 ];
@@ -864,7 +871,8 @@ async function handleSetupCommand(
       const current = entry?.configured
         ? ` current=${entry.value} source=${entry.source}`
         : " not configured";
-      const question = `${prompt.label}\n${prompt.key} (${current})`;
+      const signupUrl = apiKeySignupUrl(prompt.key);
+      const question = `${prompt.label}\n${signupUrl ? `Get it at ${signupUrl}\n` : ""}${prompt.key} (${current})`;
       const answer = prompt.secret
         ? await session.secret(question)
         : await session.line(`${question}: `);
@@ -961,7 +969,7 @@ async function offerCarsiInstall(
   const answer = flags.installCarsi === true
     ? "y"
     : await session.line(
-      "Install the institutional download extension? It downloads papers through your school's subscription in your Google Chrome (about 0.5 GB to download). [y/N]: ",
+      "Install school subscription downloads (CARSI)? It downloads papers through your school's subscription in your Google Chrome (about 0.5 GB to download). [y/N]: ",
     );
   if (!/^y(es)?$/i.test(answer.trim())) return { installed: false, asked: true };
   try {
@@ -998,7 +1006,7 @@ function carsiContext(): InstallContext {
   };
 }
 
-/** Install or inspect the institutional download extension (ADR 0013). */
+/** Install or inspect school subscription downloads (CARSI, ADR 0013). */
 async function handleCarsiCommand(
   positionals: string[],
   flags: Record<string, FlagValue>,
@@ -1053,7 +1061,7 @@ async function handleCarsiCommand(
       }, context);
       if (flags.format === "text") {
         return [
-          outcome.status === "uninstalled" ? "已卸载机构下载扩展。" : outcome.status === "cancelled" ? "已取消。" : "没有安装。",
+          outcome.status === "uninstalled" ? "已卸载学校订阅下载。" : outcome.status === "cancelled" ? "已取消。" : "没有安装。",
           ...outcome.removed.map((item) => `  已删除：${item}`),
           ...outcome.kept.map((item) => `  保留：${item}`),
         ].join("\n");
@@ -1477,6 +1485,7 @@ async function main() {
   let update: ReturnType<typeof beginUpdateNotification> | undefined;
 
   try {
+    if (configLoadError) throw configLoadError;
     maybePrintSetupHint(parsed);
     maybeAutoSyncSkill(parsed);
     const exempt = parsed.flags.help || parsed.flags.version || ["help", "version", "config", "setup", "update"].includes(parsed.command);
@@ -1498,7 +1507,7 @@ async function main() {
       process.stdout.write(`${formatOutput(output.payload, parsed.flags)}\n`);
     }
   } catch (error: any) {
-    const diagnostic = diagnoseError(
+    const diagnostic = error?.code === "CONFIG_INVALID" ? undefined : diagnoseError(
       error,
       diagnosticContextFromCli(
         parsed.command,

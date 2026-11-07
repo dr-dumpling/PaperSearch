@@ -28,6 +28,29 @@ _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href]')].map(a =
     in_section: !!a.closest('[class*="supplementary-material"], .dataSuppLink')}))"""
 
 
+# The article toolbar's content filters ("Figures & tables", "Video", "Supplementary
+# Material", ...): a kind the article has is marked "has-content", one it lacks "hide".
+_CONTENT_FILTERS_JS = """() => ({
+    doi: document.querySelector('meta[name="citation_doi"]')?.content || '',
+    filters: [...document.querySelectorAll('li.article-content-filter')].map(li => ({
+        label: (li.textContent || '').replace(/\\s+/g, ' ').trim(),
+        hide: li.classList.contains('hide'), has: li.classList.contains('has-content')}))})"""
+
+
+def declares_no_supplements(page: Any, doi: str) -> bool:
+    """This article's own Silverchair page says it has no supplementary material:
+    its "Supplementary Material" filter hidden while another kind is marked as
+    present (pubs.aip.org, whose files are otherwise found only through Figshare
+    links, 2026-11-08). Any other page says nothing."""
+    data = page.evaluate(_CONTENT_FILTERS_JS)
+    if not isinstance(data, dict) or str(data.get("doi") or "").lower() != (doi or "").lower():
+        return False
+    filters = [f for f in data.get("filters") or () if isinstance(f, dict)]
+    supplements = [f for f in filters if re.fullmatch(r"supplementary (?:material|data)", str(f.get("label") or ""), re.I)]
+    return (bool(supplements) and all(f.get("hide") and not f.get("has") for f in supplements)
+            and any(f.get("has") for f in filters))
+
+
 def supplement_links(page: Any, doi: str, hosts: frozenset[str]) -> list[SupplementLink]:
     """This article's supplementary files on a Silverchair page: Silverchair's own
     address ``/<journal>/article-supplement/<article id>/<type>/<name>/`` on the

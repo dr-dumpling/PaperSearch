@@ -32,7 +32,7 @@ export function renderDoctorTextReport(report: DoctorReportInput): string {
   if (report.carsi) {
     const extension = report.carsi;
     lines.push(
-      `Institutional download extension: ${extension.complete ? (extension.enabled ? "installed" : "installed, not enabled") : extension.installed ? "install not finished" : "not installed"}`,
+      `School subscription downloads (CARSI): ${extension.complete ? (extension.enabled ? "installed" : "installed, not enabled") : extension.installed ? "install not finished" : "not installed"}`,
       ...extension.notes.map((note) => `  ${note}`),
       "",
     );
@@ -64,6 +64,13 @@ export function renderDoctorTextReport(report: DoctorReportInput): string {
     }
     if (entry.missing.length > 0) {
       lines.push(`  Missing: ${entry.missing.join(", ")}`);
+    }
+    for (const setup of entry.keySetup ?? []) {
+      lines.push(
+        setup.signupUrl
+          ? `  To enable: get ${setup.key} at ${setup.signupUrl}, then run ${setup.command}`
+          : `  To enable: run ${setup.command}`,
+      );
     }
   }
   lines.push("");

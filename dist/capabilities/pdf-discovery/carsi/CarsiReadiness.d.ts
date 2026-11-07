@@ -20,6 +20,8 @@ export interface CarsiBatchSupport {
     keepBrowser?: boolean;
     /** carsi_batch_progress declares ``results`` (the finished window's summary). */
     progressResults?: boolean;
+    /** carsi_batch_progress declares ``phase`` and ``channel`` (the open-access stretch). */
+    progressPhase?: boolean;
 }
 export declare function selectCarsiBatchSupport(tools: readonly CarsiToolDefinition[], strategy: CarsiDownloadStrategy): CarsiBatchSupport;
 export declare function validateCarsiContract(serverName: string | undefined, tools: readonly CarsiToolDefinition[]): CarsiReadiness;

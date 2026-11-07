@@ -386,6 +386,18 @@ class LoginBlockReasonTests(unittest.TestCase):
         self.assertEqual(self.blocked(url, "Find your institution"), "")
 
 
+    def test_the_chinese_unsupported_request_page_means_the_school_has_not_enabled_the_publisher(self):
+        idp = "https://idp.example.edu.cn/idp/profile/SAML2/Redirect/SSO?execution=e1s1"
+        said = "Web登陆服务 - 不支持的请求 您访问的应用未注册使用此服务"
+        self.assertEqual(self.blocked(idp, said), "institution_not_registered")
+        self.assertEqual(self.blocked("https://www.example.org/help", said), "")
+
+    def test_a_chooser_that_says_the_chosen_school_has_no_access_is_no_access(self):
+        wayf = "https://login.degruyterbrill.com/wayf/6aef3cf066b7ec87b9d125085d568e33"
+        said = "Example University Example University does not have access to this resource"
+        self.assertEqual(self.blocked(wayf, said), "institution_pdf_entitlement_missing")
+        self.assertEqual(self.blocked(wayf, "Other University does not have access to this resource"), "")
+
     def test_a_locked_account_or_an_expired_password_ends_the_login(self):
         idp = "https://cas.example.edu.cn/cas/login?service=x"
         self.assertEqual(self.blocked(idp, "Web Login Service - Your account is locked."), "idp_account_locked")

@@ -1,5 +1,5 @@
 import { spawnSync } from "child_process";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
@@ -129,6 +129,7 @@ describe("doctor command", () => {
     expect(result.stdout).toContain("PaperSearch Doctor");
     expect(result.stdout).toContain("EASYSCHOLAR_KEY: easy...cret");
     expect(result.stdout).toContain("journal_metrics: available");
+    expect(result.stdout).not.toContain("get EASYSCHOLAR_KEY at");
     expect(result.stdout).toContain("entitled_access: unavailable");
     expect(result.stdout).toContain(
       "Readiness: disabled (integration_disabled)",
@@ -136,6 +137,66 @@ describe("doctor command", () => {
     expect(result.stdout).toMatch(/CARSI/i);
     expect(result.stdout).not.toContain("easy-secret");
     expect(result.stdout).not.toContain("elsevier-secret");
+  });
+
+  it("reports a broken config file as a plain error with its path", () => {
+    const configFile = join(tempDir, "config.json");
+    writeFileSync(configFile, '{\n  "EASYSCHOLAR_KEY": "secret-value"\n}\\n');
+    const result = spawnSync(
+      process.execPath,
+      [join(process.cwd(), "node_modules/.bin/tsx"), "src/cli.ts", "doctor", "--format", "text"],
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          ...isolatedHome(tempDir),
+          PAPER_SEARCH_CONFIG_FILE: configFile,
+          PAPER_SEARCH_HIDE_SETUP_HINT: "1",
+        },
+        encoding: "utf8",
+      },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`Config file is not valid JSON (line 3, column 2): ${configFile}`);
+    expect(result.stderr).not.toContain("parseConfigFile");
+    expect(result.stderr).not.toContain("Diagnostic:");
+    expect(JSON.parse(result.stdout).error.code).toBe("CONFIG_INVALID");
+    expect(result.stdout + result.stderr).not.toContain("secret-value");
+  });
+
+  it("says where to get each missing required key in the text report", () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(process.cwd(), "node_modules/.bin/tsx"),
+        "src/cli.ts",
+        "doctor",
+        "--format",
+        "text",
+      ],
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          ...isolatedHome(tempDir),
+          PAPER_SEARCH_CONFIG_FILE: join(tempDir, "config.json"),
+          PAPER_SEARCH_HIDE_SETUP_HINT: "1",
+          EASYSCHOLAR_KEY: "",
+          SEMANTIC_SCHOLAR_API_KEY: "",
+          PAPER_SEARCH_CARSI_ENABLED: "false",
+        },
+        encoding: "utf8",
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      "To enable: get EASYSCHOLAR_KEY at https://www.easyscholar.cc/console/user/open, then run paper-search setup EASYSCHOLAR_KEY",
+    );
+    expect(result.stdout).toContain(
+      "To enable: get SEMANTIC_SCHOLAR_API_KEY at https://www.semanticscholar.org/product/api, then run paper-search setup SEMANTIC_SCHOLAR_API_KEY",
+    );
   });
 
   it("reports enabled CARSI as absent without failing doctor when the executable is missing", () => {

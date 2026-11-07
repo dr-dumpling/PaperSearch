@@ -311,6 +311,23 @@ class WileyCaptureTests(unittest.TestCase):
         self.assertIsNone(block)
         self.assertNotIn("response", self.handlers)
 
+    def test_a_response_after_the_capture_ended_is_never_read(self):
+        """A response handled once the capture is over reads no body: one such read
+        that never returned stopped the next article (Chicago after AIAA, 2026-11-07)."""
+        kept = {}
+
+        def responses(url):
+            # The callbacks themselves: the registry drops them when the capture ends.
+            kept.setdefault("on_response", list(self.handlers["response"]))
+            return self.response(url, b"<html>not the PDF</html>")
+        body, _, _ = self.capture(responses)
+        self.assertIsNone(body)
+        self.assertNotIn("response", self.handlers)
+        late = self.response(PDF, self.article)
+        for on_response in kept["on_response"]:
+            on_response(late)
+        late.body.assert_not_called()
+
     def test_response_body_navigation_cannot_bypass_supplement_filter(self):
         def responses(url):
             return self.response(SUPPLEMENT, self.disclosure, origin=url) if url == PDF else self.response(url, self.article)

@@ -1,4 +1,5 @@
 import { getGenericSearchToolPlatform, resolvePlatformId } from '../../registry/platformMetadata.js';
+import { apiKeyHint } from '../../config/apiKeySignup.js';
 export const API_REQUIREMENTS = [
     {
         id: 'semantic-snippets',
@@ -575,7 +576,9 @@ function missingKeyActions(requirement) {
         return [];
     return requirement.keyGroups
         .filter(group => !isKeyGroupConfigured(group))
-        .map(group => `Set ${group.join(' or ')} with \`paper-search config set KEY VALUE\`.`);
+        .map(group => group.length === 1
+        ? `${group[0]}: ${apiKeyHint(group[0])}`
+        : `Set ${group.join(' or ')} with \`paper-search config set KEY VALUE\`.`);
 }
 function platformActions(platform) {
     const requirement = requirementForPlatform(platform);

@@ -663,9 +663,11 @@ class InstitutionMixin:
             # school failed the article, 2026-11-01): the page has gone on.
             return True
 
+    # The school's name may follow "for" with no space: RSNA writes
+    # "for<em>Example University</em>" (2026-11-07).
     _NO_INSTITUTION_SEARCH_RESULTS = re.compile(
-        r"^(?:no (?:institutions?|results?|matches) found(?:[.!]?$|\s+for\b)"
-        r"|we couldn['’]t find any results? for\b)", re.I)
+        r"^(?:no (?:institutions?|results?|matches) found(?:[.!]?$|\s+for)"
+        r"|we couldn['’]t find any results? for)", re.I)
     _INSTITUTION_LIST_LINK = re.compile(r"^(?:select|choose) (?:your|an) institution from (?:a|the) list$", re.I)
 
     def _handle_institution_search_miss(self, page: Any, result: DownloadResult, url: str) -> bool:
@@ -680,27 +682,35 @@ class InstitutionMixin:
             if notice.is_visible() is not True:
                 return False  # no candidate yet does not establish an empty result
             message = notice.inner_text(timeout=800)
-            named = re.split(r"\bfor\b", message, maxsplit=1, flags=re.I)[1:]
-            for selector in self._institution_search_selectors(page):
-                box = page.locator(selector).first
-                if box.is_visible() is not True:
-                    continue
-                typed = str(box.input_value(timeout=800) or "").strip()
-                if f"{typed} @ {url}" not in queries:
-                    continue
-                if named and self._canonical_school_name(named[0]) != self._canonical_school_name(typed):
-                    continue  # the reply names a different query
-                listing = page.get_by_role("link", name=self._INSTITUTION_LIST_LINK).filter(visible=True).first
-                if listing.is_visible() is True:
-                    href = listing.get_attribute("href", timeout=800)
-                    if (href and self._manual_institution_target_allowed(urljoin(url, href))
-                            and self._click_control(page, listing, result, "open institution list")):
-                        self._event(result, "auto_institution_list_opened", url)
-                        return True
-                    return False  # there is another route; don't call the school missing
-                self._event(result, "auto_institution_not_found", f"{message[:120]} @ {url}")
-                result._institution_not_listed = True
+            named = re.split(r"\bfor", message, maxsplit=1, flags=re.I)[1:]
+            ours = {q.rsplit(" @ ", 1)[0] for q in queries if q.endswith(f" @ {url}")}
+            typed = [str(box.input_value(timeout=800) or "").strip()
+                     for box in (page.locator(selector).first for selector in self._institution_search_selectors(page))
+                     if box.is_visible() is True]
+            if any(typed) and not any(value in ours for value in typed):
+                return False  # the box holds another query now: the reply is not about ours
+            if named:
+                # The reply names the query it answers. RSNA's box, once it held the
+                # name, had lost the placeholder it was found by, and the miss went
+                # unseen until the page wait ran out (2026-11-08).
+                if not any(self._canonical_school_name(named[0]) == self._canonical_school_name(q) for q in ours):
+                    return False  # the reply names a different query
+            elif not any(value in ours for value in typed):
                 return False
+            listing = page.get_by_role("link", name=self._INSTITUTION_LIST_LINK).filter(visible=True).first
+            if listing.is_visible() is True:
+                href = listing.get_attribute("href", timeout=800)
+                if (href and self._manual_institution_target_allowed(urljoin(url, href))
+                        and self._click_control(page, listing, result, "open institution list")):
+                    self._event(result, "auto_institution_list_opened", url)
+                    return True
+                if not any(e["state"] == "auto_institution_list_refused" and e.get("detail", "").endswith(url)
+                           for e in result.events):
+                    self._event(result, "auto_institution_list_refused", f"{str(href)[:160]} @ {url}")
+                return False  # there is another route; don't call the school missing
+            self._event(result, "auto_institution_not_found", f"{message[:120]} @ {url}")
+            result._institution_not_listed = True
+            return False
         except Exception as exc:
             if not _is_browser_error(exc):
                 raise

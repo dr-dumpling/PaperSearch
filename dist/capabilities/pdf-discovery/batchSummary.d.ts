@@ -1,6 +1,12 @@
 import type { CarsiBackend, CarsiBatchResults } from "./carsi/index.js";
-import type { DownloadBatchResult } from "./batch.js";
+import type { DownloadBatchItemResult, DownloadBatchResult } from "./batch.js";
 import type { DownloadWithFallbackOptions, DownloadWithFallbackResult } from "./types.js";
+/**
+ * The reason a paper whose main text was saved still lacks supplementary files:
+ * its first file not saved, a real failure before "no rule for this site".
+ * A paper without its main text is told by its main text's reason instead.
+ */
+export declare function supplementShortfall(item: DownloadBatchItemResult): string | undefined;
 /**
  * Tell the progress window how the whole batch ended: what was saved, and
  * each failure's class and reason in a few words. Sent once, after every

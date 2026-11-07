@@ -45,6 +45,12 @@ describe("setup command", () => {
     expect(result.stderr).toContain(
       "auto-generates a random Gmail-format address",
     );
+    expect(result.stderr).toContain(
+      "Get it at https://www.semanticscholar.org/product/api\nSEMANTIC_SCHOLAR_API_KEY",
+    );
+    expect(result.stderr).toContain(
+      "Get it at https://www.easyscholar.cc/console/user/open\nEASYSCHOLAR_KEY",
+    );
 
     const output = JSON.parse(result.stdout);
     expect(output.updated).toEqual([
@@ -143,7 +149,7 @@ describe("setup command", () => {
     expect(result.stdout).toContain('"code":"UNKNOWN_CONFIG_COMMAND"');
   });
 
-  it("asks last whether to install the institutional download extension", () => {
+  it("asks last whether to install school subscription downloads", () => {
     const result = runCli(["setup", "--skip-skills"], "\n\n\n\n\n\n\n", {
       HOME: tempDir,
       USERPROFILE: tempDir,
@@ -152,7 +158,7 @@ describe("setup command", () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain("Install the institutional download extension?");
+    expect(result.stderr).toContain("Install school subscription downloads (CARSI)?");
     const output = JSON.parse(result.stdout);
     expect(output.carsi).toEqual({ installed: false, asked: true });
     expect(output.nextSteps.join(" ")).toContain("paper-search carsi install");
@@ -178,7 +184,7 @@ describe("setup command", () => {
       }),
     );
     expect(result.stderr).toContain(
-      "enter true only once the extension is installed",
+      "enter true only once it is installed",
     );
   });
 

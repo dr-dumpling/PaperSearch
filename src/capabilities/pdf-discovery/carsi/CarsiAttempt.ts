@@ -119,6 +119,10 @@ const SHORT_REASONS: Record<string, string> = {
   invalid_pdf: "拿到的 PDF 无效",
   invalid_download_result: "后端结果无法使用",
   download_failed: "没取到 PDF",
+  // Supplementary files (the finished card's 附录 rows).
+  supplements_not_supported: "网站暂不支持附录",
+  html_page: "拿到网页不是文件",
+  verification_page: "网站人机验证拦截",
 };
 
 export function carsiShortReason(code: string | undefined, unknown = SHORT_REASONS.download_failed): string {

@@ -73,9 +73,9 @@ export function readUserConfig(): Record<string, string> {
   const filePath = getConfigPath();
   if (!existsSync(filePath)) return {};
 
-  const parsed = JSON.parse(readFileSync(filePath, "utf8"));
+  const parsed = parseConfigFile(filePath);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`Invalid config file: ${filePath}`);
+    throw configError(`Config file is not a JSON object: ${filePath}. ${CONFIG_FIX_HINT}`);
   }
 
   const config: Record<string, string> = {};
@@ -85,6 +85,36 @@ export function readUserConfig(): Record<string, string> {
     }
   }
   return config;
+}
+
+const CONFIG_FIX_HINT =
+  'Fix it by hand so it holds one object of "KEY": "value" pairs with nothing after the closing brace, ' +
+  "or rename it and run `paper-search setup` to create a new one.";
+
+/**
+ * Parse the user config. A UTF-8 BOM (which Windows editors add) is allowed.
+ * A broken file names its path and the line and column; the parser's own
+ * message is left out because it can quote the file, keys included.
+ */
+function parseConfigFile(filePath: string): unknown {
+  const text = readFileSync(filePath, "utf8").replace(/^\uFEFF/, "");
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const position = /position (\d+)/.exec(String((error as Error)?.message));
+    const where = position ? ` (${lineAndColumn(text, Number(position[1]))})` : "";
+    throw configError(`Config file is not valid JSON${where}: ${filePath}. ${CONFIG_FIX_HINT}`);
+  }
+}
+
+/** `CONFIG_INVALID`: the CLI reports it as is, without a provider diagnostic. */
+function configError(message: string): Error {
+  return Object.assign(new Error(message), { code: "CONFIG_INVALID" });
+}
+
+function lineAndColumn(text: string, offset: number): string {
+  const before = text.slice(0, offset).split("\n");
+  return `line ${before.length}, column ${before[before.length - 1].length + 1}`;
 }
 
 export function isConfigTrue(key: ConfigKey): boolean {

@@ -285,7 +285,7 @@ describe("paper-search carsi install", () => {
     const m = fakeMachine({ answers: ["n"] });
     expect((await installCarsi(m.host, { ...YES, yes: false }, m.context)).status).toBe("cancelled");
     expect(existsSync(m.root)).toBe(false);
-    expect(m.logs[0]).toBe("将要安装 PaperSearch 机构下载扩展：");
+    expect(m.logs[0]).toBe("将要安装 PaperSearch 学校订阅下载（CARSI）：");
   });
 
   it("offers ego lite only on macOS, and only when it is there", async () => {

@@ -97,6 +97,37 @@ class BatchProgressTests(unittest.TestCase):
         self.assertEqual((snap["status"], snap["done"], snap["success"], snap["failed"]), ("done", 3, 2, 1))
         self.assertFalse(pr.sync_batch("b2", 3, 4, 4, 0))
 
+    def test_open_access_stretch_shows_its_phase_and_channel(self):
+        from paper_search_carsi import progress_view
+
+        self.assertTrue(pr.sync_batch("b5", 40, 3, 3, 0, current="10.1000/3",
+                                      phase="开放获取：已查 5/40 篇，\n找到 3 篇", channel="开放获取"))
+        snap, _ = pr.read_snapshot()
+        self.assertEqual((snap["status"], snap["done"], snap["total"], snap["awaiting_next"]), ("running", 3, 40, True))
+        self.assertEqual((snap["phase"], snap["channel"]), ("开放获取：已查 5/40 篇， 找到 3 篇", "开放获取"))
+        shown = progress_view.view(snap, 0)
+        self.assertEqual((shown["publisher"], shown["line"], shown["done"], shown["total"]),
+                         ("开放获取", "开放获取：已查 5/40 篇， 找到 3 篇", 3, 40))
+        self.assertFalse(shown["actions"])
+        self.assertTrue(pr.sync_batch("b5", 40, 3, 3, 0, phase=["not", "text"]))
+        self.assertEqual(pr.read_snapshot()[0]["phase"], "已完成 3/40 篇，等待下一篇")
+        self.assertEqual(len(pr._short_line("长" * 200)), 80)
+
+        # The first paper through the school continues the count and drops the channel.
+        self.new_process()
+        batch = pr.BatchContext.from_args("b5", 4, 40, 3, 3, 0)
+        with pr.tracked_download("10.1000/4", None, batch) as outcome:
+            snap, _ = pr.read_snapshot()
+            self.assertEqual((snap["channel"], snap["phase"]), ("", "第 4/40 篇：进入机构访问"))
+            self.assertEqual(progress_view.view(snap, 0)["publisher"], "")
+            outcome["result"] = {"success": True}
+        self.assertEqual(pr.read_snapshot()[0]["done"], 4)
+
+        self.new_process()
+        self.assertTrue(pr.sync_batch("b5", 40, 40, 39, 1, finished=True, channel="开放获取"))
+        snap, _ = pr.read_snapshot()
+        self.assertEqual((snap["status"], snap["channel"]), ("done", ""))
+
     def test_the_batch_end_keeps_the_batchs_start_time(self):
         self.item(1, 2, True)
         data = self.state(); data["started_at"] = "2026-11-07T10:00:00"
@@ -119,6 +150,8 @@ class BatchProgressTests(unittest.TestCase):
             "failures": [{"cls": "no_access", "reason": "学校没有订阅", "title": "A  <i>paper</i>\n", "journal": "Arthritis &amp; Rheumatology",
                           "doi": "10.1000/2", "extra": "dropped"},
                          {"cls": "made_up", "reason": "下载时程序出错"}, {"cls": "no_access"}, "x"],
+            "supplement_failures": [{"cls": "user_or_external", "reason": "网站人机验证拦截", "title": "B", "doi": "10.1000/1"},
+                                    {"reason": ""}],
         }
         self.new_process()
         self.assertTrue(pr.sync_batch("b1", 2, 2, 1, 1, finished=True, results=results))
@@ -131,6 +164,9 @@ class BatchProgressTests(unittest.TestCase):
                 {"cls": "no_access", "reason": "学校没有订阅", "title": "A paper", "journal": "Arthritis & Rheumatology",
                  "doi": "10.1000/2", "note": ""},
                 {"cls": "unexplained", "reason": "下载时程序出错", "title": "", "journal": "", "doi": "", "note": ""},
+            ],
+            "supplement_failures": [
+                {"cls": "user_or_external", "reason": "网站人机验证拦截", "title": "B", "journal": "", "doi": "10.1000/1", "note": ""},
             ]})
         # A next item of the same batch starts without the old summary.
         self.item(3, 3, True, done=2, succeeded=1, failed=1)
@@ -185,6 +221,13 @@ class BatchProgressTests(unittest.TestCase):
             "b3", 2, 2, 2, 0, finished=True, results={"main": 2, "sources": [["开放获取", 2]]})), {"updated": True})
         snap = pr.read_snapshot()[0]
         self.assertEqual((snap["status"], snap["results"]["sources"]), ("done", [["开放获取", 2]]))
+
+    def test_server_passes_the_phase_and_channel(self):
+        self.assertEqual(json.loads(server.carsi_batch_progress(
+            "b6", 10, 2, 2, 0, current="10.1000/2", phase="开放获取：已查 3/10 篇，找到 2 篇",
+            channel="开放获取")), {"updated": True})
+        snap = pr.read_snapshot()[0]
+        self.assertEqual((snap["phase"], snap["channel"]), ("开放获取：已查 3/10 篇，找到 2 篇", "开放获取"))
 
 
 if __name__ == "__main__":

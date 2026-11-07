@@ -15,6 +15,7 @@ class WatchdogTests(unittest.TestCase):
     def setUp(self):
         self.addCleanup(watchdog._inflight.clear)
         self.addCleanup(watchdog._call_deadlines.clear)
+        self.addCleanup(watchdog._abandoned.clear)
         patcher = patch.object(watchdog, "fired", None)
         patcher.start(); self.addCleanup(patcher.stop)
 
@@ -22,8 +23,8 @@ class WatchdogTests(unittest.TestCase):
         now = time.monotonic()
         loop = MagicMock(); loop.is_closed.return_value = False
         stuck = object()
-        watchdog._inflight.update({1: (now - 10, "Page.goto", [], loop, object()),
-                                   2: (now - 300, "Page.title", ["  caller\n"], loop, stuck)})
+        watchdog._inflight.update({1: (now - 10, "Page.goto", [], loop, object(), None),
+                                   2: (now - 300, "Page.title", ["  caller\n"], loop, stuck, None)})
         with patch("paper_search_carsi.log.dump_stacks") as dump:
             self.assertTrue(watchdog.check(240))
             self.assertTrue(watchdog.check(240))
@@ -36,7 +37,7 @@ class WatchdogTests(unittest.TestCase):
         now = time.monotonic()
         loop = MagicMock(); loop.is_closed.return_value = False
         coro = object()
-        watchdog._inflight[1] = (now - 2, "Page.evaluate", [], loop, coro)
+        watchdog._inflight[1] = (now - 2, "Page.evaluate", [], loop, coro, None)
         watchdog._call_deadlines[1] = (now - 1, "article preparation")
         with patch("paper_search_carsi.log.dump_stacks"):
             self.assertTrue(watchdog.check(90))
@@ -99,7 +100,7 @@ class WatchdogTests(unittest.TestCase):
 
     def test_calls_within_the_limit_are_left_alone(self):
         loop = MagicMock()
-        watchdog._inflight[1] = (time.monotonic() - 100, "Page.goto", [], loop, object())
+        watchdog._inflight[1] = (time.monotonic() - 100, "Page.goto", [], loop, object(), None)
         self.assertFalse(watchdog.check(240))
         loop.call_soon_threadsafe.assert_not_called()
 
@@ -151,6 +152,47 @@ class WatchdogTests(unittest.TestCase):
         with self.assertRaises(watchdog.BrowserUnresponsive):
             Fake()._sync(later)
         self.assertIsNone(later.cr_frame)  # closed, never sent
+
+    def test_an_abandoned_read_ends_in_its_handler_and_the_browser_goes_on(self):
+        """A response read in an event handler that never returns is dropped when its
+        capture ends; 90 s later it ended the next article (JAMA after AIAA, 2026-11-08)."""
+        import asyncio
+        from greenlet import greenlet, getcurrent
+        test = getcurrent()
+
+        class Fake:
+            def _sync(self, coro):
+                coro.close()
+                if getcurrent() is not test:
+                    test.switch()  # the handler waits for an answer that does not come
+                    raise asyncio.CancelledError()
+                return "answered"
+
+        async def body():
+            return b""
+
+        self.install_on(Fake)
+        readers, ended = set(), []
+
+        def on_response():
+            try:
+                with watchdog.owned_by(readers):
+                    Fake()._sync(body())
+            except Exception as exc:
+                ended.append(type(exc).__name__)
+
+        handler = greenlet(on_response)
+        handler.switch()
+        self.assertEqual(len(watchdog._inflight), 1)
+        self.assertEqual(watchdog.abandon(set()), 0)  # another capture's readers: left alone
+        self.assertEqual(watchdog.abandon(readers), 1)
+        self.assertEqual(watchdog._inflight, {})
+        self.assertFalse(watchdog.check(0))  # nothing left to time out
+        handler.switch()
+        self.assertEqual(ended, ["CallAbandoned"])
+        self.assertEqual(readers, set())
+        self.assertIsNone(watchdog.fired)
+        self.assertEqual(Fake()._sync(body()), "answered")  # the next article's calls go through
 
 
 class BridgeTests(unittest.TestCase):

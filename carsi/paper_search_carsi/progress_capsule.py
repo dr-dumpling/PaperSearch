@@ -177,11 +177,15 @@ class Api:
             from .entitlements import SHOW_BROWSER, request_action
 
             if action == SHOW_BROWSER:
+                # Asked for from a reminder, or from the paper on the card at any
+                # time while it has a browser (user request, 2026-11-08).
                 state = read_state() or {}
-                if (state.get("status") != "running" or not state.get("attention")
+                if (state.get("status") != "running"
                         or str(state.get("current") or "") != current
                         or str(state.get("run_id") or "") != run_id):
-                    return "当前没有等待处理的下载浏览器"
+                    return "当前没有正在下载的浏览器"
+                if not state.get("attention") and state.get("channel"):
+                    return "这一篇在查开放来源，没有打开浏览器"
                 if sys.platform == "darwin":
                     from .browser.foreground import activate_mac
 

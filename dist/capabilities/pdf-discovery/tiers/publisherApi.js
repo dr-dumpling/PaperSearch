@@ -3,6 +3,7 @@ import { isValidPdfFile } from "../../../infrastructure/pdf/PdfDownload.js";
 import { verifyPdfIdentity } from "../../../infrastructure/pdf/PdfIdentity.js";
 import { identityRejection } from "../identity.js";
 import { sanitizeDoi } from "../../../infrastructure/security/SecurityUtils.js";
+import { apiKeyHint } from "../../../config/apiKeySignup.js";
 import { createDefaultPublisherApiAdapters, selectPublisherApiAdapter, } from "../publisherApi/index.js";
 /**
  * Keys a publisher rejected (HTTP 401) in this process, by adapter and key
@@ -50,7 +51,7 @@ async function tryPublisherApi(context, adapters, env) {
     if (!adapter.configured(env)) {
         return {
             status: "skipped",
-            message: `${adapter.requiredConfigKey} not configured.`,
+            message: `${adapter.requiredConfigKey} not configured. ${apiKeyHint(adapter.requiredConfigKey)}`,
         };
     }
     const fingerprint = keyFingerprint(adapter, env);

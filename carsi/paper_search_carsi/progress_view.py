@@ -159,15 +159,9 @@ def _journals(failures: list[dict[str, Any]]) -> str:
     return " · ".join(f"{name} {n}" for name, n in ranked[:2]) + (" 等" if len(ranked) > 2 else "")
 
 
-def summary_view(results: Any) -> dict[str, Any] | None:
-    """The finished card's lists, from the caller's end-of-batch summary.
-
-    ``groups``: one row per failure reason, most papers first, each with its
-    papers and whether it starts open; ``saved``: up to two short lines on what
-    was saved and where it came from (no line wraps in the narrow card)."""
-    if not isinstance(results, dict):
-        return None
-    failures = [f for f in results.get("failures") or [] if isinstance(f, dict)]
+def _reason_groups(failures: list[dict[str, Any]], open_up_to: int) -> list[dict[str, Any]]:
+    """One row per failure reason, most papers first, each with its papers and
+    whether it starts open (all of them while there are ``open_up_to`` or fewer)."""
     by_reason: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for item in failures:
         by_reason.setdefault((str(item.get("cls")), str(item.get("reason"))), []).append(item)
@@ -184,7 +178,24 @@ def summary_view(results: Any) -> dict[str, Any] | None:
                   for item in items[:MAX_LISTED_PAPERS]]
         groups.append({"cls": cls, "reason": reason, "count": len(items), "where": _journals(items),
                        "papers": papers, "more": len(items) - len(papers),
-                       "open": len(failures) <= OPEN_FAILURES_UP_TO})
+                       "open": len(failures) <= open_up_to})
+    return groups
+
+
+def summary_view(results: Any) -> dict[str, Any] | None:
+    """The finished card's lists, from the caller's end-of-batch summary.
+
+    ``groups``: the papers without their main text, by reason (supplements-only
+    batches: without their files); ``supplement_groups``: papers whose main text
+    was saved but not every supplementary file (content "both"), by reason, all
+    closed to keep the card short (user, 2026-11-08); ``saved``: up to two short
+    lines on what was saved and where it came from (no line wraps in the narrow card)."""
+    if not isinstance(results, dict):
+        return None
+    failures = [f for f in results.get("failures") or [] if isinstance(f, dict)]
+    shortfalls = [f for f in results.get("supplement_failures") or [] if isinstance(f, dict)]
+    groups = _reason_groups(failures, OPEN_FAILURES_UP_TO)
+    supplement_groups = _reason_groups(shortfalls, 0)
 
     content = results.get("content")
     main, files = _count(results.get("main")), _count(results.get("supplements"))
@@ -198,7 +209,8 @@ def summary_view(results: Any) -> dict[str, Any] | None:
     sources = [f"{s[0]} {_count(s[1])}" for s in results.get("sources") or []
                if isinstance(s, list) and len(s) == 2 and _count(s[1])]
     saved = [" · ".join(first)] + ([" · ".join(sources)] if sources and content != "supplements" else [])
-    return {"groups": groups, "saved": saved}
+    return {"groups": groups, "supplement_groups": supplement_groups, "supplement_missing": len(shortfalls),
+            "saved": saved}
 
 
 def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
@@ -237,7 +249,8 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
         part = CONTENT_LABELS[part_key]
     else:
         part = CONTENT_LABELS.get(str(state.get("content") or "main"), CONTENT_LABELS["main"])
-    publisher = str(state.get("publisher") or "")
+    # Before any publisher (the caller's open-access stretch), the channel stands in.
+    publisher = str(state.get("publisher") or "") or str(state.get("channel") or "")
     journal = str(state.get("journal") or "")
     current = str((attention[-1].get("current") if attention else "") or state.get("current") or "")
 
@@ -298,6 +311,9 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
             if not running and state.get("stage") == "supplements_checked" else "",
         "summary": summary_view(state.get("results")) if mode == "done" else None,
         "actions": running and bool(current) and not awaiting,
+        # This paper has a download browser to show: not between papers, not in
+        # the caller's open-access stretch (its channel), which opens none.
+        "browser": running and bool(current) and not awaiting and not state.get("channel"),
         "stop_left": max(0, total - done - 1),
         "folder": bool(state.get("output_dir")),
     }

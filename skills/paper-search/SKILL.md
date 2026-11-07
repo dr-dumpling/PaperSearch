@@ -3,7 +3,7 @@ name: paper-search
 description: |
   学术文献检索与论文获取调度器，通过本机的 paper-search 命令完成（不是 MCP 服务）。
   用于：检索论文、查找相似研究、文献综述初筛、核验 PMID/DOI、下载论文 PDF 和补充材料
-  （默认只有开放下载；需要学校订阅的正文和补充材料，要另装可选的机构下载扩展，用用户学校的权限获取），
+  （默认只有开放下载；需要学校订阅的正文和补充材料，要另装可选的学校订阅下载（CARSI），用用户学校的权限获取），
   调用 Crossref、OpenAlex、PubMed、PMC、Europe PMC、arXiv、bioRxiv、medRxiv、Semantic Scholar、CORE、OpenAIRE、DBLP、ACM、USENIX、OpenReview、IACR 等来源，
   在 Semantic Scholar 开放获取正文片段索引里查方法学细节，
   通过 Semantic Scholar Graph API 查已知论文的施引文献和参考文献，
@@ -53,7 +53,7 @@ description: |
      ├─ 每一步拿到文件都核对身份（首页的 DOI、题名）；通过就保存，后面的步骤不再试
      └─ 都没拿到 → paper-search failures --format text，按四类失败向用户说明
 
-管理命令：doctor（体检）、setup / config（配置 key）、skills（同步 Skill）、carsi（机构下载扩展的安装、状态、更新、卸载）
+管理命令：doctor（体检）、setup / config（配置 key）、skills（同步 Skill）、carsi（学校订阅下载的安装、状态、更新、卸载）
 ```
 
 ## 读哪个参考文件
@@ -109,7 +109,7 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 | 搜论文、找相关研究、核验 DOI/PMID、文献初筛 | `metadata_search` | `paper-search search` 集成入口 / `paper-search run search_*` 精确工具入口 | 只返回和核验论文元数据；Sci-Hub 不属于搜索源 |
 | 查已知论文的施引文献或参考文献 | `citation_expansion` | `paper-search run get_paper_citations` / `paper-search run get_paper_references` | 需要已知的 `paperId`、DOI 或 arXiv ID；不是关键词检索 |
 | 查影响因子、JCR/SSCI/中科院分区、JCI、ESI、预警、期刊等级 | `journal_metrics` | `paper-search journal-metrics` / `paper-search run query_journal_metrics` | 查期刊，不查论文；需要 `EASYSCHOLAR_KEY` |
-| 下载已确认论文的 PDF | `pdf_discovery` | `paper-search download` / `paper-search run download_with_fallback` | 先核验论文身份；默认只走开放下载，装了机构下载扩展时最后再用学校权限 |
+| 下载已确认论文的 PDF | `pdf_discovery` | `paper-search download` / `paper-search run download_with_fallback` | 先核验论文身份；默认只走开放下载，装了学校订阅下载时最后再用学校权限 |
 | 批量下载一组已确认的论文（几十到几百篇） | `pdf_discovery` | `paper-search run download_batch` | 一次调用，不自己循环单篇；用学校权限时读 `references/browser-download.md` |
 | 下载补充材料（附录、Supporting Information） | `pdf_discovery` | `download_with_fallback` / `download_batch` 设 `content` 为 `supplements` 或 `both` | 只有机构下载能取；只有部分出版社有规则，见 `references/publisher-support.md` |
 | 在论文正文片段中找 Methods、参数、写法线索 | `body_snippet_search` | `paper-search run search_semantic_snippets` | 查 Semantic Scholar 开放获取片段索引；需要 `SEMANTIC_SCHOLAR_API_KEY`；不是完整全文解析 |
@@ -130,7 +130,7 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 两种方式用同一个下载命令，不需要分开调用：先试开放下载；拿不到时，机构下载已启用才继续用学校权限，它固定是最后一步。
 
 - 交付时告诉用户文件来自哪种方式：开放下载、Sci-Hub，还是机构下载。
-- 开放下载没拿到、机构下载又没装时：告诉用户开放渠道没有找到这篇；如果学校订阅了它，可以安装机构下载扩展后再试。安装前先征得用户同意，不擅自安装。
+- 开放下载没拿到、机构下载又没装时：告诉用户开放渠道没有找到这篇；如果学校订阅了它，有两种办法：安装学校订阅下载（CARSI，本机要先装 Google Chrome）；或者在校园网里配出版社 API key，只对 Elsevier（DOI 以 10.1016 开头）和 Springer（10.1007）的论文有效，申请网址和配置命令见下载结果里 `publisher_api` 那一步的提示。安装前先征得用户同意，不擅自安装。
 - 用机构下载前，先运行 `paper-search carsi status --format text` 确认扩展可用：显示已安装并启用，或者“PaperSearch 配置”一行显示已启用并给出后端路径。后一种是用户自己维护的后端（例如开发版），第一行写“未安装”是正常的，直接使用，不要再安装或改路径；`paper-search doctor` 里 `entitled_access` 为 `available` 也说明后端能用。
 - 扩展自己的命令 `paper-search-carsi` 安装后通常不在 PATH 上：`command -v paper-search-carsi` 找不到时，用 `carsi status` 输出里“PaperSearch 配置”一行“后端”后面的完整路径调用，例如 `<后端路径> issues`、`<后端路径> progress --json`。
 
@@ -149,7 +149,7 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 - 正文加补充材料（`content` 为 `both`）；
 - 只要补充材料（`content` 为 `supplements`，正文已有时用）。
 
-问的时候顺带说明：补充材料只有部分出版社支持，见 `references/publisher-support.md`。用户已经说明的不再问。机构下载没启用时只走开放下载、只下正文；用户要补充材料时，告诉用户需要先安装机构下载扩展（`references/carsi-setup.md`）。
+问的时候顺带说明：补充材料只有部分出版社支持，见 `references/publisher-support.md`。用户已经说明的不再问。机构下载没启用时只走开放下载、只下正文；用户要补充材料时，告诉用户需要先安装学校订阅下载（`references/carsi-setup.md`）。
 
 几十到几百篇用一次 `download_batch`，不要自己循环调用单篇下载。下载结束后运行 `paper-search failures --format text`，按失败类别向用户说明。需要向维护者报告时用 `paper-search failures --export ./failure-report.zip` 导出副本，先核对包内公开检查清单；详见 `references/browser-download.md`。不自动上传或提交 issue。
 

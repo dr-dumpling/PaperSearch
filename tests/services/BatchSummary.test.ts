@@ -2,7 +2,8 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "@jest/globals";
-import { asWindowBatch } from "../../src/capabilities/pdf-discovery/batchSummary.js";
+import { asWindowBatch, batchResults } from "../../src/capabilities/pdf-discovery/batchSummary.js";
+import type { DownloadBatchItemResult, DownloadBatchResult } from "../../src/capabilities/pdf-discovery/batch.js";
 import type { CarsiBackend, CarsiBatchUpdate } from "../../src/capabilities/pdf-discovery/carsi/types.js";
 import type { DownloadBatchPosition } from "../../src/capabilities/pdf-discovery/types.js";
 
@@ -66,5 +67,44 @@ describe("a lone download as a batch of one", () => {
         { stage: "entitled_access", status: "skipped", message: "" },
       ] }));
     expect(updates).toEqual([]);
+  });
+});
+
+describe("main text and supplementary files apart", () => {
+  const ok = { stage: "entitled_access", status: "ok", message: "" } as const;
+  const item = (index: number, extra: Partial<DownloadBatchItemResult>): DownloadBatchItemResult => ({
+    index, paperId: `10.1000/${index}`, doi: `10.1000/${index}`, title: `Paper ${index}`, journal: "APL",
+    status: "ok", path: `/out/${index}.pdf`, attempts: [ok], ...extra,
+  });
+  const batch = (items: DownloadBatchItemResult[], content: DownloadBatchResult["content"] = "both"): DownloadBatchResult => ({
+    status: "partial", mode: "entitled_only", content, batchId: "b", total: items.length,
+    succeeded: items.filter((i) => i.status === "ok").length, failed: items.filter((i) => i.status !== "ok").length, items,
+  });
+
+  it("lists the papers whose main text was saved but not every file, by the first real reason", () => {
+    const summary = batchResults(batch([
+      // A firewall's verification page answered for one file: listed, not the site without a rule.
+      item(1, { supplements: [
+        { label: "", status: "skipped", reason: "supplements_not_supported" },
+        { label: "SM.pdf", status: "failed", reason: "verification_page" },
+        { label: "SM2.pdf", status: "saved" }] }),
+      item(2, { supplements: [{ label: "", status: "skipped", reason: "supplements_not_supported" }] }),
+      item(3, { supplements: [{ label: "S1.pdf", status: "saved" }] }),
+      item(4, { supplements: [{ label: "", status: "skipped", reason: "batch_stopped" }] }),
+      // No main text: told by its main text's reason only.
+      item(5, { status: "error", path: undefined, supplements: [{ label: "x", status: "failed", reason: "html_page" }],
+        attempts: [{ stage: "entitled_access", status: "error", code: "login_timeout", message: "" }] }),
+    ]), 0, "/out");
+    expect(summary.supplement_failures).toEqual([
+      { cls: "user_or_external", reason: "网站人机验证拦截", title: "Paper 1", journal: "APL", doi: "10.1000/1" },
+      { cls: "unsupported", reason: "网站暂不支持附录", title: "Paper 2", journal: "APL", doi: "10.1000/2" },
+    ]);
+    expect(summary.failures).toEqual([expect.objectContaining({ reason: "等学校登录超时", title: "Paper 5" })]);
+    expect(summary.supplements).toBe(2);
+  });
+
+  it("lists none when only the main text was asked for", () => {
+    const summary = batchResults(batch([item(1, { supplements: [{ label: "x", status: "failed", reason: "html_page" }] })], "main"), 0, "/out");
+    expect(summary.supplement_failures).toEqual([]);
   });
 });

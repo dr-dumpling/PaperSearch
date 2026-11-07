@@ -9,10 +9,17 @@ export interface CapabilityEntry {
     sourceGroups?: Record<string, string[]>;
     requiredKeys?: string[];
     optionalKeys?: string[];
+    /** Where to get each missing required key and the command that enters it. */
+    keySetup?: KeySetup[];
     readiness?: {
         state: EntitledAccessReadiness["state"] | "not_evaluated";
         code: string;
     };
+}
+export interface KeySetup {
+    key: string;
+    signupUrl?: string;
+    command: string;
 }
 export interface CapabilityProfile {
     ok: boolean;

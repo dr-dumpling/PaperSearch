@@ -48,6 +48,8 @@
 | Frontiers | frontiersin.org | `10.3389` | ✓OA | ✓ |
 | PLOS、Copernicus | 各自网站 | `10.1371`、`10.5194` | ✓ | ✓ |
 
+AIP、Optica、Royal Society 的补充材料在 Figshare 上，程序按文章页上的 Figshare 链接取文件。页面没有 Figshare 链接时：AIP 页面标明没有补充材料的，返回空清单；Optica 返回 `supplements_not_supported`，不说明这篇有没有附件。
+
 ## 没有专门规则的网站
 
 DOI 跳转到表外的网站时，程序按通用规则尝试：找机构登录入口、选 CARSI 和学校、取页面声明的 PDF，保存前同样核对身份。没有补充材料规则。

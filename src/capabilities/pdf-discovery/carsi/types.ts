@@ -31,6 +31,10 @@ export interface CarsiBatchUpdate {
   finished: boolean;
   /** With finished: the whole batch's outcome for the finished window. */
   results?: CarsiBatchResults;
+  /** While waiting for the next item: the window's status line. */
+  phase?: string;
+  /** Where the batch fetches from before any publisher, e.g. "开放获取". */
+  channel?: string;
 }
 
 /**
@@ -62,6 +66,14 @@ export interface CarsiBatchResults {
     doi?: string;
     /** What was still saved, e.g. 附录 1 个已保存. */
     note?: string;
+  }>;
+  /** content "both": papers whose main text was saved but not every supplementary file, by the first file's reason. */
+  supplement_failures: Array<{
+    cls: FailureClass;
+    reason: string;
+    title?: string;
+    journal?: string;
+    doi?: string;
   }>;
 }
 

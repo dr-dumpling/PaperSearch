@@ -46,7 +46,7 @@ export async function exportFailureReport(options: {
     });
     child.on("error", () => {
       clearTimeout(timer);
-      reject(new Error("无法启动机构下载扩展，请运行 paper-search carsi status 检查安装。"));
+      reject(new Error("无法启动学校订阅下载，请运行 paper-search carsi status 检查安装。"));
     });
     child.stdin.on("error", () => { /* EPIPE: close reports unsupported/failed backend. */ });
     child.on("close", (code) => {
@@ -54,7 +54,7 @@ export async function exportFailureReport(options: {
       if (problem) return reject(problem);
       let data: Partial<ExportReportResult> & { error?: string };
       try { data = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
-      catch { return reject(new Error("机构下载扩展未返回导出结果，请更新支持 report-export 的扩展。")); }
+      catch { return reject(new Error("学校订阅下载未返回导出结果，请更新支持 report-export 的版本。")); }
       if (code !== 0 || data.ok !== true) {
         // Only stable codes, never arbitrary exception text from an older backend.
         const code = typeof data.error === "string" ? data.error.split(";")[0] : "";
@@ -66,7 +66,7 @@ export async function exportFailureReport(options: {
       }
       if (data.schemaVersion !== 1 || data.path !== resolve(options.output) || data.reviewRequired !== true ||
           ![data.papers, data.files, data.bytes, data.incompletePapers].every((v) => Number.isInteger(v) && Number(v) >= 0)) {
-        return reject(new Error("机构下载扩展返回了不兼容的导出结果。"));
+        return reject(new Error("学校订阅下载返回了不兼容的导出结果。"));
       }
       resolveResult(data as ExportReportResult);
     });

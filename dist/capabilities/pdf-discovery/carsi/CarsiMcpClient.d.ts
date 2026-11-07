@@ -13,6 +13,8 @@ export declare class CarsiMcpClient implements CarsiBackend {
     private readonly cleanupTimeoutMs;
     private keepBatchBrowser;
     private retainedSession?;
+    /** Inside a batch, the session progress reports reuse until the first download. */
+    private progressSession?;
     withBatchSession<T>(run: (backend: CarsiBackend) => Promise<T>): Promise<T>;
     constructor(options?: CarsiMcpClientOptions);
     probe(signal?: AbortSignal): Promise<CarsiReadiness>;
@@ -22,6 +24,7 @@ export declare class CarsiMcpClient implements CarsiBackend {
      * session if the browser has not been opened.
      */
     reportBatchProgress(update: CarsiBatchUpdate, signal?: AbortSignal): Promise<boolean>;
+    private closeProgressSession;
     private clearThenDownload;
     private openSession;
     private closeSession;

@@ -54,6 +54,10 @@ const CLASS_OF_CODE = {
     unsupported_platform: "unsupported",
     unsupported_publisher: "unsupported",
     generic_institution_entry_missing: "unsupported",
+    // Supplementary files: no rule for the site's files yet; a firewall's human
+    // verification page answered instead of the file (Figshare, 2026-11-08).
+    supplements_not_supported: "unsupported",
+    verification_page: "user_or_external",
 };
 export function classifyFailureCode(code) {
     return code && Object.hasOwn(CLASS_OF_CODE, code) ? CLASS_OF_CODE[code] : "unexplained";
