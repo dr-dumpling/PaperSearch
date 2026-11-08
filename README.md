@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <a href="#快速开始">快速开始</a> · <a href="#1-学校订阅下载carsi">学校订阅下载</a> · <a href="#2-api-key">API key</a> · <a href="docs/guide.zh.md">使用说明</a> · <a href="docs/ARCHITECTURE.zh.md">架构说明</a> · <a href="docs/ROADMAP.zh.md">路线图</a> · <a href="https://github.com/dr-dumpling/PaperSearch/issues/new/choose">反馈问题</a>
+  <a href="#演示视频">演示视频</a> · <a href="#快速开始">快速开始</a> · <a href="#1-学校订阅下载carsi">学校订阅下载</a> · <a href="#2-api-key">API key</a> · <a href="docs/guide.zh.md">使用说明</a> · <a href="docs/ARCHITECTURE.zh.md">架构说明</a> · <a href="docs/ROADMAP.zh.md">路线图</a> · <a href="https://github.com/dr-dumpling/PaperSearch/issues/new/choose">反馈问题</a>
 </p>
 
 PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Claude Code、Codex、Cursor、Kimi Code、Qwen Code、CodeBuddy、TRAE 等支持本机命令调用的 AI 工具，就能替你：
@@ -33,13 +33,11 @@ PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Clau
   - OA 文章：直接下载。
   - 非 OA 文章：通过学校订阅下载。可以装上“学校订阅下载（CARSI）”，经学校登录批量下载；也可以填写出版社的 API key 下载。
 
+<p align="center"><img src="assets/overview.png" width="840" alt="PaperSearch 能做的事：检索论文、搜正文片段、查期刊 IF 与分区、查引文和参考文献、下载全文和补充材料"></p>
 
+## 演示视频
 
 https://github.com/user-attachments/assets/c7b2f3a6-5374-4421-ab14-ea8133a2bd90
-
-
-
-<p align="center"><img src="assets/overview.png" width="840" alt="PaperSearch 能做的事：检索论文、搜正文片段、查期刊 IF 与分区、查引文和参考文献、下载全文和补充材料"></p>
 
 ## 快速开始
 
@@ -169,7 +167,6 @@ paper-search carsi status --format text   # 查看是否装好
     </td>
   </tr>
 </table>
-
 
 ### 2. API key
 

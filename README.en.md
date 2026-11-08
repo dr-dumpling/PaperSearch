@@ -20,7 +20,7 @@ One sentence and your AI searches, verifies and downloads full texts and supplem
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick start</a> · <a href="#1-school-subscription-downloads-carsi">School subscription downloads</a> · <a href="#2-api-keys">API keys</a> · <a href="docs/guide.en.md">Guide</a> · <a href="docs/ARCHITECTURE.zh.md">Architecture</a> · <a href="docs/ROADMAP.zh.md">Roadmap</a> · <a href="https://github.com/dr-dumpling/PaperSearch/issues/new/choose">Report an issue</a>
+  <a href="#demo-video">Demo video</a> · <a href="#quick-start">Quick start</a> · <a href="#1-school-subscription-downloads-carsi">School subscription downloads</a> · <a href="#2-api-keys">API keys</a> · <a href="docs/guide.en.md">Guide</a> · <a href="docs/ARCHITECTURE.zh.md">Architecture</a> · <a href="docs/ROADMAP.zh.md">Roadmap</a> · <a href="https://github.com/dr-dumpling/PaperSearch/issues/new/choose">Report an issue</a>
 </p>
 
 PaperSearch provides the `paper-search` command and a bundled Skill. Once installed, Claude Code, Codex, Cursor, Kimi Code, Qwen Code, CodeBuddy, TRAE and other AI tools that can run local commands can do this for you:
@@ -33,18 +33,15 @@ PaperSearch provides the `paper-search` command and a bundled Skill. Once instal
   - Open-access papers: downloaded directly.
   - Other papers: through your school's subscriptions. Install school subscription downloads (CARSI) to download them in batches through your school login, or add publisher API keys.
 
+<p align="center"><img src="assets/overview.en.png" width="840" alt="What PaperSearch does: search papers, full-text snippets, journal metrics, citations and references, full texts and supplementary files"></p>
 
+## Demo video
 
 https://github.com/user-attachments/assets/c43c450a-dcdf-49cc-bac0-04c3d288ecbd
-
-
-
-<p align="center"><img src="assets/overview.en.png" width="840" alt="What PaperSearch does: search papers, full-text snippets, journal metrics, citations and references, full texts and supplementary files"></p>
 
 ## Quick start
 
 <p align="center"><img src="assets/quickstart.en.webp" width="840" alt="Install demo: one line installs PaperSearch and the Skill for your AI, then paper-search doctor shows what works"></p>
-
 
 ### 1. Install
 
@@ -170,7 +167,6 @@ paper-search carsi status --format text   # check that it is ready
     </td>
   </tr>
 </table>
-
 
 ### 2. API keys
 
