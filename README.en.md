@@ -37,15 +37,17 @@ PaperSearch provides the `paper-search` command and a bundled Skill. Once instal
 
 ## Demo video
 
-https://github.com/user-attachments/assets/c43c450a-dcdf-49cc-bac0-04c3d288ecbd
+
+
+https://github.com/user-attachments/assets/9d54521b-bdb9-451c-89d8-889ec203bec1
+
+
 
 ## Quick start
 
 <p align="center"><img src="assets/quickstart.en.webp" width="840" alt="Install demo: one line installs PaperSearch and the Skill for your AI, then paper-search doctor shows what works"></p>
 
 ### 1. Install
-
-It needs Node.js 18 or later and npm. Either way:
 
 - Yourself: copy one line (Codex as the example). For another AI tool, replace `codex` with `claude`, `cursor`, `gemini`, `antigravity` or `agents` (the shared `~/.agents/skills/` directory).
 
