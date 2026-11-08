@@ -1,6 +1,6 @@
-name: "其他问题 / 使用咨询 · Other questions"
+name: "其他问题 · Other questions"
 description: "不属于以上几类的问题，例如安装、配置和使用方法。· Anything else, such as installation, setup and how to use it."
-title: "[Question] "
+title: "[Other] "
 body:
   - type: textarea
     id: question
