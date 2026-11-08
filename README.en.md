@@ -33,14 +33,18 @@ PaperSearch provides the `paper-search` command and a bundled Skill. Once instal
   - Open-access papers: downloaded directly.
   - Other papers: through your school's subscriptions. Install school subscription downloads (CARSI) to download them in batches through your school login, or add publisher API keys.
 
-<!-- Demo video: press Enter at the end of this line and drag the English video (papersearch-overview-github-en.mp4) onto the new line -->
+
+
+https://github.com/user-attachments/assets/c43c450a-dcdf-49cc-bac0-04c3d288ecbd
+
+
 
 <p align="center"><img src="assets/overview.en.png" width="840" alt="What PaperSearch does: search papers, full-text snippets, journal metrics, citations and references, full texts and supplementary files"></p>
 
 ## Quick start
 
 <p align="center"><img src="assets/quickstart.en.webp" width="840" alt="Install demo: one line installs PaperSearch and the Skill for your AI, then paper-search doctor shows what works"></p>
-<p align="center"><sub>A real recording: doctor right after installing, before any key is added.</sub></p>
+
 
 ### 1. Install
 
@@ -166,7 +170,7 @@ paper-search carsi status --format text   # check that it is ready
     </td>
   </tr>
 </table>
-<p align="center"><sub>Real screen recordings; the school login form is blurred.</sub></p>
+
 
 ### 2. API keys
 
