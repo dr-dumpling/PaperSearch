@@ -124,28 +124,7 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 ### 1. 学校订阅下载（CARSI）
 
-开放渠道下不到的论文，可以借你学校的订阅来下。CARSI 是中国高校身份联盟，国内高校基本都已加入，用学校账号就能登录各家出版社。装好后，每篇论文这样下载：
-
-<p align="center"><img src="assets/carsi-flow.png" width="840" alt="学校订阅下载的流程：打开文章页进入机构登录，自动选 CARSI 和学校，你在学校登录页输入账号，回到出版社取 PDF 和补充材料，核对 DOI 和题名"></p>
-
-它的优点：
-
-- **学校账号就能用**：不用另外申请 key；出版社 API key 只覆盖 Elsevier、Springer 两家。
-- **深度适配出版社**：深度优化了下载的通用流程，并且针对 30 多家出版社逐家写了专门规则，机构登录入口在哪、PDF 和补充材料怎么取，都按各自出版社的实际情况来，下载更准、更少漏篇。优化的出版社主要有：
-  - 综合：Elsevier（含 Cell、Lancet）、Springer Nature（含 Nature、BMC）、Wiley、Oxford Academic、Taylor & Francis、Sage、PNAS、Science
-  - 医学：NEJM、JAMA、AHA、ASH、Wolters Kluwer、Karger、Thieme
-  - 理工：ACS、IEEE、ACM
-  - 完整列表见 [出版社支持表](skills/paper-search/references/publisher-support.md)
-  - 需要支持别的出版社，欢迎[提 Issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose)，附上一篇你有权限的文章 DOI；这些适配规则会持续维护和更新。
-- **验证框自动点击**：遇到人机验证，程序自动定位并点击，网站放行后继续下载；过不去才提醒你。
-- **后台下载不打扰**：浏览器在后台工作。屏幕角落的进度胶囊显示进度；需要你登录学校或手动验证时变成琥珀色，点一下就切到浏览器，处理完程序接着下载。
-
-电脑上需要已装有 [Google Chrome](https://www.google.com/chrome/)。安装：
-
-```bash
-paper-search carsi install                # 安装时选择你的学校
-paper-search carsi status --format text   # 查看是否装好
-```
+开放渠道下不到的论文，可以借你学校的订阅来下。CARSI 是中国高校身份联盟，国内高校基本都已加入，用学校账号就能登录各家出版社。
 
 <table>
   <tr>
@@ -169,6 +148,23 @@ paper-search carsi status --format text   # 查看是否装好
     </td>
   </tr>
 </table>
+
+- **学校账号就能用**：不用另外申请 key；出版社 API key 只覆盖 Elsevier、Springer 两家。
+- **深度适配出版社**：深度优化了下载的通用流程，并且针对 30 多家出版社逐家写了专门规则，机构登录入口在哪、PDF 和补充材料怎么取，都按各自出版社的实际情况来，下载更准、更少漏篇。优化的出版社主要有：
+  - 综合：Elsevier（含 Cell、Lancet）、Springer Nature（含 Nature、BMC）、Wiley、Oxford Academic、Taylor & Francis、Sage、PNAS、Science
+  - 医学：NEJM、JAMA、AHA、ASH、Wolters Kluwer、Karger、Thieme
+  - 理工：ACS、IEEE、ACM
+  - 完整列表见 [出版社支持表](skills/paper-search/references/publisher-support.md)
+  - 需要支持别的出版社，欢迎[提 Issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose)，附上一篇你有权限的文章 DOI；这些适配规则会持续维护和更新。
+- **验证框自动点击**：遇到人机验证，程序自动定位并点击，网站放行后继续下载；过不去才提醒你。
+- **后台下载不打扰**：浏览器在后台工作。屏幕角落的进度胶囊显示进度；需要你登录学校或手动验证时变成琥珀色，点一下就切到浏览器，处理完程序接着下载。
+
+电脑上需要已装有 [Google Chrome](https://www.google.com/chrome/)。安装：
+
+```bash
+paper-search carsi install                # 安装时选择你的学校
+paper-search carsi status --format text   # 查看是否装好
+```
 
 ### 2. API key
 

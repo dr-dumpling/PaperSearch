@@ -124,28 +124,7 @@ School subscription downloads only download; API keys belong to individual sourc
 
 ### 1. School subscription downloads (CARSI)
 
-Papers the open channels cannot get can come through your school's subscriptions. CARSI is the China higher-education identity federation; almost every Chinese university has joined it, so your school account signs you in to the publishers. Once this is installed, each paper is downloaded like this:
-
-<p align="center"><img src="assets/carsi-flow.en.png" width="840" alt="How school subscription downloads work: open the article and go to the institutional login, CARSI and your school are chosen for you, you sign in on your school's login page, the PDF and supplementary files are fetched from the publisher, and the DOI and title are checked"></p>
-
-Why use it:
-
-- **Your school account is enough**: no keys to apply for; publisher API keys only cover Elsevier and Springer.
-- **Deep publisher adaptation**: the general download flow is deeply optimized, and more than 30 publishers have dedicated rules, one by one: where the institutional login is and how to fetch the PDF and supplementary files follow each publisher as it really is, so downloads are more accurate and fewer papers are missed. The main publishers:
-  - General: Elsevier (including Cell and The Lancet), Springer Nature (including Nature and BMC), Wiley, Oxford Academic, Taylor & Francis, Sage, PNAS, Science
-  - Medicine: NEJM, JAMA, AHA, ASH, Wolters Kluwer, Karger, Thieme
-  - Science and engineering: ACS, IEEE, ACM
-  - Full list: [publisher support table](skills/paper-search/references/publisher-support.md) (Chinese)
-  - Need another publisher? [Open an issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) with the DOI of an article you can access; these rules are maintained and extended over time.
-- **Verification boxes clicked for you**: it finds and clicks human-verification boxes and carries on once the site lets it through; you are asked only when it does not pass.
-- **Quiet background downloads**: the browser works in the background. The progress capsule in a screen corner shows the progress; it turns amber when you need to sign in or verify, one click switches to the browser, and the download carries on once you are done.
-
-It needs [Google Chrome](https://www.google.com/chrome/) on the computer. Install it:
-
-```bash
-paper-search carsi install                # choose your school during installation
-paper-search carsi status --format text   # check that it is ready
-```
+Papers the open channels cannot get can come through your school's subscriptions. CARSI is the China higher-education identity federation; almost every Chinese university has joined it, so your school account signs you in to the publishers.
 
 <table>
   <tr>
@@ -169,6 +148,23 @@ paper-search carsi status --format text   # check that it is ready
     </td>
   </tr>
 </table>
+
+- **Your school account is enough**: no keys to apply for; publisher API keys only cover Elsevier and Springer.
+- **Deep publisher adaptation**: the general download flow is deeply optimized, and more than 30 publishers have dedicated rules, one by one: where the institutional login is and how to fetch the PDF and supplementary files follow each publisher as it really is, so downloads are more accurate and fewer papers are missed. The main publishers:
+  - General: Elsevier (including Cell and The Lancet), Springer Nature (including Nature and BMC), Wiley, Oxford Academic, Taylor & Francis, Sage, PNAS, Science
+  - Medicine: NEJM, JAMA, AHA, ASH, Wolters Kluwer, Karger, Thieme
+  - Science and engineering: ACS, IEEE, ACM
+  - Full list: [publisher support table](skills/paper-search/references/publisher-support.md) (Chinese)
+  - Need another publisher? [Open an issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) with the DOI of an article you can access; these rules are maintained and extended over time.
+- **Verification boxes clicked for you**: it finds and clicks human-verification boxes and carries on once the site lets it through; you are asked only when it does not pass.
+- **Quiet background downloads**: the browser works in the background. The progress capsule in a screen corner shows the progress; it turns amber when you need to sign in or verify, one click switches to the browser, and the download carries on once you are done.
+
+It needs [Google Chrome](https://www.google.com/chrome/) on the computer. Install it:
+
+```bash
+paper-search carsi install                # choose your school during installation
+paper-search carsi status --format text   # check that it is ready
+```
 
 ### 2. API keys
 
