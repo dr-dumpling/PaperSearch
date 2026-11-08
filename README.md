@@ -37,15 +37,17 @@ PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Clau
 
 ## 演示视频
 
-https://github.com/user-attachments/assets/c7b2f3a6-5374-4421-ab14-ea8133a2bd90
+
+
+https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
+
+
 
 ## 快速开始
 
 <p align="center"><img src="assets/quickstart.webp" width="840" alt="安装演示：一行命令装好 PaperSearch 并给 AI 装上 Skill，再运行 paper-search doctor 查看哪些功能已能用"></p>
 
 ### 1. 安装
-
-需要 Node.js 18 或更高版本和 npm。两种方式任选一种：
 
 - 自己装：复制一行命令（以 Codex 为例）。用其他 AI 工具时，把 `codex` 换成 `claude`、`cursor`、`gemini`、`antigravity` 或 `agents`（共享目录 `~/.agents/skills/`）。
 
