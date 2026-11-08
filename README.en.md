@@ -27,7 +27,9 @@ PaperSearch provides the `paper-search` command and a bundled Skill. Once instal
 - **Search full-text snippets**: search the paper bodies Semantic Scholar indexes for passages on methods or results, with their sources.
 - **Look up journal IF and quartiles**: through EasyScholar, look up JCR impact factors, JCR quartiles and CAS zones.
 - **Look up citations and references**: from one paper, find the studies that cite it and the works it cites.
-- **Download full texts and supplementary files**: open-access papers download directly; other papers come through your school's subscriptions: install school subscription downloads (CARSI) to download them in batches through your school login, or add publisher API keys.
+- **Download full texts and supplementary files**:
+  - Open-access papers: downloaded directly.
+  - Other papers: through your school's subscriptions. Install school subscription downloads (CARSI) to download them in batches through your school login, or add publisher API keys.
 
 <!-- Demo GIF goes here once recorded; the overview picture then moves to "Reference · How it works" -->
 
