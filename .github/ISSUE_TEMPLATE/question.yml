@@ -1,20 +1,20 @@
-name: 其他问题 / 使用咨询
-description: 不属于以上几类的问题，例如安装、配置和使用方法。
-title: "[咨询] "
+name: "其他问题 / 使用咨询 · Other questions"
+description: "不属于以上几类的问题，例如安装、配置和使用方法。· Anything else, such as installation, setup and how to use it."
+title: "[Question] "
 body:
   - type: textarea
     id: question
     attributes:
-      label: 问题
+      label: "问题 / Question"
     validations:
       required: true
   - type: input
     id: version
     attributes:
-      label: PaperSearch 版本（如已安装）
-      description: 运行 paper-search --version。
+      label: "PaperSearch 版本（如已安装）/ Version (if installed)"
+      description: "运行 paper-search --version。· Run paper-search --version."
   - type: input
     id: system
     attributes:
-      label: 操作系统（如相关）
-      placeholder: macOS / Windows / Linux
+      label: "操作系统（如相关）/ Operating system (if relevant)"
+      placeholder: "macOS / Windows / Linux"

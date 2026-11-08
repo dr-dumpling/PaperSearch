@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 使用说明
+  - name: "使用说明"
     url: https://github.com/dr-dumpling/PaperSearch/blob/main/docs/guide.zh.md
-    about: 安装、配置和常见问题，提问前可以先看这里。
+    about: "安装、配置和常见问题，提问前可以先看这里。"
+  - name: "Guide (English)"
+    url: https://github.com/dr-dumpling/PaperSearch/blob/main/docs/guide.en.md
+    about: "Installation, setup and common questions; worth a look before asking."

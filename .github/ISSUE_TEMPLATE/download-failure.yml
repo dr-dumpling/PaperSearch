@@ -1,50 +1,50 @@
-name: 下载失败 / 想支持某家出版社
-description: 提供论文与经过核对的失败记录，帮助定位下载或机构入口问题。
-title: "[下载失败] "
+name: "下载失败 / 想支持某家出版社 · Download failure or publisher request"
+description: "提供论文与经过核对的失败记录，帮助定位下载或机构入口问题。· The paper and a checked failure record, to find download or institutional-login problems."
+title: "[Download] "
 body:
   - type: input
     id: version
     attributes:
-      label: PaperSearch 版本
-      description: 运行 paper-search --version。
+      label: "PaperSearch 版本 / Version"
+      description: "运行 paper-search --version。· Run paper-search --version."
     validations:
       required: true
   - type: input
     id: system
     attributes:
-      label: 操作系统
-      placeholder: macOS / Windows / Linux，系统版本
+      label: "操作系统 / Operating system"
+      placeholder: "macOS / Windows / Linux，系统版本 / version"
     validations:
       required: true
   - type: input
     id: publisher
     attributes:
-      label: 出版社或期刊网站
-      description: 只填公开网站地址，不粘贴学校登录或带认证参数的网址。
+      label: "出版社或期刊网站 / Publisher or journal website"
+      description: "只填公开网站地址，不粘贴学校登录或带认证参数的网址。· Public website address only; no school login or URLs with authentication parameters."
     validations:
       required: true
   - type: input
     id: doi
     attributes:
-      label: 论文 DOI
+      label: "论文 DOI / Paper DOI"
     validations:
       required: true
   - type: textarea
     id: symptom
     attributes:
-      label: 现象与预期
-      description: 说明正文还是附件失败、停在哪一步、预期应当发生什么。不要填写账号、学校、姓名或验证码。
+      label: "现象与预期 / What happened and what you expected"
+      description: "说明正文还是附件失败、停在哪一步、预期应当发生什么。不要填写账号、学校、姓名或验证码。· Main text or supplementary files, the step where it stopped, and what should have happened. No accounts, school, names or verification codes."
     validations:
       required: true
   - type: textarea
     id: report
     attributes:
-      label: 失败记录包
-      description: 支持导出的版本运行 paper-search failures --export ./failure-report.zip（可加 --doi 筛选），核对包内 summary.md 后将 ZIP 拖到这里。旧版本没有此命令时，填写版本与现象即可。不要上传原始 diagnostics、Cookie、浏览器 profile 或论文全文。
+      label: "失败记录包 / Failure report"
+      description: "支持导出的版本运行 paper-search failures --export ./failure-report.zip（可加 --doi 筛选），核对包内 summary.md 后将 ZIP 拖到这里。旧版本没有此命令时，填写版本与现象即可。不要上传原始 diagnostics、Cookie、浏览器 profile 或论文全文。· Run paper-search failures --export ./failure-report.zip (optionally with --doi), check summary.md inside, then drag the ZIP here. Without this command (older versions), the version and symptoms are enough. Do not upload raw diagnostics, cookies, browser profiles or full texts."
   - type: checkboxes
     id: privacy
     attributes:
-      label: 公开前检查
+      label: "公开前检查 / Before posting"
       options:
-        - label: 我已检查附加文字、HTML 和截图，不含学校、姓名、邮箱、学号、登录参数或其他个人信息。
+        - label: "我已检查附加文字、HTML 和截图，不含学校、姓名、邮箱、学号、登录参数或其他个人信息。· I checked the text, HTML and screenshots for school, names, email, student IDs, login parameters and other personal information."
           required: true
