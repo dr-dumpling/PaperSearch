@@ -219,6 +219,21 @@ class Api:
         except Exception as exc:
             return f"记录失败：{type(exc).__name__}"
 
+    def open_article(self, doi: str) -> str:
+        """The article's page (doi.org) in the user's own browser, to fetch what the
+        batch could not; only a DOI is opened, never another address."""
+        doi = str(doi or "").strip()
+        if not progress_view.DOI.fullmatch(doi):
+            return "打开失败：不是有效的 DOI"
+        import webbrowser
+        from urllib.parse import quote
+
+        try:
+            opened = webbrowser.open("https://doi.org/" + quote(doi, safe="/:;()._-"))
+        except Exception as exc:
+            return f"打开失败：{type(exc).__name__}"
+        return "已在浏览器打开这篇文章" if opened else "打开失败：没有找到默认浏览器"
+
     def open_folder(self) -> bool:
         return progress_view.open_folder(str((read_state() or {}).get("output_dir") or ""))
 
@@ -277,6 +292,13 @@ class Api:
         return str(selected[0]) if selected else None
 
     # --- the window -------------------------------------------------------
+    def _button_held(self) -> bool:
+        if sys.platform == "darwin" and self._native_geometry:
+            return _mac_button_held()
+        if sys.platform == "win32":
+            return _windows_button_held()
+        return True
+
     def _drag_point(self, x: float, y: float) -> tuple[float, float]:
         if sys.platform == "darwin" and self._native_geometry:
             return _mac_pointer()
@@ -322,6 +344,10 @@ class Api:
             if not self._dragging or self._drag_origin is None:
                 return
             sx, sy, x, y = self._drag_origin
+            if not self._button_held():
+                # The page reports the release late, and the pointer may have
+                # moved on since: the window stays where it was let go.
+                return
             # WebView coordinates can rebase across monitors. Native pointer
             # deltas stay global; on Windows they are physical until the move.
             screen_x, screen_y = self._drag_point(screen_x, screen_y)
@@ -493,6 +519,22 @@ def _mac_pointer() -> tuple[float, float]:
     return _cocoa_call(read)
 
 
+def _mac_button_held() -> bool:
+    import AppKit
+
+    return bool(_cocoa_call(lambda: AppKit.NSEvent.pressedMouseButtons() & 1))
+
+
+def _windows_button_held() -> bool:
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    # The physical button state: the primary one is the right button when the
+    # user swapped them (SM_SWAPBUTTON).
+    button = 0x02 if user32.GetSystemMetrics(23) else 0x01
+    return bool(user32.GetAsyncKeyState(button) & 0x8000)
+
+
 def _windows_pointer() -> tuple[float, float]:
     import ctypes
     from ctypes import wintypes
@@ -582,16 +624,29 @@ def _windows_screen_areas(window: Any = None) -> list[ScreenArea]:
     return [s for _, s in sorted(areas, key=lambda item: not item[0])]
 
 
+def _cocoa_rect(frame: Rect) -> Any:
+    """``frame`` (top-left coordinates from the primary screen's top) as a Cocoa rect."""
+    import AppKit
+
+    top = AppKit.NSScreen.screens()[0].frame().size.height
+    return AppKit.NSMakeRect(frame.x, top - frame.y - frame.height, frame.width, frame.height)
+
+
+def _moved_origin(ns_window: Any) -> tuple[float, float]:
+    """pywebview's moved-event origin, also for a window not yet on any screen: it read
+    that window's screen, found none, and the capsule remembered on a second display
+    never opened (2026-11-07). The primary screen stands in."""
+    import AppKit
+
+    frame = ns_window.frame()
+    screen = (ns_window.screen() or AppKit.NSScreen.screens()[0]).frame()
+    return frame.origin.x, screen.size.height - frame.size.height - frame.origin.y
+
+
 def _set_window_frame(window: Any, frame: Rect) -> None:
     """Move and resize in one native operation, without activating the window."""
     if sys.platform == "darwin":
-        import AppKit
-
-        def apply():
-            top = AppKit.NSScreen.screens()[0].frame().size.height
-            window.native.setFrame_display_(AppKit.NSMakeRect(
-                frame.x, top - frame.y - frame.height, frame.width, frame.height), True)
-        _cocoa_call(apply)
+        _cocoa_call(lambda: window.native.setFrame_display_(_cocoa_rect(frame), True))
     elif sys.platform == "win32":
         window._capsule_set_frame(frame)
     else:
@@ -628,7 +683,14 @@ def _round_windows_corners(window: Any) -> None:
         pass
 
 
-def _classic() -> None:
+def _classic(separate: bool = False) -> None:
+    """The classic window. ``separate``: in a process of its own, where pywebview has
+    already set up Cocoa in this one; Tk's own setup then crashed (2026-11-07)."""
+    if separate:
+        import subprocess
+
+        subprocess.run([sys.executable, "-m", "paper_search_carsi.progress_bar"], check=False)
+        return
     from .progress_bar import main as classic_window
 
     classic_window()
@@ -650,11 +712,24 @@ def _prepare_nonactivating_start(window: Any) -> None:
             return self.pywebview_window is window
 
         objc.classAddMethods(cocoa.BrowserView.WebKitHost, [acceptsFirstMouse_])
+
+        def windowDidMove_(self, notification):
+            i = cocoa.BrowserView.get_instance('window', notification.object())
+            if i:
+                i.pywebview_window.events.moved.set(*_moved_origin(i.window))
+
+        objc.classAddMethods(cocoa.BrowserView.WindowDelegate, [windowDidMove_])
         original = cocoa.BrowserView.first_show
 
         def first_show(view):
             if view.pywebview_window is not window:
                 return original(view)
+            home = getattr(window, "_capsule_home", None)
+            if home is not None:
+                # The remembered place, from the primary screen's top like every
+                # other capsule move: pywebview's own x/y count from the screen
+                # with the active window, another display when one is in use.
+                view.window.setFrame_display_(_cocoa_rect(home), False)
             if not view.hidden:
                 view.window.orderFrontRegardless()
             view.shown.set()
@@ -754,6 +829,8 @@ def main() -> None:
         size = (round(placement.home.width), round(placement.home.height))
         api = Api(placement, Notifier(), progress_view.AutoClose.from_env())
         dark = progress_view.dark_mode()
+        if sys.platform == "darwin":
+            x = y = None  # placed at placement.home on its first show (_prepare_nonactivating_start)
         window = webview.create_window(
             "PaperSearch", html=page, js_api=api, width=size[0], height=size[1], x=x, y=y,
             min_size=MIN_SIZE, resizable=False, frameless=True, easy_drag=False, on_top=True, focus=True,
@@ -761,6 +838,7 @@ def main() -> None:
             background_color="#202124" if dark else "#FFFFFF",
         )
         api._window = window
+        window._capsule_home = placement.home if sys.platform == "darwin" else None
         if sys.platform == "darwin":
             from .progress_macos import install_notification_handler
 
@@ -793,7 +871,7 @@ def main() -> None:
 
             close()
         progress_view.release_window_lock()
-        _classic()
+        _classic(separate=sys.platform == "darwin")
         return
     progress_view.release_window_lock()
     if sys.platform == "darwin":

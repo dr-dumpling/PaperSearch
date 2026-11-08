@@ -66,6 +66,26 @@ class CollectTests(unittest.TestCase):
             "page_title": "Human & Verification",
             "page_headers": {"server": "CloudFront", "x-amzn-waf-action": "challenge"}})
 
+    def test_a_verification_page_goes_to_the_browser_as_a_403_does(self):
+        """Figshare's AWS WAF answered every scripted request with a page (2026-11-08):
+        the browser opens the link as a reader would; failing that, the page is recorded."""
+        def challenge():
+            return SimpleNamespace(ok=True, status=202, url="https://api.figshare.com/v2/file/download/51439886",
+                                   headers={"content-type": "text/html; charset=UTF-8", "x-amzn-waf-action": "challenge"},
+                                   body=lambda: b"<html></html>", dispose=MagicMock())
+        link = SupplementLink("https://api.figshare.com/v2/file/download/51439886", "Supplementary_Material.pdf")
+        request = MagicMock(); request.get.side_effect = lambda url, **kw: challenge()
+        browser = MagicMock(return_value=(b"%PDF-1.7 supplementary", "Supplementary_Material.pdf"))
+        files = supplements.collect(request, [link], self.out, DOI, download=browser)
+        browser.assert_called_once_with(link.url)
+        self.assertEqual((files[0]["status"], files[0]["via"]), ("saved", "browser_download"))
+        self.assertTrue(files[0]["file"].endswith("Supplementary_Material.pdf"))
+
+        browser = MagicMock(side_effect=TimeoutError("attachment download or native PDF was not ready"))
+        files = supplements.collect(request, [link], self.out, DOI, download=browser)
+        self.assertEqual({k: files[0].get(k) for k in ("status", "reason", "via", "http_status")},
+                         {"status": "failed", "reason": "verification_page", "via": "browser_download", "http_status": 202})
+
     def test_a_dropped_connection_is_tried_once_more(self):
         dropped = Exception("APIRequestContext.get: Client network socket disconnected before secure TLS "
                             "connection was established\nCall log:")

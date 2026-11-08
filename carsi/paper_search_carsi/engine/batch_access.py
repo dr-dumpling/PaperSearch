@@ -16,6 +16,7 @@ from .batch_common import (
     settle,
     DownloadResult,
     PublisherAccessBlocked,
+    ArticleNotYetPublished,
     PublisherContentError,
     PublisherPlatformUnsupported,
     _ACCESS_GATE_JS,
@@ -211,6 +212,8 @@ class AccessMixin:
         if self._is_auth_page(url):
             return access_rules.OUT, "login_page", url[:160]
         snap = snapshot or self._access_snapshot(page)
+        if access_rules.not_yet_published(str(getattr(snap, "text", "") or "")):
+            raise ArticleNotYetPublished(url[:160])
         if self._institution_session(page, snap) == "ours":
             names = access_rules.session_names(snap.lines)
             label = next((str(l) for l in snap.probe.get("labels") or () if not access_rules.is_generic_label(str(l))), "")

@@ -1,6 +1,9 @@
 """American Meteorological Society: journals on journals.ametsoc.org.
 
 The PDF of an article page ``/view/<path>.xml`` is ``/downloadpdf/view/<path>.pdf``.
+The site offers no institutional sign-in: its "Sign in" is the AMS member login
+(www.ametsoc.org/ams/log-in, user name and password only), and institutions reach
+the journals by their network address (checked 2026-11-08).
 """
 from __future__ import annotations
 
@@ -41,6 +44,15 @@ def supplement_links_from_rows(rows: list[dict], doi: str) -> list[SupplementLin
 @register
 class AMSAdapter(PublisherAdapter):
     publisher = "ams"
+
+    def prepare_institution_choice(self, page: Any, result: Any) -> bool | None:
+        """No school to choose here: the article ends at once as having no login route
+        for the school, instead of waiting on the article page for a choice."""
+        if result is not None and not getattr(result, "_institution_not_listed", False):
+            self.d._event(result, "institution_login_unavailable",
+                          "AMS: member sign-in only; institutions by network address")
+            result._institution_not_listed = True
+        return False
 
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink]:
         return supplement_links_from_rows(page.evaluate(_SUPPLEMENT_ROWS_JS), doi)

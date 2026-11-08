@@ -55,6 +55,8 @@ const MESSAGES: Record<string, string> = {
     "下载浏览器长时间没有响应，已结束这一篇，批量中的其他文章照常继续；可稍后单独重试这一篇。",
   unsupported_platform:
     "这篇文章只在出版社的另一个平台（如 ClinicalKey）提供，需单独订阅，PaperSearch 暂不支持在该平台登录和下载；本次未取得 PDF。",
+  article_not_yet_published:
+    "这篇论文已录用，但出版社还没有上线全文（页面写明正式发表后才能阅读）；本次未取得 PDF，正式发表后再下载。这不代表没有权限。",
   unsupported_publisher:
     "这篇文章的 DOI 没有指向 PaperSearch 能登录的出版社网站（DOI 解析失败、直接指向 PDF 文件，或是暂不支持的平台），没有打开浏览器，本次未取得 PDF；这不代表没有权限，可在校园网下到出版社页面自己下载。",
   generic_institution_entry_missing:
@@ -107,6 +109,7 @@ const SHORT_REASONS: Record<string, string> = {
   browser_operation_timeout: "页面处理超时",
   browser_unresponsive: "浏览器没有响应",
   unsupported_platform: "只在其他平台提供",
+  article_not_yet_published: "全文尚未发布",
   unsupported_publisher: "DOI 没指向能登录的网站",
   generic_institution_entry_missing: "找不到机构登录入口",
   access_blocked: "网站拦截了当前网络",

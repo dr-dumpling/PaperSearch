@@ -41,11 +41,16 @@ class ScreenArea:
     work: Rect
 
 
+def _overlap(a: Rect, b: Rect) -> float:
+    return (max(0, min(a.right, b.right) - max(a.x, b.x))
+            * max(0, min(a.bottom, b.bottom) - max(a.y, b.y)))
+
+
 def screen_for(rect: Rect, screens: list[ScreenArea]) -> ScreenArea:
-    """Prefer the centre's screen, otherwise the nearest screen (unplugged display)."""
-    for screen in screens:
-        if screen.bounds.contains_center(rect):
-            return screen
+    """The display holding most of the rectangle, otherwise the nearest (unplugged display)."""
+    best = max(screens, key=lambda s: _overlap(rect, s.bounds))
+    if _overlap(rect, best.bounds) > 0:
+        return best
     x, y = rect.x + rect.width / 2, rect.y + rect.height / 2
     return min(screens, key=lambda s: max(s.bounds.x - x, 0, x - s.bounds.right) ** 2
                + max(s.bounds.y - y, 0, y - s.bounds.bottom) ** 2)
@@ -57,9 +62,16 @@ def fit_rect(rect: Rect, work: Rect) -> Rect:
                 max(work.y, min(rect.y, work.bottom - rect.height)), rect.width, rect.height)
 
 
-def direction_for(rect: Rect, work: Rect) -> tuple[str, str]:
-    return ("down" if rect.y + rect.height / 2 < work.y + work.height / 2 else "up",
-            "right" if rect.x + rect.width / 2 < work.x + work.width / 2 else "left")
+def pill_anchor(pill: Rect, work: Rect) -> tuple[str, str]:
+    """Grow away from the nearer screen edges, keeping the pill's sides there fixed."""
+    return ("down" if pill.y + pill.height / 2 < work.y + work.height / 2 else "up",
+            "right" if pill.x + pill.width / 2 < work.x + work.width / 2 else "left")
+
+
+def direction_for(pill: Rect, work: Rect, height: float) -> tuple[str, str]:
+    """Open down unless the card does not fit below; sideways away from the nearer edge."""
+    below, above = work.bottom - pill.y, pill.bottom - work.y
+    return "down" if below >= height or below >= above else "up", pill_anchor(pill, work)[1]
 
 
 def _edge(start: float, end: float, low: float, high: float) -> int:
@@ -80,6 +92,7 @@ class Placement:
         self.direction = ("down" if corner == "top" else "up", "left")
         self.edges = (0, 0)
         self.expanded = False
+        self._direction_fixed = False
         self.scale = 1.0
         self._saved: dict = {}
         try:
@@ -138,7 +151,7 @@ class Placement:
             self.home = fit_rect(Rect(b.right - EDGE - w,
                                       b.y + TOP_GAP if self.corner == "top" else b.bottom - BOTTOM_GAP - h,
                                       w, h), self.screen.work)
-        self.direction = self._direction(self.home)
+        self.direction = self._direction(pill_anchor(self.home, self.screen.work))
         return round(self.home.x), round(self.home.y)
 
     def rescale(self, scale: float) -> None:
@@ -163,7 +176,8 @@ class Placement:
             self.home = actual
         self.screen = screen_for(self.home, screens)
         if not self.expanded:
-            self.direction = self._direction(self.home)
+            self.direction = self._direction(pill_anchor(self.home, self.screen.work))
+            self._direction_fixed = False
         if expanded:
             self.expanded = True
 
@@ -171,14 +185,21 @@ class Placement:
         assert self.home is not None and self.screen is not None
         home, work = self.home, self.screen.work
         width, height = min(width, int(work.width)), min(height, int(work.height))
-        if expanded or not self.expanded:
-            anchor = (self._dragged_card if expanded else None) or home
-            vertical, horizontal = self.direction
-            x = anchor.right - width if horizontal == "left" else anchor.x
-            y = anchor.bottom - height if vertical == "up" else anchor.y
+        if expanded:
+            # Chosen once per expansion: taller panels such as settings are
+            # clamped to the work area instead of flipping the card.
+            if not self._direction_fixed:
+                self.direction = self._direction(direction_for(home, work, height))
+                self._direction_fixed = True
+            anchor, (vertical, horizontal) = self._dragged_card or home, self.direction
+        elif self.expanded:
+            # Back into the corner the card grew from, also when the status
+            # changed the pill's width while it was open.
+            anchor, (vertical, horizontal) = home, self.direction
         else:
-            # A different status can change the pill's width while it is open.
-            x, y = home.x, home.y
+            anchor, (vertical, horizontal) = home, self._direction(pill_anchor(home, work))
+        x = anchor.right - width if horizontal == "left" else anchor.x
+        y = anchor.bottom - height if vertical == "up" else anchor.y
         return self._fit(Rect(x, y, width, height))
 
     def finish(self, expanded: bool, actual: Rect) -> None:
@@ -195,8 +216,9 @@ class Placement:
         y = work.y if vertical < 0 else work.bottom - rect.height if vertical > 0 else rect.y
         return fit_rect(Rect(x, y, rect.width, rect.height), work)
 
-    def _direction(self, rect: Rect) -> tuple[str, str]:
-        vertical, horizontal = direction_for(rect, self.screen.work)
+    def _direction(self, free: tuple[str, str]) -> tuple[str, str]:
+        """A docked edge decides its axis; the other axis keeps the free choice."""
+        vertical, horizontal = free
         x, y = self.edges
         return ("down" if y < 0 else "up" if y > 0 else vertical,
                 "right" if x < 0 else "left" if x > 0 else horizontal)
@@ -227,29 +249,27 @@ class Placement:
 
     def dragged(self, after: Rect, screens: list[ScreenArea],
                 pointer: tuple[float, float] | None = None) -> Rect:
-        # At a display seam the card's centre may still be on the previous
-        # display. Prefer the display where the user actually released it.
-        self.screen = next((s for s in screens if pointer and s.bounds.contains(*pointer)), None)
-        if self.screen is None:
-            self.screen = screen_for(after, screens)
+        # At a display seam the pointer may already be on the next display;
+        # the window stays on the one that holds most of it.
+        self.screen = screen_for(after, screens)
         work = self.screen.work
         point = pointer if pointer and self.screen.bounds.contains(*pointer) else None
         self.edges = self._drop_edges(after, work, point)
         after = self._fit(Rect(after.x, after.y, min(after.width, work.width), min(after.height, work.height)))
-        self.direction = self._direction(after)
         if self.home is None or not self.expanded:
             self.home = after
+            self.direction = self._direction(pill_anchor(after, work))
         else:
+            # The pill goes to the card's top corner on the side nearer the
+            # screen edge (bottom corner when docked there), so opening it
+            # again puts the card back where it was dropped.
             self._dragged_card = after
+            self.direction = self._direction(("down", pill_anchor(after, work)[1]))
+            self._direction_fixed = True
             vertical, horizontal = self.direction
             w, h = self.home.width, self.home.height
-            if point is not None and any(self.edges):
-                # The card's chosen growth corner must not quantize where the
-                # much smaller pill lands along the side.
-                self.home = Rect(point[0] - w / 2, point[1] - h / 2, w, h)
-            else:
-                self.home = Rect(after.right - w if horizontal == "left" else after.x,
-                                 after.bottom - h if vertical == "up" else after.y, w, h)
+            self.home = Rect(after.right - w if horizontal == "left" else after.x,
+                             after.bottom - h if vertical == "up" else after.y, w, h)
         self.home = self._fit(self.home)
         self.save()
         return after

@@ -8,11 +8,13 @@ from __future__ import annotations
 import atexit
 import json
 import logging
+import os
 from pathlib import Path
 import plistlib
 import struct
 import subprocess
 import threading
+import zlib
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
@@ -22,13 +24,29 @@ _callback: Callable[[str, str], Any] | None = None
 _bridge_lock = threading.RLock()
 
 
-def _write_if_changed(path: Path, content: bytes, mode: int = 0o644) -> None:
+LSREGISTER = ("/System/Library/Frameworks/CoreServices.framework/Frameworks/"
+              "LaunchServices.framework/Support/lsregister")
+
+
+def _write_if_changed(path: Path, content: bytes, mode: int = 0o644) -> bool:
+    """Write ``content`` unless the file already holds it; True when written."""
     if path.is_file() and path.read_bytes() == content:
-        return
+        return False
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_bytes(content)
     temporary.chmod(mode)
     temporary.replace(path)
+    return True
+
+
+def _register(app: Path) -> None:
+    """Have Launch Services read the bundle again, its icon included; best effort."""
+    try:
+        os.utime(app)
+        subprocess.run([LSREGISTER, "-f", str(app)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def prepare_app(app_root: Path | None = None) -> Path:
@@ -41,21 +59,28 @@ def prepare_app(app_root: Path | None = None) -> Path:
     macos, resources = app / "Contents/MacOS", app / "Contents/Resources"
     macos.mkdir(parents=True, exist_ok=True)
     resources.mkdir(parents=True, exist_ok=True)
-    _write_if_changed(app / "Contents/Info.plist", plistlib.dumps({
-        "CFBundleIdentifier": BUNDLE_ID,
-        "CFBundleName": "PaperSearch", "CFBundleDisplayName": "PaperSearch",
-        "CFBundleExecutable": "PaperSearch", "CFBundlePackageType": "APPL",
-        "CFBundleInfoDictionaryVersion": "6.0", "CFBundleVersion": "1",
-        "CFBundleIconFile": "PaperSearch.icns", "LSUIElement": True,
-    }))
     chunks = []
     for size, kind in ((32, b"icp5"), (64, b"icp6"), (512, b"ic09")):
         image = (assets / f"icon-{size}.png").read_bytes()
         chunks.append(kind + struct.pack(">I", len(image) + 8) + image)
     body = b"".join(chunks)
-    _write_if_changed(resources / "PaperSearch.icns", b"icns" + struct.pack(">I", len(body) + 8) + body)
+    icns = b"icns" + struct.pack(">I", len(body) + 8) + body
+    # macOS keeps a bundle's icon from its cache while the bundle seems unchanged:
+    # notifications still showed the old icon after the new one was written into
+    # the bundle (2026-11-08). The version follows the icon, and a changed bundle
+    # is registered again.
+    changed = _write_if_changed(app / "Contents/Info.plist", plistlib.dumps({
+        "CFBundleIdentifier": BUNDLE_ID,
+        "CFBundleName": "PaperSearch", "CFBundleDisplayName": "PaperSearch",
+        "CFBundleExecutable": "PaperSearch", "CFBundlePackageType": "APPL",
+        "CFBundleInfoDictionaryVersion": "6.0", "CFBundleVersion": str(zlib.crc32(icns)),
+        "CFBundleIconFile": "PaperSearch.icns", "LSUIElement": True,
+    }))
+    changed = _write_if_changed(resources / "PaperSearch.icns", icns) or changed
     executable = macos / "PaperSearch"
     _write_if_changed(executable, (assets / "papersearch-notifier").read_bytes(), 0o755)
+    if changed:
+        _register(app)
     return executable
 
 

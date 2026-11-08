@@ -1,17 +1,11 @@
 ---
 name: paper-search
 description: |
-  学术文献检索与论文获取调度器，通过本机的 paper-search 命令完成（不是 MCP 服务）。
-  用于：检索论文、查找相似研究、文献综述初筛、核验 PMID/DOI、下载论文 PDF 和补充材料
-  （默认只有开放下载；需要学校订阅的正文和补充材料，要另装可选的学校订阅下载（CARSI），用用户学校的权限获取），
-  调用 Crossref、OpenAlex、PubMed、PMC、Europe PMC、arXiv、bioRxiv、medRxiv、Semantic Scholar、CORE、OpenAIRE、DBLP、ACM、USENIX、OpenReview、IACR 等来源，
-  在 Semantic Scholar 开放获取正文片段索引里查方法学细节，
-  通过 Semantic Scholar Graph API 查已知论文的施引文献和参考文献，
-  以及通过 EasyScholar 查期刊影响因子、JCR/SSCI 分区、中科院分区、JCI、ESI、预警和等级。
+  用本机 paper-search 命令检索论文、搜正文片段、查期刊影响因子与分区、查施引和参考文献、下载论文 PDF 和补充材料。
   用户说“搜文献”“找论文”“文献检索”“查一下有没有相关研究”“帮我找几篇参考文献”“看看别人怎么做的”
-  “Methods 里怎么做的”“方法学写法对照”“下载论文 PDF”“下载补充材料”“用学校权限下载”“批量下载”
-  “验证 PMID”“验证 DOI”“正文片段检索”“影响因子”“JCR 分区”“中科院分区”“期刊分区”“期刊等级”，
-  或用英文说 “search papers”“find papers”“literature search”“snippet search”“journal metrics” 时使用。
+  “Methods 里怎么做的”“方法学写法对照”“正文片段检索”“影响因子”“JCR 分区”“中科院分区”“期刊分区”“期刊等级”
+  “谁引用了这篇”“这篇的参考文献”“下载论文 PDF”“下载补充材料”“用学校权限下载”“批量下载”“验证 PMID”“验证 DOI”，
+  或用英文说 “search papers”“find papers”“literature search”“snippet search”“journal metrics”“impact factor”“citations” 时使用。
   本 Skill 只指导调用 paper-search；API key 通过 paper-search setup、paper-search config、.env 或环境变量配置，绝不写入 Skill 文件。
 ---
 

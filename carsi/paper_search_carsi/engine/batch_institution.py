@@ -9,7 +9,8 @@ import time
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse
 
-from .batch_common import DownloadResult, _is_browser_error, logger, open_page, pump_until, settle
+from .batch_common import (DownloadResult, _is_browser_error, _is_navigation_cut, logger, open_page,
+                           pump_until, settle)
 
 
 def _school_auth_patterns(config: dict[str, Any]) -> tuple[str, ...]:
@@ -752,24 +753,32 @@ class InstitutionMixin:
                 # A widget's accessible name can differ from its visible school
                 # text, or it can be a clickable div/span without a role. Use
                 # the visible control text, still requiring a click affordance.
-                candidates = page.evaluate("""() => {
-                    document.querySelectorAll('[data-paper-search-remembered]').forEach(e =>
-                        e.removeAttribute('data-paper-search-remembered'));
-                    const items = [...document.querySelectorAll('a,button,[role="button"],div,span')].filter(el => {
-                        const native = el.matches('a[href],button,[role="button"]');
-                        if (!native && el.closest('a,button,[role="button"]')) return false;
-                        const text = (el.textContent || '').trim();
-                        return text.length <= 160 && /^access through\\s*\\S/i.test(text)
-                            && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden'
-                            && !el.disabled && el.getAttribute('aria-disabled') !== 'true'
-                            && (native || typeof el.onclick === 'function' || getComputedStyle(el).cursor === 'pointer');
-                    });
-                    return items.filter(el => !items.some(other => other !== el && el.contains(other)))
-                        .slice(0,10).map((el,i) => {
-                            el.setAttribute('data-paper-search-remembered', String(i));
-                            return {i, text:(el.textContent || '').trim()};
+                try:
+                    candidates = page.evaluate("""() => {
+                        document.querySelectorAll('[data-paper-search-remembered]').forEach(e =>
+                            e.removeAttribute('data-paper-search-remembered'));
+                        const items = [...document.querySelectorAll('a,button,[role="button"],div,span')].filter(el => {
+                            const native = el.matches('a[href],button,[role="button"]');
+                            if (!native && el.closest('a,button,[role="button"]')) return false;
+                            const text = (el.textContent || '').trim();
+                            return text.length <= 160 && /^access through\\s*\\S/i.test(text)
+                                && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden'
+                                && !el.disabled && el.getAttribute('aria-disabled') !== 'true'
+                                && (native || typeof el.onclick === 'function' || getComputedStyle(el).cursor === 'pointer');
                         });
-                }""")
+                        return items.filter(el => !items.some(other => other !== el && el.contains(other)))
+                            .slice(0,10).map((el,i) => {
+                                el.setAttribute('data-paper-search-remembered', String(i));
+                                return {i, text:(el.textContent || '').trim()};
+                            });
+                    }""")
+                except Exception as exc:
+                    if not _is_navigation_cut(exc):
+                        raise
+                    # The page navigated while it was read, e.g. the user chose
+                    # a school (Karger's wayfinder): looked at again next pass.
+                    self._event(result, "login_navigation_interrupted", "institution-entry")
+                    return False
                 if isinstance(candidates, list):
                     for candidate in candidates:
                         label = re.sub(r"^\s*access through\s*", "", candidate["text"], flags=re.I)

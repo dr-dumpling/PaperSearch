@@ -88,7 +88,7 @@ paper-search failures --format text
 | 类别 | 常见 code | 怎么说、怎么做 |
 | --- | --- | --- |
 | 没权限（有依据） | `entitlement_missing`、`institution_federation_unavailable`、`no_entitlement` | 附上汇总里的依据（页面原话或决定性的一步）。只说本篇、当前学校没有权限，不推断整个平台。出版社没有学校所在联盟的登录路线时，建议在校园网或学校 VPN 下下载。 |
-| 用户或外部原因 | `login_timeout`（停在学校登录页）、`login_page_closed`、`login_credentials_rejected`、`captcha_required`、`idp_login_error`、`institution_not_registered`（认证应用或入口未注册，不代表没有订阅）、`user_skipped`、`cancelled`、`access_blocked`、`cloudflare_blocked`、`publisher_content_error`、`rate_limited`、`batch_stopped`、`profile_busy` | 说明需要用户做什么（登录、验证、等待、联系图书馆），原调用结束、资源释放后再决定是否重试；不连续重新提交登录。 |
+| 用户或外部原因 | `login_timeout`（停在学校登录页）、`login_page_closed`、`login_credentials_rejected`、`captcha_required`、`idp_login_error`、`institution_not_registered`（认证应用或入口未注册，不代表没有订阅）、`user_skipped`、`cancelled`、`access_blocked`、`cloudflare_blocked`、`publisher_content_error`、`article_not_yet_published`（论文已录用，出版社还没上线全文）、`rate_limited`、`batch_stopped`、`profile_busy` | 说明需要用户做什么（登录、验证、等待、联系图书馆），原调用结束、资源释放后再决定是否重试；不连续重新提交登录。 |
 | 暂不支持的网站 | `unsupported_platform`（如只在 ClinicalKey 上的内容）、`unsupported_publisher`（DOI 没有指向能登录的出版社网站，没有打开浏览器）、`generic_institution_entry_missing`（这家出版社还没有专门的规则，按通用规则没找到机构登录入口） | 说明这类网站还不支持，不说成没有权限；后者可以建议用户把这篇报告给维护者补规则，或在校园网下下载。 |
 | 原因不明（需排查） | `download_failed`、`download_timeout`、`login_not_reached`（程序没进入学校登录页）、`login_required`、`source_exception`、`browser_unresponsive`、`pdf_identity_unverified`、`pdf_identity_mismatch`、`pdf_wrong_article` 等 | 不说成没有权限；说明原因待查，给出汇总里的“停在哪一步”和诊断文件位置。 |
 

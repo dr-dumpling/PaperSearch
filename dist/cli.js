@@ -1200,7 +1200,7 @@ async function main() {
         process.exitCode = error?.exitCode || 1;
     }
     finally {
-        update?.stop();
+        await update?.finish();
     }
 }
 function maybePrintSetupHint(parsed) {

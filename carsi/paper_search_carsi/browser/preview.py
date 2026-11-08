@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 from weakref import WeakKeyDictionary
 
-from .watchdog import BrowserUnresponsive, operation_remaining
+from .watchdog import BrowserUnresponsive, CallAbandoned, call_limit, operation_remaining
 from ..entitlements import UserMarkedNoEntitlement
 
 _OBSERVERS = WeakKeyDictionary()
@@ -33,6 +33,7 @@ OBSERVE_INTERVAL_SEC = 4  # between unforced frames (waits refresh at most this 
 MAX_KEPT_FRAMES = 5  # earlier page states kept per download, besides each tab's newest frame
 JPEG_QUALITY = 60
 SCREENSHOT_TIMEOUT_MS = 1500
+CAPTURE_BACKOFF_SEC = 30  # after a frame that never came, for the same page state
 
 
 def _atomic(path: Path, data: bytes) -> None:
@@ -63,6 +64,7 @@ class BrowserPreview:
         self.observing = False
         self.paused = 0
         self._cdp = WeakKeyDictionary()
+        self._no_frame = WeakKeyDictionary()  # page -> (url, until): its capture timed out
         self._navigation_listeners = {}
         context.on('close', self.close)
         self._write([])
@@ -145,8 +147,19 @@ class BrowserPreview:
                 session = False
                 self._cdp[page] = session
         if session:
-            data = session.send("Page.captureScreenshot",
-                                {"format": "jpeg", "quality": JPEG_QUALITY, "fromSurface": True})
+            url, until = self._no_frame.get(page, ("", 0.0))
+            if url == page.url and time.monotonic() < until:
+                raise TimeoutError("no frame from this page yet")
+            # The capture waits for a drawn frame and has no timeout of its own:
+            # Thieme's article tab after the school login held it for 90 s, and the
+            # watchdog ended the article as browser_unresponsive (2026-11-08).
+            try:
+                with call_limit(SCREENSHOT_TIMEOUT_MS / 1000):
+                    data = session.send("Page.captureScreenshot",
+                                        {"format": "jpeg", "quality": JPEG_QUALITY, "fromSurface": True})
+            except CallAbandoned:
+                self._no_frame[page] = (page.url, time.monotonic() + CAPTURE_BACKOFF_SEC)
+                raise
             return base64.b64decode(data["data"])
         return page.screenshot(timeout=SCREENSHOT_TIMEOUT_MS, full_page=False, type="jpeg", quality=JPEG_QUALITY)
 

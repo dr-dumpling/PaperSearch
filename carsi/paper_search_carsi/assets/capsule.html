@@ -163,6 +163,10 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .paper-list li { font-size: 12px; padding: 3px 0; }
 .paper-list .t, .paper-list .w { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .paper-list .w, .paper-list .more { color: var(--faint); }
+.paper-list .open-article { display: block; width: 100%; padding: 0; border: none; background: none; text-align: left;
+  font: inherit; color: inherit; cursor: pointer; }
+.paper-list .open-article:hover .t { color: var(--accent); text-decoration: underline; }
+.paper-list .open-article:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
 .tag { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 5px; flex: none; }
 .tag.no_access, .tag.other { background: var(--hover); color: var(--fg); }
 .tag.user_or_external { background: var(--warn-bg); color: var(--warn); }
@@ -349,7 +353,12 @@ function reasonRow(g, i, brief) {
     + '<span class="n">' + g.count + " 篇</span>" + icon(opened ? "down" : "right") + "</button>";
   if (!opened) return html + (g.where && !brief ? '<div class="m">' + esc(g.where) + "</div>" : "") + "</div>";
   return html + '<ul class="paper-list' + (g.papers.length > 5 ? " scroll" : "") + '">'
-    + g.papers.map((p) => '<li><div class="t">' + esc(p.title) + "</div>" + (p.where ? '<div class="w">' + esc(p.where) + "</div>" : "") + "</li>").join("")
+    + g.papers.map((p) => {
+      const lines = '<div class="t">' + esc(p.title) + "</div>" + (p.where ? '<div class="w">' + esc(p.where) + "</div>" : "");
+      // The article's page in the user's browser, to fetch it by hand (user, 2026-11-08).
+      return "<li>" + (p.doi ? '<button type="button" class="open-article" data-act="open_article" data-doi="' + esc(p.doi)
+        + '" title="在浏览器打开这篇文章">' + lines + "</button>" : lines) + "</li>";
+    }).join("")
     + (g.more ? '<li class="more">另有 ' + g.more + " 篇未列出</li>" : "") + "</ul></div>";
 }
 
@@ -536,6 +545,7 @@ async function act(action, target) {
     case "minimize": open = false; panel = ""; render(true); return api().minimize();  // back as a capsule when restored
     case "close": closing = true; ++fitGeneration; clearInterval(pollTimer); clearTimeout(hoverTimer); clearTimeout(leaveTimer); return api().request_close();  // no call left waiting on a closed page
     case "folder": return api().open_folder();
+    case "open_article": return say(await api().open_article(target.dataset.doi));
     case "group": return toggleGroup(Number(target.dataset.group));
     case "show_browser": {
       try { await inputActivation; }

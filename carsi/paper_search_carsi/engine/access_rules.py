@@ -80,6 +80,17 @@ def registrable_domain(host: str) -> str:
 _ABSTRACT_ONLY = re.compile(r"/article-abstract/|/abs/pii/", re.I)
 
 
+# The publisher shows the article as accepted, its full text not online yet:
+# Optica's page "This paper has been accepted for publication. The DOI ... has been
+# registered ... will redirect to the published article when available" (2026-11-08).
+_NOT_YET_PUBLISHED = (("accepted for publication", "redirect to the published article when available"),)
+
+
+def not_yet_published(text: str) -> bool:
+    flat = " ".join(text.lower().split())
+    return any(all(marker in flat for marker in markers) for markers in _NOT_YET_PUBLISHED)
+
+
 def abstract_only(url: str) -> bool:
     return bool(_ABSTRACT_ONLY.search(urlparse(url or "").path))
 

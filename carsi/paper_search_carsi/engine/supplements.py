@@ -146,6 +146,22 @@ def _page_evidence(response: Any) -> dict[str, Any]:
     return evidence
 
 
+def _is_verification_page(response: Any) -> bool:
+    """A firewall's human verification page instead of the file (Figshare's AWS WAF,
+    Cloudflare): the site stopped a scripted request, the file may well exist."""
+    headers = getattr(response, "headers", None) or {}
+    return ("text/html" in str(headers.get("content-type") or "").lower()
+            and "challenge" in (headers.get("x-amzn-waf-action"), headers.get("cf-mitigated")))
+
+
+class _StillVerifying(Exception):
+    """The browser, too, did not get the file past a site's verification page."""
+
+    def __init__(self, evidence: dict[str, Any]):
+        super().__init__("verification_page")
+        self.evidence = evidence
+
+
 def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi: str, *,
             clock=time.monotonic, sleep=time.sleep,
             manifest_dir: Path | None = None,
@@ -186,11 +202,23 @@ def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi
                 response = None
                 response = _get(request, link.url, entry, sleep)
                 _check_interrupted()
-                if response.status == 403 and download is not None:
+                # A firewall's verification page goes to the browser as a 403 does: it
+                # opens the link as a reader would and runs the page's own check
+                # (Figshare's AWS WAF answered every scripted request, 2026-11-08).
+                challenged = download is not None and _is_verification_page(response)
+                if (response.status == 403 and download is not None) or challenged:
+                    evidence = _page_evidence(response) if challenged else {}
                     if callable(getattr(response, "dispose", None)):
                         response.dispose()
                     response = None
-                    response = _Downloaded(*download(link.url))
+                    try:
+                        response = _Downloaded(*download(link.url))
+                    except (BrowserUnresponsive, UserMarkedNoEntitlement):
+                        raise
+                    except Exception:
+                        if not challenged:
+                            raise
+                        raise _StillVerifying(evidence)
                     entry["via"] = "browser_download"
                     _check_interrupted()
                 content_type = str(response.headers.get("content-type", "") or "")
@@ -203,10 +231,8 @@ def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi
                     # A login wall or landing page instead of the file: which one, for the record.
                     # A firewall's human verification page is told apart (Figshare's AWS WAF,
                     # 2026-11-08): the site stopped the request, the file may well exist.
-                    evidence = _page_evidence(response)
-                    headers = evidence.get("page_headers") or {}
-                    challenged = "challenge" in (headers.get("x-amzn-waf-action"), headers.get("cf-mitigated"))
-                    entry.update(status="failed", reason="verification_page" if challenged else "html_page", **evidence)
+                    entry.update(status="failed", reason="verification_page" if _is_verification_page(response)
+                                 else "html_page", **_page_evidence(response))
                 else:
                     name = _file_name(link.url, str(response.headers.get("content-disposition", "") or ""), taken,
                                       link.label, content_type)
@@ -245,6 +271,8 @@ def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi
                             temporary.unlink(missing_ok=True)
             except SupplementTooLarge as exc:
                 entry.update(status="skipped", reason="too_large", size=exc.size)
+            except _StillVerifying as exc:
+                entry.update(status="failed", reason="verification_page", via="browser_download", **exc.evidence)
             except (BrowserUnresponsive, UserMarkedNoEntitlement) as exc:
                 stopped_reason = ("batch_stopped" if isinstance(exc, UserStoppedBatch) else
                                   "user_skipped" if isinstance(exc, UserSkippedArticle) else

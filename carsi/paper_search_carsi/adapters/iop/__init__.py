@@ -2,7 +2,9 @@
 
 Without access the article page offers "Access this article" or "Access
 through your institution". The institution login starts at myIOPscience's
-sign-in (``myiopscience.iop.org/signin``) with the article as its target.
+sign-in (``myiopscience.iop.org/signin``) with the article as its target: with
+``origin=deeplink`` it leads to OpenAthens' institution finder (without it, to
+the personal account sign-in only).
 """
 from __future__ import annotations
 
@@ -70,7 +72,14 @@ class IOPAdapter(PublisherAdapter):
         if "iopscience.iop.org/article/" not in current_url.lower():
             return None
         text = self.d._body_text(page, 5_000).lower()
-        if "access this article" not in text and "access through your institution" not in text:
+        offered = "access this article" in text or "access through your institution" in text
+        # An accepted manuscript's page has no access box, its PDF still needs the
+        # institution's login (Physics in Medicine & Biology, 2026-11-08). Once per
+        # article: back from the login without access, the page is left as it is.
+        manuscript = "accepted manuscript" in text and result is not None and not any(
+            e.get("state") == "sso_entry_clicked" and "myiopscience.iop.org/signin" in str(e.get("detail", ""))
+            for e in getattr(result, "events", None) or [])
+        if not offered and not manuscript:
             return None
         signin_url = "https://myiopscience.iop.org/signin?" + urlencode(
             {"origin": "deeplink", "target": current_url}

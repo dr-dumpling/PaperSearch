@@ -1155,6 +1155,19 @@ class WorldScientificChooserTests(unittest.TestCase):
         self.assertEqual(d._login_block_reason(page), "sso_redirect_stalled")
 
 
+class AMSEntryTests(unittest.TestCase):
+    def test_no_institutional_sign_in_ends_the_login_at_once(self):
+        """journals.ametsoc.org: "Sign in" is the AMS member login only (2026-11-08)."""
+        d = PublisherBatchDownloader({}, profile=get_publisher_profile("ams"))
+        d._event = Mock()
+        result = SimpleNamespace(events=[])
+        self.assertIs(d.adapter.prepare_institution_choice(Mock(), result), False)
+        self.assertTrue(result._institution_not_listed)
+        self.assertEqual(d._event.call_args.args[1], "institution_login_unavailable")
+        self.assertIs(d.adapter.prepare_institution_choice(Mock(), result), False)
+        self.assertEqual(d._event.call_count, 1)
+
+
 class IOPEntryTests(unittest.TestCase):
     ARTICLE = "https://iopscience.iop.org/article/10.1088/1361-648X/ae62e5"
 
@@ -1174,6 +1187,16 @@ class IOPEntryTests(unittest.TestCase):
         page.goto.side_effect = RuntimeError("offline")
         self.assertIsNone(d.adapter.open_institution_entry(page, SimpleNamespace(events=[])))
         self.assertEqual(d._event.call_args[0][1], "sso_entry_error")
+
+    def test_an_accepted_manuscript_without_access_box_signs_in_once(self):
+        d = self.downloader()
+        d._body_text = Mock(return_value="ACCEPTED MANUSCRIPT\nThree-dimensional computational evaluation\nPDF")
+        page = Mock(url=self.ARTICLE)
+        self.assertIs(d.adapter.open_institution_entry(page, SimpleNamespace(events=[])), True)
+        self.assertIn("myiopscience.iop.org/signin?origin=deeplink", page.goto.call_args.args[0])
+        tried = SimpleNamespace(events=[{"state": "sso_entry_clicked", "detail": page.goto.call_args.args[0]}])
+        self.assertIsNone(d.adapter.open_institution_entry(page, tried))
+        self.assertIsNone(d.adapter.open_institution_entry(page, None))
 
     def test_other_pages_are_left_to_the_engine(self):
         d = self.downloader()

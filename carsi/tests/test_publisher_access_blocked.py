@@ -132,6 +132,40 @@ class PublisherSideFailureTests(unittest.TestCase):
         self.assertEqual(files[0]["reason"], "publisher_access_blocked")
         self.assertEqual(self.result.state, "publisher_access_blocked")  # the main text had failed
 
+    def test_files_listed_before_the_pdf_are_not_looked_up_again(self):
+        """AHA's article page took longer than the attachment step's 60 s to load a
+        second time (2026-11-08): the files read on it before the PDF are used."""
+        import importlib
+        from contextlib import nullcontext
+        from paper_search_carsi.adapters.base import SupplementLink
+        # The modules the engine under test imports, whatever package it was loaded as.
+        supplement_transfer = importlib.import_module(self.batch.__package__ + ".supplement_transfer")
+        supplements = importlib.import_module(self.batch.__package__ + ".supplements")
+        tab = SimpleNamespace(url="about:blank", goto=Mock(), close=Mock(), context=None, on=Mock(), remove_listener=Mock())
+        context = SimpleNamespace(new_page=Mock(return_value=tab))
+        link = SupplementLink("https://journals.fixture.example/doi/suppl/10.1000/fixture/suppl_file/s1.pdf", "S1")
+        self.result._listed_supplements = [link]
+        saved = [{"status": "saved", "url": link.url, "label": "S1"}]
+        with patch.object(supplement_transfer, "browser_request", return_value=nullcontext(object())), \
+                patch.object(supplements, "collect", return_value=saved) as collect, \
+                tempfile.TemporaryDirectory() as tmp:
+            files = self.d.collect_supplements(context, "10.1000/fixture", Path(tmp), self.result)
+        self.assertEqual(files, saved)
+        tab.goto.assert_not_called()
+        self.assertEqual(collect.call_args.args[1], [link])
+        self.assertIn("supplements_listed_on_article", [e["state"] for e in self.result.events])
+
+    def test_listed_files_are_remembered_only_without_figshare_links(self):
+        from paper_search_carsi.adapters.base import SupplementLink
+        link = SupplementLink("https://journals.fixture.example/doi/suppl/10.1000/fixture/suppl_file/s1.pdf")
+        adapter = SimpleNamespace(listed_supplement_links=Mock(return_value=[link]))
+        for figshare, expected in ((False, [link]), (True, None)):
+            with self.subTest(figshare=figshare), patch.object(type(self.d), "adapter", new=adapter):
+                result = self.batch.DownloadResult(doi="10.1000/fixture", status="failed")
+                self.d._remember_listed_supplements(SimpleNamespace(evaluate=Mock(return_value=figshare)),
+                                                    "10.1000/fixture", result)
+                self.assertEqual(getattr(result, "_listed_supplements", None), expected)
+
     def test_a_browser_closed_before_the_supplements_keeps_the_articles_result(self):
         # SID Symposium Digest: the window was closed during the login wait, and
         # TargetClosedError lost the item's result as source_exception (2026-11-02).

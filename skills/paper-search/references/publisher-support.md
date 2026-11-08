@@ -1,6 +1,6 @@
 # 机构下载：各出版社支持情况
 
-本表只适用于机构下载（可选扩展），说明它在哪些出版社网站上能走通（截至 2026-11-05，含工作区尚未发布的适配）。“能走通”是说：用户学校订阅了这篇文章、出版社有这所学校的登录路线时，程序能自己取到本文的 PDF。学校有没有订阅，看实际的下载结果。开放获取的文章通常先由开放下载拿到，用不到这张表。
+本表只适用于机构下载（可选扩展），说明它在哪些出版社网站上能走通（截至 2026-11-08）。“能走通”是说：用户学校订阅了这篇文章、出版社有这所学校的登录路线时，程序能自己取到本文的 PDF。学校有没有订阅，看实际的下载结果。开放获取的文章通常先由开放下载拿到，用不到这张表。
 
 - 支持按网站算，不按期刊算：同一网站上的期刊共享规则，实际结果以目标文章为准。
 - 程序按 DOI 实际跳转到的网站判断属于哪一行。DOI 前缀只是线索，期刊换了出版社时前缀不变（例如 ARD 的 `10.1136` 文章现在在 Elsevier）。
@@ -39,7 +39,7 @@
 | AIP Publishing | pubs.aip.org | `10.1063` | ✓OA | ✓ |
 | Royal Society | royalsocietypublishing.org | `10.1098` | ✓OA | ✓ |
 | APS（Physical Review） | journals.aps.org | `10.1103` | ✓OA | ✓ |
-| IOP Publishing | iopscience.iop.org | `10.1088` | ✓OA | ✓ |
+| IOP Publishing | iopscience.iop.org | `10.1088` | ✓ | ✓ |
 | Optica | opg.optica.org | `10.1364` | ✓OA | ✓ |
 | Annual Reviews | annualreviews.org | `10.1146` | ✓OA | ✓ |
 | AMS | journals.ametsoc.org | `10.1175` | ✓OA | ✓ |
@@ -64,13 +64,13 @@ DOI 跳转到表外的网站时，程序按通用规则尝试：找机构登录�
 
 ## 不支持的平台
 
-返回 `unsupported_platform` 或 `unsupported_publisher`，不打开浏览器或很快结束：只在 ClinicalKey 上的内容；知网、万方、维普；DOI 无法解析、直接指向 PDF 文件或落到 Crossref 多重解析页。告诉用户这类来源不支持，不说成没有权限。
+返回 `unsupported_platform` 或 `unsupported_publisher`，不打开浏览器或很快结束：只在 ClinicalKey 上的内容（包括 ScienceDirect 上写明经 ClinicalKey 访问、没有 PDF 的文章）；知网、万方、维普；DOI 无法解析、直接指向 PDF 文件或落到 Crossref 多重解析页。告诉用户这类来源不支持，不说成没有权限。
 
 ## 和学校有关的常见结果
 
 这些结果说明的是“用户学校在这家出版社的情况”，不是程序故障：
 
-- `institution_federation_unavailable`：出版社的机构列表里找不到 CARSI 或用户的学校，即这家出版社没有这所学校的登录路线。程序立即结束；建议在校园网或学校 VPN 下下载。
+- `institution_federation_unavailable`：出版社的机构列表里找不到 CARSI 或用户的学校，即这家出版社没有这所学校的登录路线。AMS（journals.ametsoc.org）只有会员登录、机构靠学校网络地址访问，也按这条结束。程序立即结束；建议在校园网或学校 VPN 下下载。
 - `institution_not_registered`：认证应用或入口未注册，或与当前认证渠道不兼容，属于外部认证配置问题；核查入口，不把它当作学校没有论文订阅。
 - `idp_no_return_to_publisher`：学校登录后停在学校自己的网站，没回到出版社，通常也是学校没开通。
 - `entitlement_missing`：出版社认出了学校，判定本篇不在订阅内。只说本篇、当前学校没有权限，不推断整个出版社。

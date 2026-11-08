@@ -505,7 +505,7 @@ class CapsulePageTests(unittest.TestCase):
         failures = [{'cls': 'no_access', 'reason': '学校没有订阅', 'title': f'Paper {i}', 'journal': 'Spine',
                      'doi': '', 'note': ''} for i in range(12)]
         failures.append({'cls': 'user_or_external', 'reason': '等学校登录超时', 'title': 'Late', 'journal': 'Thieme',
-                         'doi': '', 'note': ''})
+                         'doi': '10.1055/a-2979-4843', 'note': ''})
         state = view(dict(status='done', run_id='r-done', total=200, done=200, success=187, failed=13,
                           started_at=datetime.fromtimestamp(now - 6730).isoformat(timespec='seconds'),
                           finished_at=datetime.fromtimestamp(now).isoformat(timespec='seconds'), output_dir='/tmp',
@@ -536,6 +536,11 @@ class CapsulePageTests(unittest.TestCase):
                 rows.nth(1).click()
                 page.wait_for_function("!root.classList.contains('animating')")
                 self.assertEqual(page.locator('.paper-list li').all_inner_texts(), ['Late\nThieme'])
+                # A listed paper opens its article page, to be fetched by hand (user, 2026-11-08).
+                page.locator('.paper-list [data-act=open_article]').click()
+                page.wait_for_function("openedArticles.length === 1")
+                self.assertEqual(page.evaluate('openedArticles'), ['10.1055/a-2979-4843'])
+                self.assertEqual(page.evaluate('dragLocks'), [])
                 rows.nth(1).click()
                 page.wait_for_function("!root.classList.contains('animating')")
                 self.assertEqual(page.locator('.paper-list').count(), 0)
@@ -558,7 +563,7 @@ class CapsulePageTests(unittest.TestCase):
               document.addEventListener('pointermove', e=>{testPointer={x:e.clientX,y:e.clientY}});
               window.pointerSnapshot=()=>{const r=root.getBoundingClientRect();return {...testPointer,
                 inside:testPointer.x>=r.left && testPointer.x<r.right && testPointer.y>=r.top && testPointer.y<r.bottom}};
-              window.testState=state; window.sizes=[]; window.dragLocks=[]; window.nativeMoves=[]; window.requestedActions=[];
+              window.testState=state; window.sizes=[]; window.dragLocks=[]; window.nativeMoves=[]; window.requestedActions=[]; window.openedArticles=[];
           window.pywebview={platform:platform==='darwin'?'cocoa':'edgechromium', api:{
             platform:async()=>platform, state:async()=>testState, hover_state:async()=>pointerSnapshot(), resize:async(w,h)=>sizes.push([w,h]),
                 begin_layout:async(expanded,w,h)=>({vertical:'down',horizontal:'right',width:w,height:h,
@@ -567,6 +572,7 @@ class CapsulePageTests(unittest.TestCase):
                 finish_layout:async()=>{},
             set_dragging:async(active)=>dragLocks.push(active),
             act:async(...args)=>{requestedActions.push(args); return '正在切到下载浏览器'},
+            open_article:async(doi)=>{openedArticles.push(doi); return '已在浏览器打开这篇文章'},
             move_drag:async(x,y)=>nativeMoves.push([x,y]),
             settings:async()=>({fields:[], notify:true, download_dir:'/original'})},
             _jsApiCallback:(name,args)=>{if(name==='pywebviewMoveWindow')nativeMoves.push(args)}};

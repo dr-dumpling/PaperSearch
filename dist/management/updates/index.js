@@ -120,26 +120,28 @@ function unavailable(options) {
 function startCheck(options) {
     const now = options.now ?? Date.now;
     const old = readCache(options, now());
-    // Record attempts as well as successes: failures and quick commands that
-    // cancel an unfinished request do not repeatedly contact the registry.
-    saveCache(options, { ...old, schemaVersion: 1, checkedAt: now() });
     const controller = new AbortController();
     let stopped = false;
     const timer = setTimeout(() => controller.abort(), TIMEOUT);
     const done = (async () => {
         try {
             const latest = await (options.queryLatest ?? queryLatestStable)(controller.signal);
-            if (stopped || controller.signal.aborted)
+            if (stopped)
                 return unavailable(options);
             const checkedAt = now();
             const result = resultFor(options, latest, checkedAt);
-            if (result.ok)
-                saveCache(options, { schemaVersion: 1, checkedAt, latest, latestCheckedAt: checkedAt });
+            saveCache(options, result.ok ? { schemaVersion: 1, checkedAt, latest, latestCheckedAt: checkedAt }
+                : { ...old, schemaVersion: 1, checkedAt });
             return result;
         }
         catch {
-            return unavailable(options);
-        } // Optional network errors never change a paper result.
+            // A failed or timed-out request waits before the next one. A request cut
+            // short by stop() is no attempt: counting it hid the reminder from every
+            // command quicker than the registry's answer, for a day after another (2026-11-08).
+            if (!stopped)
+                saveCache(options, { ...old, schemaVersion: 1, checkedAt: now() });
+            return unavailable(options); // Optional network errors never change a paper result.
+        }
         finally {
             clearTimeout(timer);
         }
@@ -159,9 +161,13 @@ export function renderUpdateNotice(result) {
     return `PaperSearch update available: ${result.currentVersion} → ${result.latestVersion}\n` +
         `Run: ${result.upgradeCommand}\n`;
 }
-/** Runs alongside the original command. stop() cancels at command completion. */
+/**
+ * Runs alongside the original command. finish() at command completion lets a
+ * check still under way end within its own timeout (at most once a day), so a
+ * quick command (journal-metrics, doctor) still gets the reminder; stop() cancels.
+ */
 export function beginUpdateNotification(options) {
-    const idle = { stop() { }, done: Promise.resolve() };
+    const idle = { stop() { }, done: Promise.resolve(), finish: () => Promise.resolve() };
     if (!options.enabled || !version(options.current))
         return idle;
     const now = (options.now ?? Date.now)();
@@ -180,6 +186,7 @@ export function beginUpdateNotification(options) {
     if (!options.allowNetwork || (cached && now - cached.checkedAt < (successful ? DAY : RETRY)))
         return idle;
     const check = startCheck(options);
-    return { stop: check.stop, done: check.done.then(notify) };
+    const done = check.done.then(notify);
+    return { stop: check.stop, done, finish: () => done };
 }
 //# sourceMappingURL=index.js.map

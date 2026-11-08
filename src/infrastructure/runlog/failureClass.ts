@@ -55,6 +55,8 @@ const CLASS_OF_CODE: Readonly<Record<string, FailureClass>> = {
   access_blocked: "user_or_external",
   cloudflare_blocked: "user_or_external",
   publisher_content_error: "user_or_external",
+  // Accepted, its full text not online yet (Optica, 2026-11-08).
+  article_not_yet_published: "user_or_external",
   publisher_unreachable: "user_or_external",
   rate_limited: "user_or_external",
   batch_stopped: "user_or_external",

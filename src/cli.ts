@@ -1538,7 +1538,7 @@ async function main() {
     process.stdout.write(`${formatOutput(payload, parsed.flags)}\n`);
     process.exitCode = error?.exitCode || 1;
   } finally {
-    update?.stop();
+    await update?.finish();
   }
 }
 

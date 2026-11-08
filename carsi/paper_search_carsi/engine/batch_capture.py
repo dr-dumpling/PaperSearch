@@ -337,6 +337,25 @@ class CaptureMixin:
         except Exception:
             pass
 
+    # Figshare links: their files are found by its own API in the attachment step.
+    _FIGSHARE_LINKED_JS = "() => !!document.querySelector('a[href*=\"figshare.com\"]')"
+
+    def _remember_listed_supplements(self, page: Any, doi: str, result: DownloadResult) -> None:
+        """The files the article page lists, read before the PDF takes its tab: the
+        attachment step then need not load the page again (AHA's page took more
+        than that step's 60 s once, 2026-11-08). Only from an adapter that reads
+        them without leaving the page, and not beside Figshare links."""
+        read = getattr(self.adapter, "listed_supplement_links", None)
+        if read is None or getattr(result, "_listed_supplements", None):
+            return
+        try:
+            links = read(page, doi)
+            if links and not page.evaluate(self._FIGSHARE_LINKED_JS):
+                result._listed_supplements = list(links)
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+
     def _capture_pdf_channels(self, page: Any, doi: str, result: DownloadResult) -> tuple[bytes | None, str, str | None]:
         """Capture the PDF for ``doi`` from ``page``.
 
@@ -345,6 +364,7 @@ class CaptureMixin:
         was observed during capture, else ``None``.
         """
         self._event(result, "pdf_capture_started")
+        self._remember_listed_supplements(page, doi, result)
         captured: dict[str, Any] = {"bytes": None, "url": "", "deferred_url": "", "block_reason": None,
                                     "suspect_block": None, "closed": False, "readers": set()}
         cdp_session = None

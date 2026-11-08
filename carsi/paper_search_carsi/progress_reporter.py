@@ -417,7 +417,12 @@ def _finish_download(outcome: dict[str, Any], current: str, batch: BatchContext 
         stage = "supplements_checked"
         phase = f"补充材料已保存 {len(files)} 个" if files else "已检查，页面未列出补充材料"
     report_stage(stage, current=current)
-    advance(succeeded, current=current, phase=phase)
+    # A saved PDF is the caller's to count once it has checked the article's
+    # identity; its totals come with the next item. Counted here, an article
+    # left for review showed as a success, then a failure (RSC, Windows 2026-11-08).
+    pending = (stage == "saved_pending_verification" and batch is not None
+               and batch.succeeded is not None and batch.index < batch.total)
+    advance(succeeded, current=current, phase=phase, pending=pending)
     if batch is not None and batch.index < batch.total:
         with _LOCK:
             if _STATE:
@@ -541,14 +546,16 @@ def update(**kw: Any) -> None:
         _write_state()
 
 
-def advance(ok: bool, current: str = "", phase: str = "") -> None:
-    """Record one finished item (the hot path for per-paper lanes)."""
+def advance(ok: bool, current: str = "", phase: str = "", *, pending: bool = False) -> None:
+    """Record one finished item (the hot path for per-paper lanes); ``pending``:
+    finished, but whether it succeeded is the caller's to count."""
     with _LOCK:
         if not _STATE:
             return
         _STATE["done"] = int(_STATE.get("done", 0)) + 1
-        _STATE["success"] = int(_STATE.get("success", 0)) + (1 if ok else 0)
-        _STATE["failed"] = int(_STATE.get("failed", 0)) + (0 if ok else 1)
+        if not pending:
+            _STATE["success"] = int(_STATE.get("success", 0)) + (1 if ok else 0)
+            _STATE["failed"] = int(_STATE.get("failed", 0)) + (0 if ok else 1)
         if current:
             _STATE["current"] = current
         if phase:

@@ -25,7 +25,11 @@ export interface UpdateResult {
 export declare function queryLatestStable(signal: AbortSignal): Promise<string>;
 export declare function checkForUpdate(options: UpdateOptions): Promise<UpdateResult>;
 export declare function renderUpdateNotice(result: UpdateResult): string;
-/** Runs alongside the original command. stop() cancels at command completion. */
+/**
+ * Runs alongside the original command. finish() at command completion lets a
+ * check still under way end within its own timeout (at most once a day), so a
+ * quick command (journal-metrics, doctor) still gets the reminder; stop() cancels.
+ */
 export declare function beginUpdateNotification(options: UpdateOptions & {
     enabled: boolean;
     allowNetwork: boolean;
@@ -33,5 +37,6 @@ export declare function beginUpdateNotification(options: UpdateOptions & {
 }): {
     stop(): void;
     done: Promise<void>;
+    finish(): Promise<void>;
 };
 //# sourceMappingURL=index.d.ts.map

@@ -117,6 +117,21 @@ def abandon(owners: set) -> int:
 
 
 @contextmanager
+def call_limit(seconds: float):
+    """Abandon this greenlet's calls still running after ``seconds`` (:func:`abandon`):
+    for calls whose answer is optional, such as a preview frame."""
+    owners: set = set()
+    timer = threading.Timer(seconds, abandon, args=(owners,))
+    timer.daemon = True
+    with owned_by(owners):
+        timer.start()
+        try:
+            yield
+        finally:
+            timer.cancel()
+
+
+@contextmanager
 def operation(seconds: float, label: str):
     """One monotonic deadline shared by all calls and retries in this scope."""
     stack = getattr(_local, "budgets", None)

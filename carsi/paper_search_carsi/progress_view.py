@@ -9,6 +9,7 @@ so tests cover every state without opening a window.
 from __future__ import annotations
 
 import os
+import re
 import sys
 from datetime import datetime
 from typing import Any
@@ -149,6 +150,9 @@ def _time(value: Any) -> float | None:
         return None
 
 
+# A DOI the article's page can be opened from (doi.org), nothing else.
+DOI = re.compile(r"10\.\d{4,9}/\S{1,280}")
+
 def _journals(failures: list[dict[str, Any]]) -> str:
     """The journals of a reason row, most papers first: "Spine 8 · JBJS 4 等"."""
     counts: dict[str, int] = {}
@@ -174,7 +178,9 @@ def _reason_groups(failures: list[dict[str, Any]], open_up_to: int) -> list[dict
     for (cls, reason), items in rows:
         papers = [{"title": str(item.get("title") or item.get("doi") or "未知论文"),
                    "where": " · ".join(str(v) for v in (
-                       item.get("journal"), item.get("reason") if cls == "other" else "", item.get("note")) if v)}
+                       item.get("journal"), item.get("reason") if cls == "other" else "", item.get("note")) if v),
+                   # The page opens in the user's browser from the list (user, 2026-11-08).
+                   "doi": str(item.get("doi") or "").strip() if DOI.fullmatch(str(item.get("doi") or "").strip()) else ""}
                   for item in items[:MAX_LISTED_PAPERS]]
         groups.append({"cls": cls, "reason": reason, "count": len(items), "where": _journals(items),
                        "papers": papers, "more": len(items) - len(papers),

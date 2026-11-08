@@ -1,5 +1,0 @@
-paper-search-carsi
-Derived from scansci-pdf (https://github.com/Rimagination/scansci-pdf), MIT License,
-copyright (c) 2024-2026 scansci-pdf contributors. Base: upstream commit f3dbb66 plus the
-maintainer's single-download candidate patches of 2026-10-27/28. Only the institutional
-access phase was kept; public/OA/grey sources, search, batch, Tor and Zotero were removed.

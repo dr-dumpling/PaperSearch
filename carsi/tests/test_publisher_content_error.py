@@ -87,6 +87,36 @@ class PublisherContentErrorTests(unittest.TestCase):
         page.url = 'https://www.clinicalkey.fr/'
         self.assertIsNone(downloader.adapter.unsupported_platform(page))
 
+    def test_a_sciencedirect_article_read_only_through_clinicalkey(self):
+        """The Lancet 1975 after the school login: "You have access to this article
+        through ClinicalKey", full text access, no PDF of its own (2026-11-08)."""
+        banner = ('Brought to you by: Fixture University\nYou have access to this article through ClinicalKey\n'
+                  'Full text access\nView full text\nRecommended articles\nView PDF')
+        downloader, page = self.make(url='https://www.sciencedirect.com/science/article/pii/S014067367592262X', text=banner)
+        page.evaluate = Mock(return_value=None)  # no PDF control of this article itself
+        self.assertEqual(downloader.adapter.unsupported_platform(page), 'ClinicalKey')
+        self.assertEqual(page.evaluate.call_args.args[1:], (True,))  # looked for, not clicked
+        page.evaluate = Mock(return_value={'text': 'View PDF'})
+        self.assertIsNone(downloader.adapter.unsupported_platform(page))
+        downloader._body_text = Mock(return_value='Full text access\nView full text')
+        page.evaluate = Mock(return_value=None)
+        self.assertIsNone(downloader.adapter.unsupported_platform(page))
+
+    def test_an_accepted_article_without_its_full_text_yet_stops_at_once(self):
+        """Optica's early posting page (2026-11-08): no full text to fetch yet."""
+        from paper_search_carsi.engine.batch_common import ArticleNotYetPublished
+        text = ('This paper has been accepted for publication. The DOI 10.1364/OL.621126 has been\nregistered for this '
+                'article. Authors and readers can cite the DOI and will redirect to the\npublished article when available.')
+        from types import SimpleNamespace
+        downloader, page = self.make(url='https://opg.optica.org/ol/abstract.cfm?doi=10.1364/ol.621126', text=text)
+        snapshot = SimpleNamespace(text=text, lines=text.splitlines(), probe={})
+        with self.assertRaises(ArticleNotYetPublished):
+            downloader._access_decision(page, snapshot)
+        snapshot.text = 'Received 2 March 2026; accepted for publication 4 May 2026'
+        snapshot.lines = [snapshot.text]
+        downloader._institution_session = Mock(return_value="")
+        self.assertNotEqual(downloader._access_decision(page, snapshot)[1], "not_yet_published")
+
     def test_unsupported_platform_ends_the_item_with_its_own_reason(self):
         downloader, page = self.make()
         del page.new_page

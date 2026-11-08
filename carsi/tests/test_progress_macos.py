@@ -12,6 +12,34 @@ import pytest
 from paper_search_carsi import progress_macos as mac
 
 
+@pytest.fixture(autouse=True)
+def registered(monkeypatch):
+    """Unit tests never register a bundle with Launch Services."""
+    calls = Mock()
+    monkeypatch.setattr(mac, "_register", calls)
+    return calls
+
+
+def test_a_new_icon_changes_the_version_and_registers_the_bundle_again(tmp_path, registered, monkeypatch):
+    """Notifications kept the old icon although the new one was in the bundle (2026-11-08)."""
+    executable = mac.prepare_app(tmp_path)
+    bundle = executable.parent.parent.parent
+    version = plistlib.loads((bundle / "Contents/Info.plist").read_bytes())["CFBundleVersion"]
+    registered.assert_called_once_with(bundle)
+    registered.reset_mock()
+    mac.prepare_app(tmp_path)
+    registered.assert_not_called()  # nothing changed: no new registration
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    for name in ("icon-32.png", "icon-64.png", "papersearch-notifier"):
+        (assets / name).write_bytes((Path(mac.__file__).with_name("assets") / name).read_bytes())
+    (assets / "icon-512.png").write_bytes(b"\x89PNG another icon")
+    monkeypatch.setattr(mac, "__file__", str(assets.parent / "progress_macos.py"))
+    mac.prepare_app(tmp_path)
+    assert plistlib.loads((bundle / "Contents/Info.plist").read_bytes())["CFBundleVersion"] != version
+    registered.assert_called_once_with(bundle)
+
+
 def test_app_contains_native_host_and_icon_with_one_stable_application_identity(tmp_path):
     executable = mac.prepare_app(tmp_path / "profile with spaces")
     bundle = executable.parent.parent

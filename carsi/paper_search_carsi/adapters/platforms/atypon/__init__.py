@@ -59,26 +59,36 @@ class AtyponAdapter(PublisherAdapter):
         """
         landing_path = f"/doi/suppl/{doi.lower()}"
         for attempt in range(2):
-            links: list[SupplementLink] = []
-            landing = ""
-            rows = page.evaluate(_SUPPLEMENT_ROWS_JS)
-            for row in rows if isinstance(rows, list) and doi else []:
-                target = urlparse(str(row.get("href") or "") if isinstance(row, dict) else "")
-                url = target._replace(fragment="").geturl()
-                if not self._on_site(url):
-                    continue
-                path = unquote(target.path).lower()
-                if path.startswith(landing_path + "/suppl_file/"):
-                    if url not in {link.url for link in links}:
-                        links.append(SupplementLink(url, str(row.get("label") or "")))
-                elif path.rstrip("/") == landing_path:
-                    landing = landing or url
+            links, landing = self._listed_supplements(page, doi)
             if links or not landing or attempt:
                 return links
             if unquote(urlparse(str(page.url)).path).lower().rstrip("/") == landing_path:
                 return []
             open_page(page, landing, timeout_ms=30_000)
         return []
+
+    def listed_supplement_links(self, page: Any, doi: str) -> list[SupplementLink]:
+        """The files this page lists itself, read without leaving it."""
+        return self._listed_supplements(page, doi)[0]
+
+    def _listed_supplements(self, page: Any, doi: str) -> tuple[list[SupplementLink], str]:
+        """``(files, landing page)`` linked from this page for this article."""
+        landing_path = f"/doi/suppl/{doi.lower()}"
+        links: list[SupplementLink] = []
+        landing = ""
+        rows = page.evaluate(_SUPPLEMENT_ROWS_JS)
+        for row in rows if isinstance(rows, list) and doi else []:
+            target = urlparse(str(row.get("href") or "") if isinstance(row, dict) else "")
+            url = target._replace(fragment="").geturl()
+            if not self._on_site(url):
+                continue
+            path = unquote(target.path).lower()
+            if path.startswith(landing_path + "/suppl_file/"):
+                if url not in {link.url for link in links}:
+                    links.append(SupplementLink(url, str(row.get("label") or "")))
+            elif path.rstrip("/") == landing_path:
+                landing = landing or url
+        return links, landing
 
     def institution_chooser_open(self, page: Any) -> bool:
         return self._chooser(str(getattr(page, "url", "") or "")) and page.locator("select#shib-search--fed").is_visible()

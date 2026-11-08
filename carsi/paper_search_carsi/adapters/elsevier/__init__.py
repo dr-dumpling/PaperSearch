@@ -254,8 +254,11 @@ class ElsevierAdapter(PublisherAdapter):
                 and parsed.path.startswith("/as/"))
 
     def unsupported_platform(self, page: Any) -> str | None:
-        host = (urlparse(str(getattr(page, "url", "") or "")).hostname or "").lower()
-        return "ClinicalKey" if _CLINICALKEY.fullmatch(host) else None
+        url = str(getattr(page, "url", "") or "")
+        host = (urlparse(url).hostname or "").lower()
+        if _CLINICALKEY.fullmatch(host) or (sciencedirect.is_page(url) and self.sciencedirect.clinicalkey_only(page)):
+            return "ClinicalKey"
+        return None
 
     def supplements_page_urls(self, doi: str) -> list[str]:
         """ScienceDirect first; journals on their own Elsevier site (Cell Press,

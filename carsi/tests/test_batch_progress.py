@@ -64,6 +64,19 @@ class BatchProgressTests(unittest.TestCase):
         snap, _ = pr.read_snapshot()
         self.assertEqual((snap["status"], snap["done"], snap["success"], snap["failed"]), ("done", 4, 3, 1))
 
+    def test_a_saved_pdf_is_counted_by_the_caller_after_its_identity_check(self):
+        """RSC's PDF awaiting review showed as a success, then a failure (Windows 2026-11-08)."""
+        self.item(1, 3, True, done=0, succeeded=0, failed=0)
+        snap, _ = pr.read_snapshot()
+        self.assertEqual((snap["done"], snap["success"], snap["failed"]), (1, 0, 0))
+        # The caller's identity check failed: its totals come with the next item.
+        self.item(2, 3, True, done=1, succeeded=0, failed=1)
+        snap, _ = pr.read_snapshot()
+        self.assertEqual((snap["done"], snap["success"], snap["failed"]), (2, 0, 1))
+        self.item(3, 3, True, done=2, succeeded=1, failed=1)  # the last item counts itself
+        snap, _ = pr.read_snapshot()
+        self.assertEqual((snap["status"], snap["done"], snap["success"], snap["failed"]), ("done", 3, 2, 1))
+
     def test_a_resumed_batch_starts_at_its_index(self):
         self.item(5, 10, True)
         snap, _ = pr.read_snapshot()

@@ -503,5 +503,9 @@ class PublisherPlatformUnsupported(PublisherContentError):
     """The article is served only on a platform this engine cannot use (e.g. ClinicalKey)."""
 
 
+class ArticleNotYetPublished(PublisherContentError):
+    """The publisher lists the article as accepted; its full text is not online yet."""
+
+
 class PublisherAccessBlocked(RuntimeError):
     """An explicit site security block, without an interactive verification."""

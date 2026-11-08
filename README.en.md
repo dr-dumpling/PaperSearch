@@ -5,7 +5,7 @@
 <h1 align="center">PaperSearch</h1>
 
 <p align="center"><b>A lightweight, fully automated all-in-one literature tool for AI</b><br>
-Tell your AI tool once: it searches, verifies and downloads full texts and supplementary files through a deeply optimized flow in the background, without interrupting your work.</p>
+One sentence and your AI searches, verifies and downloads full texts and supplementary files, all in the background.</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch?style=flat-square" alt="npm"></a>
@@ -204,8 +204,8 @@ The full plan is in the [roadmap](docs/ROADMAP.zh.md) (Chinese); how it works in
 
 - Thanks to the LinuxDo community, where the command-plus-Skill approach and workflow improvements came from discussion and open sharing.
 - [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp): the project draws on its ideas, reworked into a standalone command.
-- [Dianel555/paper-search-mcp-nodejs](https://github.com/Dianel555/paper-search-mcp-nodejs) (MIT): the command started as an adaptation of its Node.js implementation; its copyright notice is kept in `NOTICE`.
-- [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf) (MIT): the institutional download backend (`carsi/`) draws on its architecture (CARSI and other federation sign-in, publisher site capture, session reuse, PDF capture); its copyright notice is kept in `carsi/NOTICE`.
+- [Dianel555/paper-search-mcp-nodejs](https://github.com/Dianel555/paper-search-mcp-nodejs) (MIT): the command started as an adaptation of its Node.js implementation.
+- [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf) (MIT): the institutional download backend (`carsi/`) draws on its architecture (CARSI and other federation sign-in, publisher site capture, session reuse, PDF capture).
 
 ## License
 

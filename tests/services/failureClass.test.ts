@@ -12,6 +12,7 @@ describe("failure classes (ADR 0012)", () => {
     expect(classifyFailureCode("profile_busy")).toBe("user_or_external");
     expect(classifyFailureCode("idp_no_return_to_publisher")).toBe("user_or_external");
     expect(classifyFailureCode("unsupported_platform")).toBe("unsupported");
+    expect(classifyFailureCode("article_not_yet_published")).toBe("user_or_external");
     expect(classifyFailureCode("unsupported_publisher")).toBe("unsupported");
     expect(classifyFailureCode("generic_institution_entry_missing")).toBe("unsupported");
     for (const code of ["download_failed", "download_timeout", "login_not_reached", "login_required",

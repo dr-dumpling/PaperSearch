@@ -5,7 +5,7 @@
 <h1 align="center">PaperSearch</h1>
 
 <p align="center"><b>轻量、全自动的 AI 文献全能工具</b><br>
-一句话交给 AI：检索、核对、下载全文和补充材料，深度优化的流程在后台自动跑完，不打断你手头的工作。</p>
+一句话让AI完成文献检索、核对、下载全文和补充材料，后台自动完成。</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch?style=flat-square" alt="npm"></a>
@@ -204,8 +204,8 @@ paper-search config list --pretty     # 查看已配置的项，key 脱敏显示
 
 - 感谢 LinuxDo 社区：命令 + Skill 的路线和工作流改进来自社区交流与开源分享。
 - [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp)：本项目参考了它的思路，并改成独立的命令行工具。
-- [Dianel555/paper-search-mcp-nodejs](https://github.com/Dianel555/paper-search-mcp-nodejs)（MIT）：命令行版最初由它的 Node.js 实现改编而来；原项目的版权声明保留在 `NOTICE`。
-- [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf)（MIT）：机构下载后端（`carsi/`）借鉴了它的架构（CARSI 等联盟登录、出版社网站抓取、会话复用、PDF 捕获）；原项目的版权声明保留在 `carsi/NOTICE`。
+- [Dianel555/paper-search-mcp-nodejs](https://github.com/Dianel555/paper-search-mcp-nodejs)（MIT）：命令行版最初由它的 Node.js 实现改编而来。
+- [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf)（MIT）：机构下载后端（`carsi/`）借鉴了它的架构（CARSI 等联盟登录、出版社网站抓取、会话复用、PDF 捕获）。
 
 ## License
 

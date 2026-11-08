@@ -62,6 +62,7 @@ from .batch_common import (
     PublisherAccessBlocked,
     PublisherContentError,
     PublisherPlatformUnsupported,
+    ArticleNotYetPublished,
     RETRYABLE_REASONS,
     _ACCESS_GATE_JS,
     _IN_REFERENCES_JS,
@@ -213,7 +214,12 @@ class PublisherBatchDownloader(
                 own_page = [final_url] if final_url and self.adapter.is_article_page_url(final_url) else []
                 candidates = self.adapter.supplements_page_urls(doi) or [self._article_url(doi)]
                 incomplete = ""
-                for url in dict.fromkeys(own_page + candidates):
+                listed = list(getattr(result, "_listed_supplements", None) or [])
+                if listed:
+                    # Read on the article page before its PDF: no second load.
+                    links = listed
+                    self._event(result, "supplements_listed_on_article", str(len(links)))
+                for url in ([] if listed else dict.fromkeys(own_page + candidates)):
                     open_page(page, url, timeout_ms=60_000)
                     if self._challenge_shell(page) or self._is_challenge_page(page):
                         if not self._wait_for_challenge(page, result):
@@ -614,6 +620,12 @@ class PublisherBatchDownloader(
         except PublisherAccessBlocked:
             result.reason = result.state = "publisher_access_blocked"
             self._event(result, "publisher_access_blocked")
+            self._write_diagnostic(page, result, run_dir)
+            return result
+        except ArticleNotYetPublished as page_url:
+            result.reason = result.state = "article_not_yet_published"
+            self._event(result, "article_not_yet_published", str(page_url))
+            progress_reporter.update(phase="出版社尚未发布这篇论文的全文，当前路径已停止")
             self._write_diagnostic(page, result, run_dir)
             return result
         except PublisherPlatformUnsupported as platform:

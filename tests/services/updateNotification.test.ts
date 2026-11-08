@@ -80,7 +80,7 @@ describe("cached notification lifecycle", () => {
     session.stop();
   });
 
-  it("cancels at command completion and applies failure backoff", async () => {
+  it("a cancelled check is no attempt; a failed one waits before the next", async () => {
     let aborted = false;
     const queryLatest = jest.fn((signal: AbortSignal) => new Promise<string>((_, reject) => {
       signal.addEventListener("abort", () => { aborted = true; reject(new Error("private-network-error")); });
@@ -91,8 +91,40 @@ describe("cached notification lifecycle", () => {
     await session.done;
     expect(aborted).toBe(true);
     expect(write).not.toHaveBeenCalled();
-    await beginUpdateNotification({ ...options(), enabled: true, allowNetwork: true, write, queryLatest }).done;
-    expect(queryLatest).toHaveBeenCalledTimes(1);
+    expect(existsSync(join(root, "update-check.json"))).toBe(false);
+    const failing = jest.fn(async () => { throw new Error("registry_unavailable"); });
+    await beginUpdateNotification({ ...options(), enabled: true, allowNetwork: true, write, queryLatest: failing }).done;
+    await beginUpdateNotification({ ...options(), enabled: true, allowNetwork: true, write, queryLatest: failing }).done;
+    expect(failing).toHaveBeenCalledTimes(1);
+  });
+
+  it("a quick command waits for the check under way and prints its reminder", async () => {
+    // journal-metrics and doctor ended before npm answered, and no reminder ever came (2026-11-08).
+    jest.useFakeTimers();
+    const queryLatest = () => new Promise<string>((resolve) => setTimeout(() => resolve("0.4.11"), 900));
+    const write = jest.fn();
+    const finished = beginUpdateNotification({ ...options(), enabled: true, allowNetwork: true, write, queryLatest }).finish();
+    await jest.advanceTimersByTimeAsync(900);
+    await finished;
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write.mock.calls[0][0]).toContain("0.4.7 → 0.4.11");
+    expect(JSON.parse(readFileSync(join(root, "update-check.json"), "utf8")))
+      .toEqual({ schemaVersion: 1, checkedAt: NOW, latest: "0.4.11", latestCheckedAt: NOW });
+  });
+
+  it("waits no longer than the check's own timeout", async () => {
+    jest.useFakeTimers();
+    const queryLatest = (signal: AbortSignal) => new Promise<string>((_, reject) => signal.addEventListener("abort", () => reject(new Error("timeout"))));
+    const write = jest.fn();
+    let ended = false;
+    const finished = beginUpdateNotification({ ...options(), enabled: true, allowNetwork: true, write, queryLatest }).finish()
+      .then(() => { ended = true; });
+    await jest.advanceTimersByTimeAsync(1400);
+    expect(ended).toBe(false);
+    await jest.advanceTimersByTimeAsync(101);
+    await finished;
+    expect(write).not.toHaveBeenCalled();
+    expect(JSON.parse(readFileSync(join(root, "update-check.json"), "utf8"))).toEqual({ schemaVersion: 1, checkedAt: NOW });
   });
 
   it("bounds network waits and lets an explicit check bypass cooldown", async () => {

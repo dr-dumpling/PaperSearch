@@ -194,6 +194,43 @@ class WatchdogTests(unittest.TestCase):
         self.assertIsNone(watchdog.fired)
         self.assertEqual(Fake()._sync(body()), "answered")  # the next article's calls go through
 
+    def test_a_late_optional_call_is_abandoned_within_its_own_limit(self):
+        """A preview frame that never came was cancelled by the watchdog after 90 s and
+        ended the article as browser_unresponsive (Thieme after the login, 2026-11-08)."""
+        import asyncio
+
+        class Fake:
+            delay = 5.0
+
+            def _sync(self, coro):
+                coro.close()
+                deadline = time.monotonic() + self.delay
+                while not watchdog._abandoned and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                if watchdog._abandoned:
+                    raise asyncio.CancelledError()
+                return "frame"
+
+        async def capture():
+            return b""
+
+        real_thread = watchdog.threading.Thread
+        self.install_on(Fake)
+        # install_on stubs Thread to keep the watch thread away; the limit's timer is real.
+        restore = patch.object(watchdog.threading, "Thread", real_thread)
+        restore.start(); self.addCleanup(restore.stop)
+        started = time.monotonic()
+        with self.assertRaises(watchdog.CallAbandoned), watchdog.call_limit(0.2):
+            Fake()._sync(capture())
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertIsNone(watchdog.fired)
+        self.assertEqual(watchdog._inflight, {})
+        Fake.delay = 0.05
+        with watchdog.call_limit(1):
+            self.assertEqual(Fake()._sync(capture()), "frame")
+        time.sleep(0.05)
+        self.assertEqual(watchdog._abandoned, set())
+
 
 class BridgeTests(unittest.TestCase):
     def test_an_unresponsive_browser_is_reported_as_such(self):

@@ -24,7 +24,7 @@ _ITEM = re.compile(r"/science/(?:article|chapter/[^/]+)/(abs/)?pii/", re.I)
 # kept in the observed tab. A control linking to another PII (a recommended or
 # related article) never qualifies, wherever the layout puts it.
 _VIEW_PDF_JS = """
-                () => {
+                (findOnly) => {
                   const piiOf = (value) => {
                     const match = /\\/pii\\/([0-9A-Za-z]+)/.exec(value || '');
                     return match ? match[1].toUpperCase() : '';
@@ -72,6 +72,7 @@ _VIEW_PDF_JS = """
                     href: target.href.slice(0, 500),
                     score: Math.round(target.score)
                   };
+                  if (findOnly) return detail;
                   // Keep the site's normal navigation in the page whose PDF
                   // responses are being captured. Otherwise target=_blank
                   // opens a viewer in an unobserved tab and loses the file.
@@ -120,6 +121,22 @@ class ScienceDirectSite:
             return True
         text = " ".join(self.d._body_text(page, 5000).lower().split())
         return "cpe00001" in text and "there was a problem providing the content you requested" in text
+
+    def clinicalkey_only(self, page: Any) -> bool:
+        """Signed in, the article page offers its full text through ClinicalKey and
+        no PDF of its own (The Lancet 1975, 2026-11-08: "You have access to this
+        article through ClinicalKey", only "View full text")."""
+        if not _ITEM.match(urlparse(str(getattr(page, "url", "") or "")).path):
+            return False
+        text = " ".join(self.d._body_text(page, 3000).lower().split())
+        if "access to this article through clinicalkey" not in text:
+            return False
+        try:
+            return not page.evaluate(_VIEW_PDF_JS, True)
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return False
 
     def open_pdf_entry(self, page: Any, result: Any) -> bool | None:
         try:

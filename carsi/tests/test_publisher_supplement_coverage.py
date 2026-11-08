@@ -164,6 +164,25 @@ class PublisherSupplementTests(unittest.TestCase):
         self.assertIsNone(ieee.supplement_links_from_page(data, page.replace('ieeexplore.ieee.org','other.example'), doi))
 
 
+class AtyponListedSupplementTests(unittest.TestCase):
+    def test_this_articles_files_are_listed_without_leaving_the_page(self):
+        from unittest.mock import Mock, patch
+        from paper_search_carsi.adapters.platforms import atypon
+        doi = "10.1161/circ.123.1"
+        base = "https://www.ahajournals.org/doi/suppl/" + doi
+        rows = [{"href": base + "/suppl_file/s1.pdf", "label": "Data Supplement"},
+                {"href": base + "x/suppl_file/other.pdf", "label": "Another article"},
+                {"href": base, "label": "Supplemental Material"}]
+        adapter = atypon.AtyponAdapter(None)
+        adapter.site_hosts = frozenset({"www.ahajournals.org"})
+        page = Mock(url="https://www.ahajournals.org/doi/" + doi)
+        page.evaluate.return_value = rows
+        with patch.object(atypon, "open_page") as navigate:
+            listed = adapter.listed_supplement_links(page, doi)
+        self.assertEqual([(s.url, s.label) for s in listed], [(base + "/suppl_file/s1.pdf", "Data Supplement")])
+        navigate.assert_not_called()
+
+
 @unittest.skipUnless(os.environ.get("CARSI_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
 class PublisherSupplementBrowserTests(unittest.TestCase):
     def test_atypon_follows_only_the_observed_supplement_page_for_this_article(self):

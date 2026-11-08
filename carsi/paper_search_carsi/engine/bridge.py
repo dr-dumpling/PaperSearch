@@ -35,6 +35,7 @@ _LOGIN_FAILURE_CODES = (
 _FAILURE_KINDS = {
     "publisher_content_error": ("publisher_content_error", "review_publisher_error"),
     "unsupported_platform": ("unsupported_platform", "review_publisher_error"),
+    "article_not_yet_published": ("article_not_yet_published", "review_publisher_error"),
     "browser_unresponsive": ("browser_unresponsive", "review_browser"),
     "browser_operation_timeout": ("browser_operation_timeout", "review_browser"),
     "publisher_access_blocked": ("access_blocked", "review_access"),
@@ -348,7 +349,8 @@ def _try_builtin_institutional(
         # survives in source_failures. Neither is hidden by a later plain miss.
         denial = next((f for f in failures if f.get("reason_code") ==
                        "institution_pdf_entitlement_missing"), None)
-        primary = next((f for code in ("source_exception", "unsupported_platform", "generic_institution_entry_missing",
+        primary = next((f for code in ("source_exception", "unsupported_platform", "article_not_yet_published",
+                                      "generic_institution_entry_missing",
                                       "publisher_content_error", "access_blocked", *_LOGIN_FAILURE_CODES,
                                       "download_timeout")
                         for f in failures if f["error_type"] == code), denial or failures[-1])
@@ -556,7 +558,8 @@ def _try_browser_batch_download(
                     # page is unreachable, so do not wait on it a second time.
                     result.supplements = [{"status": "skipped", "reason": "challenge_timeout",
                                            "url": "", "label": ""}]
-                elif result.state in ("unsupported_platform", "publisher_access_blocked", "publisher_unreachable",
+                elif result.state in ("unsupported_platform", "article_not_yet_published",
+                                      "publisher_access_blocked", "publisher_unreachable",
                                       "login_page_closed", "user_skipped", "batch_stopped",
                                       "user_marked_no_entitlement"):
                     # Nothing more to fetch there now.

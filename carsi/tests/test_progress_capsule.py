@@ -144,7 +144,8 @@ class ViewTests(unittest.TestCase):
                              "doi": "10.1/x", "note": ""}]}
         summary = pv.view(running(status="done", results=few), NOW)["summary"]
         self.assertTrue(summary["groups"][0]["open"])
-        self.assertEqual(summary["groups"][0]["papers"], [{"title": "10.1/x", "where": "Spine"}])
+        # "10.1/x" is no DOI to open: the title falls back to it, the link does not.
+        self.assertEqual(summary["groups"][0]["papers"], [{"title": "10.1/x", "where": "Spine", "doi": ""}])
         self.assertEqual(summary["saved"], ["附录 5 个 · 2 篇未列出附录"])
         main_only = few | {"content": "main", "main": 3, "sources": [["开放获取", 3]]}
         self.assertEqual(pv.view(running(status="done", results=main_only), NOW)["summary"]["saved"],
@@ -410,6 +411,7 @@ class ApiTests(unittest.TestCase):
         with patch.object(capsule.sys,'platform','darwin'), patch.dict(sys.modules,{'AppKit':appkit}), \
                 patch.object(capsule,'_window_geometry',return_value=(320,180,260,56)), \
                 patch.object(capsule,'_mac_pointer',side_effect=[(500,200),(510,-100),(520,-110)]), \
+                patch.object(capsule,'_mac_button_held',return_value=True), \
                 patch.object(capsule,'_set_window_frame'), \
                 patch.object(capsule,'_cocoa_call',side_effect=lambda action:action()):
             a.set_dragging(True,500,200)
@@ -420,6 +422,59 @@ class ApiTests(unittest.TestCase):
             a.set_dragging(False)
             a.move_drag(10000,10000)
             self.assertEqual(a._window.native.setFrameTopLeftPoint_.call_count,2)
+
+    def test_mac_release_keeps_the_window_where_it_was_let_go(self):
+        # The page's mouse-up arrives after the user has already moved on.
+        a = api()
+        a._window = MagicMock()
+        a._native_geometry = True
+        appkit = MagicMock()
+        appkit.NSScreen.screens.return_value = [types.SimpleNamespace(frame=lambda:
+            types.SimpleNamespace(size=types.SimpleNamespace(height=900)))]
+        appkit.NSPoint.side_effect = lambda x, y: (x, y)
+        with patch.object(capsule.sys, 'platform', 'darwin'), patch.dict(sys.modules, {'AppKit': appkit}), \
+                patch.object(capsule, '_window_geometry', return_value=(330, 170, 350, 219)), \
+                patch.object(capsule, '_mac_pointer', side_effect=[(500, 200), (510, 190), (560, 180)]), \
+                patch.object(capsule, '_mac_button_held', side_effect=[True, False]), \
+                patch.object(capsule, '_set_window_frame'), \
+                patch.object(capsule, '_cocoa_call', side_effect=lambda action: action()):
+            a.set_dragging(True, 500, 200)
+            a.move_drag(510, 190)
+            a.set_dragging(False, 560, 180)
+        a._window.native.setFrameTopLeftPoint_.assert_called_once_with((340, 740))
+        self.assertEqual(a._placement.dragged.call_args.args[2], (510, 190))
+
+    def test_a_listed_paper_opens_its_doi_page_and_nothing_else(self):
+        a = api()
+        with patch("webbrowser.open", return_value=True) as browse:
+            self.assertEqual(a.open_article("10.1364/ol.621126"), "已在浏览器打开这篇文章")
+            browse.assert_called_once_with("https://doi.org/10.1364/ol.621126")
+            browse.reset_mock()
+            self.assertEqual(a.open_article("10.1016/s0140-6736(75)92262-x"), "已在浏览器打开这篇文章")
+            browse.assert_called_once_with("https://doi.org/10.1016/s0140-6736(75)92262-x")
+            browse.reset_mock()
+            for bad in ("", "javascript:alert(1)", "https://evil.example/10.1/x", "10.1/x y", None):
+                self.assertEqual(a.open_article(bad), "打开失败：不是有效的 DOI")
+            browse.assert_not_called()
+        summary = pv.summary_view({"failures": [
+            {"cls": "no_access", "reason": "学校没有订阅", "title": "A", "journal": "J", "doi": "10.1000/a"},
+            {"cls": "no_access", "reason": "学校没有订阅", "title": "B", "journal": "J", "doi": "not a doi"}]})
+        self.assertEqual([p["doi"] for p in summary["groups"][0]["papers"]], ["10.1000/a", ""])
+
+    def test_windows_release_keeps_the_window_where_it_was_let_go(self):
+        a = api()
+        a._window = MagicMock()
+        with patch.object(capsule.sys, 'platform', 'win32'), \
+                patch.object(capsule, '_window_scale', return_value=1.25), \
+                patch.object(capsule, '_window_geometry', return_value=(400, 300, 260, 56)), \
+                patch.object(capsule, '_windows_pointer', side_effect=[(1000, 500), (1050, 480), (1200, 420)]), \
+                patch.object(capsule, '_windows_button_held', side_effect=[True, False]), \
+                patch.object(capsule, '_set_window_frame'):
+            a.set_dragging(True, 800, 400)
+            a.move_drag(840, 384)
+            a.set_dragging(False, 960, 336)
+        a._window.move.assert_called_once_with(440, 284)
+        self.assertEqual(a._placement.dragged.call_args.args[2], (1050 / 1.25, 480 / 1.25))
 
     def test_windows_drop_uses_physical_pointer_after_a_dpi_change(self):
         with TemporaryDirectory() as directory:
@@ -437,8 +492,9 @@ class ApiTests(unittest.TestCase):
             with patch.object(capsule.sys, 'platform', 'win32'), \
                     patch.object(capsule, '_window_scale', side_effect=lambda window: scale), \
                     patch.object(capsule, '_windows_pointer', side_effect=[(1100, 400), (-8, 400)]), \
+                    patch.object(capsule, '_windows_button_held', return_value=True), \
                     patch.object(capsule, '_screen_areas', return_value=screens), \
-                    patch.object(capsule, '_window_geometry', side_effect=[(872, 288, 260, 56), (-12, 240, 260, 56)]), \
+                    patch.object(capsule, '_window_geometry', side_effect=[(872, 288, 260, 56), (-200, 240, 260, 56)]), \
                     patch.object(capsule, '_set_window_frame') as frame:
                 a.set_dragging(True, 800, 200)
                 a.set_dragging(False, 9000, -4000)  # WebView coordinates were rebased
@@ -518,17 +574,24 @@ class PlacementTests(unittest.TestCase):
         self.assertEqual(capsule.Placement(self.path, "top").start(self.screens, (260, 56))[1], 70)
         self.assertEqual(capsule.Placement(self.path, "bottom").start(self.screens, (260, 56))[1], 724)
 
-    def test_four_directions_settings_and_collapse_return_to_home(self):
+    def test_card_opens_down_and_away_from_the_nearer_side_and_collapses_home(self):
+        # The work area ends at 854, so a 300 px card fits below a pill at
+        # y <= 554; sideways it opens away from the half the pill is in.
         for x, y, direction in [(0, 24, ('down', 'right')), (1180, 24, ('down', 'left')),
                                 (0, 798, ('up', 'right')), (1180, 798, ('up', 'left')),
-                                (590, 24, ('down', 'left')), (590, 798, ('up', 'left')),
-                                (0, 411, ('up', 'right')), (1180, 411, ('up', 'left'))]:
+                                (590, 24, ('down', 'left')), (589, 24, ('down', 'right')),
+                                (590, 798, ('up', 'left')),
+                                (0, 411, ('down', 'right')), (1180, 411, ('down', 'left')),
+                                (1180, 554, ('down', 'left')), (1180, 555, ('up', 'left')),
+                                (200, 300, ('down', 'right')), (900, 300, ('down', 'left'))]:
             with self.subTest(x=x, y=y):
                 p = capsule.Placement(self.path, 'top')
                 home = capsule.Rect(x, y, 260, 56)
                 p.begin(True, home, self.screens)
-                self.assertEqual(p.direction, direction)
                 card = p.target(350, 300, True)
+                self.assertEqual(p.direction, direction)
+                self.assertEqual(card.y if direction[0] == 'down' else card.bottom, home.y if direction[0] == 'down' else home.bottom)
+                self.assertEqual(card.right if direction[1] == 'left' else card.x, home.right if direction[1] == 'left' else home.x)
                 p.finish(True, card)
                 p.begin(True, card, self.screens)
                 settings = p.target(350, 600, True)
@@ -626,16 +689,55 @@ class PlacementTests(unittest.TestCase):
                 self.assertEqual(card, capsule.Rect(sx, sy, 350, 300))
                 self.assertEqual(p.target(350, 300, True), card)
 
-    def test_release_on_second_display_wins_over_the_cards_center(self):
+    def test_display_seam_uses_the_display_holding_most_of_the_card(self):
         screens = self.screens + [capsule.ScreenArea(
             'left', capsule.Rect(-1200, 0, 1200, 900), capsule.Rect(-1200, 24, 1200, 830))]
         p = capsule.Placement(self.path, 'top')
         p.begin(True, capsule.Rect(600, 440, 260, 56), screens)
+        # The pointer has crossed the seam, but the card has not.
         card = p.dragged(capsule.Rect(-14, 300, 350, 300), screens, (-4, 315))
+        self.assertEqual(p.screen.name, 'main')
+        self.assertEqual(card, capsule.Rect(0, 300, 350, 300))
+        card = p.dragged(capsule.Rect(-300, 300, 350, 300), screens, (-250, 315))
         self.assertEqual(p.screen.name, 'left')
         self.assertEqual(card, capsule.Rect(-350, 300, 350, 300))
         self.assertEqual(p.target(470, 500, True).right, 0)
         self.assertEqual(p.target(190, 48, False).right, 0)
+
+    def test_pill_released_at_the_top_of_a_display_under_another_docks_to_its_top(self):
+        # A MacBook with a wider display above it; the menu bar is 38 px.
+        screens = [capsule.ScreenArea('1', capsule.Rect(0, 0, 1512, 982), capsule.Rect(0, 38, 1512, 944)),
+                   capsule.ScreenArea('2', capsule.Rect(0, -1080, 1920, 1080), capsule.Rect(0, -1080, 1920, 1080))]
+        for pill_y, pointer_y in [(-20, -5), (-20, 20), (10, 30)]:
+            with self.subTest(pill_y=pill_y, pointer_y=pointer_y):
+                p = capsule.Placement(self.path, 'top')
+                p.begin(False, capsule.Rect(1300, 400, 124, 59), screens)
+                p.dragged(capsule.Rect(1300, pill_y, 124, 59), screens, (1360, pointer_y))
+                self.assertEqual((p.screen.name, p.edges, p.home.y), ('1', (0, -1), 38))
+                p.finish(False, p.home)
+                p.begin(True, p.home, screens)
+                self.assertEqual(p.target(350, 300, True), capsule.Rect(1074, 38, 350, 300))
+        p = capsule.Placement(self.path, 'top')
+        p.begin(False, capsule.Rect(1300, 400, 124, 59), screens)
+        p.dragged(capsule.Rect(1300, -45, 124, 59), screens, (1360, -30))
+        self.assertEqual((p.screen.name, p.edges, p.home.y), ('2', (0, 1), -59))
+
+    def test_pill_keeps_the_side_nearest_the_screen_edge_when_its_width_changes(self):
+        for x, fixed in [(1100, 'right'), (200, 'x')]:
+            with self.subTest(x=x):
+                p = capsule.Placement(self.path, 'top')
+                home = capsule.Rect(x, 300, 180, 56)
+                p.begin(True, home, self.screens)
+                card = p.target(350, 300, True)
+                self.assertEqual(getattr(card, fixed), getattr(home, fixed))
+                p.begin(False, card, self.screens)
+                pill = p.target(124, 56, False)
+                self.assertEqual(getattr(pill, fixed), getattr(home, fixed))
+                self.assertEqual(pill.y, home.y)
+                p.finish(False, pill)
+                p.begin(False, pill, self.screens)
+                wider = p.target(260, 56, False)
+                self.assertEqual(getattr(wider, fixed), getattr(home, fixed))
 
     def test_expanded_card_can_drop_at_every_height_along_either_side(self):
         work = self.screens[0].work
@@ -650,7 +752,7 @@ class PlacementTests(unittest.TestCase):
                         self.assertEqual(p.target(350, 300, True), card)
                         p.begin(False, card, self.screens)
                         pill = p.target(260, 56, False)
-                        self.assertEqual(pill.y, y - 28)
+                        self.assertEqual(pill.y, card.y)
                         self.assertEqual(pill.x, work.x if edge == -1 else work.right - 260)
                         p.finish(False, pill)
                         p.begin(True, pill, self.screens)
@@ -664,7 +766,22 @@ class PlacementTests(unittest.TestCase):
         # the left edge, not in the corner.
         card = p.dragged(capsule.Rect(8, 690, 350, 300), self.screens, (120, 715))
         self.assertEqual(card, capsule.Rect(0, 554, 350, 300))
-        self.assertEqual(p.target(260, 56, False), capsule.Rect(0, 687, 260, 56))
+        self.assertEqual(p.target(260, 56, False), capsule.Rect(0, 554, 260, 56))
+
+    def test_card_dropped_on_the_top_edge_collapses_into_its_outer_corner(self):
+        # Grabbed in the middle of its header, not at a corner.
+        for x, pill_x in [(300, 300), (900, 990)]:
+            with self.subTest(x=x):
+                p = capsule.Placement(self.path, 'top')
+                p.begin(True, capsule.Rect(600, 440, 260, 56), self.screens)
+                card = p.dragged(capsule.Rect(x, 30, 350, 300), self.screens, (x + 175, 45))
+                self.assertEqual(card, capsule.Rect(x, 24, 350, 300))
+                p.begin(False, card, self.screens)
+                pill = p.target(260, 56, False)
+                self.assertEqual(pill, capsule.Rect(pill_x, 24, 260, 56))
+                p.finish(False, pill)
+                p.begin(True, pill, self.screens)
+                self.assertEqual(p.target(350, 300, True), card)
 
     def test_right_and_bottom_stay_attached_when_the_pill_changes_size_or_restarts(self):
         p = capsule.Placement(self.path, 'bottom')
@@ -887,6 +1004,25 @@ class MacGeometryTests(unittest.TestCase):
             window.native.setFrame_display_.assert_called_once_with((-1200, 500, 350, 500), True)
             window.native.makeKeyAndOrderFront_.assert_not_called()
 
+    def test_a_window_not_yet_on_a_screen_reads_its_moves_against_the_primary_screen(self):
+        """pywebview read a moved window's screen, found none for one remembered on a
+        second display, and the capsule never opened (2026-11-07)."""
+        def frame(x, y, w, h):
+            return types.SimpleNamespace(origin=types.SimpleNamespace(x=x, y=y),
+                                         size=types.SimpleNamespace(width=w, height=h))
+        primary, upper = MagicMock(), MagicMock()
+        primary.frame.return_value = frame(0, 0, 1512, 982)
+        upper.frame.return_value = frame(0, 982, 1920, 1080)
+        appkit = MagicMock()
+        appkit.NSScreen.screens.return_value = [primary, upper]
+        ns_window = MagicMock()
+        ns_window.frame.return_value = frame(1620, 1977, 278, 60)
+        ns_window.screen.return_value = None
+        with patch.dict(sys.modules, {'AppKit': appkit}):
+            self.assertEqual(capsule._moved_origin(ns_window), (1620, 982 - 60 - 1977))
+            ns_window.screen.return_value = upper
+            self.assertEqual(capsule._moved_origin(ns_window), (1620, 1080 - 60 - 1977))
+
 
 class FallbackTests(unittest.TestCase):
     def setUp(self):
@@ -953,6 +1089,31 @@ class FallbackTests(unittest.TestCase):
         kwargs = fake.create_window.call_args.kwargs
         self.assertTrue(kwargs["frameless"] and kwargs["on_top"])
         self.assertIn("pywebviewready", kwargs["html"])
+
+    def test_on_macos_the_capsule_places_its_window_not_pywebview(self):
+        """pywebview's x/y count from the screen with the active window, and its first
+        move failed for a place on a second display (2026-11-07): the capsule sets
+        its remembered place itself on the first show."""
+        fake = self.fake_webview()
+        with patch.dict(sys.modules, {"webview": fake}), patch.object(capsule.sys, "platform", "darwin"), \
+             patch.object(capsule.os, "_exit"), patch.object(pv, "dark_mode", return_value=False):
+            capsule.main()
+        kwargs = fake.create_window.call_args.kwargs
+        self.assertEqual((kwargs["x"], kwargs["y"]), (None, None))
+        home = fake.create_window.return_value._capsule_home
+        self.assertIsInstance(home, capsule.Rect)
+        self.assertLessEqual(home.x + home.width, 1440)  # the default corner of the only screen
+
+    def test_on_macos_a_failed_start_opens_the_classic_window_in_its_own_process(self):
+        fake = self.fake_webview(side_effect=RuntimeError("no web engine"))
+        with patch.dict(sys.modules, {"webview": fake}), patch.object(capsule.sys, "platform", "darwin"), \
+             patch.object(capsule, "_classic") as classic, patch.object(pv, "dark_mode", return_value=False), \
+             patch.object(pv, "release_window_lock"):
+            capsule.main()
+        classic.assert_called_once_with(separate=True)
+        with patch("subprocess.run") as run:
+            capsule._classic(separate=True)
+        run.assert_called_once_with([sys.executable, "-m", "paper_search_carsi.progress_bar"], check=False)
 
     def test_the_page_loads_nothing_from_the_network(self):
         page = capsule.PAGE.read_text(encoding="utf-8")
