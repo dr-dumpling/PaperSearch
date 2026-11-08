@@ -33,11 +33,14 @@ PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Clau
   - OA 文章：直接下载。
   - 非 OA 文章：通过学校订阅下载。可以装上“学校订阅下载（CARSI）”，经学校登录批量下载；也可以填写出版社的 API key 下载。
 
-<!-- 演示动图：做好后放在这里；概览图随后移到“参考 · 工作方式” -->
+<!-- 演示视频：在这一行末尾回车，把中文版视频（papersearch-overview-github.mp4）拖进新的一行 -->
 
 <p align="center"><img src="assets/overview.png" width="840" alt="PaperSearch 能做的事：检索论文、搜正文片段、查期刊 IF 与分区、查引文和参考文献、下载全文和补充材料"></p>
 
 ## 快速开始
+
+<p align="center"><img src="assets/quickstart.webp" width="840" alt="安装演示：一行命令装好 PaperSearch 并给 AI 装上 Skill，再运行 paper-search doctor 查看哪些功能已能用"></p>
+<p align="center"><sub>真实录屏：刚装好、还没填任何 key 时的 doctor 输出。</sub></p>
 
 ### 1. 安装
 
@@ -141,7 +144,29 @@ paper-search carsi install                # 安装时选择你的学校
 paper-search carsi status --format text   # 查看是否装好
 ```
 
-<p align="center"><img src="assets/progress-capsule.png" width="840" alt="进度胶囊：下载中、需要你登录、鼠标指上去展开、结束时列出成功失败和原因"></p>
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/carsi-capsule.webp" alt="进度胶囊：下载时缩成小胶囊，悬停查看每篇进度，最小化到程序坞照常下载，点一下就回来">
+      <p><b>进度胶囊</b><br><sub>下载时缩成屏幕角落的小胶囊；悬停查看每篇进度，最小化到程序坞也照常下载。</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/carsi-signin.webp" alt="自动登录学校：点胶囊里的题名，浏览器回到前台；自动点机构登录、填好学校，转到学校登录页">
+      <p><b>自动登录学校</b><br><sub>点胶囊里的题名，浏览器回到前台；机构登录入口自动点开，学校自动填好。</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/carsi-attention.webp" alt="需要你时提醒：要登录学校时胶囊变黄，点它切到浏览器，也能跳过这一篇">
+      <p><b>需要你时提醒</b><br><sub>需要你登录学校时胶囊变黄；点它切到浏览器，也可以跳过这一篇。</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/carsi-finish.webp" alt="结束清单：跳过不想等的论文；下完列出结果，没下到的写明原因，点题名在自己的浏览器里打开">
+      <p><b>结束清单</b><br><sub>不想等的论文可以跳过；下完列出成功和失败，没下到的写明原因，点题名在自己的浏览器里打开。</sub></p>
+    </td>
+  </tr>
+</table>
+<p align="center"><sub>真实录屏，学校登录框已打码。</sub></p>
 
 ### 2. API key
 

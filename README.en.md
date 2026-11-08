@@ -33,11 +33,14 @@ PaperSearch provides the `paper-search` command and a bundled Skill. Once instal
   - Open-access papers: downloaded directly.
   - Other papers: through your school's subscriptions. Install school subscription downloads (CARSI) to download them in batches through your school login, or add publisher API keys.
 
-<!-- Demo GIF goes here once recorded; the overview picture then moves to "Reference · How it works" -->
+<!-- Demo video: press Enter at the end of this line and drag the English video (papersearch-overview-github-en.mp4) onto the new line -->
 
 <p align="center"><img src="assets/overview.en.png" width="840" alt="What PaperSearch does: search papers, full-text snippets, journal metrics, citations and references, full texts and supplementary files"></p>
 
 ## Quick start
+
+<p align="center"><img src="assets/quickstart.en.webp" width="840" alt="Install demo: one line installs PaperSearch and the Skill for your AI, then paper-search doctor shows what works"></p>
+<p align="center"><sub>A real recording: doctor right after installing, before any key is added.</sub></p>
 
 ### 1. Install
 
@@ -141,7 +144,29 @@ paper-search carsi install                # choose your school during installati
 paper-search carsi status --format text   # check that it is ready
 ```
 
-<p align="center"><img src="assets/progress-capsule.en.png" width="840" alt="The progress capsule: downloading, sign-in needed, expanded on hover, and the finished card with what failed and why"></p>
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/carsi-capsule.en.webp" alt="Progress capsule: a small capsule shows the progress, hover for each paper, minimized to the Dock it keeps downloading, one click brings it back">
+      <p><b>Progress capsule</b><br><sub>Downloads shrink to a small capsule in the corner; hover to see each paper, and it keeps going while minimized to the Dock.</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/carsi-signin.en.webp" alt="School sign-in: clicking the title brings the browser forward; the institution login is clicked, the school filled in, then on to the school's login page">
+      <p><b>School sign-in</b><br><sub>Click a title in the capsule to bring the browser forward; the institution login is found and your school filled in.</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/carsi-attention.en.webp" alt="Asks when needed: the capsule turns amber for the school login; click to switch to the browser, or skip the paper">
+      <p><b>Asks when needed</b><br><sub>The capsule turns amber when you need to sign in to your school; click it to switch to the browser, or skip the paper.</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/carsi-finish.en.webp" alt="Results: skip a paper; the final card lists what was saved and why the rest wasn't; clicking a title opens it in your own browser">
+      <p><b>Results</b><br><sub>Skip a paper you don't want to wait for; at the end you see what was saved and why the rest wasn't, and a click opens a paper in your own browser.</sub></p>
+    </td>
+  </tr>
+</table>
+<p align="center"><sub>Real screen recordings; the school login form is blurred.</sub></p>
 
 ### 2. API keys
 
