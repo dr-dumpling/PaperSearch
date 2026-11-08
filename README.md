@@ -33,14 +33,17 @@ PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Clau
   - OA 文章：直接下载。
   - 非 OA 文章：通过学校订阅下载。可以装上“学校订阅下载（CARSI）”，经学校登录批量下载；也可以填写出版社的 API key 下载。
 
-<!-- 演示视频：在这一行末尾回车，把中文版视频（papersearch-overview-github.mp4）拖进新的一行 -->
+
+
+https://github.com/user-attachments/assets/c7b2f3a6-5374-4421-ab14-ea8133a2bd90
+
+
 
 <p align="center"><img src="assets/overview.png" width="840" alt="PaperSearch 能做的事：检索论文、搜正文片段、查期刊 IF 与分区、查引文和参考文献、下载全文和补充材料"></p>
 
 ## 快速开始
 
 <p align="center"><img src="assets/quickstart.webp" width="840" alt="安装演示：一行命令装好 PaperSearch 并给 AI 装上 Skill，再运行 paper-search doctor 查看哪些功能已能用"></p>
-<p align="center"><sub>真实录屏：刚装好、还没填任何 key 时的 doctor 输出。</sub></p>
 
 ### 1. 安装
 
@@ -166,7 +169,7 @@ paper-search carsi status --format text   # 查看是否装好
     </td>
   </tr>
 </table>
-<p align="center"><sub>真实录屏，学校登录框已打码。</sub></p>
+
 
 ### 2. API key
 
