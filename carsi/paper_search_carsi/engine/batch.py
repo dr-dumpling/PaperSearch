@@ -51,6 +51,7 @@ from .batch_common import (
     goto_retrying,
     settle,
     _is_network_failure,
+    browser_closed,
     DownloadResult,
     EST_ISSN,
     IP_BLOCK_STOP_THRESHOLD,
@@ -482,6 +483,13 @@ class PublisherBatchDownloader(
             preparation = self._prepare_article(page, result, run_dir)
             if preparation is not None:
                 return preparation
+            if self.config.get("login_only"):
+                # `login` (cli): the school's login and the article's access, then stop; no PDF.
+                result.signed_in = self._school_login_done()
+                result.state = "access_ready"
+                self._event(result, "login_only_done",
+                            "signed in to the school" if result.signed_in else "access without the school's login")
+                return result
             self._snapshot(page, result, "article access checked")
             ip_block: str | None = None
             # Whether this capture comes after the school's login, and its first attempt.
@@ -661,6 +669,13 @@ class PublisherBatchDownloader(
                 # The site did not answer: reported as the publisher's side.
                 result.reason = result.state = "publisher_unreachable"
                 self._event(result, "publisher_unreachable", f"{str(exc).splitlines()[0][:300]} | {where}")
+                self._write_diagnostic(page, result, run_dir)
+                return result
+            if browser_closed(exc):
+                # The user closed the download browser, or it quit: said as such, not
+                # as an unexplained error (Elsevier at the school's login page, 2026-11-09).
+                result.reason = result.state = "browser_closed"
+                self._event(result, "browser_closed", f"{type(exc).__name__}: {str(exc)[:200]} | {where}")
                 self._write_diagnostic(page, result, run_dir)
                 return result
             result.reason = f"{type(exc).__name__}: {exc}"

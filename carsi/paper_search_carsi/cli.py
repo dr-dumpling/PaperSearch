@@ -3,7 +3,7 @@
 Commands:
   run                          start the MCP stdio server (what PaperSearch spawns)
   setup [...]                  show or change institutional access settings; --check for an environment check
-  login [...]                  open the local browser window for institutional login; cookies are saved to the profile
+  login --doi DOI              sign in to the school as a download does (no PDF); success only once confirmed
   config get|set|list          read or write the backend config in CARSI_DATA_DIR
   list-publishers              print publisher profiles and their platform labels
   publisher-check --doi DOI    run one institutional download and print a sanitized report
@@ -196,40 +196,79 @@ def _cmd_setup(args: argparse.Namespace) -> int:
 # login
 # ---------------------------------------------------------------------------
 
+_LOGIN_MESSAGES = {
+    "login_timeout": "等你登录超时了；再运行一次，在弹出的学校登录页里登录即可",
+    "login_page_closed": "学校登录页被关闭了，没有完成登录",
+    "browser_closed": "下载浏览器被关闭了，没有完成登录",
+    "institution_pdf_entitlement_missing": "已登录学校，但学校没有这篇文章的全文权限；换一篇学校订阅的文章再试",
+    "login_credentials_rejected": "学校登录页没有接受账号或密码",
+    "institution_not_registered": "出版社的机构列表里没有找到你的学校",
+    "login_not_reached": "程序没能进入学校登录页（一直停在出版社页面）；详情见诊断文件",
+}
+
+
+def _login_reply(result: dict[str, Any]) -> dict[str, Any]:
+    """What ``login`` says: success only when the school's login is confirmed
+    and the article opens in full (a window closed by hand is no login)."""
+    login = result.get("login") or {}
+    artifacts = result.get("artifacts") or {}
+    if result.get("success") and login.get("signed_in"):
+        return {"success": True, "state": "signed_in",
+                "message": "已登录学校，这篇文章能看全文；之后下载沿用这个登录"}
+    if result.get("success"):
+        return {"success": False, "state": "access_without_login",
+                "message": "这篇文章不用登录就能看全文（开放获取或校园网），这次没有验证到学校登录；要测试登录，换一篇需要订阅的文章"}
+    # The bridge's reported reason (a wait run out on the school's page is login_timeout);
+    # the raw state only behind a general one.
+    state = str(result.get("reason_code") or result.get("error_type") or "")
+    if state in ("", "paywall", "download_failed"):
+        state = str(artifacts.get("state") or state or "login_failed")
+    reply: dict[str, Any] = {"success": False, "state": state,
+                             "message": _LOGIN_MESSAGES.get(state, f"没有完成登录（{state}）；详情见诊断文件")}
+    if artifacts.get("diagnostic"):
+        reply["diagnostic"] = artifacts["diagnostic"]
+    return reply
+
+
 def _cmd_login(args: argparse.Namespace) -> int:
+    """Sign in to the school the way a download does, without its PDF: the
+    download browser (its own Chrome profile) opens the article's page, gets
+    past the site's verification, picks the school (CARSI) and waits on the
+    school's login page for the user; then the article's access is checked.
+    The session stays in that profile for the downloads that follow."""
     from .config import load_config
+    from .engine.bridge import _any_institutional_configured
 
-    cfg = load_config()
-    kind = args.kind
+    if not args.doi:
+        print(json.dumps({"success": False, "error": "doi_required",
+                          "hint": "pass --doi with an article the school subscribes to; its page leads to the school's login"},
+                         ensure_ascii=False))
+        return 2
+    if not _any_institutional_configured(load_config()):
+        print(json.dumps({"success": False, "error": "school_not_configured",
+                          "hint": 'run: setup --carsi --institution "<your school>"'}, ensure_ascii=False))
+        return 2
+    import shutil
+    import tempfile
 
-    if kind in ("auto", "publisher"):
-        # A school login (CARSI included) starts on the publisher's page.
-        if not args.doi and not args.publisher:
-            print(json.dumps({"success": False, "error": "doi_or_publisher_required",
-                              "hint": "pass --doi <DOI of an article>: the login opens that article's publisher page, "
-                                      "where the school is chosen (CARSI)"}, ensure_ascii=False))
-            return 2
-        from .browser.cookies import publisher_login
+    from . import progress_reporter
+    from .orchestrator import download_institutional
 
-        result = publisher_login(args.doi or args.publisher, cfg, max_wait=args.max_wait)
-        safe = {k: v for k, v in result.items() if k in ("success", "cookies_count", "domains", "message")}
-        safe["kind"] = "publisher"
-        print(json.dumps(safe, ensure_ascii=False))
-        return 0 if result.get("success") else 1
-
-    if kind == "custom":
-        if not args.url:
-            print(json.dumps({"success": False, "error": "url_required"}, ensure_ascii=False))
-            return 2
-        from .browser.login import open_login_browser
-
-        cookie_file = Path(cfg.get("cache_dir") or (_data_dir() / "cache")) / "custom_cookies.json"
-        ok = open_login_browser(args.url, cfg, cookie_file=cookie_file)
-        print(json.dumps({"success": bool(ok), "kind": "custom"}, ensure_ascii=False))
-        return 0 if ok else 1
-
-    print(json.dumps({"success": False, "error": f"unknown kind: {kind}"}, ensure_ascii=False))
-    return 2
+    scratch = Path(tempfile.mkdtemp(prefix="paper-search-login-"))
+    progress_reporter.start_task("学校登录", total=1, current=args.doi, phase="打开文章页")
+    reply: dict[str, Any] = {"success": False, "state": "login_failed", "message": "没有完成登录"}
+    try:
+        result = download_institutional(args.doi, scratch, strategy="institutional_only",
+                                        login_only=True, login_wait=args.max_wait,
+                                        diagnostics_dir=str(_data_dir() / "diagnostics" / "login"))
+        reply = _login_reply(result)
+    finally:
+        progress_reporter.advance(reply["success"], current=args.doi,
+                                  phase="已登录学校" if reply["success"] else "没有完成登录")
+        progress_reporter.finish()
+        shutil.rmtree(scratch, ignore_errors=True)
+    print(json.dumps(reply, ensure_ascii=False))
+    return 0 if reply["success"] else 1
 
 
 # ---------------------------------------------------------------------------
@@ -495,13 +534,10 @@ def main(argv: list[str] | None = None) -> int:
     st.add_argument("--check", action="store_true", help="environment check; exit 2 when something is missing")
     st.set_defaults(func=_cmd_setup)
 
-    lg = sub.add_parser("login", help="open the browser window for institutional login")
-    lg.add_argument("--kind", choices=["auto", "publisher", "custom"], default="auto",
-                    help="auto: the publisher login; needs --doi or --publisher")
-    lg.add_argument("--publisher", default="", help="publisher to open when no DOI is given, e.g. elsevier, wiley, springer, ieee")
-    lg.add_argument("--doi", default="", help="DOI whose publisher page to open")
-    lg.add_argument("--url", default="", help="URL for --kind custom")
-    lg.add_argument("--max-wait", type=int, default=300)
+    lg = sub.add_parser("login", help="sign in to the school as a download does, without the PDF")
+    lg.add_argument("--doi", default="", help="an article the school subscribes to; its page leads to the school's login")
+    lg.add_argument("--max-wait", type=int, default=None,
+                    help="seconds to wait on the school's login page (default: the setting browser_login_timeout)")
     lg.set_defaults(func=_cmd_login)
 
     cfg = sub.add_parser("config", help="read or write backend config")

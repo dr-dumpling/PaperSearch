@@ -160,6 +160,7 @@ paper-search skills update --targets claude
 | 来源限流 | 减小 `--max-results`、配置对应 key，或换来源 |
 | Google Scholar 出验证页 | 等一会儿再试，或改用 `--sources no-key` |
 | AI 读到的 Skill 是旧的 | `paper-search skills status --pretty`，再 `paper-search skills update --targets <工具>`；新开一个 AI 会话 |
+| 先登录学校、或试一下能不能登录 | `paper-search carsi login --doi <学校订阅的一篇文章的 DOI>`：弹出下载用的浏览器，在学校登录页登录即可 |
 | 更新或卸载学校订阅下载 | `paper-search carsi update`；`paper-search carsi uninstall` |
 | Windows 的 PowerShell 拦住 `npm` | 改用 `npm.cmd`，或在命令提示符里运行 |
 | 想反馈下载失败 | 用 Issue 里的“下载失败”模板，写明版本、系统、网站和 DOI；`paper-search failures --export ./failure-report.zip` 可以导出失败记录，附上前先检查包里的 `summary.md` 和截图有没有个人信息 |

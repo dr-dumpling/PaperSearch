@@ -1,6 +1,6 @@
 # 机构下载：安装扩展、配置学校、选择浏览器
 
-学校订阅下载（CARSI）让 PaperSearch 用用户学校的权限，在浏览器里下载需要订阅的论文。它默认没有安装、没有启用：PaperSearch 默认是开放版本，检索和开放下载不需要它；用户需要下载学校订阅的文章或补充材料时才安装。
+学校订阅下载（CARSI）让 PaperSearch 用用户学校的权限，在浏览器里下载需要订阅的论文。在有图形界面的电脑上，它随 PaperSearch 一起装：刚装好 PaperSearch 时直接装上，不用先问；用户说过不要（`PAPER_SEARCH_CARSI_DECLINED=true`）或没有图形界面的服务器上不装。检索和开放下载不需要它。
 
 ## 查看与安装
 
@@ -10,7 +10,7 @@ paper-search carsi status --format text
 
 显示是否已装、安装目录、所用浏览器（Google Chrome 的路径和版本、驱动版本）、学校、PaperSearch 是否已启用它。Chrome 低于测试过的版本时会提示先更新 Chrome。
 
-没有安装、而用户需要用学校权限下载时，先征得用户同意，再运行：
+装的时候运行（Agent 代装时加 `--yes --skip-school`）：
 
 ```bash
 paper-search carsi install
@@ -18,7 +18,7 @@ paper-search carsi install
 
 - 需要图形界面：学校登录要在看得见的浏览器里完成。没有图形界面的 Linux（服务器，没有 `DISPLAY` 或 `WAYLAND_DISPLAY`）上安装会在第一步停下，`paper-search setup` 也不再问是否安装；这类机器用 `paper-search setup <KEY>` 配 key，检索和开放获取下载照常可用。
 - 需要本机已装 Google Chrome；没有时安装会停下。这时告诉用户要先装 Chrome，然后替用户装：macOS 有 Homebrew 时运行 `brew install --cask google-chrome`，Windows 运行 `winget install -e --id Google.Chrome`；装好后再运行同一条 `carsi install`。没有 Homebrew 或 winget、或安装失败时，请用户从 https://www.google.com/chrome/ 下载安装。`--browser ego` 改用用户自己的 ego lite（仅 macOS）。
-- 安装前会列出安装位置和下载量（约 0.5 GB，不另下载浏览器），用户确认后才开始。`--yes` 跳过确认，只在用户明确同意后使用。
+- 安装前会列出安装位置和下载量（约 0.5 GB，不另下载浏览器），用户确认后才开始。`--yes` 跳过确认，Agent 代装时使用。
 - 用户不需要先装 Python；中途失败时，处理提示的问题后再运行同一命令，会从失败的那一步接着装。
 - 装完会打开设置窗口的 API key 页，用户填好或不需要时点右上角 × 关闭。
 - 装完会自动启用（`PAPER_SEARCH_CARSI_ENABLED=true`、`PAPER_SEARCH_CARSI_EXECUTABLE` 指向新装的后端）。原来配置了别的后端时，会先问用户是否替换。
@@ -28,6 +28,17 @@ paper-search carsi install
 - `paper-search setup` 最后也会问是否安装扩展；`--skip-carsi` 不问，`--install-carsi` 直接安装。
 
 用户自己维护的后端（例如仓库里的开发版）用 `paper-search config set PAPER_SEARCH_CARSI_EXECUTABLE <路径>` 指定；不要擅自改用户已配置的路径。
+
+## 先登录学校（可选）
+
+```bash
+paper-search carsi login --doi <学校订阅的一篇文章的 DOI>
+```
+
+- 用在用户想在批量下载前先登录、或想试试登录是否正常时；平时不需要，下载遇到登录会自己停下等用户。
+- 它打开下载用的浏览器，自动过网站验证、选学校，停在学校登录页等用户登录（最多等 `browser_login_timeout` 秒，`--max-wait <秒>` 只改这一次）；登录后核对这篇文章能看全文，不下载 PDF，登录状态留给之后的下载。
+- 只有 `success: true`（`state: signed_in`）才算登录成功。`access_without_login`：这篇不用登录就能看（开放获取或校园网），换一篇需要订阅的文章再试；`login_timeout`、`browser_closed`、`institution_pdf_entitlement_missing` 等按回复里的 `message` 告诉用户。
+- 不要自己启动 Chrome、不要打开或改动下载浏览器的资料目录，也不要翻源码另找登录办法；没装学校订阅下载或没配置学校时，按回复里的提示处理。
 
 ## 更新与卸载
 

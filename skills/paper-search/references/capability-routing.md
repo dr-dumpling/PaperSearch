@@ -95,7 +95,7 @@ paper-search run download_with_fallback --json-args '{"source":"crossref","paper
 
 不传 `savePath` 时存到 `DEFAULT_DOWNLOAD_PATH`（见 SKILL.md 的“默认下载文件夹”）；用户这一次指定了别的文件夹才传 `savePath` / `--save-path`。
 
-下载分两种：第 1–6 步是开放下载（默认就有），第 7 步是机构下载（可选扩展，`entitled_access`，默认没装）。`download_with_fallback` 的顺序：
+下载分两种：第 1–6 步是开放下载（默认就有），第 7 步是机构下载（学校订阅下载，`entitled_access`，电脑上随 PaperSearch 一起装）。`download_with_fallback` 的顺序：
 
 1. 来源自带的下载；
 2. 元数据里的 PDF 地址；

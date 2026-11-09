@@ -24,6 +24,7 @@
 - `paper-search carsi install [--browser chrome|ego] [--yes] [--force] [--skip-school] [--format text]`
 - `paper-search carsi status [--format text] [--pretty]`
 - `paper-search carsi update [--force] [--format text] [--pretty]`
+- `paper-search carsi login --doi <DOI> [--max-wait <seconds>] [--pretty]`
 - `paper-search carsi uninstall [--yes] [--remove-data] [--format text] [--pretty]`
 - `paper-search smoke --mock [--pretty]`
 - `paper-search smoke --live [--pretty]`

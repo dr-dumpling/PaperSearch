@@ -122,7 +122,6 @@ describe("paper-search bundled skill contract", () => {
       "webvpn.dat",
       "WILEY_TDM_TOKEN",
       "search_wiley",
-      "paper-search carsi login",
       "paper-search carsi download",
       "carsiProvider",
       "authorizedPdfProvider",
@@ -134,6 +133,9 @@ describe("paper-search bundled skill contract", () => {
 
     expect(bundledText).toContain("机构下载后端（CARSI）是唯一可选的授权下载后端");
     expect(bundledText).toContain("PAPER_SEARCH_CARSI_ENABLED");
+    // Signing in first goes through the download's own steps (2026-11-09), never a browser the agent starts.
+    expect(bundledText).toContain("paper-search carsi login --doi");
+    expect(bundledText).toContain("不自己启动 Chrome");
     expect(bundledText).toContain("useEntitledAccess");
     expect(bundledText).toContain(
       "primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access",
@@ -171,11 +173,12 @@ describe("paper-search bundled skill contract", () => {
     const skill = readSkillFile("SKILL.md");
     const support = readSkillFile("references/publisher-support.md");
 
-    // Open downloading is the default; the institutional download is an optional extension.
+    // Open downloading always works; on a computer with a screen the institutional download comes along, no question asked.
     expect(skill).toContain("## 两种下载方式");
     expect(skill).toContain("## 整体逻辑");
-    expect(skill).toContain("本 Skill 默认是开放版本");
-    expect(skill).toMatch(/\|\s*\|\s*开放下载（默认）\s*\|\s*机构下载（可选扩展）\s*\|/);
+    expect(skill).toContain("装好 `paper-search` 就能用开放下载");
+    expect(skill).toContain("paper-search carsi install --yes --skip-school");
+    expect(skill).toMatch(/\|\s*\|\s*开放下载\s*\|\s*机构下载（学校订阅下载）\s*\|/);
     // The agent asks once, before downloading, whether supplementary files are wanted.
     expect(skill).toContain("下载前问清要什么");
     for (const choice of ["只要正文", "正文加补充材料", "只要补充材料"]) {

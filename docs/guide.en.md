@@ -160,6 +160,7 @@ Change them with `paper-search config set <setting> <value>`, or run `paper-sear
 | A source rate-limits | Lower `--max-results`, configure its key, or switch sources |
 | Google Scholar shows a human check | Wait and retry, or use `--sources no-key` |
 | The AI reads an old Skill | `paper-search skills status --pretty`, then `paper-search skills update --targets <tool>`; start a new AI session |
+| Sign in to your school first, or check that signing in works | `paper-search carsi login --doi <DOI of an article your school subscribes to>`: the download browser opens; sign in on your school's page |
 | Update or remove school subscription downloads | `paper-search carsi update`; `paper-search carsi uninstall` |
 | PowerShell on Windows blocks `npm` | Use `npm.cmd`, or run it in Command Prompt |
 | Reporting a failed download | Use the download-failure issue template with the version, OS, website and DOI; `paper-search failures --export ./failure-report.zip` exports the failure records — check the `summary.md` and screenshots in it for personal information before attaching it |

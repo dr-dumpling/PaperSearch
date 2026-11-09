@@ -71,6 +71,7 @@ import {
 import { resolveDefaultCarsiProfileDir, takeDownloadLock } from "./capabilities/pdf-discovery/carsi/index.js";
 import { autoUpdateCarsi, withAutoUpdate } from "./management/carsi/autoUpdate.js";
 import { openSettingsWindow, settingsWindowEnv as windowEnv } from "./management/carsi/settingsWindow.js";
+import { carsiLogin } from "./management/carsi/login.js";
 import { paperSearchCommand } from "./config/selfCommand.js";
 import { TESTABLE_KEYS, probeKeyFor, testApiKey, type KeyTestResult } from "./config/apiKeyTest.js";
 import { hasScreen } from "./management/carsi/runtime.js";
@@ -145,6 +146,7 @@ Usage:
   paper-search failures [--run <id>|latest] [--since 2026-11-01] [--runs 5] [--doi <DOI>] [--export <file.zip>] [--all]
   paper-search carsi <install|status> [--browser chrome|ego] [--yes] [--force] [--skip-school]
   paper-search carsi update [--force]
+  paper-search carsi login --doi <DOI> [--max-wait <seconds>]
   paper-search carsi uninstall [--yes] [--remove-data]
   paper-search smoke --mock|--live
   paper-search skills <status|update|diff> [--targets agents,codex]
@@ -465,11 +467,15 @@ function carsiBackendForToolCall(
     return undefined;
   }
   // After an upgrade, the extension is updated before the backend first starts.
-  return withCliCarsiProgress(withAutoUpdate(createCarsiBackend(), () =>
-    autoUpdateCarsi(createNodeHost(() => Promise.resolve("")), carsiContext(), () => {
-      const lockPath = takeDownloadLock(resolveDefaultCarsiProfileDir());
-      return () => unlinkSync(lockPath);
-    })));
+  return withCliCarsiProgress(withAutoUpdate(createCarsiBackend(), updateCarsiFirst));
+}
+
+/** After a PaperSearch upgrade: the extension brought up to it (autoUpdateCarsi), under the download lock. */
+function updateCarsiFirst(): Promise<unknown> {
+  return autoUpdateCarsi(createNodeHost(() => Promise.resolve("")), carsiContext(), () => {
+    const lockPath = takeDownloadLock(resolveDefaultCarsiProfileDir());
+    return () => unlinkSync(lockPath);
+  });
 }
 
 function withCliCarsiProgress(backend: CarsiBackend): CarsiBackend {
@@ -1108,6 +1114,16 @@ async function handleCarsiCommand(
         ? renderStatusText(status)
         : { ok: outcome.status !== "cancelled", outcome: outcome.status, ...status };
     }
+    if (sub === "login") {
+      // The backend's own steps of a download up to the article's access (no PDF).
+      await updateCarsiFirst();
+      return carsiLogin({
+        executable: getConfigValue("PAPER_SEARCH_CARSI_EXECUTABLE"),
+        doi: typeof flags.doi === "string" ? flags.doi : "",
+        ...(Number(flags.maxWait) > 0 ? { maxWait: Number(flags.maxWait) } : {}),
+        env: settingsWindowEnv(),
+      });
+    }
     if (sub === "status") {
       const status = await carsiStatus(host, context);
       return flags.format === "text" ? renderStatusText(status) : { ok: true, ...status };
@@ -1136,7 +1152,7 @@ async function handleCarsiCommand(
     }
     return {
       ok: false,
-      error: "用法：paper-search carsi <install|status|update|uninstall>（见 paper-search --help）",
+      error: "用法：paper-search carsi <install|status|update|uninstall|login>（见 paper-search --help）",
     };
   } catch (error) {
     if (error instanceof InstallError) {

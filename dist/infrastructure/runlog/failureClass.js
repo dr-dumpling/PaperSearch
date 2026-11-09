@@ -32,6 +32,7 @@ const CLASS_OF_CODE = {
     cancelled: "user_or_external",
     login_timeout: "user_or_external",
     login_page_closed: "user_or_external",
+    browser_closed: "user_or_external",
     login_credentials_rejected: "user_or_external",
     captcha_required: "user_or_external",
     idp_login_error: "user_or_external",

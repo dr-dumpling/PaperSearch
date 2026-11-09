@@ -107,10 +107,10 @@ class BrowserStartRecordTests(unittest.TestCase):
         from paper_search_carsi.engine.batch import DownloadResult
         from paper_search_carsi.publishers.profiles import get_publisher_profile
         doi = "10.1093/oxfordjournals.aje.a114096"
-        closed = DownloadResult(doi=doi, status="failed", state="unexpected_error", events=[
+        closed = DownloadResult(doi=doi, status="failed", state="browser_closed", events=[
             {"state": "browser_start", "detail": "profile free; launch 3.0 s"},
             {"state": "article_open", "detail": "https://doi.org/" + doi},
-            {"state": "unexpected_exception", "detail": "TargetClosedError: Page.goto: Target page, context or browser has been closed"}])
+            {"state": "browser_closed", "detail": "TargetClosedError: Page.goto: Target page, context or browser has been closed"}])
         later = DownloadResult(doi=doi, status="failed", state="sso_required", reason="sso_required")
         first, second = MagicMock(), MagicMock()
         downloader = MagicMock()
@@ -126,8 +126,8 @@ class BrowserStartRecordTests(unittest.TestCase):
         second.close.assert_called_once()
         # Any other failure, or a later TargetClosedError, is not relaunched.
         self.assertFalse(bridge._browser_closed_at_start(later))
-        self.assertFalse(bridge._browser_closed_at_start(DownloadResult(doi=doi, status="failed", state="unexpected_error", events=[
-            {"state": "article_open"}, {"state": "sso_start"}, {"state": "unexpected_exception", "detail": "TargetClosedError: x"}])))
+        self.assertFalse(bridge._browser_closed_at_start(DownloadResult(doi=doi, status="failed", state="browser_closed", events=[
+            {"state": "article_open"}, {"state": "sso_start"}, {"state": "browser_closed", "detail": "TargetClosedError: x"}])))
 
 
 if __name__ == "__main__":

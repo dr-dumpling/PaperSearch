@@ -55,23 +55,23 @@ Please install PaperSearch: npm install -g papersearch, then run paper-search sk
 
 It installs the command and the Skill, checks them, and tells you what already works.
 
-### 2. School subscription downloads, or not
+### 2. The school subscription downloads component installs automatically
 
-Your AI then asks whether to add [school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi):
+On a computer, your AI installs the [school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi) component automatically right after PaperSearch, and Chrome too if it is missing; when it is done, the settings window opens for step 3.
 
-- **Yes**: when you want full texts and supplementary files of subscription papers, downloaded automatically through Chrome.
-- **No**: searching and open-access downloads work as before; it won't bring it up again until you ask.
+- Don't want it? Tell your AI and it is skipped for good; searching and open-access downloads work as before.
+- Servers without a screen don't get it.
 
-<p align="center"><img src="assets/install.en.webp" width="840" alt="Install demo: send your AI one sentence; it installs PaperSearch and the Skill, lists what works, and on your word adds school subscription downloads, installing Chrome first if it is missing"></p>
+<p align="center"><img src="assets/install.en.webp" width="840" alt="Install demo: send your AI one sentence; it installs PaperSearch and the Skill, lists what works, then installs school subscription downloads (CARSI) automatically, Chrome first if it is missing, and opens the settings window"></p>
 
 ### 3. Add API keys when you need them
 
-<p align="center"><img src="assets/config.en.webp" width="840" alt="Key demo: send a key to your AI and it saves and tests it; with school subscription downloads, set keys, the download folder and waiting times in the settings window"></p>
+<p align="center"><img src="assets/config.en.webp" width="840" alt="Key demo: send a key to your AI and it saves and tests it; once the school subscription downloads (CARSI) component is installed, set keys, the download folder and waiting times in the settings window"></p>
 
 Get a key when you need that feature (sign-up pages: [API keys](#2-api-keys)) and enter it any of these ways:
 
 - **Send it to your AI**: paste the key into the chat; it saves and tests it. The key stays in that conversation's history; if you'd rather not, use one of the other two ways.
-- **Settings window** (comes with school subscription downloads): ask your AI to open the settings, or click the gear on the capsule. API keys, the download folder, waiting times and notifications are all there, and every key has a Test button.
+- **Settings window** (installed automatically with the school subscription downloads component): ask your AI to open the settings, or click the gear on the capsule. API keys, the download folder, waiting times and notifications are all there, and every key has a Test button.
 - **Terminal**: run `paper-search setup <KEY>`; the input is hidden.
 
 ### 4. Tell your AI tool what you need
@@ -112,7 +112,7 @@ Feature comparison:
 | &emsp;Subscription papers | — | ✅ (Elsevier, Springer) | ✅ (30+ major publishers) |
 | &emsp;Supplementary files | — | — | ✅ |
 | **You need** | Node.js 18 or later | Keys from each provider | Google Chrome, a school account |
-| **How to turn it on** | Quick start step 1 | Send to your AI, settings window or terminal | Your AI installs it |
+| **How to turn it on** | Quick start step 1 | Settings window, your AI or terminal | Comes along on a computer |
 
 ### 1. School subscription downloads (CARSI)
 

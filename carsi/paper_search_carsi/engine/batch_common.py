@@ -134,6 +134,12 @@ def _is_browser_error(exc: BaseException, name: str = "") -> bool:
     return is_driver_error(exc, name)
 
 
+def browser_closed(exc: BaseException) -> bool:
+    """The browser, its window or the page went away under a call (the driver's
+    TargetClosedError): the user closed the download browser, or it quit."""
+    return _is_browser_error(exc, "TargetClosedError") or "Target page, context or browser has been closed" in str(exc)
+
+
 def page_title(page: Any) -> str:
     """Read optional title text without consuming the whole page budget."""
     try:

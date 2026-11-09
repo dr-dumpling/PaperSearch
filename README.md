@@ -55,23 +55,23 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 它会装好命令和 Skill，自己检查一遍，告诉你哪些功能已经能用。
 
-### 2. 要不要装学校订阅下载
+### 2. 自动装好学校订阅下载组件
 
-装完 AI 会问你要不要装[学校订阅下载（CARSI）](#1-学校订阅下载carsi)：
+在电脑上，AI 装好 PaperSearch 后会自动装好[学校订阅下载（CARSI）](#1-学校订阅下载carsi)组件，本机没有 Chrome 时一起装好；装完自动弹出设置窗口，接着做第 3 步。
 
-- **要装**：想下载非 OA 文章的全文和补充材料时，通过Chrome浏览器自动下载。
-- **不装**：检索和 OA 文章下载照常能用；之后它不再提，想装时直接跟它说。
+- 不想要的话跟 AI 说一声就跳过，之后不再提；检索和 OA 文章下载照常能用。
+- 没有图形界面的服务器上不装。
 
-<p align="center"><img src="assets/install.webp" width="840" alt="安装演示：把一句话发给 AI，它装好 PaperSearch 和 Skill，列出能用的功能，再按你的意思装上学校订阅下载，缺 Chrome 时先装 Chrome"></p>
+<p align="center"><img src="assets/install.webp" width="840" alt="安装演示：把一句话发给 AI，它装好 PaperSearch 和 Skill，列出能用的功能，再自动装好学校订阅下载（CARSI）组件，缺 Chrome 时先装 Chrome，装完弹出设置窗口"></p>
 
 ### 3. 按需填 API key
 
-<p align="center"><img src="assets/config.webp" width="840" alt="填 key 演示：把 key 发给 AI，它替你保存并测试；装了学校订阅下载时，在设置窗口里填 key、改下载文件夹和等待时间"></p>
+<p align="center"><img src="assets/config.webp" width="840" alt="填 key 演示：把 key 发给 AI，它替你保存并测试；自动装好学校订阅下载（CARSI）组件后，在设置窗口里填 key、改下载文件夹和等待时间"></p>
 
 要用哪项再申请对应的 key（申请入口见 [API key](#2-api-key)），用下面任一方式填入：
 
 - **发给 AI**：把 key 直接发给它，它替你保存并测试。key 会留在这次对话的记录里，不想这样就用下面两种方式。
-- **设置窗口**（装了学校订阅下载才有）：让 AI 打开设置，或点胶囊上的齿轮。API key、下载文件夹、等待时间和提醒都在这里改，每个 key 都能点“测试”。
+- **设置窗口**（随学校订阅下载组件自动装好）：让 AI 打开设置，或点胶囊上的齿轮。API key、下载文件夹、等待时间和提醒都在这里改，每个 key 都能点“测试”。
 - **终端**：运行 `paper-search setup <KEY>`，输入时不显示。
 
 ### 4. 对 AI 说一句话
@@ -112,7 +112,7 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 | &emsp;下载非 OA 文章 | — | ✅（Elsevier、Springer） | ✅（30+主流出版社） |
 | &emsp;下载补充材料 | — | — | ✅ |
 | **需要准备** | Node.js 18 或以上 | 到各家网站申请 key | Google Chrome、学校账号 |
-| **怎么开启** | 快速开始第 1 步 | 发给 AI、设置窗口或终端 | 让 AI 装 |
+| **怎么开启** | 快速开始第 1 步 | 设置窗口、发给 AI 或终端 | 电脑上跟着装好 |
 
 ### 1. 学校订阅下载（CARSI）
 

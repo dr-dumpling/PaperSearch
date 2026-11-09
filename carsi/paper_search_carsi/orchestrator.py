@@ -41,8 +41,14 @@ def download_institutional(
     user_wait: str | None = None,
     diagnostics_dir: str | None = None,
     title: str | None = None,
+    login_only: bool = False,
+    login_wait: int | None = None,
 ) -> dict[str, Any]:
     """Download one DOI through institutional access only.
+
+    ``login_only`` (``login``): the download's own steps up to the article's
+    access, then stop: no PDF, nothing cached. ``login_wait``: seconds to wait
+    on the school's login page instead of the setting.
 
     ``user_wait="short"``: the user seems away (an earlier article of the batch
     waited on them until its time was up); each wait on the user is short.
@@ -79,6 +85,10 @@ def download_institutional(
             extra["diagnostics_dir"] = diagnostics_dir
         if title:
             extra["title"] = title
+        if login_only:
+            extra["login_only"] = True
+        if login_wait:
+            extra["login_wait"] = login_wait
         return _download_impl(doi, output_dir, **extra)
     finally:
         with _INFLIGHT_LOCK:
@@ -87,8 +97,13 @@ def download_institutional(
 
 def _download_impl(doi: str, output_dir: str | Path | None, *,
                    supplements: str | None = None, user_wait: str | None = None,
-                   diagnostics_dir: str | None = None, title: str | None = None) -> dict[str, Any]:
+                   diagnostics_dir: str | None = None, title: str | None = None,
+                   login_only: bool = False, login_wait: int | None = None) -> dict[str, Any]:
     config = load_config()
+    if login_only:
+        config["login_only"] = True
+    if login_wait:
+        config["browser_login_timeout"] = int(login_wait)
     if title:
         # The caller's title for the PDF identity check (bridge's PaperRecord).
         config["record_title"] = plain_title(title)
@@ -107,7 +122,7 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
         config["diagnostics_dir"] = str(Path(diagnostics_dir).resolve())
     output_path = target_dir / f"{safe_filename(doi)}.pdf"
 
-    cached = cache_get(doi, config)
+    cached = None if login_only else cache_get(doi, config)
     if cached and cached.get("success"):
         cached_file = Path(str(cached.get("file") or ""))
         if cached_file.exists() and is_pdf_file(cached_file):
@@ -141,6 +156,8 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
         result.setdefault("doi", doi)
         result.setdefault("reason", "institutional download failed")
         return result
+    if login_only:
+        return result  # the article's access, no PDF (bridge: access_ready)
 
     file_path = Path(str(result.get("file") or output_path))
     if not file_path.exists() or not is_pdf_file(file_path):

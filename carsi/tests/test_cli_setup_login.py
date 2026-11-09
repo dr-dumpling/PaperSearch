@@ -147,7 +147,7 @@ class SetupLoginCliTests(unittest.TestCase):
         self.assertEqual(items["browser_backend"]["status"], "ok")
         self.assertIn(str(program), items["browser_backend"]["detail"])
 
-    def test_login_without_doi_or_gateway_asks_for_a_doi(self):
+    def test_login_asks_for_a_doi_then_for_the_school_before_any_browser(self):
         for setup in ((), ("setup", "--carsi")):
             if setup:
                 run_cli(self.data_dir, *setup)
@@ -155,20 +155,25 @@ class SetupLoginCliTests(unittest.TestCase):
                 code, out, _ = run_cli(self.data_dir, "login")
                 self.assertEqual(code, 2)
                 payload = json.loads(out)
-                self.assertEqual(payload["error"], "doi_or_publisher_required")
+                self.assertEqual(payload["error"], "doi_required")
                 self.assertIn("--doi", payload["hint"])
+        run_cli(self.data_dir, "setup", "--no-carsi")
+        code, out, _ = run_cli(self.data_dir, "login", "--doi", "10.1016/j.arth.2022.02.032")
+        self.assertEqual((code, json.loads(out)["error"]), (2, "school_not_configured"))
 
-    def test_login_has_no_carsi_kind(self):
-        code, _, err = run_cli(self.data_dir, "login", "--kind", "carsi")
-        self.assertEqual(code, 2)
-        self.assertIn("invalid choice", err)
+    def test_login_takes_a_doi_only(self):
+        # The cookie-capturing window (--kind custom, --publisher, --url) is gone (2026-11-09).
+        for extra in (("--kind", "custom"), ("--publisher", "elsevier"), ("--url", "https://example.org")):
+            code, _, err = run_cli(self.data_dir, "login", *extra)
+            self.assertEqual(code, 2)
+            self.assertIn("unrecognized arguments", err)
 
     def test_sensitive_values_are_masked(self):
-        run_cli(self.data_dir, "config", "set", "core_api_key", "secret-fixture-key")
+        run_cli(self.data_dir, "config", "set", "elsevier_api_key", "secret-fixture-key")
         code, out, _ = run_cli(self.data_dir, "setup")
         self.assertNotIn("secret-fixture-key", out)
-        code, out, _ = run_cli(self.data_dir, "config", "get", "core_api_key")
-        self.assertEqual(json.loads(out)["core_api_key"], "***configured***")
+        code, out, _ = run_cli(self.data_dir, "config", "get", "elsevier_api_key")
+        self.assertEqual(json.loads(out)["elsevier_api_key"], "***configured***")
         code, out, _ = run_cli(self.data_dir, "config", "list")
         self.assertNotIn("secret-fixture-key", out)
 

@@ -7,6 +7,7 @@ const MESSAGES: Record<string, string> = {
   login_not_reached:
     "程序没能进入学校登录页（一直停在出版社页面），这不是没有权限；已记为原因不明，待排查。",
   login_page_closed: "机构登录页面已关闭。请重新打开下载浏览器后重试。",
+  browser_closed: "下载浏览器被关闭了，这一篇没有下完；需要时重新下载即可。",
   login_credentials_rejected:
     "机构登录凭证被拒绝。请在下载浏览器核查登录提示并手动处理；不自动重复提交。",
   login_retries_exhausted:
@@ -83,6 +84,7 @@ const SHORT_REASONS: Record<string, string> = {
   login_timeout: "等学校登录超时",
   login_not_reached: "没进入学校登录页",
   login_page_closed: "登录页被关闭",
+  browser_closed: "下载浏览器被关闭了",
   login_credentials_rejected: "学校登录被拒绝",
   login_retries_exhausted: "登录重试已用尽",
   idp_login_error: "学校登录系统出错",

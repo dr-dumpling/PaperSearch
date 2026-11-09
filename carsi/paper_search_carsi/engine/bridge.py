@@ -45,6 +45,8 @@ _FAILURE_KINDS = {
     "challenge_or_viewer_timeout": ("download_timeout", "review_browser"),
     "ip_blocked": ("access_blocked", "review_access"),
     "unexpected_error": ("source_exception", ""),
+    # The user closed the download browser (or it quit) before the article was done.
+    "browser_closed": ("browser_closed", ""),
     "user_marked_no_entitlement": ("no_entitlement", "skipped_by_user"),
     "user_skipped": ("user_skipped", "skipped_by_user"),
     "batch_stopped": ("batch_stopped", "stopped_by_user"),
@@ -591,10 +593,14 @@ def _try_browser_batch_download(
                     pass
     except Exception as e:
         log.info("   [Institutional] Browser batch download error: %s", type(e).__name__)
+        from .batch_common import browser_closed
+
         if isinstance(e, watchdog.BrowserOperationTimeout):
             state = "browser_operation_timeout"
         elif isinstance(e, watchdog.BrowserUnresponsive):
             state = "browser_unresponsive"
+        elif browser_closed(e):
+            state = "browser_closed"
         else:
             state = "unexpected_error"
         error_type, action = _FAILURE_KINDS[state]
@@ -603,6 +609,13 @@ def _try_browser_batch_download(
                 "artifacts": {"driver": "publisher", "publisher": str(getattr(profile, "name", "") or ""), "record": "",
                               "diagnostic": _write_exception_diagnostic(run_dir, doi, e, state=state, reason=error_type),
                               "state": state}}
+
+    if getattr(result, "state", "") == "access_ready":
+        # `login`: the article opens in full; whether the school's login was part of it.
+        return {"success": True, "identifier": doi, "doi": doi,
+                "source": f"institutional:browser:{profile.name}",
+                "login": {"signed_in": bool(getattr(result, "signed_in", False))},
+                "artifacts": _browser_artifacts(result, profile)}
 
     if result.ok and result.pdf_path:
         src = Path(result.pdf_path)
@@ -639,11 +652,11 @@ def _try_browser_batch_download(
 
 def _browser_closed_at_start(result: Any) -> bool:
     """The item ended at its first navigation because the browser had closed
-    (Playwright's TargetClosedError), before any other step."""
+    (Playwright's TargetClosedError), before any other step: the previous
+    item's browser was still letting go of the profile, not the user."""
     events = [e for e in getattr(result, "events", None) or () if e.get("state") != "browser_start"]
-    return (getattr(result, "state", "") == "unexpected_error" and 2 <= len(events) <= 3
-            and events[0].get("state") == "article_open" and events[1].get("state") == "unexpected_exception"
-            and str(events[1].get("detail") or "").startswith("TargetClosedError"))
+    return (getattr(result, "state", "") == "browser_closed" and 2 <= len(events) <= 3
+            and events[0].get("state") == "article_open" and events[1].get("state") == "browser_closed")
 
 
 def _note_supplements(result: Any, written: int) -> None:
