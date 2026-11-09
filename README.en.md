@@ -61,22 +61,22 @@ Then **start a new chat** (most AI tools only read a newly installed Skill in a 
 Start setup
 ```
 
-### 2. The school subscription downloads component installs automatically
+<p align="center"><img src="assets/install.en.webp" width="840" alt="Install demo: send your AI one sentence; it installs PaperSearch and the Skill, lists what works, and asks you to start a new chat and say Start setup"></p>
 
-On a computer, your AI installs the [school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi) component automatically right after PaperSearch, and Chrome too if it is missing; when it is done, the settings window opens.
+### 2. Add school subscription downloads during setup
 
-- Don't want it? Tell your AI and it is skipped for good; searching and open-access downloads work as before.
-- Servers without a screen don't get it.
+After "Start setup", your AI first asks whether to add [school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi): full texts and supplementary files of subscription papers through your school account; it needs Chrome (installed too if missing) and downloads about 0.5 GB. It installs only after you agree, then asks for your school (or pick it at your first download) and opens the settings window.
 
-<p align="center"><img src="assets/install.en.webp" width="840" alt="Install demo: send your AI one sentence; it installs PaperSearch and the Skill, lists what works, then installs school subscription downloads (CARSI) automatically, Chrome first if it is missing, and opens the settings window"></p>
+- Don't want it? Say so and it is skipped for good; searching and open-access downloads work as before.
+- Servers without a screen are not asked.
+
+<p align="center"><img src="assets/config.en.webp" width="840" alt="Setup demo: say Start setup; your AI asks first, then installs school subscription downloads and Chrome and sets your school; then enter keys in the settings window and test them"></p>
 
 ### 3. Add API keys when you need them
 
-<p align="center"><img src="assets/config.en.webp" width="840" alt="Settings window: enter keys and test them; the download folder, waiting times and notifications are here too"></p>
-
 Say "start setup" in the new chat and your AI tells you which keys are missing and sets the download folder. Get a key when you need that feature (sign-up pages: [API keys](#2-api-keys)) and enter it any of these ways:
 
-- **Settings window** (installed automatically with the school subscription downloads component): ask your AI to open the settings, or click the gear on the capsule. API keys, the download folder, waiting times and notifications are all there, and every key has a Test button.
+- **Settings window** (comes with school subscription downloads): ask your AI to open the settings, or click the gear on the capsule. API keys, the download folder, waiting times and notifications are all there, and every key has a Test button.
 - **Send it to your AI**: paste the key into the chat; it saves and tests it. The key stays in that conversation's history; if you'd rather not, use the settings window or the terminal.
 - **Terminal**: run `paper-search setup <KEY>`; the input is hidden.
 
@@ -118,7 +118,7 @@ Feature comparison:
 | &emsp;Subscription papers | — | ✅ (Elsevier, Springer) | ✅ (30+ major publishers) |
 | &emsp;Supplementary files | — | — | ✅ |
 | **You need** | Node.js 18 or later | Keys from each provider | Google Chrome, a school account |
-| **How to turn it on** | Quick start step 1 | Settings window, your AI or terminal | Comes along on a computer |
+| **How to turn it on** | Quick start step 1 | Settings window, your AI or terminal | Agree during setup |
 
 ### 1. School subscription downloads (CARSI)
 

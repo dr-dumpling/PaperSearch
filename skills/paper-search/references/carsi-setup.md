@@ -1,6 +1,6 @@
 # 机构下载：安装扩展、配置学校、选择浏览器
 
-学校订阅下载（CARSI）让 PaperSearch 用用户学校的权限，在浏览器里下载需要订阅的论文。在有图形界面的电脑上，它随 PaperSearch 一起装：刚装好 PaperSearch 时直接装上，不用先问；用户说过不要（`PAPER_SEARCH_CARSI_DECLINED=true`）或没有图形界面的服务器上不装。检索和开放下载不需要它。
+学校订阅下载（CARSI）让 PaperSearch 用用户学校的权限，在浏览器里下载需要订阅的论文。在有图形界面的电脑上，用户同意后才装：用户说“请开始配置”或第一次要下订阅文章时问一次；用户说过不要（`PAPER_SEARCH_CARSI_DECLINED=true`）或没有图形界面的服务器上不装、不问。检索和开放下载不需要它。
 
 ## 查看与安装
 
@@ -10,15 +10,15 @@ paper-search carsi status --format text
 
 显示是否已装、安装目录、所用浏览器（Google Chrome 的路径和版本、驱动版本）、学校、PaperSearch 是否已启用它。Chrome 低于测试过的版本时会提示先更新 Chrome。
 
-装的时候运行（Agent 代装时加 `--yes --skip-school`）：
+用户同意后运行（Agent 代装时加 `--yes --skip-school`）：
 
 ```bash
 paper-search carsi install
 ```
 
 - 需要图形界面：学校登录要在看得见的浏览器里完成。没有图形界面的 Linux（服务器，没有 `DISPLAY` 或 `WAYLAND_DISPLAY`）上安装会在第一步停下，`paper-search setup` 也不再问是否安装；这类机器用 `paper-search setup <KEY>` 配 key，检索和开放获取下载照常可用。
-- 需要本机已装 Google Chrome；没有时安装会停下。这时告诉用户要先装 Chrome，然后替用户装：macOS 有 Homebrew 时运行 `brew install --cask google-chrome`，Windows 运行 `winget install -e --id Google.Chrome`；装好后再运行同一条 `carsi install`。没有 Homebrew 或 winget、或安装失败时，请用户从 https://www.google.com/chrome/ 下载安装。`--browser ego` 改用用户自己的 ego lite（仅 macOS）。
-- 安装前会列出安装位置和下载量（约 0.5 GB，不另下载浏览器），用户确认后才开始。`--yes` 跳过确认，Agent 代装时使用。
+- 需要本机已装 Google Chrome；没有时安装会停下。这时告诉用户要先装 Chrome，用户同意后替用户装：macOS 有 Homebrew 时运行 `brew install --cask google-chrome`，Windows 运行 `winget install -e --id Google.Chrome`；装好后再运行同一条 `carsi install`。没有 Homebrew 或 winget、或安装失败时，请用户从 https://www.google.com/chrome/ 下载安装。`--browser ego` 改用用户自己的 ego lite（仅 macOS）。
+- 安装前会列出安装位置和下载量（约 0.5 GB，不另下载浏览器），用户确认后才开始。`--yes` 跳过确认，只在用户已经同意后使用。
 - 用户不需要先装 Python；中途失败时，处理提示的问题后再运行同一命令，会从失败的那一步接着装。
 - 装完会打开设置窗口的 API key 页，用户填好或不需要时点右上角 × 关闭。
 - 装完会自动启用（`PAPER_SEARCH_CARSI_ENABLED=true`、`PAPER_SEARCH_CARSI_EXECUTABLE` 指向新装的后端）。原来配置了别的后端时，会先问用户是否替换。

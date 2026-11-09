@@ -38,7 +38,7 @@ description: |
      ├─ ① 开放下载（默认就有）
      │    primary → direct_pdf_url → repositories → unpaywall → publisher_api
      ├─ ② Sci-Hub 兜底（默认开启，useSciHub=false 关闭）
-     ├─ ③ 机构下载（学校订阅下载，电脑上随 PaperSearch 一起装；paper-search carsi install）
+     ├─ ③ 机构下载（学校订阅下载，电脑上经用户同意后安装；paper-search carsi install）
      │    entitled_access：浏览器打开出版社网站 → 程序选 CARSI 和学校
      │    → 用户登录学校，后端尝试简单验证、必要时提示人工接管 → 程序取 PDF
      │    补充材料只走这一步：正文已由 ①② 拿到时，content=both 也会单独来这里取
@@ -74,16 +74,16 @@ paper-search --version
 paper-search doctor --pretty
 ```
 
-给用户看可读的报告用 `paper-search doctor --format text`。刚替用户装好时，把能用的功能告诉用户，接着装上学校订阅下载（见“PDF 获取”一节），最后提醒用户新开一个对话（Skill 要新对话才生效），在新对话里说“请开始配置”。
+给用户看可读的报告用 `paper-search doctor --format text`。刚替用户装好时，把能用的功能告诉用户，然后提醒用户新开一个对话（Skill 要新对话才生效），在新对话里说“请开始配置”；这时不装别的。
 
 用户说“请开始配置”（或“配置 PaperSearch”“start setup”）时，按顺序做：
 
 1. 运行 `paper-search doctor --format text`，告诉用户现在能用哪些功能、哪些还缺 key。
-2. 学校订阅下载按下一段处理。
+2. 学校订阅下载按下一段处理：先问，用户同意后才装。装好后问用户的学校：用户说了就运行 `paper-search-carsi setup --carsi --institution "学校名"`（见 `references/carsi-setup.md` 的“学校”一节），不说就第一次下载时在选校页选。
 3. 设好默认下载文件夹（见“默认下载文件夹”）。
 4. 把下面三种填 key 的方式告诉用户；电脑上装了学校订阅下载时，直接运行 `paper-search settings` 打开设置窗口。
 
-第一次使用时，如果学校订阅下载还没装（`doctor` 的 `entitled_access` 不是 `available`）、用户没说过不要（`PAPER_SEARCH_CARSI_DECLINED` 不是 `true`）、这台机器有图形界面，不用先问，直接装上（见“PDF 获取”一节）。
+如果学校订阅下载还没装（`doctor` 的 `entitled_access` 不是 `available`）、用户没说过不要（`PAPER_SEARCH_CARSI_DECLINED` 不是 `true`）、这台机器有图形界面，在用户说“请开始配置”时，或用户第一次要下订阅文章时，问一次要不要装：说明它用学校账号下载非 OA 文章的全文和补充材料，需要 Google Chrome（没有时一起装），下载约 0.5 GB。用户同意后再装（见“PDF 获取”一节）；用户说不要时记下来。
 
 第一次使用时，只按用户要用的功能提缺的 key，并给出申请入口（`doctor` 的 To enable 一行）。用户问需要哪些配置时，下面三种填法都告诉用户；电脑上装了学校订阅下载时，先推荐设置窗口。配 key 有三种方式，用户选哪种都可以：
 
@@ -126,7 +126,7 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 
 ## 两种下载方式
 
-装好 `paper-search` 就能用开放下载。在有图形界面的电脑上，机构下载（学校订阅下载）随 PaperSearch 一起装：刚装好 PaperSearch 或第一次使用时，不用先问，运行 `paper-search carsi install --yes --skip-school`；本机没有 Google Chrome 时先替用户装上 Chrome。装完会弹出设置窗口的 API key 页，请用户在窗口里填 key、改下载文件夹（见 `references/carsi-setup.md`）。没有图形界面的服务器不装。
+装好 `paper-search` 就能用开放下载。机构下载（学校订阅下载）要用户同意后才装：按上面“请开始配置”的说明问过、用户同意后，运行 `paper-search carsi install --yes --skip-school`；本机没有 Google Chrome 时先装 Chrome（问的时候一并说明）。装完会弹出设置窗口的 API key 页，请用户在窗口里填 key、改下载文件夹（见 `references/carsi-setup.md`）。没有图形界面的服务器不装、不问。
 
 两种情况不装、不提，用户自己要求时才装：
 - 用户说过不要：`paper-search config get PAPER_SEARCH_CARSI_DECLINED` 为 `true`。用户说不要时，运行 `paper-search config set PAPER_SEARCH_CARSI_DECLINED true` 记下来。
@@ -134,7 +134,7 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 
 | | 开放下载 | 机构下载（学校订阅下载） |
 |---|---|---|
-| 能不能直接用 | 装好 `paper-search` 就能用 | 电脑上随 PaperSearch 一起装（`paper-search carsi install`），需要 Google Chrome；服务器上不装 |
+| 能不能直接用 | 装好 `paper-search` 就能用 | 电脑上经用户同意后安装（`paper-search carsi install`），需要 Google Chrome；服务器上不装 |
 | 能拿到什么 | 开放获取的正文 | 用户学校订阅的正文；有规则的出版社还能取补充材料 |
 | 怎么拿 | 程序直接下载，通常几秒，不用登录：来源自带的下载、元数据里的 PDF 地址、PMC、Unpaywall、出版社接口（用户自己的 key）；最后是默认开启的 Sci-Hub 兜底（它不是开放获取，`useSciHub=false` 关闭） | 打开浏览器，经 CARSI 登录学校，在出版社网站取 PDF；账号密码由用户输入，后端尝试简单验证，必要时提示人工接管 |
 | 补充材料 | 不提供 | 有规则的出版社可以取，见 `references/publisher-support.md` |

@@ -43,8 +43,8 @@ describe("skill CLI commands", () => {
     expect(updateOutput.installedCount).toBe(1);
     expect(updateOutput.status.targets[0].status).toBe("up_to_date");
     // the first install tells the AI what to do next; a later update does not
-    expect(updateOutput.nextSteps).toHaveLength(3);
-    expect(updateOutput.nextSteps[2]).toContain("请开始配置");
+    expect(updateOutput.nextSteps).toHaveLength(2);
+    expect(updateOutput.nextSteps[1]).toContain("请开始配置");
     // and on stderr, for tools that keep only part of the JSON
     expect(update.stderr).toContain("接下来请按顺序做");
     expect(update.stderr).toContain("paper-search doctor --format text");

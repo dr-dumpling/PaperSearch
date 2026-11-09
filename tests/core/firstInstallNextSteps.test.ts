@@ -3,19 +3,14 @@ import { firstInstallNextSteps } from "../../src/management/skills/nextSteps.js"
 import { CONFIG_KEYS } from "../../src/config/ConfigService.js";
 
 describe("first-install next steps", () => {
-  it("asks about school subscription downloads where a browser can be shown, and records a no", () => {
-    for (const [platform, env] of [["darwin", {}], ["win32", {}], ["linux", { DISPLAY: ":0" }], ["linux", { WAYLAND_DISPLAY: "wayland-0" }]] as const) {
-      const school = firstInstallNextSteps(platform, env)[1];
-      expect(school).toContain("paper-search carsi install");
-      expect(school).toContain("PAPER_SEARCH_CARSI_DECLINED true");
+  it("installs nothing more and sends the user to a new chat to start setup", () => {
+    const steps = firstInstallNextSteps();
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toContain("paper-search doctor --format text");
+    expect(steps[1]).toContain("请开始配置");
+    for (const install of ["carsi install", "brew install", "winget install", "不用先问"]) {
+      expect(steps.join("\n")).not.toContain(install);
     }
-  });
-
-  it("does not offer it on a server without a screen", () => {
-    const steps = firstInstallNextSteps("linux", {});
-    expect(steps).toHaveLength(3);
-    expect(steps.join("\n")).not.toContain("carsi install");
-    expect(steps[1]).toContain("没有图形界面");
   });
 
   it("can store the user's no in the config file", () => {

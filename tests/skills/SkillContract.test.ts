@@ -175,11 +175,13 @@ describe("paper-search bundled skill contract", () => {
     const skill = readSkillFile("SKILL.md");
     const support = readSkillFile("references/publisher-support.md");
 
-    // Open downloading always works; on a computer with a screen the institutional download comes along, no question asked.
+    // Open downloading always works; the institutional download is installed only after the user agrees.
     expect(skill).toContain("## 两种下载方式");
     expect(skill).toContain("## 整体逻辑");
     expect(skill).toContain("装好 `paper-search` 就能用开放下载");
     expect(skill).toContain("paper-search carsi install --yes --skip-school");
+    expect(skill).toContain("问一次要不要装");
+    expect(skill).not.toContain("不用先问");
     expect(skill).toMatch(/\|\s*\|\s*开放下载\s*\|\s*机构下载（学校订阅下载）\s*\|/);
     // The agent asks once, before downloading, whether supplementary files are wanted.
     expect(skill).toContain("下载前问清要什么");
