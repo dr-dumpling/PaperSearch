@@ -31,8 +31,17 @@ describe("paper-search bundled skill contract", () => {
     expect(skill).toContain("开放式的文献任务分两步");
     expect(skill).toContain("直接下载请求");
     expect(skill).toContain("paper-search doctor --pretty");
-    expect(skill).toContain("用户说“请开始配置”");
-    expect(skill).toContain("直接运行 `paper-search settings` 打开设置窗口");
+    // Setup lives in its own reference; the main file must always point to it.
+    const setup = readSkillFile("references/setup.md");
+    expect(skill).toContain("“请开始配置”");
+    expect(skill).toMatch(/\| 配置（“请开始配置”）[^\n]*\| `references\/setup\.md` \|/);
+    expect(skill).toContain("**先读 `references/setup.md`，按里面固定的流程做**");
+    expect(setup).toContain("用户说“请开始配置”");
+    expect(setup).toContain("直接运行 `paper-search settings` 打开设置窗口");
+    // Setup asks one thing at a time, and first whether to use school subscription downloads; the two routes differ.
+    expect(setup).toContain("一次只问一个问题");
+    expect(setup).toContain("A. 机构配置");
+    expect(setup).toContain("B. 不用机构配置");
     expect(skill).toContain("Sci-Hub");
   });
 
@@ -180,7 +189,7 @@ describe("paper-search bundled skill contract", () => {
     expect(skill).toContain("## 整体逻辑");
     expect(skill).toContain("装好 `paper-search` 就能用开放下载");
     expect(skill).toContain("paper-search carsi install --yes --skip-school");
-    expect(skill).toContain("问一次要不要装");
+    expect(readSkillFile("references/setup.md")).toContain("问一次要不要装");
     expect(skill).not.toContain("不用先问");
     expect(skill).toMatch(/\|\s*\|\s*开放下载\s*\|\s*机构下载（学校订阅下载）\s*\|/);
     // The agent asks once, before downloading, whether supplementary files are wanted.

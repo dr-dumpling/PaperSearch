@@ -3,11 +3,13 @@ import { firstInstallNextSteps } from "../../src/management/skills/nextSteps.js"
 import { CONFIG_KEYS } from "../../src/config/ConfigService.js";
 
 describe("first-install next steps", () => {
-  it("installs nothing more and sends the user to a new chat to start setup", () => {
+  it("installs nothing more and tells the user to say 请开始配置 when ready", () => {
     const steps = firstInstallNextSteps();
     expect(steps).toHaveLength(2);
     expect(steps[0]).toContain("paper-search doctor --format text");
-    expect(steps[1]).toContain("请开始配置");
+    expect(steps[1]).toContain("需要配置时说“请开始配置”");
+    expect(steps[1]).toContain("references/setup.md");
+    expect(steps.join("\n")).not.toContain("新开");
     for (const install of ["carsi install", "brew install", "winget install", "不用先问"]) {
       expect(steps.join("\n")).not.toContain(install);
     }

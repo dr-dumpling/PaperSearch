@@ -56,17 +56,17 @@ Please install PaperSearch: npm install -g papersearch, then run paper-search sk
 
 It installs the command and the Skill, checks them, and tells you what already works.
 
-Then **start a new chat** (most AI tools only read a newly installed Skill in a new chat) and send it:
+When you want to set it up, send it:
 
 ```text
 Start setup
 ```
 
-<p align="center"><img src="assets/install.en.webp" width="840" alt="Install demo: send your AI one sentence; it installs PaperSearch and the Skill, lists what works, and asks you to start a new chat and say Start setup"></p>
+<p align="center"><img src="assets/install.en.webp" width="840" alt="Install demo: send your AI one sentence; it installs PaperSearch and the Skill, lists what works, and tells you to say Start setup when you want to set it up"></p>
 
 ### 2. Add school subscription downloads during setup
 
-After "Start setup", your AI first asks whether to add [school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi): full texts and supplementary files of subscription papers through your school account; it needs Chrome (installed too if missing) and downloads about 0.5 GB. It installs only after you agree, then asks for your school (or pick it at your first download) and opens the settings window.
+After "Start setup", your AI first asks whether to add [school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi): full texts and supplementary files of subscription papers through your school account; it needs Chrome (installed too if missing) and downloads about 0.5 GB. It installs only after you agree, then asks for your school, sets it, and opens the settings window.
 
 - Don't want it? Say so and it is skipped for good; searching and open-access downloads work as before.
 - Servers without a screen are not asked.
@@ -75,11 +75,10 @@ After "Start setup", your AI first asks whether to add [school subscription down
 
 ### 3. Add API keys when you need them
 
-Say "start setup" in the new chat and your AI tells you which keys are missing and sets the download folder. Get a key when you need that feature (sign-up pages: [API keys](#2-api-keys)) and enter it any of these ways:
+After "Start setup", your AI first asks whether you want school subscription downloads, then goes step by step down the route you pick:
 
-- **Settings window** (comes with school subscription downloads): ask your AI to open the settings, or click the gear on the capsule. API keys, the download folder, waiting times and notifications are all there, and every key has a Test button.
-- **Send it to your AI**: paste the key into the chat; it saves and tests it. The key stays in that conversation's history; if you'd rather not, use the settings window or the terminal.
-- **Terminal**: run `paper-search setup <KEY>`; the input is hidden.
+- **With school subscription downloads**: API keys, the download folder, waiting times and notifications all go in the settings window, and every key has a Test button. To change them later, ask your AI to open the settings, or click the gear on the capsule.
+- **Without**: your AI lists the missing keys and where to get them (also in [API keys](#2-api-keys)); pick one way to enter them: paste a key into the chat and it saves and tests it (the key stays in the chat history), or run `paper-search setup` in a terminal, where the input is hidden.
 
 ### 4. Tell your AI tool what you need
 

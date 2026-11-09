@@ -1,12 +1,13 @@
 // What the AI should do right after the Skill is first installed. The chat that ran the install cannot read
 // the new Skill yet, so `skills update` hands these steps over in its output. Nothing else is installed here:
 // school subscription downloads are offered, and installed only on the user's yes, once they say 请开始配置
-// in a new chat (agents' own safety reviews refuse an install the user did not agree to).
+// (agents' own safety reviews refuse an install the user did not agree to). That can be in this same chat,
+// so the agent is told to read the setup reference of the Skill it just installed first.
 
 export function firstInstallNextSteps(): string[] {
   return [
     "运行 paper-search doctor --format text，用一句话告诉用户现在能用哪些功能、哪些还缺 key。",
-    "告诉用户：新开一个 AI 对话，Skill 才会生效；在新对话里说“请开始配置”，就会接着配置（要不要装学校订阅下载，到时会先问用户）。",
+    "告诉用户：需要配置时说“请开始配置”（要不要装学校订阅下载，到时会先问用户）。用户这样说时，先读刚装好的 paper-search Skill 里的 references/setup.md，再照着做。",
   ];
 }
 

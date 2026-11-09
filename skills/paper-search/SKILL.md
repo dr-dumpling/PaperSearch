@@ -54,7 +54,8 @@ description: |
 
 | 要做的事 | 参考文件 |
 |---|---|
-| 安装、更新、配置、健康检查（doctor）、冒烟测试（smoke）、Skill 同步 | `references/management-layer.md` |
+| 配置（“请开始配置”）：要不要装学校订阅下载、设学校、填 API key、设默认下载文件夹 | `references/setup.md` |
+| 安装、更新、健康检查（doctor）、冒烟测试（smoke）、Skill 同步 | `references/management-layer.md` |
 | 在检索、施引扩展、期刊指标、PDF 获取、正文片段检索之间选路由；开放下载的各个渠道；核验论文身份 | `references/capability-routing.md` |
 | 核对命令、`paper-search run` 的工具名、参数和输出格式 | `references/cli-contract.md` |
 | 检索类命令出错（命令缺失、缺 key、限流、0 结果、Scholar 验证页） | `references/troubleshooting.md` |
@@ -74,39 +75,17 @@ paper-search --version
 paper-search doctor --pretty
 ```
 
-给用户看可读的报告用 `paper-search doctor --format text`。刚替用户装好时，把能用的功能告诉用户，然后提醒用户新开一个对话（Skill 要新对话才生效），在新对话里说“请开始配置”；这时不装别的。
+给用户看可读的报告用 `paper-search doctor --format text`。刚替用户装好时，把能用的功能告诉用户，然后告诉用户需要配置时说“请开始配置”；这时不装别的。
 
-用户说“请开始配置”（或“配置 PaperSearch”“start setup”）时，按顺序做：
+### 配置（请开始配置）
 
-1. 运行 `paper-search doctor --format text`，告诉用户现在能用哪些功能、哪些还缺 key。
-2. 学校订阅下载按下一段处理：先问，用户同意后才装。装好后问用户的学校：用户说了就运行 `paper-search-carsi setup --carsi --institution "学校名"`（见 `references/carsi-setup.md` 的“学校”一节），不说就第一次下载时在选校页选。
-3. 设好默认下载文件夹（见“默认下载文件夹”）。
-4. 把下面三种填 key 的方式告诉用户；电脑上装了学校订阅下载时，直接运行 `paper-search settings` 打开设置窗口。
+用户说“请开始配置”“配置 PaperSearch”“start setup”，或要填 API key、设下载文件夹、装学校订阅下载时，**先读 `references/setup.md`，按里面固定的流程做**：一次只问一个问题，先问要不要用学校订阅下载，再走对应的路线。
 
-如果学校订阅下载还没装（`doctor` 的 `entitled_access` 不是 `available`）、用户没说过不要（`PAPER_SEARCH_CARSI_DECLINED` 不是 `true`）、这台机器有图形界面，在用户说“请开始配置”时，或用户第一次要下订阅文章时，问一次要不要装：说明它用学校账号下载非 OA 文章的全文和补充材料，需要 Google Chrome（没有时一起装），下载约 0.5 GB。用户同意后再装（见“PDF 获取”一节）；用户说不要时记下来。
-
-第一次使用时，只按用户要用的功能提缺的 key，并给出申请入口（`doctor` 的 To enable 一行）。用户问需要哪些配置时，下面三种填法都告诉用户；电脑上装了学校订阅下载时，先推荐设置窗口。配 key 有三种方式，用户选哪种都可以：
-
-- 用户把 key 直接发给你：运行 `paper-search config set <KEY> <值>` 保存，再运行 `paper-search config test <KEY>` 确认；回复里只说末四位，不复述完整的 key。
-- 装了学校订阅下载、用户就在这台电脑前：运行 `paper-search settings` 打开设置窗口，用户在窗口里填 key、下载文件夹和等待时间，点“测试”确认，填完点右上角 × 关闭。
-- 用户不想把 key 发进对话，或在没有图形界面的服务器上：请用户在自己的终端运行 `paper-search setup`。
 命令缺失时按 `references/management-layer.md` 安装。更新时先区分包本体更新和 Skill 同步，不要只运行 `skills update`；步骤见 `references/management-layer.md` 的“包更新与功能配置”一节。
 
 ### 默认下载文件夹
 
-第一次配置时（刚装好，或第一次要下载），先看有没有设好：
-
-```bash
-paper-search config get DEFAULT_DOWNLOAD_PATH
-```
-
-没有设置（返回的 `configured` 为 `false`）时问用户：“下载的论文默认放到哪个文件夹？”用户给出位置后保存为完整路径（`~` 表示用户目录）：
-
-```bash
-paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
-```
-
-之后下载不传 `savePath` / `--save-path`，文件自动存到这个文件夹；只有用户这一次指定了别的位置才传。没有设置时，文件会存到命令当前所在目录下的 `./downloads`，位置不固定，用户很难找到。用户也可以在进度胶囊的设置里改这个文件夹。
+下载时不传 `savePath` / `--save-path`，文件自动存到 `DEFAULT_DOWNLOAD_PATH`；只有用户这一次指定了别的位置才传。`paper-search config get DEFAULT_DOWNLOAD_PATH` 返回的 `configured` 为 `false` 时，先按 `references/setup.md` 的“默认下载文件夹”问用户放哪里，再下载。
 
 ## 功能地图
 
@@ -126,7 +105,7 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 
 ## 两种下载方式
 
-装好 `paper-search` 就能用开放下载。机构下载（学校订阅下载）要用户同意后才装：按上面“请开始配置”的说明问过、用户同意后，运行 `paper-search carsi install --yes --skip-school`；本机没有 Google Chrome 时先装 Chrome（问的时候一并说明）。装完会弹出设置窗口的 API key 页，请用户在窗口里填 key、改下载文件夹（见 `references/carsi-setup.md`）。没有图形界面的服务器不装、不问。
+装好 `paper-search` 就能用开放下载。机构下载（学校订阅下载）要用户同意后才装：按 `references/setup.md` 问过、用户同意后，运行 `paper-search carsi install --yes --skip-school`；本机没有 Google Chrome 时先装 Chrome（问的时候一并说明）。装完会弹出设置窗口的 API key 页，请用户在窗口里填 key、改下载文件夹（见 `references/carsi-setup.md`）。没有图形界面的服务器不装、不问。
 
 两种情况不装、不提，用户自己要求时才装：
 - 用户说过不要：`paper-search config get PAPER_SEARCH_CARSI_DECLINED` 为 `true`。用户说不要时，运行 `paper-search config set PAPER_SEARCH_CARSI_DECLINED true` 记下来。
