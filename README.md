@@ -31,7 +31,7 @@ PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Clau
 - **查引文和参考文献**：顺着一篇论文，找出引用它的研究和它引用的文献。
 - **下载全文和补充材料**：
   - OA 文章：直接下载。
-  - 非 OA 文章：通过学校订阅下载。可以装上“学校订阅下载（CARSI）”，经学校登录批量下载；也可以填写出版社的 API key 下载。
+  - 非 OA 文章：通过“[学校订阅下载（CARSI）](#1-学校订阅下载carsi)”（推荐）或 [API key](#2-api-key) 配置。
 
 <p align="center"><img src="assets/overview.png" width="840" alt="PaperSearch 能做的事：检索论文、搜正文片段、查期刊 IF 与分区、查引文和参考文献、下载全文和补充材料"></p>
 
@@ -45,25 +45,6 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 ## 快速开始
 
-功能对比：
-
-| | 装好就能用 |  API key | 学校订阅下载（CARSI） |
-|---|:---:|:---:|:---:|
-| **检索** | | | |
-| 检索论文、查引文和参考文献 | ✅ | — | — |
-| 更多检索来源、限额 | — | ✅ | — |
-| **期刊与正文** | | | |
-| 查影响因子和分区 | — | ✅ | — |
-| 搜正文片段 | — | ✅ | — |
-| **下载** | | | |
-| 下载 OA 文章 | ✅ | — | — |
-| 下载非 OA 文章 | — | ✅（Elsevier、Springer） | ✅（30+主流出版社） |
-| 下载补充材料 | — | — | ✅ |
-| **需要准备** | Node.js 18 或以上 | 到各家网站申请 key | Google Chrome、学校账号 |
-| **怎么开启** | 第 1 步 | 发给 AI、设置窗口或终端 | 让 AI 装 |
-
-只用检索和 OA 下载，做完第 1 步就够了。
-
 ### 1. 在对话里安装
 
 把这句话发给你的 AI 工具（需要 Node.js 18 或以上）：
@@ -74,14 +55,14 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 它会装好命令和 Skill，自己检查一遍，告诉你哪些功能已经能用。
 
-<p align="center"><img src="assets/install.webp" width="840" alt="安装演示：把一句话发给 AI，它装好 PaperSearch 和 Skill，列出能用的功能，再按你的意思装上学校订阅下载，缺 Chrome 时先装 Chrome"></p>
-
 ### 2. 要不要装学校订阅下载
 
 装完 AI 会问你要不要装[学校订阅下载（CARSI）](#1-学校订阅下载carsi)：
 
 - **要装**：想下载非 OA 文章的全文和补充材料时，通过Chrome浏览器自动下载。
 - **不装**：检索和 OA 文章下载照常能用；之后它不再提，想装时直接跟它说。
+
+<p align="center"><img src="assets/install.webp" width="840" alt="安装演示：把一句话发给 AI，它装好 PaperSearch 和 Skill，列出能用的功能，再按你的意思装上学校订阅下载，缺 Chrome 时先装 Chrome"></p>
 
 ### 3. 按需填 API key
 
@@ -107,6 +88,8 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 **拿到结果：**
 
+<p align="center"><img src="assets/chat-results.webp" width="840" alt="拿到结果：检索论文、搜正文片段、查期刊 IF 与分区、查引文和参考文献，结果直接列在对话里"></p>
+
 <p align="center"><img src="assets/results.webp" width="840" alt="拿到结果：对话里列出下好的 6 篇和各自的补充材料数量；下载文件夹里每篇一个文件夹，补充材料在 supplements/ 里"></p>
 
 - 检索、正文片段、期刊指标和引文，直接在对话里列给你。
@@ -114,31 +97,53 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 ## 可选配置
 
-各档能做什么，见[快速开始](#快速开始)的对照表。
+功能对比：
+
+| | 装好就能用 |  API key | 学校订阅下载（CARSI） |
+|---|:---:|:---:|:---:|
+| **检索** | | | |
+| &emsp;检索论文、查引文和参考文献 | ✅ | — | — |
+| &emsp;更多检索来源、限额 | — | ✅ | — |
+| **期刊与正文** | | | |
+| &emsp;查影响因子和分区 | — | ✅ | — |
+| &emsp;搜正文片段 | — | ✅ | — |
+| **下载** | | | |
+| &emsp;下载 OA 文章 | ✅ | — | — |
+| &emsp;下载非 OA 文章 | — | ✅（Elsevier、Springer） | ✅（30+主流出版社） |
+| &emsp;下载补充材料 | — | — | ✅ |
+| **需要准备** | Node.js 18 或以上 | 到各家网站申请 key | Google Chrome、学校账号 |
+| **怎么开启** | 快速开始第 1 步 | 发给 AI、设置窗口或终端 | 让 AI 装 |
 
 ### 1. 学校订阅下载（CARSI）
 
 开放渠道下不到的论文，可以借你学校的订阅来下。CARSI 是中国高校身份联盟，国内高校基本都已加入，用学校账号就能登录各家出版社。
 
+安装：
+
+```bash
+paper-search carsi install                # 安装时选择你的学校
+paper-search carsi status --format text   # 查看是否装好
+```
+
 <table>
   <tr>
     <td width="50%" valign="top">
       <img src="assets/carsi-capsule.webp" alt="进度胶囊：下载时缩成小胶囊，悬停查看每篇进度，最小化到程序坞照常下载，点一下就回来">
-      <p><b>进度胶囊</b><br><sub>下载时缩成屏幕角落的小胶囊；悬停查看每篇进度，最小化到程序坞也照常下载。</sub></p>
+      <p><b>进度胶囊</b></p>
     </td>
     <td width="50%" valign="top">
       <img src="assets/carsi-signin.webp" alt="自动登录学校：点胶囊里的题名，浏览器回到前台；自动点机构登录、填好学校，转到学校登录页">
-      <p><b>自动登录学校</b><br><sub>点胶囊里的题名，浏览器回到前台；机构登录入口自动点开，学校自动填好。</sub></p>
+      <p><b>自动登录学校</b></p>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
       <img src="assets/carsi-attention.webp" alt="需要你时提醒：要登录学校时胶囊变黄，点它切到浏览器，也能跳过这一篇">
-      <p><b>需要你时提醒</b><br><sub>需要你登录学校时胶囊变黄；点它切到浏览器，也可以跳过这一篇。</sub></p>
+      <p><b>需要你时提醒</b></p>
     </td>
     <td width="50%" valign="top">
       <img src="assets/carsi-finish.webp" alt="结束清单：跳过不想等的论文；下完列出结果，没下到的写明原因，点题名在自己的浏览器里打开">
-      <p><b>结束清单</b><br><sub>不想等的论文可以跳过；下完列出成功和失败，没下到的写明原因，点题名在自己的浏览器里打开。</sub></p>
+      <p><b>结束清单</b></p>
     </td>
   </tr>
 </table>
@@ -152,13 +157,6 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
   - 需要支持别的出版社，欢迎[提 Issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose)，附上一篇你有权限的文章 DOI；适配规则会持续维护和更新。
 - **验证框自动点击**：遇到人机验证，程序自动定位并点击，网站放行后继续下载；过不去才提醒你。
 - **后台下载不打扰**：浏览器在后台工作。屏幕角落的进度胶囊显示进度；需要你登录学校或手动验证时变成琥珀色，点一下就切到浏览器，处理完程序接着下载。
-
-电脑上需要已装有 [Google Chrome](https://www.google.com/chrome/)，并且有图形界面；没有图形界面的服务器不用装它，检索和开放获取下载照常可用。安装：
-
-```bash
-paper-search carsi install                # 安装时选择你的学校
-paper-search carsi status --format text   # 查看是否装好
-```
 
 ### 2. API key
 

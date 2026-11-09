@@ -1,5 +1,16 @@
 // The CLI fixture's synthetic DOIs have no repository copy. Never ask a live API.
 import { appendFileSync } from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
+
+// Searchers use axios, which goes through node:http/https: those fail at once too, so the open stages find
+// nothing on any machine instead of waiting on the network.
+for (const mod of [http, https]) {
+  mod.request = mod.get = (...args) => {
+    const target = args.find((arg) => typeof arg === 'string' || arg instanceof URL) || args[0]?.hostname || '';
+    throw new Error(`Unexpected request in offline CARSI CLI test: ${target}`);
+  };
+}
 
 globalThis.fetch = async (input) => {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);

@@ -151,6 +151,7 @@ describe("setup command", () => {
 
   it("asks last whether to install school subscription downloads", () => {
     const result = runCli(["setup", "--skip-skills"], "\n\n\n\n\n\n\n", {
+      DISPLAY: ":0", // a Linux machine with a screen; Linux without one is not asked
       HOME: tempDir,
       USERPROFILE: tempDir,
       LOCALAPPDATA: join(tempDir, "local"),

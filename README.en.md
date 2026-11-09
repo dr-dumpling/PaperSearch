@@ -31,7 +31,7 @@ PaperSearch provides the `paper-search` command and a bundled Skill. Once instal
 - **Look up citations and references**: from one paper, find the studies that cite it and the works it cites.
 - **Download full texts and supplementary files**:
   - Open-access papers: downloaded directly.
-  - Other papers: through your school's subscriptions. Install school subscription downloads (CARSI) to download them in batches through your school login, or add publisher API keys.
+  - Subscription papers: through "[school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi)" (recommended) or [API keys](#2-api-keys).
 
 <p align="center"><img src="assets/overview.en.png" width="840" alt="What PaperSearch does: search papers, full-text snippets, journal metrics, citations and references, full texts and supplementary files"></p>
 
@@ -45,25 +45,6 @@ https://github.com/user-attachments/assets/9d54521b-bdb9-451c-89d8-889ec203bec1
 
 ## Quick start
 
-Feature comparison:
-
-| | Works once installed | API keys | School subscription downloads (CARSI) |
-|---|:---:|:---:|:---:|
-| **Search** | | | |
-| Search papers, citations and references | ✅ | — | — |
-| More search sources and limits | — | ✅ | — |
-| **Journals and full text** | | | |
-| Impact factors and quartiles | — | ✅ | — |
-| Full-text snippets | — | ✅ | — |
-| **Download** | | | |
-| Open-access papers | ✅ | — | — |
-| Subscription papers | — | ✅ (Elsevier, Springer) | ✅ (30+ major publishers) |
-| Supplementary files | — | — | ✅ |
-| **You need** | Node.js 18 or later | Keys from each provider | Google Chrome, a school account |
-| **How to turn it on** | Step 1 | Send to your AI, settings window or terminal | Your AI installs it |
-
-For searching and open-access downloads, step 1 is all you need.
-
 ### 1. Install in the chat
 
 Send your AI tool this sentence (Node.js 18 or later is needed):
@@ -74,14 +55,14 @@ Please install PaperSearch: npm install -g papersearch, then run paper-search sk
 
 It installs the command and the Skill, checks them, and tells you what already works.
 
-<p align="center"><img src="assets/install.en.webp" width="840" alt="Install demo: send your AI one sentence; it installs PaperSearch and the Skill, lists what works, and on your word adds school subscription downloads, installing Chrome first if it is missing"></p>
-
 ### 2. School subscription downloads, or not
 
 Your AI then asks whether to add [school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi):
 
 - **Yes**: when you want full texts and supplementary files of subscription papers, downloaded automatically through Chrome.
 - **No**: searching and open-access downloads work as before; it won't bring it up again until you ask.
+
+<p align="center"><img src="assets/install.en.webp" width="840" alt="Install demo: send your AI one sentence; it installs PaperSearch and the Skill, lists what works, and on your word adds school subscription downloads, installing Chrome first if it is missing"></p>
 
 ### 3. Add API keys when you need them
 
@@ -107,6 +88,8 @@ Start a new AI session and say what you need, for example:
 
 **Results:**
 
+<p align="center"><img src="assets/chat-results.en.webp" width="840" alt="Results: papers, full-text passages, journal metrics and citations come back in the chat"></p>
+
 <p align="center"><img src="assets/results.en.webp" width="840" alt="Results: the chat lists the 6 papers saved and how many supplementary files each has; the download folder holds one folder per paper, supplementary files in supplements/"></p>
 
 - Search results, snippets, journal metrics and citations come back in the conversation.
@@ -114,31 +97,53 @@ Start a new AI session and say what you need, for example:
 
 ## Optional setup
 
-What each level gives you: see the table in [Quick start](#quick-start).
+Feature comparison:
+
+| | Works once installed | API keys | School subscription downloads (CARSI) |
+|---|:---:|:---:|:---:|
+| **Search** | | | |
+| &emsp;Search papers, citations and references | ✅ | — | — |
+| &emsp;More search sources and limits | — | ✅ | — |
+| **Journals and full text** | | | |
+| &emsp;Impact factors and quartiles | — | ✅ | — |
+| &emsp;Full-text snippets | — | ✅ | — |
+| **Download** | | | |
+| &emsp;Open-access papers | ✅ | — | — |
+| &emsp;Subscription papers | — | ✅ (Elsevier, Springer) | ✅ (30+ major publishers) |
+| &emsp;Supplementary files | — | — | ✅ |
+| **You need** | Node.js 18 or later | Keys from each provider | Google Chrome, a school account |
+| **How to turn it on** | Quick start step 1 | Send to your AI, settings window or terminal | Your AI installs it |
 
 ### 1. School subscription downloads (CARSI)
 
 Papers the open channels cannot get can come through your school's subscriptions. CARSI is the China higher-education identity federation; almost every Chinese university has joined it, so your school account signs you in to the publishers.
 
+Install:
+
+```bash
+paper-search carsi install                # choose your school during installation
+paper-search carsi status --format text   # check that it is ready
+```
+
 <table>
   <tr>
     <td width="50%" valign="top">
       <img src="assets/carsi-capsule.en.webp" alt="Progress capsule: a small capsule shows the progress, hover for each paper, minimized to the Dock it keeps downloading, one click brings it back">
-      <p><b>Progress capsule</b><br><sub>Downloads shrink to a small capsule in the corner; hover to see each paper, and it keeps going while minimized to the Dock.</sub></p>
+      <p><b>Progress capsule</b></p>
     </td>
     <td width="50%" valign="top">
       <img src="assets/carsi-signin.en.webp" alt="School sign-in: clicking the title brings the browser forward; the institution login is clicked, the school filled in, then on to the school's login page">
-      <p><b>School sign-in</b><br><sub>Click a title in the capsule to bring the browser forward; the institution login is found and your school filled in.</sub></p>
+      <p><b>School sign-in</b></p>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
       <img src="assets/carsi-attention.en.webp" alt="Asks when needed: the capsule turns amber for the school login; click to switch to the browser, or skip the paper">
-      <p><b>Asks when needed</b><br><sub>The capsule turns amber when you need to sign in to your school; click it to switch to the browser, or skip the paper.</sub></p>
+      <p><b>Asks when needed</b></p>
     </td>
     <td width="50%" valign="top">
       <img src="assets/carsi-finish.en.webp" alt="Results: skip a paper; the final card lists what was saved and why the rest wasn't; clicking a title opens it in your own browser">
-      <p><b>Results</b><br><sub>Skip a paper you don't want to wait for; at the end you see what was saved and why the rest wasn't, and a click opens a paper in your own browser.</sub></p>
+      <p><b>Results</b></p>
     </td>
   </tr>
 </table>
@@ -152,13 +157,6 @@ Papers the open channels cannot get can come through your school's subscriptions
   - Need another publisher? [Open an issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) with the DOI of an article you can access; these rules are maintained and extended over time.
 - **Verification boxes clicked for you**: it finds and clicks human-verification boxes and carries on once the site lets it through; you are asked only when it does not pass.
 - **Quiet background downloads**: the browser works in the background. The progress capsule in a screen corner shows the progress; it turns amber when you need to sign in or verify, one click switches to the browser, and the download carries on once you are done.
-
-It needs [Google Chrome](https://www.google.com/chrome/) and a screen; a server without one does not need it, and search and open-access downloads work as usual. Install it:
-
-```bash
-paper-search carsi install                # choose your school during installation
-paper-search carsi status --format text   # check that it is ready
-```
 
 ### 2. API keys
 
