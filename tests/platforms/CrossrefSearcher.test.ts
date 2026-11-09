@@ -96,6 +96,23 @@ describe('CrossrefSearcher', () => {
     });
   });
 
+  describe('publication dates', () => {
+    it('keeps a month-only date in its month, whatever the local time zone', () => {
+      const paper = (searcher as any).parsePaper({ DOI: '10.1016/j.arth.2024.06.028', title: ['T'], 'published-print': { 'date-parts': [[2024, 12]] } });
+      expect(paper.publishedDate.toISOString()).toBe('2024-12-01T00:00:00.000Z');
+      expect(paper.year).toBe(2024);
+    });
+  });
+
+  describe('titles and journal names', () => {
+    it('are plain text: Crossref keeps markup and entities', () => {
+      const paper = (searcher as any).parsePaper({ DOI: '10.1002/art.70156', title: ['A <i>Lupus</i> study &amp; more'],
+        'container-title': ['Arthritis &amp; Rheumatology'] });
+      expect(paper.title).toBe('A Lupus study & more');
+      expect(paper.journal).toBe('Arthritis & Rheumatology');
+    });
+  });
+
   describe('downloadPdf', () => {
     it('should throw error as not supported', async () => {
       await expect(searcher.downloadPdf('any-id')).rejects.toThrow();

@@ -119,11 +119,11 @@ const EXPECTED_SCHEMA_SUMMARY: Record<
   },
   get_paper_citations: {
     required: [],
-    properties: ["paperId", "doi", "arxivId", "limit"],
+    properties: ["paperId", "doi", "arxivId"],
   },
   get_paper_references: {
     required: [],
-    properties: ["paperId", "doi", "arxivId", "limit"],
+    properties: ["paperId", "doi", "arxivId"],
   },
   search_iacr: {
     required: ["query"],
@@ -368,21 +368,9 @@ describe("tools contract", () => {
   });
 
   it("keeps citation expansion schemas explicit", () => {
+    // both return everything they find: no limit
     for (const toolName of ["get_paper_citations", "get_paper_references"]) {
-      const schema = schemaFor(toolName);
-      expect(Object.keys(schema.properties)).toEqual([
-        "paperId",
-        "doi",
-        "arxivId",
-        "limit",
-      ]);
-      expect(schema.properties.limit).toEqual(
-        expect.objectContaining({
-          type: "number",
-          minimum: 1,
-          maximum: 100,
-        }),
-      );
+      expect(Object.keys(schemaFor(toolName).properties)).toEqual(["paperId", "doi", "arxivId"]);
     }
   });
 

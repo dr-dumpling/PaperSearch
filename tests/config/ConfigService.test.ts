@@ -218,10 +218,12 @@ describe("ConfigService", () => {
     );
   });
 
-  it("exposes the opt-in flag and explicit executable without account settings", () => {
+  it("exposes the opt-in flag, explicit executable and the user's no, without account settings", () => {
     expect(CONFIG_KEYS.filter((key) => key.includes("CARSI"))).toEqual([
       "PAPER_SEARCH_CARSI_ENABLED",
       "PAPER_SEARCH_CARSI_EXECUTABLE",
+      "PAPER_SEARCH_CARSI_DECLINED",
+      "PAPER_SEARCH_CARSI_AUTO_UPDATE",
     ]);
   });
 

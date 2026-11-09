@@ -76,6 +76,11 @@ export interface CarsiDownloadRequest {
     outputDir: string;
     /** Optional separate directory for records and screenshots. */
     diagnosticsDir?: string;
+    /**
+     * The paper's title from its metadata: the backend checks the PDF against it when the
+     * article page names no title (Science on Atypon). Sent only when declared.
+     */
+    title?: string;
     signal?: AbortSignal;
     onProgress?: (progress: CarsiProgress) => void;
     /** Sent only to backends whose download schema declares the batch fields. */

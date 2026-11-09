@@ -45,27 +45,55 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 ## 快速开始
 
-<p align="center"><img src="assets/quickstart.webp" width="840" alt="安装演示：一行命令装好 PaperSearch 并给 AI 装上 Skill，再运行 paper-search doctor 查看哪些功能已能用"></p>
+功能对比：
 
-### 1. 安装
+| | 装好就能用 |  API key | 学校订阅下载（CARSI） |
+|---|:---:|:---:|:---:|
+| **检索** | | | |
+| 检索论文、查引文和参考文献 | ✅ | — | — |
+| 更多检索来源、限额 | — | ✅ | — |
+| **期刊与正文** | | | |
+| 查影响因子和分区 | — | ✅ | — |
+| 搜正文片段 | — | ✅ | — |
+| **下载** | | | |
+| 下载 OA 文章 | ✅ | — | — |
+| 下载非 OA 文章 | — | ✅（Elsevier、Springer） | ✅（30+主流出版社） |
+| 下载补充材料 | — | — | ✅ |
+| **需要准备** | Node.js 18 或以上 | 到各家网站申请 key | Google Chrome、学校账号 |
+| **怎么开启** | 第 1 步 | 发给 AI、设置窗口或终端 | 让 AI 装 |
 
-- 自己装：复制一行命令（以 Codex 为例）。用其他 AI 工具时，把 `codex` 换成 `claude`、`cursor`、`gemini`、`antigravity` 或 `agents`（共享目录 `~/.agents/skills/`）。
+只用检索和 OA 下载，做完第 1 步就够了。
 
-  ```sh
-  npm install -g papersearch && paper-search skills update --targets codex
-  ```
+### 1. 在对话里安装
 
-- 让 AI 帮你装：把下面这段话发给你的 AI 工具。
+把这句话发给你的 AI 工具（需要 Node.js 18 或以上）：
 
-  ```text
-  请帮我安装 PaperSearch：运行 npm install -g papersearch；
-  再运行 paper-search skills update --targets 你的类型，给你自己装上随包 Skill
-  （类型可选 codex、claude、cursor、gemini、antigravity、agents）；
-  最后运行 paper-search doctor --format text，告诉我哪些功能可用。
-  API key 我会自己用 paper-search setup 输入。
-  ```
+```text
+请帮我安装 PaperSearch：npm install -g papersearch，再用 paper-search skills update 给你自己装上 Skill。
+```
 
-### 2. 对 AI 说一句话
+它会装好命令和 Skill，自己检查一遍，告诉你哪些功能已经能用。
+
+<p align="center"><img src="assets/install.webp" width="840" alt="安装演示：把一句话发给 AI，它装好 PaperSearch 和 Skill，列出能用的功能，再按你的意思装上学校订阅下载，缺 Chrome 时先装 Chrome"></p>
+
+### 2. 要不要装学校订阅下载
+
+装完 AI 会问你要不要装[学校订阅下载（CARSI）](#1-学校订阅下载carsi)：
+
+- **要装**：想下载非 OA 文章的全文和补充材料时，通过Chrome浏览器自动下载。
+- **不装**：检索和 OA 文章下载照常能用；之后它不再提，想装时直接跟它说。
+
+### 3. 按需填 API key
+
+<p align="center"><img src="assets/config.webp" width="840" alt="填 key 演示：把 key 发给 AI，它替你保存并测试；装了学校订阅下载时，在设置窗口里填 key、改下载文件夹和等待时间"></p>
+
+要用哪项再申请对应的 key（申请入口见 [API key](#2-api-key)），用下面任一方式填入：
+
+- **发给 AI**：把 key 直接发给它，它替你保存并测试。key 会留在这次对话的记录里，不想这样就用下面两种方式。
+- **设置窗口**（装了学校订阅下载才有）：让 AI 打开设置，或点胶囊上的齿轮。API key、下载文件夹、等待时间和提醒都在这里改，每个 key 都能点“测试”。
+- **终端**：运行 `paper-search setup <KEY>`，输入时不显示。
+
+### 4. 对 AI 说一句话
 
 新开一个 AI 会话，说你要做什么，例如：
 
@@ -77,50 +105,16 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 | 查引文和参考文献 | DAPA-HF 试验发表后，有哪些研究引用了它 |
 | 下载全文和补充材料 | 把这些论文的全文和补充材料下载到 ./downloads |
 
-### 3. 拿到结果
+**拿到结果：**
+
+<p align="center"><img src="assets/results.webp" width="840" alt="拿到结果：对话里列出下好的 6 篇和各自的补充材料数量；下载文件夹里每篇一个文件夹，补充材料在 supplements/ 里"></p>
 
 - 检索、正文片段、期刊指标和引文，直接在对话里列给你。
-- 下载的论文整理成文件夹，没拿到的篇目告诉你原因：
-
-  ```text
-  downloads/
-  ├── papers/
-  │   ├── Nutrients_2026_α-Ketoglutarate Alleviates the Pathogenesis…_0b6e0203de/
-  │   │   ├── Nutrients_2026_α-Ketoglutarate Alleviates the Pathogenesis….pdf
-  │   │   └── supplements/
-  │   │       └── nutrients-18-03600-s001.zip
-  │   └── arXiv_2017_Attention Is All You Need_a1a0262a54/
-  │       └── arXiv_2017_Attention Is All You Need.pdf
-  └── diagnostics/
-  ```
-
-### 4. 按需加上配置
-
-**装好就能用**：检索论文、查引文和参考文献、下载开放获取的论文。
-
-**加上配置，还能：**
-
-- **查影响因子和分区**：填入 EasyScholar key，JCR 影响因子、JCR 分区和中科院分区一次查清。
-- **在正文里找原句**：填入 Semantic Scholar key，直接搜开放获取论文的正文，找到相关段落的原文和出处。
-- **下载学校订阅的论文**，两种方式：
-  - 装上学校订阅下载（CARSI）：在 Chrome 里登录学校，开放渠道下不到的全文和补充材料也能批量下载。
-  - 填入 Elsevier、Springer 的 API key：在校园网里经出版社接口直接取全文，不用开浏览器；校外下 Elsevier 订阅文章还要填 `ELSEVIER_INSTTOKEN`。
-
-怎么配见下面的 [可选配置](#可选配置)。随时运行 `paper-search doctor --format text`，查看哪些功能已经能用。
+- 下载的论文整理成文件夹，每篇一个文件夹，补充材料在 supplements/ 里；没拿到的篇目告诉你原因。
 
 ## 可选配置
 
-学校订阅下载只管下载；API key 对应各个数据源和服务，管的功能更多：
-
-| 功能 | 学校订阅下载（CARSI） | API key |
-|---|---|---|
-| 下载学校订阅的全文 | ✓ | ✓ 仅 Elsevier、Springer（一般要在校园网） |
-| 下载补充材料 | ✓ | |
-| 查影响因子和分区 | | ✓ EasyScholar |
-| 搜正文片段 | | ✓ Semantic Scholar |
-| 更多检索来源、更高限额 | | ✓ 各来源自己的 key |
-| **需要准备** | Google Chrome、学校账号 | 到各家网站申请 key |
-| **怎么配置** | `paper-search carsi install` | `paper-search setup` |
+各档能做什么，见[快速开始](#快速开始)的对照表。
 
 ### 1. 学校订阅下载（CARSI）
 
@@ -155,11 +149,11 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
   - 医学：NEJM、JAMA、AHA、ASH、Wolters Kluwer、Karger、Thieme
   - 理工：ACS、IEEE、ACM
   - 完整列表见 [出版社支持表](skills/paper-search/references/publisher-support.md)
-  - 需要支持别的出版社，欢迎[提 Issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose)，附上一篇你有权限的文章 DOI；这些适配规则会持续维护和更新。
+  - 需要支持别的出版社，欢迎[提 Issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose)，附上一篇你有权限的文章 DOI；适配规则会持续维护和更新。
 - **验证框自动点击**：遇到人机验证，程序自动定位并点击，网站放行后继续下载；过不去才提醒你。
 - **后台下载不打扰**：浏览器在后台工作。屏幕角落的进度胶囊显示进度；需要你登录学校或手动验证时变成琥珀色，点一下就切到浏览器，处理完程序接着下载。
 
-电脑上需要已装有 [Google Chrome](https://www.google.com/chrome/)。安装：
+电脑上需要已装有 [Google Chrome](https://www.google.com/chrome/)，并且有图形界面；没有图形界面的服务器不用装它，检索和开放获取下载照常可用。安装：
 
 ```bash
 paper-search carsi install                # 安装时选择你的学校
@@ -168,13 +162,13 @@ paper-search carsi status --format text   # 查看是否装好
 
 ### 2. API key
 
-按用途分四类，需要哪类就申请对应的 key，再用 `paper-search setup <KEY>` 填入（输入时不显示）。
+按用途分四类，需要哪类就申请对应的 key，再用[快速开始第 3 步](#3-按需填-api-key)里的任一方式填入。
 
 #### 查期刊、搜正文
 
 | 功能 | 要填的 key | 去哪里申请 |
 |---|---|---|
-| 查影响因子和分区 | `EASYSCHOLAR_KEY` | [EasyScholar](https://www.easyscholar.cc/console/user/open) |
+| 查影响因子和分区 | `EASYSCHOLAR_KEY` | [EasyScholar](https://www.easyscholar.cc/) |
 | 搜正文片段 | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api) |
 
 #### 下载订阅全文（出版社接口）
@@ -200,13 +194,16 @@ paper-search carsi status --format text   # 查看是否装好
 | PubMed | `PUBMED_API_KEY` | [NCBI](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/) |
 | CORE | `CORE_API_KEY` | [CORE](https://core.ac.uk/services/api) |
 | OpenAIRE | `OPENAIRE_API_KEY` | [OpenAIRE](https://develop.openaire.eu/) |
+| OpenAlex（被引超过 1 万篇时列全） | `OPENALEX_API_KEY` | [OpenAlex](https://openalex.org/settings/api) |
 
 常用命令：
 
 ```bash
 paper-search setup                    # 逐项填写常用的几项
 paper-search setup EASYSCHOLAR_KEY    # 只填某一项
+paper-search settings                 # 装了学校订阅下载时：在设置窗口里填
 paper-search config list --pretty     # 查看已配置的项，key 脱敏显示
+paper-search config test --format text  # 测试已填的 key 能不能用
 ```
 
 配置保存在 `~/.config/paper-search-cli/config.json`，只有你自己能读。下载文件夹、联系邮箱、代理和自动更新等其他设置，见 [使用说明 · 其他设置](docs/guide.zh.md#其他设置)。

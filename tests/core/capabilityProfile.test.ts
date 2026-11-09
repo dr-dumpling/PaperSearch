@@ -110,12 +110,8 @@ describe("capabilityProfile", () => {
     expect(byId.metadata_search.optionalKeys).not.toContain("WILEY_TDM_TOKEN");
 
     expect(byId.citation_expansion.status).toBe("available");
-    expect(byId.citation_expansion.configured).toEqual([
-      "semantic_scholar_graph"
-    ]);
-    expect(byId.citation_expansion.optionalKeys).toEqual([
-      "SEMANTIC_SCHOLAR_API_KEY"
-    ]);
+    expect(byId.citation_expansion.configured).toEqual(["openalex", "crossref"]);
+    expect(byId.citation_expansion.optionalKeys).toEqual(["OPENALEX_API_KEY"]);
     expect(byId.body_snippet_search.status).toBe("unavailable");
     expect(byId.body_snippet_search.reason).toContain(
       "SEMANTIC_SCHOLAR_API_KEY",
@@ -132,7 +128,7 @@ describe("capabilityProfile", () => {
     expect(byId.journal_metrics.keySetup).toEqual([
       {
         key: "EASYSCHOLAR_KEY",
-        signupUrl: "https://www.easyscholar.cc/console/user/open",
+        signupUrl: "https://www.easyscholar.cc/",
         command: "paper-search setup EASYSCHOLAR_KEY",
       },
     ]);

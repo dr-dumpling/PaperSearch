@@ -81,6 +81,7 @@ def carsi_download(
     supplements: str | None = None,
     user_wait: str | None = None,
     diagnostics_dir: str | None = None,
+    title: str | None = None,
 ) -> str:
     """Synchronous download entry; ``download`` is module-level so tests can stub it.
 
@@ -98,6 +99,8 @@ def carsi_download(
             kwargs["user_wait"] = user_wait
         if diagnostics_dir:
             kwargs["diagnostics_dir"] = diagnostics_dir
+        if title:
+            kwargs["title"] = title
         from .entitlements import batch_stop_requested
 
         if batch_stop_requested():
@@ -150,6 +153,7 @@ async def _carsi_download_with_progress(
     user_wait: Literal["short"] | None = None,
     diagnostics_dir: str | None = None,
     keep_browser: bool = False,
+    title: str | None = None,
     ctx: Context = None,
 ) -> str:
     """Download one paper by DOI through institutional access only.
@@ -169,6 +173,10 @@ async def _carsi_download_with_progress(
     diagnostics_dir: optional separate directory for browser records, screenshots and
     attachment manifests. When set, attachments go in output_dir/supplements/.
 
+    title: the paper's title as the caller knows it (its metadata). The PDF is checked against
+    it when the article page gives no title of its own (citation_title): Science on Atypon
+    gives none, and its older PDFs print the DOI only on the last page.
+
     user_wait: "short" when the user seems away (an earlier article of the batch waited on them
     until its time was up): each wait on the user (school login, human verification) lasts at
     most 60 s, unless someone starts typing on the login page.
@@ -179,7 +187,7 @@ async def _carsi_download_with_progress(
                         use_vpnsci, bibtex, strategy, batch_id=batch_id, batch_index=batch_index,
                         batch_total=batch_total, batch_done=batch_done, batch_succeeded=batch_succeeded,
                         batch_failed=batch_failed, supplements=supplements, user_wait=user_wait,
-                        diagnostics_dir=diagnostics_dir)
+                        diagnostics_dir=diagnostics_dir, title=title)
     if keep_browser and batch_id:
         return await run_with_progress(ctx, identifier, partial(_with_batch_browser, batch_id, operation),
                                        executor=_batch_worker)

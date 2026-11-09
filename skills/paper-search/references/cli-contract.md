@@ -31,6 +31,8 @@
 - `paper-search skills diff [--targets CSV] [--format text] [--pretty]`
 - `paper-search skills update [--targets CSV] [--pretty]`
 - `paper-search setup [--all] [--keys CSV] [--install-skills CSV] [--skip-skills]`
+- `paper-search config test [KEY] [--stdin] [--format text]`：用一次小请求测试 key 能不能用（有效、被拒绝、限流、连不上）；不带 KEY 时测试所有已填的 key。
+- `paper-search settings [download|wait|keys|<KEY>] [--format text]`：装了学校订阅下载时打开设置窗口（下载文件夹、等待和提醒、API key）；没装或没有图形界面时返回错误，并给出终端命令。
 - `paper-search tools [--pretty]`
 - `paper-search diagnostics [--pretty]`
 - `paper-search requirements [--pretty]` 是 `diagnostics` 的别名。
@@ -111,16 +113,18 @@
 
 ## 施引扩展
 
-`get_paper_citations` 和 `get_paper_references` 查 Semantic Scholar Graph API。
+`get_paper_citations` 查引用了目标论文的文献，`get_paper_references` 查目标论文的参考文献。两个都返回全部结果，没有 `limit`，每次结果只来自一个来源，`provider` 写明是哪个。
+
+- 引文：OpenAlex 的全部施引文献，新的在前，结果带 `citedByCount`（OpenAlex 记录的被引次数）。不配 `OPENALEX_API_KEY` 时最多列出最新的 1 万条，配了能全部列出。OpenAlex 没有这篇论文时才用 Semantic Scholar（最多 1000 条），`notes` 会说明。
+- 参考文献：出版商在 Crossref 登记了每条参考文献的题名或引文时（如 Elsevier、Springer Nature、Frontiers、Wolters Kluwer），用这份清单，保持原文顺序，能看出原文编号时每条带 `number`，结果带 `numberedTo` 和 `missing`（出版商漏登记的编号）。出版商只登记 DOI 或没登记时（如 Wiley、NEJM），用 OpenAlex 的清单，新的在前。两者都没有时用 Semantic Scholar。`notes` 说明换来源的原因。
 
 - `paperId`、`doi`、`arxivId` 至少给一个。
 - 优先级：`paperId`，然后 `doi`，然后 `arxivId`。
 - `doi` 转成 `DOI:<doi>`，`arxivId` 转成 `ARXIV:<id>`。
-- `limit` 默认 `100`，可取 `1` 到 `100`。
 
 ```bash
-paper-search run get_paper_citations --arg doi="10.1038/nature12373" --arg limit=5 --pretty
-paper-search run get_paper_references --arg doi="10.1038/nature12373" --arg limit=5 --pretty
+paper-search run get_paper_citations --arg doi="10.1038/nature12373" --pretty
+paper-search run get_paper_references --arg doi="10.1038/nature12373" --pretty
 ```
 
 ## 下载命令
@@ -192,6 +196,7 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 paper-search config set PAPER_SEARCH_CARSI_ENABLED true
 paper-search config set SEMANTIC_SCHOLAR_API_KEY your_key
 paper-search setup EASYSCHOLAR_KEY
+paper-search settings EASYSCHOLAR_KEY
 paper-search config list --pretty
 paper-search doctor --pretty
 ```

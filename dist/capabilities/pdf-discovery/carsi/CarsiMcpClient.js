@@ -1,4 +1,5 @@
 import { getConfigPath } from "../../../config/ConfigService.js";
+import { paperSearchCommand } from "../../../config/selfCommand.js";
 import { mkdirSync, openSync, closeSync, writeFileSync, unlinkSync, existsSync, readFileSync, readdirSync, readlinkSync, } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -17,7 +18,7 @@ export const CARSI_DOWNLOAD_TIMEOUT_MS = 1_200_000;
 export const CARSI_CLEANUP_TIMEOUT_MS = 5_000;
 const CARSI_BACKEND_SOURCE = "carsi";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.4.12";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.5.0";
 const NO_BATCH_SUPPORT = {
     downloadFields: false,
     supplementsField: false,
@@ -172,7 +173,7 @@ export class CarsiMcpClient {
             if (session) {
                 await scoped.closeBatchBrowser(session);
                 if (await scoped.closeSession(session)) {
-                    unlinkSync(join(scoped.profileDir, ".paper-search-download.lock"));
+                    unlinkSync(join(scoped.profileDir, DOWNLOAD_LOCK_FILE));
                 }
                 else {
                     throw new CarsiCleanupError();
@@ -218,28 +219,10 @@ export class CarsiMcpClient {
         // A download opens its own session and takes the profile lock as before.
         await this.closeProgressSession();
         // Cross-process exclusion covers cache clear, browser use, and child cleanup.
-        // A lock is reclaimed only when its owner has exited and no browser still
-        // holds a profile: the browser may outlive the process that started it.
-        const lockPath = join(this.profileDir, ".paper-search-download.lock");
+        const lockPath = join(this.profileDir, DOWNLOAD_LOCK_FILE);
         try {
-            if (!this.retainedSession) {
-                mkdirSync(this.profileDir, { recursive: true, mode: 0o700 });
-                if (existsSync(lockPath) && isStaleDownloadLock(lockPath, this.profileDir)) {
-                    unlinkSync(lockPath);
-                    process.stderr.write("[CARSI] 已回收上次异常退出留下的下载锁。\n");
-                }
-                const descriptor = openSync(lockPath, "wx", 0o600);
-                try {
-                    writeFileSync(descriptor, `${JSON.stringify({ pid: process.pid })}\n`);
-                }
-                catch (error) {
-                    unlinkSync(lockPath);
-                    throw error;
-                }
-                finally {
-                    closeSync(descriptor);
-                }
-            }
+            if (!this.retainedSession)
+                takeDownloadLock(this.profileDir);
         }
         catch (error) {
             return attemptError(identifier, error.code === "EEXIST"
@@ -388,7 +371,7 @@ export class CarsiMcpClient {
             const downloadResult = await session.client.callTool({
                 name: "carsi_download",
                 arguments: {
-                    ...createCarsiDownloadArguments(identifier, request.outputDir, session.downloadStrategy, session.batchSupport.downloadFields ? request.batch : undefined, session.batchSupport.supplementsField ? request.supplements : undefined, session.batchSupport.userWaitField ? request.userWait : undefined, session.batchSupport.diagnosticsDirField ? request.diagnosticsDir : undefined),
+                    ...createCarsiDownloadArguments(identifier, request.outputDir, session.downloadStrategy, session.batchSupport.downloadFields ? request.batch : undefined, session.batchSupport.supplementsField ? request.supplements : undefined, session.batchSupport.userWaitField ? request.userWait : undefined, session.batchSupport.diagnosticsDirField ? request.diagnosticsDir : undefined, session.batchSupport.titleField ? request.title : undefined),
                     ...(this.keepBatchBrowser && session.batchSupport.keepBrowser && request.batch ? { keep_browser: true } : {}),
                 },
             }, undefined, {
@@ -444,6 +427,8 @@ export class CarsiMcpClient {
             env: {
                 CARSI_DATA_DIR: this.profileDir,
                 PAPER_SEARCH_CONFIG_FILE: getConfigPath(),
+                // The progress window's key test runs this same CLI.
+                PAPER_SEARCH_CLI: paperSearchCommand(),
             },
             stderr: "pipe",
         }, startupDeadline, signal);
@@ -544,6 +529,33 @@ function canReuseBatchBrowser(outcome) {
     // (no completed browser diagnostic) needs a new process for the next item.
     return !broken(outcome.code) && outcome.code !== "cancelled" && outcome.code !== "invalid_download_result" &&
         (outcome.code !== "download_timeout" || outcome.trace?.state === "challenge_or_viewer_timeout");
+}
+/** One backend at a time per profile: downloads, and updating the extension, hold this lock. */
+export const DOWNLOAD_LOCK_FILE = ".paper-search-download.lock";
+/**
+ * Take the profile's download lock, or throw (``EEXIST`` while another process
+ * holds it). A lock is reclaimed only when its owner has exited and no browser
+ * still holds a profile: the browser may outlive the process that started it.
+ */
+export function takeDownloadLock(profileDir) {
+    const lockPath = join(profileDir, DOWNLOAD_LOCK_FILE);
+    mkdirSync(profileDir, { recursive: true, mode: 0o700 });
+    if (existsSync(lockPath) && isStaleDownloadLock(lockPath, profileDir)) {
+        unlinkSync(lockPath);
+        process.stderr.write("[CARSI] 已回收上次异常退出留下的下载锁。\n");
+    }
+    const descriptor = openSync(lockPath, "wx", 0o600);
+    try {
+        writeFileSync(descriptor, `${JSON.stringify({ pid: process.pid })}\n`);
+    }
+    catch (error) {
+        unlinkSync(lockPath);
+        throw error;
+    }
+    finally {
+        closeSync(descriptor);
+    }
+    return lockPath;
 }
 /**
  * True when the lock's recorded owner process no longer exists and no

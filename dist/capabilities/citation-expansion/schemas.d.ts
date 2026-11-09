@@ -1,11 +1,10 @@
 import { z } from 'zod';
+/** A paper to look up, by Semantic Scholar id, DOI or arXiv id. Both tools return everything they find: no limit. */
 export declare const CitationLookupSchema: z.ZodEffects<z.ZodObject<{
     paperId: z.ZodOptional<z.ZodString>;
     doi: z.ZodOptional<z.ZodString>;
     arxivId: z.ZodOptional<z.ZodString>;
-    limit: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
-    limit: number;
     paperId?: string | undefined;
     doi?: string | undefined;
     arxivId?: string | undefined;
@@ -13,9 +12,7 @@ export declare const CitationLookupSchema: z.ZodEffects<z.ZodObject<{
     paperId?: string | undefined;
     doi?: string | undefined;
     arxivId?: string | undefined;
-    limit?: number | undefined;
 }>, {
-    limit: number;
     paperId?: string | undefined;
     doi?: string | undefined;
     arxivId?: string | undefined;
@@ -23,6 +20,5 @@ export declare const CitationLookupSchema: z.ZodEffects<z.ZodObject<{
     paperId?: string | undefined;
     doi?: string | undefined;
     arxivId?: string | undefined;
-    limit?: number | undefined;
 }>;
 //# sourceMappingURL=schemas.d.ts.map

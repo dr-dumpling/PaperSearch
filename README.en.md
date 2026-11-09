@@ -45,27 +45,55 @@ https://github.com/user-attachments/assets/9d54521b-bdb9-451c-89d8-889ec203bec1
 
 ## Quick start
 
-<p align="center"><img src="assets/quickstart.en.webp" width="840" alt="Install demo: one line installs PaperSearch and the Skill for your AI, then paper-search doctor shows what works"></p>
+Feature comparison:
 
-### 1. Install
+| | Works once installed | API keys | School subscription downloads (CARSI) |
+|---|:---:|:---:|:---:|
+| **Search** | | | |
+| Search papers, citations and references | ✅ | — | — |
+| More search sources and limits | — | ✅ | — |
+| **Journals and full text** | | | |
+| Impact factors and quartiles | — | ✅ | — |
+| Full-text snippets | — | ✅ | — |
+| **Download** | | | |
+| Open-access papers | ✅ | — | — |
+| Subscription papers | — | ✅ (Elsevier, Springer) | ✅ (30+ major publishers) |
+| Supplementary files | — | — | ✅ |
+| **You need** | Node.js 18 or later | Keys from each provider | Google Chrome, a school account |
+| **How to turn it on** | Step 1 | Send to your AI, settings window or terminal | Your AI installs it |
 
-- Yourself: copy one line (Codex as the example). For another AI tool, replace `codex` with `claude`, `cursor`, `gemini`, `antigravity` or `agents` (the shared `~/.agents/skills/` directory).
+For searching and open-access downloads, step 1 is all you need.
 
-  ```sh
-  npm install -g papersearch && paper-search skills update --targets codex
-  ```
+### 1. Install in the chat
 
-- Through your AI tool: send it this.
+Send your AI tool this sentence (Node.js 18 or later is needed):
 
-  ```text
-  Please install PaperSearch: run npm install -g papersearch;
-  then run paper-search skills update --targets <your type> to install
-  the bundled Skill for yourself (codex, claude, cursor, gemini, antigravity or agents);
-  finally run paper-search doctor --format text and tell me which features work.
-  I will enter API keys myself with paper-search setup.
-  ```
+```text
+Please install PaperSearch: npm install -g papersearch, then run paper-search skills update to give yourself its Skill.
+```
 
-### 2. Tell your AI tool what you need
+It installs the command and the Skill, checks them, and tells you what already works.
+
+<p align="center"><img src="assets/install.en.webp" width="840" alt="Install demo: send your AI one sentence; it installs PaperSearch and the Skill, lists what works, and on your word adds school subscription downloads, installing Chrome first if it is missing"></p>
+
+### 2. School subscription downloads, or not
+
+Your AI then asks whether to add [school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi):
+
+- **Yes**: when you want full texts and supplementary files of subscription papers, downloaded automatically through Chrome.
+- **No**: searching and open-access downloads work as before; it won't bring it up again until you ask.
+
+### 3. Add API keys when you need them
+
+<p align="center"><img src="assets/config.en.webp" width="840" alt="Key demo: send a key to your AI and it saves and tests it; with school subscription downloads, set keys, the download folder and waiting times in the settings window"></p>
+
+Get a key when you need that feature (sign-up pages: [API keys](#2-api-keys)) and enter it any of these ways:
+
+- **Send it to your AI**: paste the key into the chat; it saves and tests it. The key stays in that conversation's history; if you'd rather not, use one of the other two ways.
+- **Settings window** (comes with school subscription downloads): ask your AI to open the settings, or click the gear on the capsule. API keys, the download folder, waiting times and notifications are all there, and every key has a Test button.
+- **Terminal**: run `paper-search setup <KEY>`; the input is hidden.
+
+### 4. Tell your AI tool what you need
 
 Start a new AI session and say what you need, for example:
 
@@ -77,50 +105,16 @@ Start a new AI session and say what you need, for example:
 | Look up citations and references | Which studies have cited the DAPA-HF trial since it was published? |
 | Download full texts and supplementary files | Download the full texts and supplementary files of these papers to ./downloads |
 
-### 3. Get the results
+**Results:**
+
+<p align="center"><img src="assets/results.en.webp" width="840" alt="Results: the chat lists the 6 papers saved and how many supplementary files each has; the download folder holds one folder per paper, supplementary files in supplements/"></p>
 
 - Search results, snippets, journal metrics and citations come back in the conversation.
-- Downloaded papers are organized into folders, and you are told why any paper was not obtained:
-
-  ```text
-  downloads/
-  ├── papers/
-  │   ├── Nutrients_2026_α-Ketoglutarate Alleviates the Pathogenesis…_0b6e0203de/
-  │   │   ├── Nutrients_2026_α-Ketoglutarate Alleviates the Pathogenesis….pdf
-  │   │   └── supplements/
-  │   │       └── nutrients-18-03600-s001.zip
-  │   └── arXiv_2017_Attention Is All You Need_a1a0262a54/
-  │       └── arXiv_2017_Attention Is All You Need.pdf
-  └── diagnostics/
-  ```
-
-### 4. Add setup when you need more
-
-**Works once installed**: searching papers, looking up citations and references, downloading open-access papers.
-
-**With configuration, you can also:**
-
-- **Look up impact factors and quartiles**: add an EasyScholar key to get JCR impact factors, JCR quartiles and CAS zones in one go.
-- **Find passages in full texts**: add a Semantic Scholar key to search the body text of open-access papers and get the matching passages with their sources.
-- **Download papers your school subscribes to**, either way:
-  - Set up school subscription downloads (CARSI): sign in to your school in Chrome, and full texts and supplementary files the open channels cannot get download in batches.
-  - Add Elsevier and Springer API keys: on your campus network, full texts come straight from the publisher APIs without a browser; off campus, Elsevier subscription articles also need `ELSEVIER_INSTTOKEN`.
-
-How to set them up: see [Optional setup](#optional-setup) below. Run `paper-search doctor --format text` any time to see what works.
+- Downloaded papers are organized into folders, one per paper, with supplementary files in supplements/; you are told why any paper was not obtained.
 
 ## Optional setup
 
-School subscription downloads only download; API keys belong to individual sources and services and cover more:
-
-| Feature | School subscription downloads (CARSI) | API keys |
-|---|---|---|
-| Download subscribed full texts | ✓ | ✓ Elsevier and Springer only (usually on a campus network) |
-| Download supplementary files | ✓ | |
-| Look up impact factors and quartiles | | ✓ EasyScholar |
-| Search full-text snippets | | ✓ Semantic Scholar |
-| More search sources, higher limits | | ✓ Each source's own key |
-| **What you need** | Google Chrome and a school account | Keys from each provider's site |
-| **How to set up** | `paper-search carsi install` | `paper-search setup` |
+What each level gives you: see the table in [Quick start](#quick-start).
 
 ### 1. School subscription downloads (CARSI)
 
@@ -159,7 +153,7 @@ Papers the open channels cannot get can come through your school's subscriptions
 - **Verification boxes clicked for you**: it finds and clicks human-verification boxes and carries on once the site lets it through; you are asked only when it does not pass.
 - **Quiet background downloads**: the browser works in the background. The progress capsule in a screen corner shows the progress; it turns amber when you need to sign in or verify, one click switches to the browser, and the download carries on once you are done.
 
-It needs [Google Chrome](https://www.google.com/chrome/) on the computer. Install it:
+It needs [Google Chrome](https://www.google.com/chrome/) and a screen; a server without one does not need it, and search and open-access downloads work as usual. Install it:
 
 ```bash
 paper-search carsi install                # choose your school during installation
@@ -168,13 +162,13 @@ paper-search carsi status --format text   # check that it is ready
 
 ### 2. API keys
 
-Keys fall into four groups by what they are for. Get the key you need and enter it with `paper-search setup <KEY>` (the input is hidden).
+Keys fall into four groups by what they are for. Get the key you need and enter it any of the ways in [Quick start step 3](#3-add-api-keys-when-you-need-them).
 
 #### Journal metrics and full-text snippets
 
 | Feature | Key | Where to get it |
 |---|---|---|
-| Look up impact factors and quartiles | `EASYSCHOLAR_KEY` | [EasyScholar](https://www.easyscholar.cc/console/user/open) |
+| Look up impact factors and quartiles | `EASYSCHOLAR_KEY` | [EasyScholar](https://www.easyscholar.cc/) |
 | Search full-text snippets | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api) |
 
 #### Subscribed full texts through publisher APIs
@@ -200,13 +194,16 @@ Keys fall into four groups by what they are for. Get the key you need and enter 
 | PubMed | `PUBMED_API_KEY` | [NCBI](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/) |
 | CORE | `CORE_API_KEY` | [CORE](https://core.ac.uk/services/api) |
 | OpenAIRE | `OPENAIRE_API_KEY` | [OpenAIRE](https://develop.openaire.eu/) |
+| OpenAlex (all citing papers past 10,000) | `OPENALEX_API_KEY` | [OpenAlex](https://openalex.org/settings/api) |
 
 Common commands:
 
 ```bash
 paper-search setup                    # the common settings, one by one
 paper-search setup EASYSCHOLAR_KEY    # just one of them
+paper-search settings                 # with school subscription downloads: fill them in a window
 paper-search config list --pretty     # what is set; keys are masked
+paper-search config test --format text  # whether the keys you set work
 ```
 
 Settings are saved in `~/.config/paper-search-cli/config.json`, readable only by you. The download folder, contact emails, proxy, automatic updates and other settings are in [Guide · Other settings](docs/guide.en.md#other-settings).

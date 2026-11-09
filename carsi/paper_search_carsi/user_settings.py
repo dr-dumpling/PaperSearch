@@ -17,13 +17,14 @@ class Field:
     low: int
     high: int
     unit: str
+    page: str  # the settings page it is on: "download" or "wait"
 
 
 FIELDS = (
-    Field("login", "学校登录页最多等", "browser_login_timeout", 180, 30, 1800, "秒"),
-    Field("page", "其他页面最多等", "browser_page_wait_timeout", 60, 10, 600, "秒"),
-    Field("stalled", "验证提醒前最多等", "browser_stall_notify_after", 30, 1, 600, "秒"),
-    Field("hourly", "每家出版社每小时最多", "publisher_hourly_limit", 100, 0, 1000, "篇"),
+    Field("login", "学校登录页最多等", "browser_login_timeout", 180, 30, 1800, "秒", "wait"),
+    Field("page", "其他页面最多等", "browser_page_wait_timeout", 60, 10, 600, "秒", "wait"),
+    Field("stalled", "验证提醒前最多等", "browser_stall_notify_after", 30, 1, 600, "秒", "wait"),
+    Field("hourly", "每家出版社每小时最多", "publisher_hourly_limit", 100, 0, 1000, "篇", "download"),
 )
 
 
@@ -65,3 +66,15 @@ def notify_enabled() -> bool:
 
 def set_notify(on: bool) -> None:
     _config.update_config(NOTIFY_KEY, "true" if on else "false")
+
+
+LANGUAGE_KEY = "progress_language"
+
+
+def language() -> str:
+    """The progress window's language: "zh" (the default) or "en"."""
+    return "en" if _config.load_config().get(LANGUAGE_KEY) == "en" else "zh"
+
+
+def set_language(lang: str) -> None:
+    _config.update_config(LANGUAGE_KEY, "en" if lang == "en" else "zh")

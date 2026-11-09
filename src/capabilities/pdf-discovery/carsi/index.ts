@@ -9,7 +9,7 @@ export function createCarsiBackend(command?: string): CarsiBackend {
   });
 }
 
-export { resolveDefaultCarsiProfileDir } from "./CarsiMcpClient.js";
+export { resolveDefaultCarsiProfileDir, takeDownloadLock } from "./CarsiMcpClient.js";
 
 export { carsiAttemptDetails, carsiShortReason } from "./CarsiAttempt.js";
 

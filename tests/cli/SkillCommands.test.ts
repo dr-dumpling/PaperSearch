@@ -42,6 +42,17 @@ describe("skill CLI commands", () => {
     const updateOutput = JSON.parse(update.stdout);
     expect(updateOutput.installedCount).toBe(1);
     expect(updateOutput.status.targets[0].status).toBe("up_to_date");
+    // the first install tells the AI what to do next; a later update does not
+    expect(updateOutput.nextSteps).toHaveLength(3);
+    const again = runCli([
+      "skills",
+      "update",
+      "--targets",
+      "agents",
+      "--skills-root",
+      tempRoot,
+    ]);
+    expect(JSON.parse(again.stdout).nextSteps).toBeUndefined();
 
     const skillFile = join(
       tempRoot,
@@ -105,7 +116,7 @@ describe("skill CLI commands", () => {
     expect(output.cases.map((item: any) => item.name)).toEqual(
       expect.arrayContaining([
         "metadata_search excludes Sci-Hub",
-        "citation_expansion uses Semantic Scholar Graph API",
+        "citation_expansion uses OpenAlex",
         "pdf_discovery has source groups",
         "journal_metrics uses EASYSCHOLAR_KEY",
         "skill status runs offline",

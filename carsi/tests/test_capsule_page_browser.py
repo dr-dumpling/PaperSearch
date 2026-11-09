@@ -183,7 +183,10 @@ class CapsulePageTests(unittest.TestCase):
                     self.assertEqual(page.locator('#root').evaluate("el => getComputedStyle(el, '::after').animationName"), 'none')
                     self.assertEqual(page.locator('#root').evaluate("el => getComputedStyle(el).backgroundColor"), amber)
                     page.locator('[data-act=settings]').click()
+                    page.locator('[data-page=wait]').click()
                     self.assertTrue(page.get_by_role('switch', name='系统通知').is_visible())
+                    self.assertTrue(page.locator('.strip.warn-strip').is_visible())  # the prompt stays in reach
+                    page.locator('[data-act=back]').click()
                     page.locator('[data-act=back]').click()
                     page.wait_for_selector('#root.warn')
                     page.evaluate("testState.mode='running'; testState.attention=null; tick()")
@@ -219,7 +222,7 @@ class CapsulePageTests(unittest.TestCase):
                   notify:notificationPreference,download_dir:'/original'}),
                 set_notifications:async n=>{notificationPreference=n;return {ok:true,notify:n}},
                 choose_download_directory:async()=>'/chosen folder',
-                save_settings:async(v,n,d)=>{saved=d;savedValues=v;return {ok:true}}}};
+                save_settings:async(v,d)=>{saved=d;savedValues=v;return {ok:true}}}};
               window.dispatchEvent(new Event('pywebviewready'));
             }''', state)
             page.wait_for_function('lastCls === "pill" && sizes.length > 5')
@@ -245,13 +248,16 @@ class CapsulePageTests(unittest.TestCase):
             page.mouse.move(50,25)
             page.wait_for_function('open === true')
             page.locator('[data-act=settings]').click()
+            self.assertIn('通知开', page.locator('[data-page=wait]').inner_text())
+            page.locator('[data-page=wait]').click()
             switch = page.get_by_role('switch', name='系统通知')
             self.assertEqual(switch.get_attribute('aria-checked'), 'true')
             switch.click()
             page.wait_for_function('notificationPreference === false')
             self.assertEqual(switch.get_attribute('aria-checked'), 'false')
             page.locator('[data-act=back]').click()
-            page.locator('[data-act=settings]').click()
+            self.assertIn('通知关', page.locator('[data-page=wait]').inner_text())
+            page.locator('[data-page=wait]').click()
             self.assertEqual(page.get_by_role('switch', name='系统通知').get_attribute('aria-checked'), 'false')
             page.get_by_role('switch', name='系统通知').click()
             page.wait_for_function('notificationPreference === true')
@@ -261,12 +267,16 @@ class CapsulePageTests(unittest.TestCase):
             page.locator('[data-act=defaults]').click()
             self.assertEqual(idle.input_value(), '30')
             idle.fill('45')
+            page.locator('[data-act=save]').click()
+            page.wait_for_function('savedValues && savedValues.stalled === "45"')
+            self.assertIsNone(page.evaluate('saved'))  # the waits page has no folder
+            page.wait_for_selector('.settings-note')
+            page.locator('[data-page=download]').click()
             page.locator('[data-act=choose_folder]').click()
             self.assertEqual(page.locator('#download-dir').input_value(), '/chosen folder')
             page.locator('#download-dir').fill('/typed folder')
             page.locator('[data-act=save]').click()
             page.wait_for_function('saved === "/typed folder"')
-            self.assertEqual(page.evaluate('savedValues.stalled'), '45')
             self.assertEqual(errors, [])
 
     def test_holding_the_pill_freezes_hover_and_refresh_until_release(self):
@@ -314,6 +324,7 @@ class CapsulePageTests(unittest.TestCase):
                     page.wait_for_function("root.innerText.includes('Refreshed article')")
                     page.evaluate("nativeMoves=[]; dragLocks=[]")
                     page.locator('[data-act=settings]').click()
+                    page.locator('[data-page=download]').click()
                     page.locator('#download-dir').fill('/edited while focused')
                     page.mouse.move(80, 60)
                     self.assertEqual(page.evaluate("nativeMoves"), [])
@@ -421,6 +432,8 @@ class CapsulePageTests(unittest.TestCase):
                             self.assertGreater(len({round(s['height']) for s in samples}), 1)
                             page.locator('[data-act=settings]').click()
                             page.wait_for_function("panel==='settings' && !root.classList.contains('animating')")
+                            page.locator('[data-page=wait]').click()
+                            page.wait_for_function("settingsPage==='wait' && !root.classList.contains('animating')")
                             self.assertTrue(page.locator('body').evaluate(
                                 "(el,c)=>el.classList.contains(c)", 'grow-'+vertical))
                             self.assertTrue(page.get_by_role('switch',name='系统通知').is_visible())
@@ -449,6 +462,8 @@ class CapsulePageTests(unittest.TestCase):
                 page.wait_for_function("!root.classList.contains('animating')")
                 page.locator('[data-act=settings]').click()
                 page.wait_for_function("panel==='settings' && !root.classList.contains('animating')")
+                page.locator('[data-page=wait]').click()
+                page.wait_for_function("settingsPage==='wait' && !root.classList.contains('animating')")
                 self.assertLessEqual(page.locator('#root').bounding_box()['height'],180)
                 self.assertTrue(page.locator('.surface').evaluate('el=>el.scrollHeight>el.clientHeight'))
                 page.locator('[data-act=save]').scroll_into_view_if_needed()
@@ -547,8 +562,171 @@ class CapsulePageTests(unittest.TestCase):
             finally:
                 browser.close()
 
+    def test_api_keys_page_and_the_download_behind_the_settings(self):
+        from patchright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'darwin')
+            try:
+                errors = []
+                page.on('pageerror', lambda error: errors.append(str(error)))
+                page.evaluate("""() => {
+                    const service = (id, name, set, keys) => ({id, name, use:'', url:'https://example.org/'+id, set,
+                        guide: id === 'semantic' ? 'https://example.org/guide' : '', guide_label: '申请教程',
+                        masked: set ? '••••9f3c' : '', keys: keys || [{key:id.toUpperCase()+'_KEY', label:'API key', set, masked: set ? '••••9f3c' : ''}]});
+                    window.listing = (scholarSet) => ({ok:true, filled: scholarSet ? 2 : 1, total: 3, groups:[
+                        {title:'查期刊、搜正文', services:[service('easyscholar','EasyScholar',true), service('semantic','Semantic Scholar',scholarSet)]},
+                        {title:'出版社接口', services:[service('elsevier','Elsevier',false)]}]});
+                    window.keySaves=[]; window.signups=[]; window.nextSave={ok:false, error:'key 里不能有空格、换行或中文字符'}; window.closeRequests=0;
+                    Object.assign(pywebview.api, {
+                        api_keys: async()=>listing(false),
+                        save_api_key: async(id, values)=>{keySaves.push([id, values]); return nextSave},
+                        clear_api_key: async()=>listing(false),
+                        test_api_key: async(id, values)=>({status: values.EASYSCHOLAR_KEY ? 'valid' : 'missing',
+                            message: values.EASYSCHOLAR_KEY ? '可以用' : '没有填'}),
+                        api_key_values: async(id)=>({ok:true, values: id === 'easyscholar' ? {EASYSCHOLAR_KEY:'sk-abc-9f3c'} : {}}),
+                        open_signup: async(id, guide)=>{signups.push([id, !!guide]); return {ok:false, message:'打开失败：没有找到默认浏览器'}},
+                        request_close: async()=>{closeRequests++},
+                    });
+                }""")
+                page.mouse.move(50, 25)
+                page.wait_for_function('open')
+                page.locator('[data-act=settings]').click()
+                self.assertIn('已填 1/3', page.locator('[data-page=keys]').inner_text())
+                self.assertIn('正在下载 0/3', page.locator('#task-strip').inner_text())
+                page.locator('[data-page=keys]').click()
+                self.assertEqual(page.locator('.key-group').all_inner_texts(), ['查期刊、搜正文', '出版社接口'])
+                page.locator('[data-service=easyscholar]').click()  # a saved key is in its field, hidden
+                saved = page.get_by_label('EasyScholar API key')
+                self.assertEqual((saved.input_value(), saved.get_attribute('type')), ('sk-abc-9f3c', 'password'))
+                page.locator('[data-act=reveal]').click()
+                self.assertEqual(saved.get_attribute('type'), 'text')
+                page.locator('[data-act=test_key]').click()  # tests what the field holds
+                page.wait_for_function("document.querySelector('#key-error').textContent === '可以用'")
+                self.assertEqual(page.locator('#key-error').get_attribute('class'), 'err ok')
+                page.locator('[data-act=cancel_key]').click()
+                page.locator('[data-service=elsevier]').click()
+                self.assertEqual(page.locator('.key-edit input').count(), 1)
+                page.locator('[data-act=cancel_key]').click()
+                page.locator('[data-service=semantic]').click()
+                key = page.get_by_label('Semantic Scholar API key')
+                self.assertEqual(key.get_attribute('type'), 'password')
+                key.fill('bad key')
+                page.locator('[data-act=reveal]').click()
+                self.assertEqual(key.get_attribute('type'), 'text')
+                # The download moves on behind the settings: only its line changes.
+                page.evaluate("async () => { testState.done = 1; await tick(); }")
+                page.wait_for_function("document.querySelector('#task-strip').innerText.includes('1/3')")
+                self.assertEqual(key.input_value(), 'bad key')
+                page.locator('[data-act=save_key]').click()
+                page.wait_for_function("document.querySelector('#key-error').textContent.includes('空格')")
+                self.assertEqual(key.input_value(), 'bad key')
+                page.locator('[data-act=signup]').click()
+                page.wait_for_function("document.querySelector('#key-error').textContent.includes('打开失败')")
+                page.locator('[data-act=guide]').click()
+                page.wait_for_function("signups.length === 2")
+                self.assertEqual(page.evaluate('signups'), [['semantic', False], ['semantic', True]])
+                page.evaluate("nextSave = listing(true)")
+                key.fill('sk-good-9f3c')
+                key.press('Enter')
+                page.wait_for_function("!document.querySelector('.key-edit')")
+                self.assertEqual(page.evaluate('keySaves.at(-1)'), ['semantic', {'SEMANTIC_KEY': 'sk-good-9f3c'}])
+                self.assertIn('••••9f3c', page.locator('[data-service=semantic]').inner_text())
+                page.keyboard.press('Escape')  # back to the settings home
+                self.assertIn('已填 2/3', page.locator('[data-page=keys]').inner_text())
+                page.locator('#task-strip .strip').click()  # back to the download
+                page.wait_for_function("panel === '' && root.innerText.includes('Drag test article')")
+                self.assertEqual(page.evaluate('closeRequests'), 0)
+                self.assertEqual(errors, [])
+            finally:
+                browser.close()
+
+    def test_a_window_started_for_the_settings_closes_with_them(self):
+        from patchright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'win32')
+            try:
+                page.evaluate("""() => {
+                    window.closeRequests = 0;
+                    window.pendingRequest = {page:'keys', service:'easyscholar', new_window:true};
+                    testState = {mode:'idle'};
+                    Object.assign(pywebview.api, {
+                        state: async()=>{const s = pendingRequest ? {...testState, open_settings: pendingRequest} : testState;
+                                         pendingRequest = null; return s},
+                        api_keys: async()=>({ok:true, filled:0, total:1, groups:[{title:'查期刊、搜正文', services:[
+                            {id:'easyscholar', name:'EasyScholar', use:'影响因子和分区', url:'', set:false, masked:'',
+                             keys:[{key:'EASYSCHOLAR_KEY', label:'API key', set:false, masked:''}]}]}]}),
+                        request_close: async()=>{closeRequests++},
+                    });
+                }""")
+                page.wait_for_selector('.key-edit input')
+                self.assertTrue(page.evaluate('settingsOnly'))
+                self.assertEqual(page.locator('.settings [aria-label=关闭]').count(), 1)  # closes from any page
+                page.keyboard.press('Escape')  # stop editing
+                page.keyboard.press('Escape')  # the settings home, with a close button
+                self.assertEqual(page.locator('.settings [aria-label=关闭]').count(), 1)
+                page.keyboard.press('Escape')
+                page.wait_for_function('closeRequests === 1')
+            finally:
+                browser.close()
+
+    def test_english_leaves_no_chinese_on_any_card_or_settings_page(self):
+        from patchright.sync_api import sync_playwright
+        from paper_search_carsi import api_keys
+        from paper_search_carsi.progress_view import view
+        import time
+        now = time.time()
+        running = dict(status='running', run_id='r', current='10.1000/x', title='Test article', publisher='Test',
+                       journal='Spine', total=3, done=1, success=1, failed=0, content='both', part='main', stage='fetching_pdf')
+        cards = {
+            'running': view(running, now),
+            'attention': view({**running, 'attention': {'login': {'message': '请在浏览器窗口完成机构登录', 'since': 1,
+                                                                  'deadline': now + 100}}}, now),
+            'done': view({**running, 'status': 'done', 'done': 3, 'failed': 1, 'results': {
+                'content': 'both', 'main': 2, 'supplements': 1, 'sources': [['机构订阅', 2]],
+                'failures': [{'cls': 'no_access', 'reason': '学校没有订阅', 'journal': 'Spine', 'title': 'Other', 'doi': '10.1000/y'}],
+                'supplement_failures': [{'cls': 'unsupported', 'reason': '网站暂不支持附录', 'title': 'Third', 'doi': '10.1000/z'}]}}, now),
+        }
+        listing = {'ok': True, 'filled': 0, 'total': 10, 'groups': [
+            {'title': g['title'], 'services': [{**s, 'guide': s.get('guide', ''), 'guide_label': s.get('guide_label', ''), 'set': False,
+             'masked': '', 'keys': [{**k, 'set': False, 'masked': ''} for k in s['keys']]} for s in g['services']]} for g in api_keys.groups()]}
+        # Every text and label on the window, less the language switch's own "中文".
+        leftover = r"""() => {
+            const attributes = [...root.querySelectorAll('[aria-label], [title], [placeholder]')]
+              .flatMap((e) => ['aria-label', 'title', 'placeholder'].map((n) => e.getAttribute(n) || ''));
+            return [root.innerText, ...attributes].join('\n').replace('中文', '').match(/[一-鿿]+/g);
+        }"""
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'darwin', english=True)
+            try:
+                for name, state in cards.items():
+                    with self.subTest(card=name):
+                        page.evaluate("async s => { clearInterval(pollTimer); testState = {...s, lang: 'en'}; open = true; panel = '';"
+                                      " await tick(); render(true); }", state)
+                        page.wait_for_function("!root.classList.contains('animating')")
+                        self.assertIsNone(page.evaluate(leftover))
+                page.evaluate("""listing => Object.assign(pywebview.api, {
+                    settings: async () => ({notify: true, download_dir: '/papers', language: 'en', fields: [
+                        {name: 'login', label: '学校登录页最多等', unit: '秒', value: 180, default: 180, page: 'wait'},
+                        {name: 'hourly', label: '每家出版社每小时最多', unit: '篇', value: 100, default: 100, page: 'download'}]}),
+                    api_keys: async () => listing, api_key_values: async () => ({ok: true, values: {}}),
+                    test_api_key: async () => ({status: 'invalid', message: '被拒绝：key 不对，或已失效（HTTP 401）'})})""", listing)
+                page.evaluate("async () => { testState = {mode: 'idle', lang: 'en'}; await tick(); await act('settings'); }")
+                page.wait_for_selector('[data-page=keys]')
+                for step in ('home', 'download', 'wait', 'keys'):
+                    with self.subTest(settings=step):
+                        if step != 'home':
+                            page.evaluate("async p => { settingsPage = 'home'; await act('settings_page', {dataset: {page: p}}); }", step)
+                        if step == 'keys':
+                            page.locator('[data-service=elsevier]').click()
+                            page.locator('[data-act=test_key]').click()
+                            page.wait_for_function("document.querySelector('#key-error').textContent.includes('Rejected')")
+                        page.wait_for_function("!root.classList.contains('animating')")
+                        self.assertIsNone(page.evaluate(leftover))
+            finally:
+                browser.close()
+
     @staticmethod
-    def drag_page(playwright, platform='darwin'):
+    def drag_page(playwright, platform='darwin', english=False):
         from pathlib import Path
         import time
         import webview
@@ -557,7 +735,8 @@ class CapsulePageTests(unittest.TestCase):
                           total=3, done=0, success=0, failed=0, stage='fetching_pdf', started_at=time.time()), time.time())
         browser = playwright.chromium.launch(channel='chrome', headless=True)
         page = page_world(browser.new_page(viewport={'width': 800, 'height': 800}))
-        page.set_content(PAGE.read_text())
+        from paper_search_carsi.progress_capsule import page_html
+        page.set_content(page_html() if english else PAGE.read_text())
         page.evaluate("""({state, platform}) => {
           window.testPointer={x:-1,y:-1};
               document.addEventListener('pointermove', e=>{testPointer={x:e.clientX,y:e.clientY}});

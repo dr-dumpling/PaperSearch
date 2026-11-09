@@ -1,10 +1,10 @@
-"""PDF text extraction using pymupdf."""
+"""PDF text extraction (through ``pdf_text``)."""
 
 import logging
 import re
 from pathlib import Path
 
-import pymupdf
+from .. import pdf_text
 
 logger = logging.getLogger(__name__)
 
@@ -30,18 +30,11 @@ def extract_text(pdf_path: str | Path) -> str:
         return ""
 
     try:
-        doc = pymupdf.open(str(pdf_path))
+        text_parts = [text for text in pdf_text.page_texts(pdf_path) if text]
     except Exception as e:
         logger.error("Failed to open PDF %s: %s", pdf_path, e)
         return ""
 
-    text_parts = []
-    for page in doc:
-        text = page.get_text("text")
-        if text:
-            text_parts.append(text)
-
-    doc.close()
     full_text = "\n\n".join(text_parts)
 
     # Clean up common PDF artifacts
@@ -102,18 +95,11 @@ def extract_from_bytes(pdf_bytes: bytes) -> str:
         Extracted text content.
     """
     try:
-        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+        text_parts = [text for text in pdf_text.page_texts(pdf_bytes) if text]
     except Exception as e:
         logger.error("Failed to open PDF from bytes: %s", e)
         return ""
 
-    text_parts = []
-    for page in doc:
-        text = page.get_text("text")
-        if text:
-            text_parts.append(text)
-
-    doc.close()
     return _clean_text("\n\n".join(text_parts))
 
 

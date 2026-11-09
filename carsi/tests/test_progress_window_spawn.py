@@ -45,6 +45,38 @@ class ProgressWindowSpawnTests(unittest.TestCase):
             self.spawn().assert_called_once()
         alive.assert_called_once_with(999999, created_before=self.lock.stat().st_mtime + 1)
 
+    def open_settings(self, *args):
+        with patch.dict(os.environ, self.env), patch("subprocess.Popen") as popen:
+            window = pr.open_settings(*args)
+            request = pr.take_settings_request()
+        return window, request, popen
+
+    def test_settings_start_a_window_when_none_is_open(self):
+        window, request, popen = self.open_settings("keys", "easyscholar")
+        self.assertEqual(window, "opened")
+        self.assertEqual(request, {"page": "keys", "service": "easyscholar", "new_window": True})
+        popen.assert_called_once()
+        self.assertEqual(popen.call_args.kwargs["env"]["CARSI_PROGRESS_BAR_CHILD"], "1")
+
+    def test_settings_go_to_the_open_window_and_each_request_is_taken_once(self):
+        self.lock.parent.mkdir(parents=True)
+        self.lock.write_text(str(os.getpid()))
+        window, request, popen = self.open_settings("wait", "")
+        self.assertEqual((window, request), ("existing", {"page": "wait", "service": "", "new_window": False}))
+        popen.assert_not_called()
+        with patch.dict(os.environ, self.env):
+            self.assertIsNone(pr.take_settings_request())
+
+    def test_an_old_request_is_dropped_and_a_failed_start_leaves_none(self):
+        with patch.dict(os.environ, self.env), patch("subprocess.Popen"), \
+             patch.object(pr.time, "time", side_effect=[1000.0, 1000.0 + pr.SETTINGS_REQUEST_SECONDS + 1]):
+            pr.open_settings("home", "")
+            self.assertIsNone(pr.take_settings_request())
+        with patch.dict(os.environ, self.env), patch("subprocess.Popen", side_effect=OSError("no python")):
+            with self.assertRaises(RuntimeError):
+                pr.open_settings("home", "")
+            self.assertIsNone(pr.take_settings_request())
+
     def test_window_module_imports_without_opening_a_window(self):
         import importlib
         for name in ("paper_search_carsi.progress_capsule", "paper_search_carsi.progress_bar"):

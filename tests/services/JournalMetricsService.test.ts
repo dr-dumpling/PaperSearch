@@ -16,7 +16,7 @@ describe('JournalMetricsService', () => {
     const attempt = queryJournalMetrics({ journals: ['Nature'] });
     await expect(attempt).rejects.toThrow('EasyScholar API key not configured');
     await expect(attempt).rejects.toThrow(
-      'Get one at https://www.easyscholar.cc/console/user/open, then run `paper-search setup EASYSCHOLAR_KEY`'
+      'Get one at https://www.easyscholar.cc/, then run `paper-search setup EASYSCHOLAR_KEY`'
     );
   });
 

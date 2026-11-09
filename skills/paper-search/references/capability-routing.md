@@ -57,8 +57,8 @@ paper-search run get_paper_by_doi --arg doi="10.xxxx/xxxxx" --pretty
 `citation_expansion` 用于用户有一篇已知论文，问哪些论文引用了它，或它引用了哪些文献。
 
 ```bash
-paper-search run get_paper_citations --arg doi="10.1038/nature12373" --arg limit=5 --pretty
-paper-search run get_paper_references --arg doi="10.1038/nature12373" --arg limit=5 --pretty
+paper-search run get_paper_citations --arg doi="10.1038/nature12373" --pretty
+paper-search run get_paper_references --arg doi="10.1038/nature12373" --pretty
 ```
 
 标识的优先级是 `paperId` > `doi` > `arxivId`。这项功能用 Semantic Scholar Graph API，与按关键词的 `metadata_search` 分开。
@@ -78,6 +78,8 @@ paper-search run query_journal_metrics --json-args '{"journals":["Nature"],"incl
 ```bash
 paper-search setup EASYSCHOLAR_KEY
 ```
+
+装了学校订阅下载、用户就在这台电脑前时，也可以运行 `paper-search settings EASYSCHOLAR_KEY` 打开设置窗口让用户填。
 
 批量查期刊时，用一次 `journal-metrics` 带多个期刊名或 `--file`；不要并行发 EasyScholar 请求。
 
@@ -149,7 +151,7 @@ PMID 要由 PubMed 确认；DOI 由 DOI 查询或 Crossref、OpenAlex、Semantic
 paper-search run search_semantic_snippets --arg query="comparative risk assessment methods uncertainty propagation" --arg limit=5 --arg fieldsOfStudy=Medicine --pretty
 ```
 
-`search_semantic_snippets` 需要 `SEMANTIC_SCHOLAR_API_KEY`，数量参数是 `limit`，不是 `maxResults`。没有 key 时，把报错里的申请网址和 `paper-search setup SEMANTIC_SCHOLAR_API_KEY` 告诉用户。
+`search_semantic_snippets` 需要 `SEMANTIC_SCHOLAR_API_KEY`，数量参数是 `limit`，不是 `maxResults`。没有 key 时，把报错里的申请网址和 `paper-search setup SEMANTIC_SCHOLAR_API_KEY` 告诉用户（有设置窗口时也可运行 `paper-search settings SEMANTIC_SCHOLAR_API_KEY`）。
 
 只有 `snippetKind="body"` 的结果能作为正文片段证据；来自 `title` 或 `abstract` 的只是线索。引用或依赖某个片段前，核验题名、作者、年份、期刊或来源、DOI 或 PMID。
 

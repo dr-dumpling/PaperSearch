@@ -1,3 +1,4 @@
+import { NO_SCREEN, hasScreen } from "../../src/management/carsi/runtime.js";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,6 +16,8 @@ import {
   type InstallOptions,
 } from "../../src/management/carsi/installer.js";
 import { UV_ARCHIVES } from "../../src/management/carsi/runtime.js";
+import { autoUpdateCarsi, withAutoUpdate } from "../../src/management/carsi/autoUpdate.js";
+import type { CarsiBackend } from "../../src/capabilities/pdf-discovery/carsi/index.js";
 
 const ARCHIVE = UV_ARCHIVES["darwin-arm64"];
 
@@ -170,6 +173,36 @@ describe("paper-search carsi install", () => {
     expect(m.logs).toContain("请输入 y（开启）或 n（关闭），也可以回车保留当前设置。");
   });
 
+  it("uses the computer's uv only when it can do exact installs (0.4.22 on)", async () => {
+    const withUv = (version: string) => fakeMachine({ respond: (name, args) =>
+      (name === "uv" && args[0] === "--version" ? { code: 0, stdout: `uv ${version} (1a2b3c4 2026-01-01)\n`, stderr: "" } : undefined) });
+    const old = withUv("0.4.20");
+    expect((await installCarsi(old.host, YES, old.context)).record?.uv).toContain("uv-aarch64-apple-darwin");
+    const recent = withUv("0.13.6");
+    expect((await installCarsi(recent.host, YES, recent.context)).record?.uv).toBe("uv");
+    expect(recent.calls.filter((call) => call.startsWith("tar "))).toEqual([]);
+  });
+
+  it("clears uv's download cache once installed or updated, and keeps it for an install that stopped", async () => {
+    let cache = "";
+    const fill = (name: string, args: string[]) => {
+      if (name === "uv" && args[0] === "pip") mkdirSync(join(cache, "wheels"), { recursive: true });
+      return undefined;
+    };
+    const m = fakeMachine({ respond: fill });
+    cache = join(m.root, "uv-cache");
+    await installCarsi(m.host, YES, m.context);
+    expect(existsSync(cache)).toBe(false);
+    m.context.paperSearchVersion = "0.3.5";
+    expect((await updateCarsi(m.host, { force: false }, m.context)).status).toBe("updated");
+    expect(existsSync(cache)).toBe(false);
+    const stopped = fakeMachine({ respond: (name, args) => fill(name, args) ??
+      (name === "python" && args[1]?.includes("browser_check") ? { code: 1, stdout: "", stderr: "no Chrome" } : undefined) });
+    cache = join(stopped.root, "uv-cache");
+    await expect(installCarsi(stopped.host, YES, stopped.context)).rejects.toMatchObject({ step: "browser" });
+    expect(existsSync(cache)).toBe(true);
+  });
+
   it("installs step by step and records each step", async () => {
     const m = fakeMachine();
     const outcome = await installCarsi(m.host, YES, m.context);
@@ -242,6 +275,16 @@ describe("paper-search carsi install", () => {
     expect(m.calls).not.toContain("tar -xzf <root>/bin/uv-aarch64-apple-darwin.tar.gz -C <root>/bin");
   });
 
+  it("needs a screen for the school login: a Linux server stops before anything is downloaded", async () => {
+    const server = fakeMachine({ platform: "linux" });
+    await expect(installCarsi(server.host, YES, server.context)).rejects.toMatchObject({ step: "preflight", message: NO_SCREEN });
+    expect(server.calls).toEqual([]);
+    expect(hasScreen("linux", { WAYLAND_DISPLAY: "wayland-0" })).toBe(true);
+    expect(hasScreen("linux", { DISPLAY: ":0" })).toBe(true);
+    expect(hasScreen("darwin", {})).toBe(true);
+    expect(hasScreen("win32", {})).toBe(true);
+  });
+
   it("needs Google Chrome and says where to get it", async () => {
     const m = fakeMachine({ platform: "win32" });
     m.host.env = { ...m.host.env, PROGRAMFILES: join(m.host.home, "Program Files"), LOCALAPPDATA: join(m.host.home, "AppData") };
@@ -290,6 +333,7 @@ describe("paper-search carsi install", () => {
 
   it("offers ego lite only on macOS, and only when it is there", async () => {
     const linux = fakeMachine({ platform: "linux" });
+    linux.host.env = { ...linux.host.env, DISPLAY: ":0" };
     await expect(installCarsi(linux.host, { ...YES, browser: "ego" }, linux.context))
       .rejects.toMatchObject({ step: "preflight", message: "ego lite 目前只支持 macOS；请用 --browser chrome" });
     const mac = fakeMachine();
@@ -391,7 +435,7 @@ describe("paper-search carsi install", () => {
     const outcome = await updateCarsi(m.host, { force: false }, m.context);
     expect(outcome.status).toBe("updated");
     expect(m.calls).toEqual([
-      "uv pip install --python <root>/venv/bin/python --reinstall-package paper-search-carsi <root>/src[ego]",
+      "uv pip install --python <root>/venv/bin/python --reinstall-package paper-search-carsi --exact <root>/src[ego]",
       expect.stringMatching(/^python -c import importlib\.metadata/),
       expect.stringMatching(/^python -c import json\nfrom paper_search_carsi\.browser/),
       "python -c import tkinter",
@@ -445,10 +489,14 @@ describe("paper-search carsi install", () => {
     const outcome = await updateCarsi(m.host, { force: false }, m.context);
     expect(outcome.status).toBe("updated");
     expect(m.calls).toEqual([
+      // It was installed with the computer's uv, which is gone: the pinned one.
+      "uv --version",
+      "tar -xzf <root>/bin/uv-aarch64-apple-darwin.tar.gz -C <root>/bin",
+      "uv --version",
       "uv python install 3.12",
       "uv venv <root>/venv --python 3.12",
       "python --version",
-      "uv pip install --python <root>/venv/bin/python --reinstall-package paper-search-carsi <root>/src[ego]",
+      "uv pip install --python <root>/venv/bin/python --reinstall-package paper-search-carsi --exact <root>/src[ego]",
       expect.stringMatching(/^python -c import importlib\.metadata/),
       expect.stringMatching(/^python -c import json\nfrom paper_search_carsi\.browser/),
       "python -c import tkinter",
@@ -500,5 +548,102 @@ describe("paper-search carsi install", () => {
       PAPER_SEARCH_CARSI_ENABLED: "true",
     });
     expect(outcome.kept[0]).toBe("PaperSearch 配置（后端：/repo/carsi/bin/paper-search-carsi）");
+  });
+});
+
+describe("updating the extension after a PaperSearch upgrade", () => {
+  /** The download lock as a test sees it: taken, released, or held by another PaperSearch. */
+  function lock(held = false) {
+    const events: string[] = [];
+    const take = () => {
+      if (held) throw Object.assign(new Error("lock held"), { code: "EEXIST" });
+      events.push("taken");
+      return () => { events.push("released"); };
+    };
+    return { take, events };
+  }
+
+  async function upgraded(): Promise<Fake> {
+    const m = fakeMachine();
+    await installCarsi(m.host, YES, m.context);
+    m.context.paperSearchVersion = "0.3.5";
+    m.calls.length = 0;
+    m.logs.length = 0;
+    return m;
+  }
+
+  it("updates before the first download, holding the download lock, and says so", async () => {
+    const m = await upgraded();
+    const l = lock();
+    expect(await autoUpdateCarsi(m.host, m.context, l.take)).toBe("updated");
+    expect(l.events).toEqual(["taken", "released"]);
+    expect(m.calls[0]).toBe("uv pip install --python <root>/venv/bin/python --reinstall-package paper-search-carsi --exact <root>/src[ego]");
+    expect(m.logs[0]).toBe("学校订阅下载扩展是 PaperSearch 0.3.4 时装的，先更新到 0.3.5 再下载" +
+      "（不想自动更新：paper-search config set PAPER_SEARCH_CARSI_AUTO_UPDATE false）。");
+    expect(m.logs.at(-1)).toBe("扩展已更新，继续下载。");
+    // Up to date now: nothing more, not even the lock.
+    const again = lock();
+    expect(await autoUpdateCarsi(m.host, m.context, again.take)).toBe("not_needed");
+    expect(again.events).toEqual([]);
+  });
+
+  it("leaves alone an extension that is current, switched off, not installed or not the one in use", async () => {
+    const current = fakeMachine();
+    await installCarsi(current.host, YES, current.context);
+    current.calls.length = 0;
+    expect(await autoUpdateCarsi(current.host, current.context, lock().take)).toBe("not_needed");
+
+    const off = await upgraded();
+    off.config.PAPER_SEARCH_CARSI_AUTO_UPDATE = "false";
+    expect(await autoUpdateCarsi(off.host, off.context, lock().take)).toBe("off");
+
+    const developer = await upgraded();
+    developer.config.PAPER_SEARCH_CARSI_EXECUTABLE = "/repo/carsi/bin/paper-search-carsi";
+    expect(await autoUpdateCarsi(developer.host, developer.context, lock().take)).toBe("not_needed");
+
+    const none = fakeMachine();
+    expect(await autoUpdateCarsi(none.host, none.context, lock().take)).toBe("not_needed");
+    expect([current, off, developer, none].flatMap((m) => m.calls)).toEqual([]);
+  });
+
+  it("does not update under another PaperSearch's download, and goes on when an update fails", async () => {
+    const busy = await upgraded();
+    expect(await autoUpdateCarsi(busy.host, busy.context, lock(true).take)).toBe("busy");
+    expect(busy.calls).toEqual([]);
+    expect(busy.logs).toEqual(["学校订阅下载扩展要更新到 PaperSearch 0.3.5，但另一个 PaperSearch 正在用它；这次不更新，下次用到时再更新。"]);
+
+    const failing = await upgraded();
+    failing.host.run = async () => ({ code: 1, stdout: "", stderr: "no network" });
+    const l = lock();
+    expect(await autoUpdateCarsi(failing.host, failing.context, l.take)).toBe("failed");
+    expect(l.events).toEqual(["taken", "released"]);
+    expect(failing.logs.at(-1)).toMatch(/^学校订阅下载扩展没能自动更新：.*（日志：.*）。这次用旧版本继续；可以稍后运行 paper-search carsi update。$/);
+  });
+
+  it("runs the update once, before the first call that starts the backend", async () => {
+    const calls: string[] = [];
+    const backend: CarsiBackend = {
+      probe: async () => { calls.push("probe"); return { state: "available" } as any; },
+      downloadLegalDoi: async () => { calls.push("download"); return { kind: "backend_unavailable" } as any; },
+      reportBatchProgress: async () => { calls.push("progress"); return true; },
+      withBatchSession: async (run) => { calls.push("session"); return run(backend); },
+    };
+    let release: () => void = () => undefined;
+    const wrapped = withAutoUpdate(backend, () => {
+      calls.push("update");
+      return new Promise<void>((resolve) => { release = resolve; });
+    });
+    const batch = wrapped.withBatchSession!(async (scoped) => {
+      expect(calls).toEqual(["session"]); // a session starts nothing
+      const first = scoped.reportBatchProgress!({ batchId: "b", total: 5, done: 0 } as any);
+      const second = scoped.downloadLegalDoi({ identifier: "10.1/x", outputDir: "out" });
+      await Promise.resolve();
+      expect(calls).toEqual(["session", "update"]);
+      release();
+      await Promise.all([first, second]);
+    });
+    await batch;
+    await wrapped.probe();
+    expect(calls).toEqual(["session", "update", "progress", "download", "probe"]);
   });
 });

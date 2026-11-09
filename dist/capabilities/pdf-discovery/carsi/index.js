@@ -6,6 +6,6 @@ export function createCarsiBackend(command) {
         command: command || getConfigValue("PAPER_SEARCH_CARSI_EXECUTABLE") || undefined,
     });
 }
-export { resolveDefaultCarsiProfileDir } from "./CarsiMcpClient.js";
+export { resolveDefaultCarsiProfileDir, takeDownloadLock } from "./CarsiMcpClient.js";
 export { carsiAttemptDetails, carsiShortReason } from "./CarsiAttempt.js";
 //# sourceMappingURL=index.js.map

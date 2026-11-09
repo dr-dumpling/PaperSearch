@@ -76,6 +76,56 @@ class EngineAcceptanceTests(unittest.TestCase):
         self.d._capture_pdf_channels = blocked
         self.assertEqual(self.d._capture_pdf(page, DOI, DownloadResult(doi=DOI, status="failed")), (None, "", "ip_blocked"))
 
+    def test_a_fallback_pdf_outlasts_the_steps_budget(self):
+        # Science 2026-11-09: the article's own PDF link gave the PDF, but its first pages
+        # name neither DOI nor title; trying other routes then ran the step's budget out.
+        from paper_search_carsi.browser import watchdog
+
+        page = Mock(); page.evaluate.return_value = ""
+        unknown = pdf(["No identifying text"])
+
+        def channels(page, doi, result):
+            self.d._accept_pdf_body(unknown, URL)
+            raise watchdog.BrowserBudgetExhausted("_capture_pdf exhausted its page budget before Page.wait_for_timeout")
+        self.d._capture_pdf_channels = channels
+        result = DownloadResult(doi=DOI, status="failed")
+        self.assertEqual(self.d._capture_pdf(page, DOI, result), (unknown, URL, None))
+        states = [e["state"] for e in result.events]
+        self.assertIn("pdf_budget_exhausted", states)
+        self.assertIn("pdf_saved_unconfirmed", states)
+
+        def nothing(page, doi, result):
+            raise watchdog.BrowserBudgetExhausted("out of time")
+        self.d._capture_pdf_channels = nothing
+        with self.assertRaises(watchdog.BrowserBudgetExhausted):
+            self.d._capture_pdf(page, DOI, DownloadResult(doi=DOI, status="failed"))
+
+        def hung(page, doi, result):  # a call that never returned: the browser is not trusted
+            self.d._accept_pdf_body(unknown, URL)
+            raise watchdog.BrowserOperationTimeout("a call hung")
+        self.d._capture_pdf_channels = hung
+        with self.assertRaises(watchdog.BrowserOperationTimeout):
+            self.d._capture_pdf(page, DOI, DownloadResult(doi=DOI, status="failed"))
+
+
+class CallerTitleTests(unittest.TestCase):
+    def test_the_callers_title_reaches_the_identity_check_as_plain_text(self):
+        from unittest.mock import patch
+        from paper_search_carsi import orchestrator
+
+        self.assertEqual(orchestrator.plain_title("A Programmable Dual-RNA&#8211;Guided  <i>DNA</i> &amp; X"),
+                         "A Programmable Dual-RNA–Guided DNA & X")
+        seen = {}
+
+        def institutional(doi, output_path, config):
+            seen.update(config)
+            return {"success": False, "identifier": doi, "doi": doi, "reason": "test"}
+        with patch.object(orchestrator, "try_institutional", institutional), \
+             patch.object(orchestrator, "cache_get", return_value=None):
+            orchestrator.download_institutional("10.1126/science.1225829", None,
+                                                title="A Programmable Dual-RNA&#8211;Guided DNA Endonuclease")
+        self.assertEqual(seen.get("record_title"), "A Programmable Dual-RNA–Guided DNA Endonuclease")
+
 
 if __name__ == "__main__":
     unittest.main()

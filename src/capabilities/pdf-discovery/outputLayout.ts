@@ -5,6 +5,7 @@ import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import type { Searchers } from '../../core/searchers.js';
 import type { Paper } from '../../models/Paper.js';
 import { withTimeout } from '../../infrastructure/security/SecurityUtils.js';
+import { plainText } from '../../utils/plainText.js';
 
 export type OutputMetadata = Partial<Pick<Paper, 'title' | 'journal' | 'year' | 'publishedDate'>>;
 export interface OutputLayout { paperDir: string; diagnosticsDir: string; name: string; metadata: OutputMetadata & { identity: string } }
@@ -12,7 +13,7 @@ export interface OutputLayout { paperDir: string; diagnosticsDir: string; name: 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex').slice(0, 10);
 
 export function safeComponent(value: string, limit: number): string {
-  let text = value.normalize('NFC').replace(/<[^>]*>/g, '').replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, '_').replace(/\s+/g, ' ').trim().replace(/[. ]+$/g, '');
+  let text = plainText(value.normalize('NFC')).replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, '_').replace(/\s+/g, ' ').trim().replace(/[. ]+$/g, '');
   if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(text)) text = '_' + text;
   // Limit UTF-8 bytes too: Windows and Unix count path components differently.
   while (text.length > limit || Buffer.byteLength(text) > limit * 2) text = Array.from(text).slice(0, -1).join('');

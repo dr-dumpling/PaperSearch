@@ -6,6 +6,8 @@ sources and no renaming; the caller names and verifies the file.
 """
 from __future__ import annotations
 
+import html
+import re
 import threading
 from pathlib import Path
 from typing import Any
@@ -25,6 +27,11 @@ _INFLIGHT: set[str] = set()
 _INFLIGHT_LOCK = threading.Lock()
 
 
+def plain_title(title: str) -> str:
+    """A metadata title as plain text: no markup or entities (Crossref gives <i>…</i> and &amp;)."""
+    return " ".join(html.unescape(re.sub(r"<[^>]+>", "", str(title))).split())[:500]
+
+
 def download_institutional(
     identifier: str,
     output_dir: str | Path | None = None,
@@ -33,6 +40,7 @@ def download_institutional(
     supplements: str | None = None,
     user_wait: str | None = None,
     diagnostics_dir: str | None = None,
+    title: str | None = None,
 ) -> dict[str, Any]:
     """Download one DOI through institutional access only.
 
@@ -69,6 +77,8 @@ def download_institutional(
             extra["user_wait"] = user_wait
         if diagnostics_dir:
             extra["diagnostics_dir"] = diagnostics_dir
+        if title:
+            extra["title"] = title
         return _download_impl(doi, output_dir, **extra)
     finally:
         with _INFLIGHT_LOCK:
@@ -77,8 +87,11 @@ def download_institutional(
 
 def _download_impl(doi: str, output_dir: str | Path | None, *,
                    supplements: str | None = None, user_wait: str | None = None,
-                   diagnostics_dir: str | None = None) -> dict[str, Any]:
+                   diagnostics_dir: str | None = None, title: str | None = None) -> dict[str, Any]:
     config = load_config()
+    if title:
+        # The caller's title for the PDF identity check (bridge's PaperRecord).
+        config["record_title"] = plain_title(title)
     if user_wait == "short":
         config["user_wait"] = "short"
     if supplements in ("with", "only"):

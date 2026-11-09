@@ -39,6 +39,7 @@ async function tryEntitledAccess(context, backend) {
             identifier: context.doi || context.paperId,
             outputDir: context.savePath,
             ...(context.diagnosticsDir ? { diagnosticsDir: context.diagnosticsDir } : {}),
+            ...(context.title ? { title: context.title } : {}),
             ...(context.batch ? { batch: context.batch } : {}),
             ...(context.withSupplements ? { supplements: "with" } : {}),
             ...(context.shortUserWait ? { userWait: "short" } : {}),

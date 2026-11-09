@@ -104,6 +104,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "progress_bar_auto": True,
     # 需要登录学校或完成验证时，除了进度胶囊变色，再发一条系统通知；进度窗口的设置里可以关。
     "progress_notify": False,
+    # The progress window's language: "zh" or "en" (user_settings.language).
+    "progress_language": "zh",
     # 每篇文章在学校登录页等待用户输入的总时长上限，秒；从第一次等待算起。
     "browser_login_timeout": 180,
     # 不在学校登录页时（出版社页面、选机构页、人机验证、取 PDF 时等待处理）最多等多久，秒；

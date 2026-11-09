@@ -87,7 +87,7 @@ describe("publisher_api tier", () => {
     expect(await tier.run(context)).toEqual({
       status: "skipped",
       message:
-        "ELSEVIER_API_KEY not configured. Get one at https://dev.elsevier.com/apikey/manage, then run `paper-search setup ELSEVIER_API_KEY` in your own terminal.",
+        "ELSEVIER_API_KEY not configured. Get one at https://dev.elsevier.com/apikey/manage, then run `paper-search setup ELSEVIER_API_KEY` in your own terminal; with school subscription downloads installed, `paper-search settings ELSEVIER_API_KEY` opens a window for it instead.",
     });
     expect(
       await tier.run({ ...context, doi: "not a doi", paperId: "x" }),

@@ -15,6 +15,8 @@ import {
   CHROME_DOWNLOAD_URL,
   chromeCandidates,
   egoAppCandidates,
+  hasScreen,
+  NO_SCREEN,
   PYTHON_VERSION,
   runtimePaths,
   runtimeRoot,
@@ -76,7 +78,7 @@ export interface InstallContext {
   paperSearchVersion: string;
   /** The backend's data directory (school, logins), as PaperSearch passes it. */
   dataDir: string;
-  getConfig(key: "PAPER_SEARCH_CARSI_ENABLED" | "PAPER_SEARCH_CARSI_EXECUTABLE"): string;
+  getConfig(key: "PAPER_SEARCH_CARSI_ENABLED" | "PAPER_SEARCH_CARSI_EXECUTABLE" | "PAPER_SEARCH_CARSI_AUTO_UPDATE"): string;
   setConfig(key: "PAPER_SEARCH_CARSI_ENABLED" | "PAPER_SEARCH_CARSI_EXECUTABLE", value: string): void;
   unsetConfig(key: "PAPER_SEARCH_CARSI_ENABLED" | "PAPER_SEARCH_CARSI_EXECUTABLE"): void;
   /** The MCP handshake with the backend at ``executable``: its readiness state. */
@@ -185,6 +187,7 @@ export async function installCarsi(
     record.steps[step] = context.now().toISOString();
     writeRecord(paths, record);
   }
+  clearUvCache(paths, record);
   record.paperSearchVersion = context.paperSearchVersion;
   record.finishedAt = context.now().toISOString();
   writeRecord(paths, record);
@@ -247,6 +250,7 @@ async function preflight(
   if (!UV_ARCHIVES[`${host.platform}-${host.arch}`]) {
     throw new Error(`此系统暂不支持（${host.platform}-${host.arch}）`);
   }
+  if (!hasScreen(host.platform, host.env)) throw new Error(NO_SCREEN);
   if (options.browser === "ego") {
     if (host.platform !== "darwin") throw new Error("ego lite 目前只支持 macOS；请用 --browser chrome");
     if (!egoAppCandidates(host.home).some((app) => existsSync(app))) {
@@ -262,9 +266,20 @@ async function preflight(
   }
 }
 
+/** `uv pip install --exact`, which an update uses, works from uv 0.4.22 on (added in 0.4.21, fixed in 0.4.22). */
+const UV_EXACT_FROM = [0, 4, 22];
+
+function uvDoesExact(versionLine: string): boolean {
+  const version = /(\d+)\.(\d+)\.(\d+)/.exec(versionLine)?.slice(1).map(Number);
+  if (!version) return false;
+  const differs = version.findIndex((part, i) => part !== UV_EXACT_FROM[i]);
+  return differs === -1 || version[differs] > UV_EXACT_FROM[differs];
+}
+
+/** The computer's own uv when it is new enough, else the pinned one, downloaded and checked. */
 async function prepareUv(host: InstallerHost, paths: RuntimePaths): Promise<string> {
   const onPath = await host.run("uv", ["--version"]).catch(() => undefined);
-  if (onPath?.code === 0) return "uv";
+  if (onPath?.code === 0 && uvDoesExact(onPath.stdout)) return "uv";
   const archive = UV_ARCHIVES[`${host.platform}-${host.arch}`];
   mkdirSync(paths.bin, { recursive: true });
   const file = join(paths.bin, archive.file);
@@ -285,8 +300,9 @@ async function prepareUv(host: InstallerHost, paths: RuntimePaths): Promise<stri
 }
 
 function uvEnv(paths: RuntimePaths): Record<string, string> {
-  // Python goes into the runtime, not uv's global directory; only uv's own Pythons.
-  return { UV_PYTHON_INSTALL_DIR: paths.python, UV_PYTHON_PREFERENCE: "only-managed" };
+  // Python and uv's download cache go into the runtime, not uv's global directories,
+  // so uninstalling leaves nothing behind; only uv's own Pythons.
+  return { UV_PYTHON_INSTALL_DIR: paths.python, UV_CACHE_DIR: paths.uvCache, UV_PYTHON_PREFERENCE: "only-managed" };
 }
 
 async function preparePython(host: InstallerHost, paths: RuntimePaths, record: InstallRecord): Promise<void> {
@@ -315,8 +331,9 @@ async function installBackend(
   // Patchright, which drives either browser, is a base dependency; ego adds its relay.
   const extras = "ego";
   // The backend keeps its version number across PaperSearch releases, so an
-  // update reinstalls it explicitly; its dependencies follow pyproject's pins and ranges.
-  const reinstallArgs = reinstall ? ["--reinstall-package", "paper-search-carsi"] : [];
+  // update reinstalls it explicitly; its dependencies follow pyproject's pins and
+  // ranges, and --exact removes those it no longer needs (PyMuPDF after pypdfium2).
+  const reinstallArgs = reinstall ? ["--reinstall-package", "paper-search-carsi", "--exact"] : [];
   await check(host.run(record.uv || "uv", ["pip", "install", "--python", paths.venvPython, ...reinstallArgs,
     `${paths.src}[${extras}]`], { env: uvEnv(paths), echo: true }), "安装后端和依赖失败");
   record.backend = (await check(host.run(paths.venvPython, ["-c",
@@ -534,7 +551,8 @@ export async function updateCarsi(
   const settings: InstallOptions = { browser: legacy ? "chrome" : record.browser as InstallBrowser,
     yes: true, force: false, skipSchool: true };
   try {
-    if (record.uv && record.uv !== "uv" && !existsSync(record.uv)) record.uv = await prepareUv(host, paths);
+    // The computer's uv may since have gone or be too old for --exact; a downloaded one may be gone.
+    if (record.uv === "uv" || (record.uv && !existsSync(record.uv))) record.uv = await prepareUv(host, paths);
     if (legacy) {
       host.log("== 改用 Google Chrome：重建 Python 环境（不再下载 Camoufox）");
       await preparePython(host, paths, record);
@@ -552,6 +570,7 @@ export async function updateCarsi(
     appendLog(paths, `!! update: ${message}`);
     throw new InstallError("update", message, paths.logFile);
   }
+  clearUvCache(paths, record);
   record.paperSearchVersion = context.paperSearchVersion;
   record.updatedAt = context.now().toISOString();
   writeRecord(paths, record);
@@ -709,6 +728,20 @@ async function check(pending: Promise<CommandResult>, failure: string): Promise<
     throw new Error(`${failure}${detail ? `：${detail}` : ""}`);
   }
   return result;
+}
+
+/**
+ * uv's download cache, once the environment is built: an update reinstalls only
+ * the backend from the package and fetches only dependencies that changed, so
+ * only a forced reinstall would use it again. An install that stopped keeps it,
+ * for the next run to go on from.
+ */
+function clearUvCache(paths: RuntimePaths, record: InstallRecord): void {
+  try {
+    rmSync(paths.uvCache, { recursive: true, force: true });
+  } catch (error) {
+    warn(record, `下载缓存没能清掉，可以手动删除：${paths.uvCache}（${describe(error)}）`);
+  }
 }
 
 function warn(record: InstallRecord, text: string): void {

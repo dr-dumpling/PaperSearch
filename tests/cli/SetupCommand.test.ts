@@ -49,7 +49,7 @@ describe("setup command", () => {
       "Get it at https://www.semanticscholar.org/product/api\nSEMANTIC_SCHOLAR_API_KEY",
     );
     expect(result.stderr).toContain(
-      "Get it at https://www.easyscholar.cc/console/user/open\nEASYSCHOLAR_KEY",
+      "Get it at https://www.easyscholar.cc/\nEASYSCHOLAR_KEY",
     );
 
     const output = JSON.parse(result.stdout);

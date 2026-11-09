@@ -51,6 +51,7 @@ export function runtimePaths(root, platform) {
         root,
         bin: join(root, "bin"),
         python: join(root, "python"),
+        uvCache: join(root, "uv-cache"),
         venv,
         src: join(root, "src"),
         venvPython: join(scripts, windows ? "python.exe" : "python"),
@@ -60,6 +61,16 @@ export function runtimePaths(root, platform) {
         logFile: join(root, "install.log"),
     };
 }
+/**
+ * Whether this computer can show windows. School subscription downloads need a
+ * visible browser for the school login: on Linux an X or Wayland display (a
+ * server has neither); macOS and Windows always have one.
+ */
+export function hasScreen(platform, env) {
+    return platform === "darwin" || platform === "win32" || Boolean(env.DISPLAY || env.WAYLAND_DISPLAY);
+}
+export const NO_SCREEN = "学校订阅下载要在浏览器里登录学校，需要图形界面；这台电脑没有（没有 DISPLAY 或 WAYLAND_DISPLAY），不能安装。" +
+    "检索、查影响因子、开放获取下载都不需要它；API key 用 paper-search setup <KEY> 填。";
 /** ego lite, the user's own browser; only looked for on macOS (ADR 0013). */
 export function egoAppCandidates(home = homedir()) {
     return [join(home, "Applications", "ego lite.app"), "/Applications/ego lite.app"];

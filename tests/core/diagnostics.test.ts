@@ -115,7 +115,7 @@ describe('diagnostics', () => {
     expect(diagnostic?.category).toBe('missing_config');
     expect(diagnostic?.relatedConfigKeys).toContain('SEMANTIC_SCHOLAR_API_KEY');
     expect(diagnostic?.actions).toContain(
-      'SEMANTIC_SCHOLAR_API_KEY: Get one at https://www.semanticscholar.org/product/api, then run `paper-search setup SEMANTIC_SCHOLAR_API_KEY` in your own terminal.'
+      'SEMANTIC_SCHOLAR_API_KEY: Get one at https://www.semanticscholar.org/product/api, then run `paper-search setup SEMANTIC_SCHOLAR_API_KEY` in your own terminal; with school subscription downloads installed, `paper-search settings SEMANTIC_SCHOLAR_API_KEY` opens a window for it instead.'
     );
   });
 

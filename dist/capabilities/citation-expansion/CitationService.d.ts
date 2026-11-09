@@ -27,6 +27,14 @@ export declare class CitationService {
      */
     getReferences(paperId: string, limit?: number): Promise<CitationData[]>;
     /**
+     * References for a paper, and whether the publisher has Semantic Scholar withhold them
+     * (it then answers with no list and a disclaimer naming the elided field).
+     */
+    getReferenceList(paperId: string, limit?: number): Promise<{
+        papers: CitationData[];
+        withheld: boolean;
+    }>;
+    /**
      * Get citations for a paper
      */
     getCitations(paperId: string, limit?: number): Promise<CitationData[]>;

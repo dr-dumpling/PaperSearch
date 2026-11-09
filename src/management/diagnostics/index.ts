@@ -221,6 +221,22 @@ export const API_REQUIREMENTS: ApiRequirement[] = [
     ]
   },
   {
+    id: 'openalex',
+    platform: 'openalex',
+    capability: 'OpenAlex search, citing papers and references',
+    tools: ['search_papers', 'get_paper_citations', 'get_paper_references'],
+    keyGroups: [],
+    optionalKeyGroups: [['OPENALEX_API_KEY']],
+    commonFailures: [
+      'Without a key OpenAlex pages only through its first 10,000 results, so a paper cited more often is listed to that point',
+      'Requests without a key share a smaller daily allowance'
+    ],
+    actions: [
+      'Configure `OPENALEX_API_KEY` (free) to list every citing paper and for a larger daily allowance.',
+      'Without a DOI, citing papers and references come from Semantic Scholar instead.'
+    ]
+  },
+  {
     id: 'openaire',
     platform: 'openaire',
     capability: 'OpenAIRE discovery',

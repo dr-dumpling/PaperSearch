@@ -12,6 +12,8 @@ Windows. Without pywebview or a usable engine the classic window
 
 Usage: ``paper-search-carsi progress`` (or ``python -m paper_search_carsi.progress_capsule``).
 Spawned automatically by ``progress_reporter.ensure_progress_bar`` when a download starts.
+``paper-search-carsi settings`` opens it at the settings (download folder,
+waits and reminders, API keys), also with no download running.
 """
 
 from __future__ import annotations
@@ -24,12 +26,17 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import download_directory, progress_view, user_settings
+from . import api_keys, download_directory, i18n, progress_view, user_settings
 from .capsule_placement import Placement, Rect, ScreenArea
-from .progress_reporter import progress_path, read_state
+from .progress_reporter import progress_path, read_state, take_settings_request
 
 ASSETS = Path(__file__).with_name("assets")
 PAGE = ASSETS / "capsule.html"
+
+
+def page_html() -> str:
+    """The page with its English table in it (the window loads it as one string)."""
+    return PAGE.read_text(encoding="utf-8").replace("/*CAPSULE_EN*/null", i18n.TABLE.read_text(encoding="utf-8"))
 # PaperSearch's icon (assets/icon.svg) for the Dock and the Windows taskbar.
 ICON, TASKBAR_ICON = ASSETS / "icon-512.png", ASSETS / "icon-64.png"
 # The first, collapsed frame; the page then reports the size it needs.
@@ -103,6 +110,7 @@ class Notifier:
         if not new:
             return
         message = str(new[-1].get("message") or "需要你在浏览器里处理")
+        message = i18n.translate(message, user_settings.language())
         threading.Thread(target=self._send, args=("PaperSearch", message, state), daemon=True).start()
 
 
@@ -124,6 +132,10 @@ class Api:
         self._layout: tuple[int, bool, Rect, Rect] | None = None
         self._closed = False
         self._close_requested: float | None = None
+        try:
+            self._lang = user_settings.language()
+        except Exception:
+            self._lang = "zh"
 
     # --- what to show -----------------------------------------------------
     def platform(self) -> str:
@@ -133,9 +145,12 @@ class Api:
         """The capsule's view of the progress file; ``hovering`` keeps a finished window open."""
         self._hovering = bool(hovering) or self._dragging
         try:
-            return progress_view.view(read_state(), time.time())
+            shown = progress_view.view(read_state(), time.time())
         except Exception:
-            return {"mode": "idle"}
+            shown = {"mode": "idle"}
+        shown["lang"] = self._lang
+        request = take_settings_request()  # `paper-search-carsi settings`: show the settings
+        return {**shown, "open_settings": request} if request else shown
 
     # --- watching the task, also while the capsule is minimized ------------
     def watch(self) -> None:
@@ -242,10 +257,22 @@ class Api:
         values = user_settings.current()
         return {
             "fields": [{"name": f.name, "label": f.label, "unit": f.unit, "value": values[f.name],
-                        "default": f.default} for f in user_settings.FIELDS],
+                        "default": f.default, "page": f.page} for f in user_settings.FIELDS],
             "notify": user_settings.notify_enabled(),
             "download_dir": download_directory.current(),
+            "language": self._lang,
         }
+
+    def set_language(self, lang: str) -> dict[str, Any]:
+        """The language switch saves at once and the page follows it."""
+        if lang not in i18n.LANGUAGES:
+            return {"ok": False, "error": "语言只能是中文或英文"}
+        try:
+            user_settings.set_language(lang)
+        except (OSError, ValueError) as exc:
+            return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
+        self._lang = lang
+        return {"ok": True, "language": lang}
 
     def set_notifications(self, enabled: bool) -> dict[str, Any]:
         """The notification switch saves immediately, independently of other fields."""
@@ -258,11 +285,14 @@ class Api:
             return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
         return {"ok": True, "notify": enabled}
 
-    def save_settings(self, values: dict[str, Any], notify_on: bool, download_dir: str | None = None) -> dict[str, Any]:
-        """Check every field, then save them all; nothing is saved when one is wrong."""
+    def save_settings(self, values: dict[str, Any], download_dir: str | None = None) -> dict[str, Any]:
+        """Check the fields of one settings page, then save them all; nothing is
+        saved when one is wrong. The notification switch saves on its own."""
         checked, errors = {}, {}
         for field in user_settings.FIELDS:
-            value, problem = user_settings.check(field, str((values or {}).get(field.name, "")))
+            if field.name not in (values or {}):
+                continue
+            value, problem = user_settings.check(field, str(values[field.name]))
             if problem:
                 errors[field.name] = problem
             else:
@@ -278,10 +308,64 @@ class Api:
             if download_dir is not None:
                 download_directory.save(download_dir)
             user_settings.save(checked)
-            user_settings.set_notify(bool(notify_on))
         except Exception as exc:
             return {"ok": False, "errors": {"": f"保存失败：{type(exc).__name__}"}}
         return {"ok": True}
+
+    # --- API keys: values go to the config, never back to the page ---------
+    def api_keys(self) -> dict[str, Any]:
+        try:
+            return {"ok": True, **api_keys.listing()}
+        except Exception as exc:
+            return {"ok": False, "error": f"读取配置失败：{type(exc).__name__}"}
+
+    def api_key_values(self, service: str) -> dict[str, Any]:
+        """The values of the row the user opened, for its hidden fields."""
+        try:
+            return {"ok": True, "values": api_keys.saved(str(service or ""))}
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            return {"ok": False, "error": f"读取配置失败：{type(exc).__name__}"}
+
+    def save_api_key(self, service: str, values: dict[str, Any]) -> dict[str, Any]:
+        try:
+            api_keys.save(str(service or ""), {str(k): str(v) for k, v in (values or {}).items()})
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
+        return self.api_keys()
+
+    def clear_api_key(self, service: str) -> dict[str, Any]:
+        try:
+            api_keys.clear(str(service or ""))
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            return {"ok": False, "error": f"清除失败：{type(exc).__name__}"}
+        return self.api_keys()
+
+    def test_api_key(self, service: str, values: dict[str, Any]) -> dict[str, Any]:
+        """Whether the service takes what is in the row's fields (saved or not)."""
+        try:
+            return api_keys.test(str(service or ""), {str(k): str(v) for k, v in (values or {}).items()})
+        except ValueError as exc:
+            return {"status": "error", "message": str(exc)}
+
+    def open_signup(self, service: str, guide: bool = False) -> dict[str, Any]:
+        """The service's page for getting a key, or its guide; only the listed pages open."""
+        found = api_keys.find(str(service or ""))
+        address = found and (found.get("guide") if guide else found["url"])
+        if not address:
+            return {"ok": False, "message": "打开失败：没有这一项"}
+        import webbrowser
+
+        try:
+            opened = webbrowser.open(address)
+        except Exception as exc:
+            return {"ok": False, "message": f"打开失败：{type(exc).__name__}"}
+        return {"ok": True} if opened else {"ok": False, "message": "打开失败：没有找到默认浏览器"}
 
     def choose_download_directory(self) -> str | None:
         """Native directory picker; cancelling leaves the field unchanged."""
@@ -822,7 +906,7 @@ def main() -> None:
         _classic()
         return
     try:
-        page = PAGE.read_text(encoding="utf-8")
+        page = page_html()
         screens = _screen_areas()
         placement = Placement(progress_path().parent / "capsule.json", _corner())
         x, y = placement.start(screens, START_SIZE, _window_scale())

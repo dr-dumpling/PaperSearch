@@ -71,6 +71,13 @@ class ServerContractTests(unittest.TestCase):
         self.assertNotIn("diagnostics_dir", schema.get("required", []))
         self.assertIn("string", json.dumps(schema["properties"]["diagnostics_dir"]))
 
+    def test_title_is_an_optional_extension(self):
+        # The caller's title checks the PDF when the article page names none (Science, 2026-11-09).
+        schema = self.out["tools"]["carsi_download"]
+        self.assertIn("title", schema["properties"])
+        self.assertNotIn("title", schema.get("required", []))
+        self.assertIn("string", json.dumps(schema["properties"]["title"]))
+
     def test_cache_clear_is_noop_safe(self):
         self.assertEqual(self.out["cache_clear"], {"cleared": 0})
 

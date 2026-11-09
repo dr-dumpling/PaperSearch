@@ -9,6 +9,10 @@ export interface CitationData {
   venue?: string;
   doi?: string;
   url?: string;
+  /** set when the paper came from OpenAlex or Crossref rather than Semantic Scholar */
+  source?: 'openalex' | 'crossref';
+  /** a reference's number in the paper's own list, when the publisher's deposit shows it */
+  number?: number;
 }
 
 export interface BatchCitationRequest {

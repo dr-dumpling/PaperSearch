@@ -13,6 +13,7 @@ import { PaperSource, SearchOptions, DownloadOptions, PlatformCapabilities } fro
 import { sanitizeDoi, withTimeout } from '../infrastructure/security/SecurityUtils.js';
 import { API_ENDPOINTS, DEFAULT_MAILTO, TIMEOUTS, USER_AGENT } from '../config/constants.js';
 import { logDebug } from '../utils/Logger.js';
+import { plainText } from '../utils/plainText.js';
 import { RateLimiter } from '../infrastructure/rate-limit/RateLimiter.js';
 import { ErrorHandler } from '../infrastructure/http/ErrorHandler.js';
 import { RequestCache } from '../infrastructure/cache/RequestCache.js';
@@ -296,7 +297,7 @@ export class CrossrefSearcher extends PaperSource {
       
       // Extract title
       const titleList = data.title || [];
-      const title = titleList[0] || 'No title';
+      const title = plainText(titleList[0] || '') || 'No title';
 
       // Extract authors
       const authors: string[] = [];
@@ -332,7 +333,7 @@ export class CrossrefSearcher extends PaperSource {
           const month = dateParts[1] || 1;
           const day = dateParts[2] || 1;
           try {
-            publishedDate = new Date(year as number, month - 1, day);
+            publishedDate = new Date(Date.UTC(year as number, month - 1, day));   // UTC: no slip into the day before
           } catch {
             // Ignore date parsing errors
           }
@@ -341,7 +342,7 @@ export class CrossrefSearcher extends PaperSource {
 
       // Extract journal name
       const containerTitleList = data['container-title'] || [];
-      const journal = containerTitleList[0] || undefined;
+      const journal = plainText(containerTitleList[0] || '') || undefined;
 
       // Extract publisher
       const publisher = data.publisher || '';

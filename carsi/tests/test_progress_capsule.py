@@ -297,32 +297,53 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(text, "已收到：选错了学校，正在处理")
         self.assertIn(["other", "其他问题"], api().issue_kinds())
 
-    def test_settings_are_all_checked_before_any_is_saved(self):
+    def test_a_settings_page_is_all_checked_before_any_of_it_is_saved(self):
         from paper_search_carsi import user_settings
 
         with patch.object(user_settings, "save") as save, patch.object(user_settings, "set_notify") as set_notify:
-            result = api().save_settings({"login": "5", "page": "60", "stalled": "30", "hourly": "100"}, True)
+            result = api().save_settings({"login": "5", "page": "60", "stalled": "30"})
             self.assertFalse(result["ok"])
             self.assertIn("login", result["errors"])
             save.assert_not_called()
-            result = api().save_settings({"login": "240", "page": "45", "stalled": "0", "hourly": "0"}, False)
+            result = api().save_settings({"login": "240", "page": "45", "stalled": "0"})
             self.assertEqual(result["errors"], {"stalled": "请输入 1 到 600 之间的整数"})
             save.assert_not_called()
-            set_notify.assert_not_called()
-            result = api().save_settings({"login": "240", "page": "45", "stalled": "40", "hourly": "0"}, False)
-        self.assertEqual(result, {"ok": True})
-        save.assert_called_once_with({"login": 240, "page": 45, "stalled": 40, "hourly": 0})
-        set_notify.assert_called_once_with(False)
+            result = api().save_settings({"login": "240", "page": "45", "stalled": "40"})
+            self.assertEqual(result, {"ok": True})
+            save.assert_called_once_with({"login": 240, "page": 45, "stalled": 40})  # the other page's limit untouched
+            save.reset_mock()
+            self.assertEqual(api().save_settings({"hourly": "0"}), {"ok": True})
+            save.assert_called_once_with({"hourly": 0})
+        set_notify.assert_not_called()  # the switch saves itself
 
-    def test_settings_shown_with_their_defaults_and_the_notification_switch(self):
+    def test_settings_shown_with_their_defaults_pages_and_the_notification_switch(self):
         from paper_search_carsi import user_settings
 
         with patch.object(user_settings, "current", return_value={"login": 180, "page": 60, "stalled": 30, "hourly": 100}), \
              patch.object(user_settings, "notify_enabled", return_value=True):
             shown = api().settings()
         self.assertTrue(shown["notify"])
-        self.assertEqual([(f["name"], f["value"], f["default"]) for f in shown["fields"]],
-                         [("login", 180, 180), ("page", 60, 60), ("stalled", 30, 30), ("hourly", 100, 100)])
+        self.assertEqual([(f["name"], f["value"], f["default"], f["page"]) for f in shown["fields"]],
+                         [("login", 180, 180, "wait"), ("page", 60, 60, "wait"), ("stalled", 30, 30, "wait"),
+                          ("hourly", 100, 100, "download")])
+
+    def test_a_request_to_show_the_settings_reaches_the_page_once(self):
+        request = {"page": "keys", "service": "easyscholar", "new_window": True}
+        with patch("paper_search_carsi.progress_capsule.read_state", return_value=None), \
+             patch("paper_search_carsi.progress_capsule.take_settings_request", side_effect=[request, None]):
+            a = api()
+            self.assertEqual(a.state(), {"mode": "idle", "lang": a._lang, "open_settings": request})
+            self.assertEqual(a.state(), {"mode": "idle", "lang": a._lang})
+
+    def test_open_settings_keep_a_finished_auto_window(self):
+        finished = running(status="done", done=40, success=40, failed=0)
+        a = api(close_after=0)
+        with patch("paper_search_carsi.progress_capsule.read_state", return_value=finished), \
+             patch("paper_search_carsi.progress_capsule.take_settings_request", return_value=None):
+            a.state(True)  # the page passes "keep open" while its settings show
+        with patch.object(a, "close") as close:
+            a.watch_once(finished, 100.0)
+            close.assert_not_called()
 
     def test_the_watcher_notifies_and_closes_a_finished_auto_window(self):
         notifier = MagicMock()

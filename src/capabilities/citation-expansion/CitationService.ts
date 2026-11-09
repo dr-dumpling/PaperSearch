@@ -163,6 +163,14 @@ export class CitationService {
    * Get references for a paper
    */
   async getReferences(paperId: string, limit: number = 100): Promise<CitationData[]> {
+    return (await this.getReferenceList(paperId, limit)).papers;
+  }
+
+  /**
+   * References for a paper, and whether the publisher has Semantic Scholar withhold them
+   * (it then answers with no list and a disclaimer naming the elided field).
+   */
+  async getReferenceList(paperId: string, limit: number = 100): Promise<{ papers: CitationData[]; withheld: boolean }> {
     try {
       await this.rateLimiter.waitForPermission();
 
@@ -185,17 +193,20 @@ export class CitationService {
         { context: 'Semantic Scholar references lookup' }
       );
 
+      const disclaimer = String(response.data?.citingPaperInfo?.openAccessPdf?.disclaimer || '');
+      const withheld = /elided by the publisher/i.test(disclaimer) && /references/i.test(disclaimer);
       if (response.status !== 200 || !response.data?.data) {
-        return [];
+        return { papers: [], withheld };
       }
 
-      return response.data.data
+      const papers = response.data.data
         .map((item: any) => item.citedPaper)
-        .filter((paper: any) => paper)
+        .filter((paper: any) => paper && paper.title)
         .map((paper: any) => this.parseCitationData(paper));
+      return { papers, withheld };
     } catch (error: any) {
       logWarn(`Error fetching references for ${paperId}:`, error.message);
-      return [];
+      return { papers: [], withheld: false };
     }
   }
 

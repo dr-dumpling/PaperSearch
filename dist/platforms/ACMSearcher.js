@@ -3,6 +3,7 @@ import { PaperFactory } from '../models/Paper.js';
 import { PaperSource } from './PaperSource.js';
 import { DEFAULT_MAILTO, TIMEOUTS, USER_AGENT } from '../config/constants.js';
 import { ErrorHandler } from '../infrastructure/http/ErrorHandler.js';
+import { plainText } from '../utils/plainText.js';
 export class ACMSearcher extends PaperSource {
     client;
     mailto;
@@ -82,7 +83,7 @@ export class ACMSearcher extends PaperSource {
         const acmUrl = `https://dl.acm.org/doi/${doi}`;
         return PaperFactory.create({
             paperId: doi,
-            title: this.cleanText(title),
+            title: this.cleanText(plainText(title)),
             authors: (item.author || [])
                 .map(author => `${author.given || ''} ${author.family || ''}`.trim())
                 .filter(Boolean),
@@ -92,7 +93,7 @@ export class ACMSearcher extends PaperSource {
             pdfUrl: '',
             url: acmUrl,
             source: 'acm',
-            journal: item['container-title']?.[0] || undefined,
+            journal: plainText(item['container-title']?.[0] || '') || undefined,
             volume: item.volume || undefined,
             issue: item.issue || undefined,
             pages: item.page || undefined,

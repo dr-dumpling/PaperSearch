@@ -35,7 +35,7 @@ paper-search config list --pretty
 能力概况里的每一项是一种独立的能力：
 
 - `metadata_search`：经已配置或免费的文献来源检索元数据。Sci-Hub 不算检索来源。
-- `citation_expansion`：经 Semantic Scholar Graph API 查已知论文的施引文献和参考文献。`SEMANTIC_SCHOLAR_API_KEY` 可选，有 key 时配额更高。
+- `citation_expansion`：查已知论文的施引文献（OpenAlex）和参考文献（出版商在 Crossref 的清单或 OpenAlex），不需要 key。`OPENALEX_API_KEY` 可选：不配时施引文献最多列出最新的 1 万条，配了能全部列出。
 - `body_snippet_search`：Semantic Scholar 开放获取正文片段检索，需要 `SEMANTIC_SCHOLAR_API_KEY`。
 - `journal_metrics`：EasyScholar 期刊指标，需要 `EASYSCHOLAR_KEY`。
 - `pdf_discovery`：PDF 获取与下载，经来源自带的下载、元数据里的 PDF 地址、开放获取来源、机构库、Unpaywall，以及默认开启的 Sci-Hub 兜底。
@@ -100,7 +100,7 @@ paper-search setup
 paper-search smoke --mock --pretty
 ```
 
-`setup` 前后都可以用 `doctor` 看能力概况。缺少、不可用或降级的能力会写明用户需要配置哪个 key、email、来源或环境项。第一次配置还要问用户下载的论文默认放到哪个文件夹，设到 `DEFAULT_DOWNLOAD_PATH`，见 SKILL.md 的“默认下载文件夹”。
+用户把 key 直接发给 Agent 时，用 `paper-search config set <KEY> <值>` 保存、`paper-search config test <KEY>` 确认，回复只提末四位。`setup` 前后都可以用 `doctor` 看能力概况。缺少、不可用或降级的能力会写明用户需要配置哪个 key、email、来源或环境项。第一次配置还要问用户下载的论文默认放到哪个文件夹，设到 `DEFAULT_DOWNLOAD_PATH`，见 SKILL.md 的“默认下载文件夹”。
 
 维护者或本地开发版的更新步骤：
 
@@ -125,7 +125,7 @@ paper-search carsi install
 paper-search doctor --pretty
 ```
 
-`install` 先检查本机有 Google Chrome，列出要下载的内容和位置，再准备它自己的 Python、安装后端，并启用它（`PAPER_SEARCH_CARSI_ENABLED=true`、`PAPER_SEARCH_CARSI_EXECUTABLE`）。PaperSearch 升级后，`status` 会提示何时运行 `paper-search carsi update`。用户在别处维护的后端用 `paper-search config set PAPER_SEARCH_CARSI_EXECUTABLE <路径>` 指定。学校、浏览器（Google Chrome 或 ego）和账号见 `carsi-setup.md`；账号密码只在用户自己的浏览器里输入，不进聊天、配置、命令参数或日志。`doctor` 显示 `available` 只证明后端接口能用，不代表已登录学校或对某篇有权限。日常下载仍用 `paper-search download`、`paper-search run download_with_fallback` 或 `download_batch`，见 `browser-download.md`。
+`install` 先检查本机有 Google Chrome，列出要下载的内容和位置，再准备它自己的 Python、安装后端，并启用它（`PAPER_SEARCH_CARSI_ENABLED=true`、`PAPER_SEARCH_CARSI_EXECUTABLE`）。PaperSearch 升级后，第一次用到学校订阅下载时，CLI 先自动更新扩展再下载（stderr 一行说明；另一个下载正在用扩展、或更新没成功时，这次用旧版本继续）；用户关掉自动更新（`PAPER_SEARCH_CARSI_AUTO_UPDATE=false`）时，`status` 会提示何时运行 `paper-search carsi update`。用户在别处维护的后端用 `paper-search config set PAPER_SEARCH_CARSI_EXECUTABLE <路径>` 指定。学校、浏览器（Google Chrome 或 ego）和账号见 `carsi-setup.md`；账号密码只在用户自己的浏览器里输入，不进聊天、配置、命令参数或日志。`doctor` 显示 `available` 只证明后端接口能用，不代表已登录学校或对某篇有权限。日常下载仍用 `paper-search download`、`paper-search run download_with_fallback` 或 `download_batch`，见 `browser-download.md`。
 
 ## 配置检查
 
@@ -154,4 +154,4 @@ paper-search doctor --pretty
 
 `paper-search config set PAPER_SEARCH_UPDATE_NOTIFY false` 关闭自动检查和提醒；`true` 重新开启。此设置与胶囊/系统通知独立。`paper-search update check --format text` 可主动检查，关闭自动提醒后也可用；网络不可用时如实报告无法查询，不猜测最新版本。旧安装缺少该命令时只报告其版本，不伪造检查成功。
 
-看到提醒可以向用户说明有新版；未经授权，不执行提示中的升级命令。更新 CLI 包本体、已安装 Skill 同步、`paper-search carsi update` 更新扩展是三个不同步骤。
+看到提醒可以向用户说明有新版；未经授权，不执行提示中的升级命令。更新 CLI 包本体、已安装 Skill 同步、更新扩展（升级后第一次用到时自动进行，或 `paper-search carsi update`）是三个不同步骤。

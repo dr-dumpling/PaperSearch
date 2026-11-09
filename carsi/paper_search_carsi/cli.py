@@ -9,6 +9,7 @@ Commands:
   publisher-check --doi DOI    run one institutional download and print a sanitized report
   progress                     open the floating progress window
   progress --json [--watch]    read-only snapshot of the current task progress file
+  settings [PAGE|KEY]          show the progress window's settings: download, wait, keys, or one API key (e.g. EASYSCHOLAR_KEY)
   preview [--run-id ID --doi DOI]  latest screenshots of the download browser (JSON)
   entitlements [list|set|clear]   remembered "has access / no access" decisions per journal or publisher
   issues [list|show ID|resolve ID --note TEXT]  problem reports filed from the progress window (agent review)
@@ -315,11 +316,10 @@ def _cmd_publisher_check(args: argparse.Namespace) -> int:
         report["file"] = path.name
         report["size_kb"] = result.get("size_kb")
         try:
-            import pymupdf
+            from . import pdf_text
 
-            with pymupdf.open(path) as doc:
-                report["pages"] = doc.page_count
-                first = doc[0].get_text() if doc.page_count else ""
+            report["pages"] = pdf_text.page_count(path)
+            first = pdf_text.text(path, 1) if report["pages"] else ""
             report["first_page_has_doi"] = (result.get("doi") or "").lower() in first.lower()
         except Exception:
             report["pages"] = None
@@ -422,6 +422,44 @@ def _cmd_issues(args: argparse.Namespace) -> int:
     return 0
 
 
+SETTINGS_PAGES = ("home", "download", "wait", "keys")
+
+
+def _cmd_settings(args: argparse.Namespace) -> int:
+    """Open the settings in the progress window, at a page or at one service's key."""
+    from . import api_keys, progress_reporter
+
+    target = (args.target or "home").strip()
+    page = target if target in SETTINGS_PAGES else "keys"
+    found = None if target in SETTINGS_PAGES else api_keys.find(target)
+    if page == "keys" and target != "keys" and found is None:
+        print(json.dumps({"ok": False, "error": f"没有这一项设置：{target}"}, ensure_ascii=False))
+        return 2
+    service = found["id"] if found else ""
+    # Servers and other machines without a screen keep the terminal: `paper-search setup`.
+    terminal = "paper-search setup " + (found["keys"][0]["key"] if found else "<KEY>")
+    if sys.platform.startswith("linux") and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        print(json.dumps({"ok": False, "error": f"这台电脑没有图形界面，打不开设置窗口；请在终端运行 {terminal}"},
+                         ensure_ascii=False))
+        return 1
+    try:
+        import webview  # noqa: F401  (the settings need the capsule's web view, not the classic window)
+    except Exception:
+        print(json.dumps({"ok": False, "error": f"设置窗口需要 pywebview，当前环境里没有；请运行 paper-search carsi update，或在终端运行 {terminal}"},
+                         ensure_ascii=False))
+        return 1
+    try:
+        window = progress_reporter.open_settings(page, service)
+    except (OSError, RuntimeError) as exc:
+        print(json.dumps({"ok": False, "error": f"设置窗口没能打开：{exc}；也可以在终端运行 {terminal}"}, ensure_ascii=False))
+        return 1
+    reply = {"ok": True, "window": window, "page": page, **({"service": service} if service else {})}
+    if os.environ.get("SSH_CONNECTION"):
+        reply["note"] = f"窗口开在这台电脑自己的屏幕上；远程连接、看不到这块屏幕时，请在终端运行 {terminal}"
+    print(json.dumps(reply, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     # Fingerprint generation needs no parallel linear algebra. On Windows its
     # default OpenBLAS worker pool reserves hundreds of MiB in each backend.
@@ -514,6 +552,10 @@ def main(argv: list[str] | None = None) -> int:
     pv.set_defaults(func=_cmd_preview)
 
     sub.add_parser("progress", help="open the progress window; `progress --json` for a read-only snapshot", add_help=False)
+
+    stg = sub.add_parser("settings", help="show the progress window's settings")
+    stg.add_argument("target", nargs="?", help="download, wait, keys, or an API key name such as EASYSCHOLAR_KEY")
+    stg.set_defaults(func=_cmd_settings)
 
     args = parser.parse_args(argv)
     if args.command == "config" and args.action != "list" and not args.key:

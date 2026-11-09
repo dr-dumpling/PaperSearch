@@ -276,14 +276,11 @@ def assess(first_pages: str, identifier: str, title: str = "", source: str = "")
 
 def first_pages_text(body: bytes) -> str | None:
     """Text of the first pages; None for an unreadable PDF."""
-    import pymupdf
+    from .. import pdf_text
 
     try:
-        with pymupdf.open(stream=body, filetype="pdf") as document:
-            if not document.page_count:
-                return None
-            return "\n".join(document[i].get_text() for i in range(min(PAGES, document.page_count)))
-    except (pymupdf.FileDataError, RuntimeError, ValueError) as exc:
+        return pdf_text.text(body, PAGES)
+    except pdf_text.PdfError as exc:
         log.info("pdf_guard: unreadable PDF (%s)", type(exc).__name__)
         return None
 

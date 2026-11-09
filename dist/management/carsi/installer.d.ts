@@ -49,7 +49,7 @@ export interface InstallContext {
     paperSearchVersion: string;
     /** The backend's data directory (school, logins), as PaperSearch passes it. */
     dataDir: string;
-    getConfig(key: "PAPER_SEARCH_CARSI_ENABLED" | "PAPER_SEARCH_CARSI_EXECUTABLE"): string;
+    getConfig(key: "PAPER_SEARCH_CARSI_ENABLED" | "PAPER_SEARCH_CARSI_EXECUTABLE" | "PAPER_SEARCH_CARSI_AUTO_UPDATE"): string;
     setConfig(key: "PAPER_SEARCH_CARSI_ENABLED" | "PAPER_SEARCH_CARSI_EXECUTABLE", value: string): void;
     unsetConfig(key: "PAPER_SEARCH_CARSI_ENABLED" | "PAPER_SEARCH_CARSI_EXECUTABLE"): void;
     /** The MCP handshake with the backend at ``executable``: its readiness state. */

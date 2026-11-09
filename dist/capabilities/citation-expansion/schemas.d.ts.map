@@ -1,1 +1,1 @@
-{"version":3,"file":"schemas.d.ts","sourceRoot":"","sources":["../../../src/capabilities/citation-expansion/schemas.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,CAAC,EAAE,MAAM,KAAK,CAAC;AAExB,eAAO,MAAM,oBAAoB;;;;;;;;;;;;;;;;;;;;;;;;;EAU7B,CAAC"}
+{"version":3,"file":"schemas.d.ts","sourceRoot":"","sources":["../../../src/capabilities/citation-expansion/schemas.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,CAAC,EAAE,MAAM,KAAK,CAAC;AAExB,qHAAqH;AACrH,eAAO,MAAM,oBAAoB;;;;;;;;;;;;;;;;;;;;EAS7B,CAAC"}

@@ -11,8 +11,9 @@ dependencies = [
     "requests[socks]>=2.31,<3",
     "urllib3>=2.7.0,<3",
     "beautifulsoup4>=4.12,<5",
-    "mcp[cli]>=1.12,<3.0",
-    "pymupdf>=1.24,<3",
+    "mcp>=1.12,<3.0",
+    # Reading PDFs (pdf_text.py): PDFium, Chrome's PDF engine; BSD/Apache, about 10 MB.
+    "pypdfium2>=4.30,<6",
     # The progress capsule (progress_capsule.py): the system web engine through pywebview.
     "pywebview>=6.2,<7",
     # Drives the user's installed Google Chrome, and ego over remote debugging:
@@ -23,7 +24,8 @@ dependencies = [
 [project.optional-dependencies]
 # ego backend: one shared remote-debugging connection (browser/ego_relay.py).
 ego = ["websockets>=13,<18"]
-dev = ["pytest>=8.0"]
+# PyMuPDF only builds the tests' sample PDFs; the backend reads PDFs with pypdfium2.
+dev = ["pytest>=8.0", "pymupdf>=1.24,<2"]
 
 [project.scripts]
 paper-search-carsi = "paper_search_carsi.cli:main"
@@ -37,7 +39,7 @@ where = ["."]
 include = ["paper_search_carsi*"]
 
 [tool.setuptools.package-data]
-paper_search_carsi = ["publishers/builtin/*.json", "publishers/schema.json", "data/*.json", "assets/*.png", "assets/*.html", "assets/papersearch-notifier"]
+paper_search_carsi = ["publishers/builtin/*.json", "publishers/schema.json", "data/*.json", "assets/*.png", "assets/*.html", "assets/*.json", "assets/papersearch-notifier"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

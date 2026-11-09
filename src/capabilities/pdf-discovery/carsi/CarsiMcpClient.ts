@@ -1,4 +1,5 @@
 import { getConfigPath } from "../../../config/ConfigService.js";
+import { paperSearchCommand } from "../../../config/selfCommand.js";
 import type { ChildProcess } from "node:child_process";
 import {
   mkdirSync,
@@ -51,7 +52,7 @@ export const CARSI_CLEANUP_TIMEOUT_MS = 5_000;
 
 const CARSI_BACKEND_SOURCE = "carsi";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.4.12";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.5.0";
 
 interface ActiveSession {
   client: Client;
@@ -225,7 +226,7 @@ export class CarsiMcpClient implements CarsiBackend {
       if (session) {
         await scoped.closeBatchBrowser(session);
         if (await scoped.closeSession(session)) {
-          unlinkSync(join(scoped.profileDir, ".paper-search-download.lock"));
+          unlinkSync(join(scoped.profileDir, DOWNLOAD_LOCK_FILE));
         } else {
           throw new CarsiCleanupError();
         }
@@ -294,26 +295,9 @@ export class CarsiMcpClient implements CarsiBackend {
     await this.closeProgressSession();
 
     // Cross-process exclusion covers cache clear, browser use, and child cleanup.
-    // A lock is reclaimed only when its owner has exited and no browser still
-    // holds a profile: the browser may outlive the process that started it.
-    const lockPath = join(this.profileDir, ".paper-search-download.lock");
+    const lockPath = join(this.profileDir, DOWNLOAD_LOCK_FILE);
     try {
-      if (!this.retainedSession) {
-        mkdirSync(this.profileDir, { recursive: true, mode: 0o700 });
-        if (existsSync(lockPath) && isStaleDownloadLock(lockPath, this.profileDir)) {
-          unlinkSync(lockPath);
-          process.stderr.write("[CARSI] 已回收上次异常退出留下的下载锁。\n");
-        }
-        const descriptor = openSync(lockPath, "wx", 0o600);
-        try {
-          writeFileSync(descriptor, `${JSON.stringify({ pid: process.pid })}\n`);
-        } catch (error) {
-          unlinkSync(lockPath);
-          throw error;
-        } finally {
-          closeSync(descriptor);
-        }
-      }
+      if (!this.retainedSession) takeDownloadLock(this.profileDir);
     } catch (error) {
       return attemptError(
         identifier,
@@ -513,6 +497,7 @@ export class CarsiMcpClient implements CarsiBackend {
               session.batchSupport.supplementsField ? request.supplements : undefined,
               session.batchSupport.userWaitField ? request.userWait : undefined,
               session.batchSupport.diagnosticsDirField ? request.diagnosticsDir : undefined,
+              session.batchSupport.titleField ? request.title : undefined,
             ),
             ...(this.keepBatchBrowser && session.batchSupport.keepBrowser && request.batch ? { keep_browser: true } : {}),
           },
@@ -587,6 +572,8 @@ export class CarsiMcpClient implements CarsiBackend {
         env: {
           CARSI_DATA_DIR: this.profileDir,
           PAPER_SEARCH_CONFIG_FILE: getConfigPath(),
+          // The progress window's key test runs this same CLI.
+          PAPER_SEARCH_CLI: paperSearchCommand(),
         },
         stderr: "pipe",
       },
@@ -723,6 +710,33 @@ function canReuseBatchBrowser(outcome: CarsiInvocationOutcome): boolean {
   // (no completed browser diagnostic) needs a new process for the next item.
   return !broken(outcome.code) && outcome.code !== "cancelled" && outcome.code !== "invalid_download_result" &&
     (outcome.code !== "download_timeout" || outcome.trace?.state === "challenge_or_viewer_timeout");
+}
+
+/** One backend at a time per profile: downloads, and updating the extension, hold this lock. */
+export const DOWNLOAD_LOCK_FILE = ".paper-search-download.lock";
+
+/**
+ * Take the profile's download lock, or throw (``EEXIST`` while another process
+ * holds it). A lock is reclaimed only when its owner has exited and no browser
+ * still holds a profile: the browser may outlive the process that started it.
+ */
+export function takeDownloadLock(profileDir: string): string {
+  const lockPath = join(profileDir, DOWNLOAD_LOCK_FILE);
+  mkdirSync(profileDir, { recursive: true, mode: 0o700 });
+  if (existsSync(lockPath) && isStaleDownloadLock(lockPath, profileDir)) {
+    unlinkSync(lockPath);
+    process.stderr.write("[CARSI] 已回收上次异常退出留下的下载锁。\n");
+  }
+  const descriptor = openSync(lockPath, "wx", 0o600);
+  try {
+    writeFileSync(descriptor, `${JSON.stringify({ pid: process.pid })}\n`);
+  } catch (error) {
+    unlinkSync(lockPath);
+    throw error;
+  } finally {
+    closeSync(descriptor);
+  }
+  return lockPath;
 }
 
 /**

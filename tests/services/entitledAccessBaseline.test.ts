@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { dirname, join, resolve } from "path";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { CONFIG_KEYS } from "../../src/config/ConfigService.js";
 import { TOOLS } from "../../src/core/tools.js";
@@ -63,6 +63,8 @@ describe("authorized PDF retrieval boundary", () => {
     expect(CONFIG_KEYS.filter((key) => key.includes("CARSI"))).toEqual([
       "PAPER_SEARCH_CARSI_ENABLED",
       "PAPER_SEARCH_CARSI_EXECUTABLE",
+      "PAPER_SEARCH_CARSI_DECLINED",
+      "PAPER_SEARCH_CARSI_AUTO_UPDATE",
     ]);
 
     expect(TOOLS.map((tool) => tool.name)).not.toContain("search_wiley");
@@ -152,13 +154,19 @@ describe("authorized PDF retrieval boundary", () => {
       "pdf-discovery",
       "carsi",
     );
-    const forbiddenImport =
-      /from\s+["'][^"']*\/(?<!management\/)carsi\/(?!index\.js["'])[^"']+["']/;
+    // Judged by where an import leads, not by its spelling: "../carsi/runtime.js"
+    // from src/management/skills is the management layer's installer, not the adapter.
+    const reachesAdapter = (filePath: string, specifier: string) => {
+      const target = resolve(dirname(filePath), specifier);
+      return target.startsWith(`${adapterRoot}/`) && target !== join(adapterRoot, "index.js");
+    };
 
     for (const filePath of listFilesRecursively(srcRoot)) {
       if (!filePath.endsWith(".ts") || filePath.startsWith(`${adapterRoot}/`))
         continue;
-      expect(readFileSync(filePath, "utf8")).not.toMatch(forbiddenImport);
+      const imports = [...readFileSync(filePath, "utf8").matchAll(/from\s+["'](\.[^"']*)["']/g)];
+      expect(imports.filter(([, specifier]) => reachesAdapter(filePath, specifier))
+        .map(([, specifier]) => `${filePath}: ${specifier}`)).toEqual([]);
     }
   });
 });

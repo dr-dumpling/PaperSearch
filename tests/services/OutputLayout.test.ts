@@ -13,6 +13,12 @@ const root = () => mkdtempSync(join(tmpdir(), 'output-layout-'));
 const put = (path: string, content: string) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, content); return path; };
 
 describe('download output layout', () => {
+  it('names files with the journal and title as plain text', () => {
+    const layout = createOutputLayout('/tmp/output', '10.1002/art.70156',
+      { journal: 'Arthritis &amp; Rheumatology', year: 2026, title: 'Identifying <i>Systemic</i> Lupus' });
+    expect(layout.name).toBe('Arthritis & Rheumatology_2026_Identifying Systemic Lupus');
+  });
+
   it('bounds Windows paths, sanitizes reserved names and separates identical titles by identity', () => {
     expect(safeComponent('CON', 20)).toBe('_CON');
     expect(safeComponent(' a:b/c\\d?* . ', 30)).toBe('a_b_c_d__');

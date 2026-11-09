@@ -77,19 +77,10 @@ def is_suspicious_pdf(path: Path) -> bool:
         # Very small files are suspicious regardless
         if size < 50_000:
             return True
+        from . import pdf_text
+
         try:
-            import fitz  # type: ignore[import-not-found]
-        except Exception:
-            # No pymupdf: fall back to the cheap regex heuristic
-            with path.open("rb") as fh:
-                content = fh.read(512_000)
-            # Count PDF page objects: look for "/Type /Page" not followed by "s"
-            import re
-            pages = len(re.findall(rb"/Type\s*/Page\b", content))
-            return pages <= 1
-        try:
-            with fitz.open(path) as doc:
-                return int(doc.page_count) <= 1
+            return pdf_text.page_count(path) <= 1
         except Exception:
             return True  # unreadable PDF — treat as suspicious
     except OSError:

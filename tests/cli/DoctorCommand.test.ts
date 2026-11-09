@@ -192,7 +192,7 @@ describe("doctor command", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
-      "To enable: get EASYSCHOLAR_KEY at https://www.easyscholar.cc/console/user/open, then run paper-search setup EASYSCHOLAR_KEY",
+      "To enable: get EASYSCHOLAR_KEY at https://www.easyscholar.cc/, then run paper-search setup EASYSCHOLAR_KEY",
     );
     expect(result.stdout).toContain(
       "To enable: get SEMANTIC_SCHOLAR_API_KEY at https://www.semanticscholar.org/product/api, then run paper-search setup SEMANTIC_SCHOLAR_API_KEY",

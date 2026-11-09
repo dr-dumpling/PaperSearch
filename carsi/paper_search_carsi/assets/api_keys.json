@@ -1,0 +1,146 @@
+{
+  "groups": [
+    {
+      "title": "查期刊、搜正文",
+      "services": [
+        {
+          "id": "easyscholar",
+          "name": "EasyScholar",
+          "use": "查影响因子和分区",
+          "url": "https://www.easyscholar.cc/",
+          "keys": [
+            {
+              "key": "EASYSCHOLAR_KEY",
+              "label": "API key"
+            }
+          ]
+        },
+        {
+          "id": "semantic_scholar",
+          "name": "Semantic Scholar",
+          "use": "搜正文片段",
+          "url": "https://www.semanticscholar.org/product/api",
+          "guide": "https://www.yuque.com/qnscholar/zotero-one/okgp6ss2q6agt4o8?singleDoc#%20%E3%80%8ASemantic%20Scholar%20API%20%E7%94%B3%E8%AF%B7%E3%80%8B",
+          "guide_label": "申请教程",
+          "keys": [
+            {
+              "key": "SEMANTIC_SCHOLAR_API_KEY",
+              "label": "API key"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "出版社接口",
+      "services": [
+        {
+          "id": "elsevier",
+          "name": "Elsevier",
+          "use": "下载全文，检索 ScienceDirect、Scopus",
+          "url": "https://dev.elsevier.com/apikey/manage",
+          "keys": [
+            {
+              "key": "ELSEVIER_API_KEY",
+              "label": "API key"
+            }
+          ]
+        },
+        {
+          "id": "springer",
+          "name": "Springer Nature",
+          "use": "下载全文，检索 Springer",
+          "url": "https://dev.springernature.com/",
+          "keys": [
+            {
+              "key": "SPRINGER_API_KEY",
+              "label": "API key"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "增加检索来源",
+      "services": [
+        {
+          "id": "wos",
+          "name": "Web of Science",
+          "use": "检索 Web of Science",
+          "url": "https://developer.clarivate.com/apis",
+          "keys": [
+            {
+              "key": "WOS_API_KEY",
+              "label": "API key"
+            }
+          ]
+        },
+        {
+          "id": "ieee",
+          "name": "IEEE Xplore",
+          "use": "检索 IEEE Xplore",
+          "url": "https://developer.ieee.org/docs/read/Searching_the_IEEE_Xplore_Metadata_API",
+          "keys": [
+            {
+              "key": "IEEE_API_KEY",
+              "label": "API key"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "提高限额",
+      "services": [
+        {
+          "id": "pubmed",
+          "name": "PubMed",
+          "use": "检索 PubMed 更快（每秒 3 次提到 10 次）",
+          "url": "https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/",
+          "keys": [
+            {
+              "key": "PUBMED_API_KEY",
+              "label": "API key"
+            }
+          ]
+        },
+        {
+          "id": "core",
+          "name": "CORE",
+          "use": "检索 CORE 开放全文，更稳定",
+          "url": "https://core.ac.uk/services/api",
+          "keys": [
+            {
+              "key": "CORE_API_KEY",
+              "label": "API key"
+            }
+          ]
+        },
+        {
+          "id": "openaire",
+          "name": "OpenAIRE",
+          "use": "检索 OpenAIRE，限额更高",
+          "url": "https://develop.openaire.eu/",
+          "keys": [
+            {
+              "key": "OPENAIRE_API_KEY",
+              "label": "API key"
+            }
+          ]
+        },
+        {
+          "id": "openalex",
+          "name": "OpenAlex",
+          "use": "查引文的限额更高，被引过万也能列全",
+          "url": "https://openalex.org/settings/api",
+          "keys": [
+            {
+              "key": "OPENALEX_API_KEY",
+              "label": "API key"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

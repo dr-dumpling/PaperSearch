@@ -494,7 +494,8 @@ def _try_browser_batch_download(
         log.info("   [Institutional] no browser backend available, skipping browser download")
         return None
 
-    record = PaperRecord(doi=doi)
+    # The caller's title checks the PDF when the article page names none (orchestrator).
+    record = PaperRecord(doi=doi, title=str(config.get("record_title") or ""))
     # The institution name is the user's own setting (explicit CARSI); empty means "choose by hand".
     institution_query = (config.get("carsi_idp_name", "") if config.get("publisher_institution_federation") == "carsi"
                          else "")

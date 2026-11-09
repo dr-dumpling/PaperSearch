@@ -134,15 +134,25 @@ def ensure_progress_bar(config: dict[str, Any] | None = None) -> None:
         return
     if config is not None and config.get("progress_bar_auto") is False:
         return
+    if _window_up() is False:
+        _spawn_window()
+
+
+def _window_up() -> bool | None:
+    """Whether a progress window is open; None when its lock cannot be read.
+    A stale lock (the window died) counts as none: the next window takes it over."""
     lock = _progress_dir() / "bar.pid"
     try:
         if lock.exists():
             pid = int(lock.read_text(encoding="utf-8").strip() or 0)
             if _pid_alive(pid, created_before=lock.stat().st_mtime + 1):
-                return  # a window is already up
-            # else: stale lock (window died) - reclaim below
+                return True
+        return False
     except (ValueError, OSError):
-        return
+        return None
+
+
+def _spawn_window() -> bool:
     try:
         import subprocess
         import sys
@@ -155,8 +165,58 @@ def ensure_progress_bar(config: dict[str, Any] | None = None) -> None:
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
             env=env, start_new_session=(os.name != "nt"), **kwargs,
         )
+        return True
     except Exception:
-        pass
+        return False
+
+
+SETTINGS_REQUEST_SECONDS = 60  # a request no window has picked up by then is dropped
+
+
+def _settings_request_path() -> Path:
+    return _progress_dir() / "open-settings.json"
+
+
+def open_settings(page: str = "home", service: str = "") -> str:
+    """Show the progress window's settings (``paper-search-carsi settings``).
+
+    An open window switches to them ("existing"). Otherwise a window starts on
+    them ("opened"); it closes when they are closed with no download running,
+    and a download that starts meanwhile shows in it. RuntimeError when no
+    window could start."""
+    up = _window_up()
+    request = {"page": page, "service": service, "new_window": up is not True, "at": time.time()}
+    path = _settings_request_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(request, fh)
+        os.replace(tmp, path)
+    finally:
+        Path(tmp).unlink(missing_ok=True)
+    if up is True:
+        return "existing"
+    if not _spawn_window():
+        path.unlink(missing_ok=True)
+        raise RuntimeError("进度窗口没能启动")
+    return "opened"
+
+
+def take_settings_request() -> dict[str, Any] | None:
+    """The pending request to show the settings, once; None when there is none
+    or it is too old (the window it was meant for never came up)."""
+    path = _settings_request_path()
+    try:
+        request = json.loads(path.read_text(encoding="utf-8"))
+        path.unlink()
+        fresh = time.time() - float(request["at"]) <= SETTINGS_REQUEST_SECONDS
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+    if not fresh:
+        return None
+    return {"page": str(request.get("page") or "home"), "service": str(request.get("service") or ""),
+            "new_window": request.get("new_window") is True}
 
 
 @dataclass(frozen=True)

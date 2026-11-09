@@ -118,13 +118,13 @@ function citationExpansionEntry(): CapabilityEntry {
     id: "citation_expansion",
     status: "available",
     reason:
-      "Semantic Scholar Graph API citation expansion is available; SEMANTIC_SCHOLAR_API_KEY is optional for higher quota.",
-    configured: ["semantic_scholar_graph"],
+      "Citing papers come from OpenAlex, reference lists from the publisher's Crossref deposit or OpenAlex, without keys; OPENALEX_API_KEY lists citing papers beyond the newest 10,000.",
+    configured: ["openalex", "crossref"],
     missing: [],
     sourceGroups: {
-      citation_sources: ["semantic_scholar_graph"],
+      citation_sources: ["openalex", "crossref", "semantic_scholar_graph"],
     },
-    optionalKeys: ["SEMANTIC_SCHOLAR_API_KEY"],
+    optionalKeys: ["OPENALEX_API_KEY"],
   };
 }
 

@@ -130,6 +130,41 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .switch.on { background: var(--accent); }
 .switch.on::after { left: 16px; }
 .foot { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 0.5px solid var(--line); }
+/* Settings: a home list of three pages, each row with its current values; then the page itself. */
+.nav-row, .key-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 0; border: none; border-top: 0.5px solid var(--line);
+                     background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.nav-row:first-child { margin-top: 8px; }
+.nav-row:hover .nav-title, .key-row:hover .nav-title { color: var(--accent); }
+.nav-row:focus-visible, .key-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
+.nav-row svg.i:last-child { color: var(--faint); }
+.nav-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.nav-sub { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.settings-note { font-size: 11px; color: var(--ok); margin-top: 8px; }
+.key-group { font-size: 11px; color: var(--faint); margin: 12px 0 2px; }
+.key-row.editing { cursor: default; }
+.key-row.editing:hover .nav-title { color: inherit; }
+.key-set { font-size: 12px; color: var(--ok); white-space: nowrap; }
+.key-row .btn { pointer-events: none; }
+.key-edit { background: var(--hover); border-radius: 8px; padding: 8px 10px; margin: 0 0 6px; }
+.settings .key-edit input { width: 100%; text-align: left; background: var(--bg); }
+.key-edit .err { text-align: left; margin: 6px 0 0; }
+.key-edit .err:empty { display: none; }
+.key-edit .err.ok { color: var(--ok); }
+.key-edit .err.wait { color: var(--dim); }
+.key-links, .key-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.key-actions { gap: 6px; }
+.key-links .grow, .key-actions .grow { flex: 1; }
+.key-links .iconbtn { margin: 0; }
+.iconbtn[aria-pressed="true"] { color: var(--accent); }
+.strip { display: flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box; margin: 10px 0 2px; padding: 6px 10px;
+         border-radius: 8px; border: 0.5px solid var(--line); background: var(--hover); color: var(--dim); font: inherit; font-size: 12px;
+         text-align: left; cursor: pointer; }
+.strip .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.strip svg.i { width: 14px; height: 14px; }
+.strip.warn-strip { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
+.seg { display: inline-flex; border: 0.5px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { font: inherit; font-size: 12px; padding: 3px 10px; border: none; background: none; color: var(--dim); cursor: pointer; }
+.seg button.on { background: var(--accent); color: #fff; }
 .prompt { display: flex; align-items: center; gap: 10px; }
 .prompt svg.i { width: 22px; height: 22px; }
 .prompt .t { font-weight: 600; font-size: 14px; }
@@ -178,6 +213,39 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 <div id="root" class="pill capsule-drag-region"></div>
 <script>
 "use strict";
+// English: the window's progress_language. The table (assets/capsule_en.json) is put
+// in here when the window loads the page; every text shown passes through tr().
+const EN = /*CAPSULE_EN*/null;
+const EN_PATTERNS = EN ? EN.patterns.map(([source, target]) => [new RegExp(source), target]) : [];
+const HAN = /[\u4e00-\u9fff]/;
+let lang = "zh";
+function tr(text) {
+  if (lang !== "en" || !EN || !text || !HAN.test(text)) return text;
+  return String(text).split(" · ").map((part) => {
+    const core = part.trim();
+    if (!core || !HAN.test(core)) return part;
+    let english = Object.hasOwn(EN.exact, core) ? EN.exact[core] : null;
+    if (english === null) {
+      const found = EN_PATTERNS.find(([pattern]) => pattern.test(core));
+      if (found) english = core.replace(found[0], found[1]);
+    }
+    return english === null ? part : part.replace(core, english);
+  }).join(" · ");
+}
+function localize(node) {
+  if (lang !== "en" || !EN) return;
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+    const english = tr(text.nodeValue);
+    if (english !== text.nodeValue) text.nodeValue = english;
+  }
+  node.querySelectorAll("[aria-label], [title], [placeholder]").forEach((element) => {
+    for (const name of ["aria-label", "title", "placeholder"]) {
+      const value = element.getAttribute(name);
+      if (value && tr(value) !== value) element.setAttribute(name, tr(value));
+    }
+  });
+}
 const ICONS = {
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   shield: '<path d="M12 3l8 3.5v5.5c0 4.6-3.4 8.1-8 9-4.6-.9-8-4.4-8-9V6.5z"/><path d="M9 12l2 2 4-4"/>',
@@ -193,6 +261,10 @@ const ICONS = {
   right: '<path d="M9 6l6 6-6 6"/>',
   down: '<path d="M6 9l6 6 6-6"/>',
   gear: gearPath(),
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L19 4M16 7l2.5 2.5M14 9l2 2"/>',
+  eye: '<path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
+  external: '<path d="M14 5h5v5M19 5l-8 8"/><path d="M18 14v4a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18V7a1.5 1.5 0 0 1 1.5-1.5H10"/>',
 };
 function gearPath() {
   // An eight-tooth gear, drawn here so no icon font or third-party artwork is needed.
@@ -221,6 +293,12 @@ let open = false;          // the card is showing
 let panel = "";            // "", "menu", "report", "confirm", "settings": kept until the user leaves it
 let flash = { text: "", until: 0 };
 let settings = null, settingsErrors = {}, notifyOn = true;
+// Settings pages: "home" lists download, wait and keys. settingsOnly: this window was started
+// just to show them (`paper-search-carsi settings`), so it closes with them unless a download runs.
+const SETTINGS_PAGES = ["home", "download", "wait", "keys"];
+let settingsPage = "home", settingsNote = "", settingsOnly = false, lastStrip = "";
+// Not "keys": in the pywebview window that name is taken, and declaring it stops the whole page.
+let apiKeys = null, editing = "", editValues = {}, confirmClear = "", revealed = false;
 let lastHtml = "", hoverTimer = 0, leaveTimer = 0, pollTimer = 0, kinds = [];
 const api = () => window.pywebview.api;
 
@@ -391,26 +469,176 @@ function idleCard() {
   return '<div class="card-body">' + header("PaperSearch", "暂无下载任务", true) + "</div>";
 }
 
-function settingsCard() {
-  let html = '<div class="card-body settings"><div class="head"><button class="iconbtn" data-act="back" aria-label="返回">'
-    + icon("left") + '</button><div class="drag capsule-drag-region"><div class="text"><div class="title">设置</div></div></div></div>'
+const busy = () => V.mode === "running" || V.mode === "attention";
+
+function taskStrip() {
+  // A download running behind the settings: one line, amber when it needs the user.
+  if (V.mode === "attention") {
+    return '<button type="button" class="strip warn-strip" data-act="show_browser">' + icon(V.attention.login ? "lock" : "alert")
+      + '<span class="grow">' + esc(V.attention.short) + "</span><span>去处理 ›</span></button>";
+  }
+  if (V.mode === "running") {
+    return '<button type="button" class="strip" data-act="progress"><span class="grow">正在下载 '
+      + esc(V.total ? V.done + "/" + V.total : V.done) + (V.publisher ? " · " + esc(V.publisher) : "")
+      + "</span><span>返回进度 ›</span></button>";
+  }
+  return "";
+}
+
+function settingsHead(title) {
+  // A window opened just for the settings closes from any page; the home page has nothing to go back to.
+  const closable = settingsOnly && !busy(), home = settingsPage === "home";
+  lastStrip = taskStrip();
+  return '<div class="head">' + (home && closable ? "" : '<button class="iconbtn" data-act="back" aria-label="返回">' + icon("left") + "</button>")
+    + '<div class="drag capsule-drag-region"><div class="text"><div class="title">' + esc(title) + "</div>"
+    + (home ? "" : '<div class="sub">设置</div>') + "</div></div>"
+    + (closable ? '<button class="iconbtn" data-act="close_settings" aria-label="关闭">' + icon("close") + "</button>" : "")
+    + '</div><div id="task-strip">' + lastStrip + "</div>";
+}
+
+const fieldsOn = (page) => settings.fields.filter((f) => (f.page || "wait") === page);
+const field = (name) => settings.fields.find((f) => f.name === name);
+
+function settingsHome() {
+  const hourly = field("hourly"), login = field("login");
+  const rows = [
+    ["download", "folder", "下载", [settings.download_dir, hourly ? "每家每小时 " + hourly.value + " 篇" : ""]],
+    ["wait", "clock", "等待和提醒", [login ? "登录页 " + login.value + " 秒" : "", "系统通知" + (notifyOn ? "开" : "关")]],
+    ["keys", "key", "API key", [apiKeys && apiKeys.ok ? "已填 " + apiKeys.filled + "/" + apiKeys.total : ""]],
+  ];
+  return settingsHead("设置") + rows.map(([page, glyph, title, sub]) =>
+    '<button type="button" class="nav-row" data-act="settings_page" data-page="' + page + '">' + icon(glyph)
+    + '<span class="nav-text"><span class="nav-title">' + title + '</span><span class="nav-sub">'
+    + esc(sub.filter(Boolean).join(" · ")) + "</span></span>" + icon("right") + "</button>").join("")
+    // The language row reads the same in both languages.
+    + '<div class="row"><span>语言</span><span class="seg">' + ["zh", "en"].map((code) => '<button type="button" data-act="language" data-lang="'
+      + code + '" aria-pressed="' + (lang === code) + '"' + (lang === code ? ' class="on"' : "") + ">" + (code === "zh" ? "中文" : "English")
+      + "</button>").join("") + "</span></div>"
+    + (settingsNote ? '<div class="settings-note" role="status">' + esc(settingsNote) + "</div>" : "");
+}
+
+function fieldRows(page) {
+  return fieldsOn(page).map((f) => '<div class="row"><span>' + esc(f.label) + '</span><span><input data-field="' + esc(f.name)
+    + '" value="' + esc(f.value) + '" aria-label="' + esc(f.label) + '" inputmode="numeric"> <span class="dim">' + esc(f.unit) + "</span></span></div>"
+    + (settingsErrors[f.name] ? '<div class="err">' + esc(settingsErrors[f.name]) + "</div>" : "")).join("");
+}
+
+function settingsFoot() {
+  return (settingsErrors[""] ? '<div class="err">' + esc(settingsErrors[""]) + "</div>" : "")
+    + '<div class="foot"><button class="btn link" style="color:var(--dim)" data-act="defaults">恢复默认</button>'
+    + '<button class="btn primary" data-act="save">保存</button></div>';
+}
+
+function settingsDownload() {
+  return settingsHead("下载")
     + '<div class="folder-setting"><label for="download-dir">默认下载文件夹</label><div class="folder-row">'
     + '<input id="download-dir" type="text" value="' + esc(settings.download_dir || '') + '" placeholder="输入完整路径">'
     + '<button class="btn" data-act="choose_folder">选择…</button></div>'
     + '<div class="hint">用于后续下载；命令中指定路径时优先使用指定路径。</div>'
-    + (settingsErrors.download_dir ? '<div class="err">' + esc(settingsErrors.download_dir) + '</div>' : '') + '</div>';
-  for (const f of settings.fields) {
-    html += '<div class="row"><span>' + esc(f.label) + '</span><span><input data-field="' + esc(f.name) + '" value="' + esc(f.value)
-      + '" aria-label="' + esc(f.label) + '" inputmode="numeric"> <span class="dim">' + esc(f.unit) + "</span></span></div>"
-      + (settingsErrors[f.name] ? '<div class="err">' + esc(settingsErrors[f.name]) + "</div>" : "");
-  }
-  html += '<div class="row"><span>需要处理时发系统通知</span><button class="switch' + (notifyOn ? " on" : "")
+    + (settingsErrors.download_dir ? '<div class="err">' + esc(settingsErrors.download_dir) + '</div>' : '') + '</div>'
+    + fieldRows("download") + settingsFoot();
+}
+
+function settingsWait() {
+  return settingsHead("等待和提醒") + fieldRows("wait")
+    + '<div class="row"><span>需要处理时发系统通知</span><button class="switch' + (notifyOn ? " on" : "")
     + '" data-act="notify" role="switch" aria-checked="' + notifyOn + '" aria-label="系统通知"></button></div>'
-    + '<div class="err" id="notify-error" role="status"></div>'
-    + (settingsErrors[""] ? '<div class="err">' + esc(settingsErrors[""]) + "</div>" : "")
-    + '<div class="foot"><button class="btn link" style="color:var(--dim)" data-act="defaults">恢复默认</button>'
-    + '<button class="btn primary" data-act="save">保存</button></div></div>';
+    + '<div class="err" id="notify-error" role="status"></div>' + settingsFoot();
+}
+
+function keyRow(s) {
+  const name = '<span class="nav-text"><span class="nav-title">' + esc(s.name) + "</span>"
+    + (s.use ? '<span class="nav-sub">' + esc(s.use) + "</span>" : "") + "</span>";
+  if (editing !== s.id) {
+    return '<button type="button" class="key-row" data-act="edit_key" data-service="' + esc(s.id) + '">' + name
+      + (s.set ? '<span class="key-set">' + esc(s.masked) + "</span>" : '<span class="btn">填写</span>') + "</button>";
+  }
+  let html = '<div class="key-row editing">' + name
+    + (s.set ? '<span class="key-set">' + esc(s.masked) + "</span>" : '<span class="dim" style="font-size:12px">未填</span>')
+    + '</div><div class="key-edit">';
+  // A saved key is in its field, hidden until the eye shows it.
+  for (const k of s.keys) {
+    html += '<input id="key-' + esc(k.key) + '" data-key="' + esc(k.key) + '" type="' + (revealed ? "text" : "password")
+      + '" value="' + esc(editValues[k.key] || "") + '" autocomplete="off" spellcheck="false" aria-label="' + esc(s.name + " " + k.label)
+      + '" placeholder="粘贴 key">';
+  }
+  return html + '<div class="key-links">'
+    + '<button class="btn link" data-act="signup" data-service="' + esc(s.id) + '">去申请' + icon("external") + "</button>"
+    + (s.guide ? '<button class="btn link" data-act="guide" data-service="' + esc(s.id) + '">' + esc(s.guide_label || "教程") + icon("external") + "</button>" : "")
+    + '<span class="grow"></span>'
+    + '<button class="iconbtn" data-act="reveal" aria-label="显示 key" aria-pressed="' + revealed + '">' + icon("eye") + "</button></div>"
+    + '<div class="err" id="key-error" role="status"></div><div class="key-actions">'
+    + '<button class="btn" data-act="test_key" data-service="' + esc(s.id) + '">测试</button><span class="grow"></span>'
+    + (s.set ? '<button class="btn danger" data-act="clear_key" data-service="' + esc(s.id) + '">清除</button>' : "")
+    + '<button class="btn" data-act="cancel_key">取消</button>'
+    + '<button class="btn primary" data-act="save_key" data-service="' + esc(s.id) + '">保存</button></div></div>';
+}
+
+function settingsKeys() {
+  let html = settingsHead("API key");
+  if (!apiKeys || !apiKeys.ok) return html + '<div class="err" style="text-align:left">' + esc((apiKeys && apiKeys.error) || "读取配置失败") + "</div>";
+  for (const group of apiKeys.groups) {
+    html += '<div class="key-group">' + esc(group.title) + "</div>" + group.services.map(keyRow).join("");
+  }
   return html;
+}
+
+function settingsCard() {
+  const page = { download: settingsDownload, wait: settingsWait, keys: settingsKeys }[settingsPage] || settingsHome;
+  return '<div class="card-body settings">' + page() + "</div>";
+}
+
+function updateStrip() {
+  // Progress behind the settings: refresh only this line, keeping what the user is typing.
+  const strip = root.querySelector("#task-strip");
+  const html = taskStrip();
+  if (!strip || html === lastStrip) return;
+  lastStrip = html;
+  const previous = root.getBoundingClientRect();
+  strip.innerHTML = html;
+  localize(strip);
+  // Measure the natural size as render does: a running resize animation keeps
+  // the surface absolutely positioned, which would measure as empty.
+  root.classList.remove("animating");
+  root.style.width = ""; root.style.height = "";
+  root.style.removeProperty("--content-max-height");
+  fit(previous);
+}
+
+async function loadSettings() {
+  settings = await api().settings(); notifyOn = settings.notify; settingsErrors = {};
+  try { apiKeys = await api().api_keys(); } catch (error) { apiKeys = null; }
+}
+
+async function openSettings(request) {
+  await loadSettings();
+  panel = "settings"; open = true; settingsNote = ""; confirmClear = ""; revealed = false;
+  settingsPage = SETTINGS_PAGES.includes(request.page) ? request.page : "home";
+  editing = settingsPage === "keys" ? request.service || "" : "";
+  editValues = editing ? await savedValues(editing) : {};
+  if (request.new_window && !busy()) settingsOnly = true;
+  render(true);
+  const input = editing && root.querySelector(".key-edit input");
+  if (input) input.focus();
+}
+
+async function savedValues(service) {
+  try {
+    const result = await api().api_key_values(service);
+    return result && result.ok ? result.values : {};
+  } catch (error) { return {}; }
+}
+
+function leaveSettings() {
+  panel = ""; editing = ""; editValues = {}; settingsNote = "";
+  if (settingsOnly && !busy()) return act("close");
+  return render(true);
+}
+
+function keyError(text, tone) {
+  // tone: "" (a problem, red), "ok" (green) or "wait" (grey).
+  const line = root.querySelector("#key-error");
+  if (line) { line.textContent = tr(text); line.className = "err" + (tone ? " " + tone : ""); }
 }
 
 let lastCls = "", hovering = false, closing = false, dragging = false, endingDrag = false;
@@ -421,8 +649,8 @@ let renderedAttention = null;
 function updateAttentionCountdown() {
   const a = V.attention;
   const card = root.querySelector(".prompt.attention-target");
-  if (card) card.title = [a.message, a.remaining ? "剩 " + a.remaining : "",
-                         a.more ? "另有 " + a.more + " 项" : ""].filter(Boolean).join(" · ");
+  if (card) card.title = tr([a.message, a.remaining ? "剩 " + a.remaining : "",
+                            a.more ? "另有 " + a.more + " 项" : ""].filter(Boolean).join(" · "));
   const countdown = root.querySelector(".attention-countdown");
   if (!countdown || countdown.textContent === (a.remaining || "")) return false;
   countdown.textContent = a.remaining || "";
@@ -431,7 +659,7 @@ function updateAttentionCountdown() {
 
 function render(force) {
   if (closing || dragging) return;
-  if (panel === "settings" && !force) return;  // keep what the user is typing
+  if (panel === "settings" && !force) return updateStrip();  // keep what the user is typing
   let html, shape = "card";
   if (panel === "settings") html = settingsCard();
   else if (!open) { html = pill(); shape = "pill"; }
@@ -452,6 +680,7 @@ function render(force) {
   if (!unchanged) {
     root.className = cls + " capsule-drag-region" + (cls !== lastCls ? " fade" : "");
     root.innerHTML = '<div class="surface">' + html + "</div>";
+    localize(root);
     if (attention) updateAttentionCountdown();
     renderedAttention = attention ? V : null;
   }
@@ -526,11 +755,15 @@ async function animateFit(generation, expanded, from, to, pad) {
 async function tick() {
   if (closing) return;
   const before = V.mode;
-  try { V = await api().state(hovering || dragging); } catch (e) { return; }
+  try { V = await api().state(hovering || dragging || panel === "settings"); } catch (e) { return; }
+  if (busy()) settingsOnly = false;  // a download started: this is its progress window now
+  const switched = Boolean(V.lang) && V.lang !== lang;
+  if (switched) lang = V.lang;
+  if (V.open_settings) return openSettings(V.open_settings);
   // A prompt only turns the capsule amber (with a system notification); hovering opens it.
   // Once the prompt is handled an open card folds back unless the pointer is on it.
   if (before === "attention" && V.mode !== "attention" && !hovering && !dragging && !panel) open = false;
-  render(false);
+  render(switched);
   // Also detect a real pointer departure when clamping moved the window away
   // from a stationary cursor (there may be no further native boundary event).
   if (document.body.classList.contains("mac")) observeHover();
@@ -560,9 +793,54 @@ async function act(action, target) {
     case "stop": panel = ""; return say(await api().act("stop_batch", v.current, v.run_id));
     case "skip_item": case "skip_journal": case "skip_publisher":
       panel = ""; return say(await api().act(action, v.current, v.run_id));
-    case "settings":
-      settings = await api().settings(); notifyOn = settings.notify; settingsErrors = {}; panel = "settings"; open = true; return render(true);
-    case "back": panel = ""; return render(true);
+    case "settings": return openSettings({ page: "home" });
+    case "language": {
+      const result = await api().set_language(target.dataset.lang);
+      if (result.ok) lang = result.language;
+      return render(true);
+    }
+    case "settings_page":
+      settingsPage = target.dataset.page; settingsErrors = {}; settingsNote = ""; editing = ""; editValues = {}; return render(true);
+    case "back":
+      if (panel !== "settings") { panel = ""; return render(true); }
+      if (settingsPage === "home") return leaveSettings();
+      settingsPage = "home"; editing = ""; editValues = {}; settingsErrors = {}; return render(true);
+    case "progress": case "close_settings": return leaveSettings();
+    case "edit_key":
+      editValues = await savedValues(target.dataset.service);
+      editing = target.dataset.service; confirmClear = ""; revealed = false; render(true);
+      return root.querySelector(".key-edit input")?.focus();
+    case "cancel_key": editing = ""; editValues = {}; confirmClear = ""; return render(true);
+    case "reveal":
+      revealed = !revealed;
+      target.setAttribute("aria-pressed", String(revealed));
+      root.querySelectorAll(".key-edit input").forEach((input) => { input.type = revealed ? "text" : "password"; });
+      return;
+    case "signup": case "guide": {
+      const result = await api().open_signup(target.dataset.service, action === "guide");
+      return result.ok ? undefined : keyError(result.message);
+    }
+    case "test_key": {
+      const values = {};
+      root.querySelectorAll(".key-edit input[data-key]").forEach((input) => { values[input.dataset.key] = input.value; });
+      target.disabled = true; keyError("正在测试…", "wait");
+      try {
+        const result = await api().test_api_key(target.dataset.service, values);
+        keyError(result.message, result.status === "valid" ? "ok" : result.status === "invalid" ? "" : "wait");
+      } finally { target.disabled = false; }
+      return;
+    }
+    case "save_key": case "clear_key": {
+      const service = target.dataset.service;
+      if (action === "clear_key" && confirmClear !== service) {
+        confirmClear = service; target.textContent = "确认清除"; return;
+      }
+      const values = {};
+      root.querySelectorAll(".key-edit input[data-key]").forEach((input) => { values[input.dataset.key] = input.value; });
+      const result = action === "save_key" ? await api().save_api_key(service, values) : await api().clear_api_key(service);
+      if (!result.ok) return keyError(result.error);
+      apiKeys = result; editing = ""; editValues = {}; confirmClear = ""; return render(true);
+    }
     case "notify": {
       target.disabled = true;
       try {
@@ -584,19 +862,22 @@ async function act(action, target) {
       return;
     }
     case "defaults":
-      for (const f of settings.fields) { const input = root.querySelector('input[data-field="' + f.name + '"]'); if (input) input.value = f.default; }
+      for (const f of fieldsOn(settingsPage)) { const input = root.querySelector('input[data-field="' + f.name + '"]'); if (input) input.value = f.default; }
       return;
     case "save": {
+      // Only this page's fields; the notification switch has saved itself.
       const values = {};
       root.querySelectorAll("input[data-field]").forEach((input) => { values[input.dataset.field] = input.value; });
-      settings.download_dir = root.querySelector('#download-dir').value;
-      const result = await api().save_settings(values, notifyOn, settings.download_dir);
+      const folder = root.querySelector('#download-dir');
+      const result = await api().save_settings(values, folder ? folder.value : null);
       if (!result.ok) {
         settingsErrors = result.errors || {};
-        settings.fields.forEach((f) => { f.value = values[f.name]; });
+        settings.fields.forEach((f) => { if (f.name in values) f.value = values[f.name]; });
+        if (folder) settings.download_dir = folder.value;
         return render(true);
       }
-      panel = ""; return say("已保存；下载目录用于后续新任务");
+      await loadSettings();
+      settingsPage = "home"; settingsNote = "已保存，之后的下载按新设置"; return render(true);
     }
   }
 }
@@ -714,8 +995,14 @@ window.addEventListener("pointerup", endAttentionPress);
 window.addEventListener("pointercancel", endAttentionPress);
 window.addEventListener("blur", endAttentionPress);
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && panel) { panel = ""; render(true); }
-  if (event.key === "Enter" && panel === "settings") act("save");
+  if (event.key === "Escape" && panel) {
+    if (panel !== "settings") { panel = ""; render(true); }
+    else act(editing ? "cancel_key" : "back");
+  }
+  if (event.key === "Enter" && panel === "settings" && event.target.tagName === "INPUT") {
+    if (settingsPage === "keys" && editing) act("save_key", { dataset: { service: editing }, textContent: "" });
+    else if (settingsPage === "download" || settingsPage === "wait") act("save");
+  }
 });
 
 window.addEventListener("pywebviewready", async () => {

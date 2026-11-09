@@ -24,6 +24,9 @@ interface OpenAlexWork {
   };
 }
 
+/** OPENALEX_API_KEY, optional: a larger daily allowance. */
+const openAlexAuth = (): Record<string, string> => (process.env.OPENALEX_API_KEY ? { api_key: process.env.OPENALEX_API_KEY } : {});
+
 export class OpenAlexSearcher extends PaperSource {
   private readonly client: AxiosInstance;
 
@@ -53,6 +56,7 @@ export class OpenAlexSearcher extends PaperSource {
   async search(query: string, options: SearchOptions = {}): Promise<Paper[]> {
     try {
       const params: Record<string, unknown> = {
+        ...openAlexAuth(),
         search: query,
         per_page: Math.min(options.maxResults || 10, 200)
       };
@@ -86,7 +90,7 @@ export class OpenAlexSearcher extends PaperSource {
 
     try {
       const workId = encodeURIComponent(`https://doi.org/${cleanDoi}`);
-      const response = await this.client.get(`/${workId}`);
+      const response = await this.client.get(`/${workId}`, { params: openAlexAuth() });
       return this.parseWork(response.data as OpenAlexWork);
     } catch (error: any) {
       if (error?.response?.status === 404) {

@@ -16,19 +16,22 @@ paper-search carsi status --format text
 paper-search carsi install
 ```
 
-- 需要本机已装 Google Chrome；没有时安装会停下并给出下载地址 https://www.google.com/chrome/，请用户装好 Chrome 后再运行同一命令。`--browser ego` 改用用户自己的 ego lite（仅 macOS）。
+- 需要图形界面：学校登录要在看得见的浏览器里完成。没有图形界面的 Linux（服务器，没有 `DISPLAY` 或 `WAYLAND_DISPLAY`）上安装会在第一步停下，`paper-search setup` 也不再问是否安装；这类机器用 `paper-search setup <KEY>` 配 key，检索和开放获取下载照常可用。
+- 需要本机已装 Google Chrome；没有时安装会停下。这时告诉用户要先装 Chrome，然后替用户装：macOS 有 Homebrew 时运行 `brew install --cask google-chrome`，Windows 运行 `winget install -e --id Google.Chrome`；装好后再运行同一条 `carsi install`。没有 Homebrew 或 winget、或安装失败时，请用户从 https://www.google.com/chrome/ 下载安装。`--browser ego` 改用用户自己的 ego lite（仅 macOS）。
 - 安装前会列出安装位置和下载量（约 0.5 GB，不另下载浏览器），用户确认后才开始。`--yes` 跳过确认，只在用户明确同意后使用。
 - 用户不需要先装 Python；中途失败时，处理提示的问题后再运行同一命令，会从失败的那一步接着装。
+- 装完会打开设置窗口的 API key 页，用户填好或不需要时点右上角 × 关闭。
 - 装完会自动启用（`PAPER_SEARCH_CARSI_ENABLED=true`、`PAPER_SEARCH_CARSI_EXECUTABLE` 指向新装的后端）。原来配置了别的后端时，会先问用户是否替换。
 - 安装时会问学校；`--skip-school` 跳过，之后再配置。
-- 首次配置扩展时会询问是否开启系统通知。新配置默认关闭，回车保留当前选择；`--yes` 不代表同意开启通知。Agent 代为配置时先问用户要开启还是关闭，再通过同一后端的 `config set progress_notify true` 或 `false` 保存，已有明确选择不重复询问。以后可点胶囊齿轮里的“系统通知”开关立即修改；关闭不影响琥珀色呼吸和点击唤回浏览器。
+- 首次配置扩展时会询问是否开启系统通知。新配置默认关闭，回车保留当前选择；`--yes` 不代表同意开启通知。Agent 代为配置时先问用户要开启还是关闭，再通过同一后端的 `config set progress_notify true` 或 `false` 保存，已有明确选择不重复询问。以后可在胶囊齿轮 → 等待和提醒里点“系统通知”开关立即修改；关闭不影响琥珀色呼吸和点击唤回浏览器。
+- 进度窗口的设置（下载文件夹、等待和提醒、API key）：点胶囊齿轮，或运行 `paper-search settings [download|wait|keys|<KEY>]`。没有下载时它单独打开窗口，关掉设置窗口就消失。
 - `paper-search setup` 最后也会问是否安装扩展；`--skip-carsi` 不问，`--install-carsi` 直接安装。
 
 用户自己维护的后端（例如仓库里的开发版）用 `paper-search config set PAPER_SEARCH_CARSI_EXECUTABLE <路径>` 指定；不要擅自改用户已配置的路径。
 
 ## 更新与卸载
 
-- PaperSearch 升级后，`status` 提示扩展落后时运行 `paper-search carsi update`：重装后端和依赖，检查 Chrome；学校配置、登录会话、Chrome 和 ego lite 不动。以前用 Camoufox 的安装会改用 Chrome，并写明旧 Camoufox 浏览器所在的目录，由用户决定是否手动删除。已是最新时不做任何事；`--force` 强制重装。
+- PaperSearch 升级后，第一次用到学校订阅下载时会自动做同样的更新（stderr 一行说明）；用户关掉了自动更新（`PAPER_SEARCH_CARSI_AUTO_UPDATE=false`）或自动更新没成功时，`status` 提示扩展落后，运行 `paper-search carsi update`：重装后端和依赖，检查 Chrome；学校配置、登录会话、Chrome 和 ego lite 不动。以前用 Camoufox 的安装会改用 Chrome，并写明旧 Camoufox 浏览器所在的目录，由用户决定是否手动删除。已是最新时不做任何事；`--force` 强制重装。
 - 卸载：`paper-search carsi uninstall`。先列出要删和保留的内容，用户确认后删除安装目录；PaperSearch 配置指向这次安装的后端时，关闭机构下载并清除后端路径，指向别处时不改。学校配置和登录会话默认保留，会询问；`--yes` 时保留，除非另加 `--remove-data`。Google Chrome 和 ego lite 不受影响。
 
 ## 学校

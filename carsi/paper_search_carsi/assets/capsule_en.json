@@ -1,0 +1,437 @@
+{
+ "exact": {
+  "暂无下载任务": "No downloads",
+  "成功": "Saved",
+  "失败": "Failed",
+  "剩余": "Left",
+  "用时": "Time",
+  "按原因": "by reason",
+  "正文已保存": "main text saved",
+  "没权限": "No access",
+  "外部原因": "External",
+  "暂不支持": "Unsupported",
+  "原因不明": "Unclear",
+  "其他": "Other",
+  "文件夹": "Folder",
+  "打开文件夹": "Open folder",
+  "跳过": "Skip",
+  "终止": "Stop",
+  "跳过本篇": "Skip this",
+  "本刊无权限": "No access: journal",
+  "出版社无权限": "No access: publisher",
+  "报告问题": "Report issue",
+  "取消": "Cancel",
+  "关闭": "Close",
+  "最小化": "Minimize",
+  "最小化到程序坞": "Minimize to Dock",
+  "设置": "Settings",
+  "返回": "Back",
+  "更多": "More",
+  "点击打开浏览器，查看并继续": "Click to open the browser",
+  "在浏览器打开这篇文章": "Open in your browser",
+  "点击切到下载浏览器": "Show download browser",
+  "打开下载浏览器": "Open download browser",
+  "切到下载浏览器": "Show download browser",
+  "未能激活进度窗口，请重试": "Window didn't respond; retry",
+  "终止整个下载任务？这一篇立即结束。": "Stop the whole task? This paper ends now.",
+  "下载": "Downloads",
+  "等待和提醒": "Waits & alerts",
+  "语言": "Language",
+  "系统通知开": "Notifications on",
+  "系统通知关": "Notifications off",
+  "已保存，之后的下载按新设置": "Saved; applies to later downloads",
+  "默认下载文件夹": "Default download folder",
+  "输入完整路径": "Full path",
+  "选择…": "Choose…",
+  "用于后续下载；命令中指定路径时优先使用指定路径。": "For later downloads; a path in a command wins.",
+  "恢复默认": "Defaults",
+  "保存": "Save",
+  "需要处理时发系统通知": "Notify me when needed",
+  "系统通知": "Notifications",
+  "通知设置保存失败": "Couldn't save",
+  "填写": "Add",
+  "未填": "Not set",
+  "去申请": "Get key",
+  "教程": "Guide",
+  "测试": "Test",
+  "清除": "Clear",
+  "确认清除": "Confirm",
+  "粘贴 key": "Paste key",
+  "显示 key": "Show key",
+  "正在测试…": "Testing…",
+  "读取配置失败": "Couldn't read settings",
+  "返回进度 ›": "Back to progress ›",
+  "去处理 ›": "Handle ›",
+  "正文": "Main",
+  "附录": "Supp.",
+  "正文+附录": "Main+Supp.",
+  "准备中": "Preparing",
+  "正在打开文章": "Opening article",
+  "正在检查访问权限": "Checking access",
+  "等待机构登录": "Waiting for login",
+  "等待人机验证": "Waiting for check",
+  "正在获取 PDF": "Getting PDF",
+  "已读到 PDF，正在核对": "Checking PDF",
+  "已保存": "Saved",
+  "这条路没走通，正在换路": "Trying another route",
+  "附录检查完成": "Supp. checked",
+  "打开文章": "Open",
+  "权限": "Access",
+  "取 PDF": "PDF",
+  "核对": "Check",
+  "检查权限": "Access",
+  "等待登录": "Login",
+  "等待验证": "Verify",
+  "换一条路": "Reroute",
+  "核对 PDF": "Check PDF",
+  "查找附录": "Finding supp.",
+  "正在查找附录文件": "Finding supp. files",
+  "处理中": "Working",
+  "正在切到下载浏览器": "Showing download browser",
+  "已终止任务：这一篇结束，剩下的不再下载": "Stopped: this one ends, the rest won't run",
+  "已跳过本篇，进入下一篇": "Skipped; moving on",
+  "已记住：本刊无权限，以后自动跳过（可用 entitlements 撤销）": "Noted: no access; journal skipped from now",
+  "已记住：该出版社无权限，以后自动跳过": "Noted: no access; publisher skipped from now",
+  "请查看浏览器，可能需要手动操作": "Check the browser; you may need to act",
+  "页面暂时无进展": "Page stuck",
+  "请选择学校": "Choose school",
+  "请登录学校": "Sign in to school",
+  "请完成验证": "Complete the check",
+  "需要你处理": "Needs you",
+  "需要你操作": "Action needed",
+  "下载中": "Downloading",
+  "已终止任务": "Stopped",
+  "下载中断": "Interrupted",
+  "下载未成功": "Download failed",
+  "下载结束，部分失败": "Done, some failed",
+  "下载完成": "Done",
+  "其他原因": "Other reasons",
+  "未知论文": "Unknown paper",
+  "下载浏览器已关闭": "Download browser closed",
+  "出版社内容服务错误，当前路径已停止": "Publisher server error; route stopped",
+  "出版社尚未发布这篇论文的全文，当前路径已停止": "Full text not out yet; route stopped",
+  "安全验证": "Security check",
+  "安全验证等待已结束，正在检查页面": "Check wait over; checking page",
+  "已从打开的 PDF 读取，正在核对并保存": "Read from the open PDF; checking and saving",
+  "已切到下载浏览器": "Download browser shown",
+  "未能切到下载浏览器，请从程序坞或任务栏打开": "Couldn't switch; open it from the Dock or taskbar",
+  "未能切到下载浏览器，请从程序坞打开": "Couldn't switch; open it from the Dock",
+  "机构登录": "School login",
+  "浏览器下载": "Browser download",
+  "点击时这一篇已经保存好了，没有跳过": "Already saved; not skipped",
+  "自动验证尚未完成，请在浏览器中检查并完成验证": "Auto check not done; finish it in the browser",
+  "请在浏览器窗口完成机构登录": "Sign in to school in the browser",
+  "请在浏览器窗口选择学校并完成机构登录": "Choose your school and sign in, in the browser",
+  "跳过已尝试": "Skipping tried",
+  "进入机构访问": "School access",
+  "PDF 已保存，待内容核验": "PDF saved; checking",
+  "下载未完成": "Not finished",
+  "下载进程已结束，结果未确认": "Download ended; unconfirmed",
+  "已检查，页面未列出补充材料": "Checked; no supp. listed",
+  "批量下载已停止，结果未确认": "Batch stopped; result unconfirmed",
+  "机构 PDF 下载": "School PDF download",
+  "机构 PDF 批量下载": "School PDF batch",
+  "等待下载进程响应（暂无新进度）": "Waiting for the download (no news)",
+  "DOI 没指向能登录的网站": "DOI leads to no login site",
+  "PDF 身份未确认": "PDF identity unconfirmed",
+  "下载已取消": "Download cancelled",
+  "下载时程序出错": "Program error",
+  "下载环境不可用": "Download setup down",
+  "下载环境被占用": "Download setup busy",
+  "下载等待超时": "Download timed out",
+  "人机验证没通过": "Failed bot check",
+  "任务已终止": "Task stopped",
+  "你标记过无权限": "You marked no access",
+  "你跳过了这一篇": "You skipped it",
+  "全文尚未发布": "Full text not out yet",
+  "全文未确认有效": "Full text unconfirmed",
+  "出版社网站没响应": "Publisher site silent",
+  "出版社页面出错": "Publisher page error",
+  "到了每小时下载上限": "Hourly limit reached",
+  "只在其他平台提供": "Only on another platform",
+  "后端结果无法使用": "Backend result unusable",
+  "学校密码已过期": "School password expired",
+  "学校没有订阅": "No school subscription",
+  "学校登录系统出错": "School login error",
+  "学校登录被拒绝": "School login refused",
+  "学校账号被锁定": "School account locked",
+  "找不到学校的登录路线": "No login route for school",
+  "找不到机构登录入口": "No institution login",
+  "拿到的 PDF 无效": "Invalid PDF",
+  "拿到的是别篇 PDF": "Another paper's PDF",
+  "拿到网页不是文件": "Got a page, not a file",
+  "没取到 PDF": "No PDF",
+  "没找到可用 PDF": "No usable PDF",
+  "没进入学校登录页": "School login not reached",
+  "浏览器没有响应": "Browser not responding",
+  "登录后没回到出版社": "No return to publisher",
+  "登录重试已用尽": "Login retries used up",
+  "登录页被关闭": "Login page closed",
+  "等学校登录超时": "School login timed out",
+  "网站人机验证拦截": "Blocked by bot check",
+  "网站拦截了当前网络": "Site blocked network",
+  "网站暂不支持附录": "Supp. not supported here",
+  "认证入口未注册": "Login entry unregistered",
+  "需要学校登录": "School login needed",
+  "页面处理超时": "Page timed out",
+  "页面提示全文受限": "Full text restricted",
+  "没有有效 DOI": "No valid DOI",
+  "没有进行机构下载": "No school download",
+  "附录没下载成功": "Supp. not downloaded",
+  "机构订阅": "Subscription",
+  "预印本": "Preprint",
+  "出版社 API": "Publisher API",
+  "开放获取": "Open access",
+  "学校登录页最多等": "Wait for school login",
+  "其他页面最多等": "Wait for other pages",
+  "验证提醒前最多等": "Wait before check alert",
+  "每家出版社每小时最多": "Per publisher per hour",
+  "秒": "s",
+  "篇": "papers",
+  "查期刊、搜正文": "Journals & snippets",
+  "出版社接口": "Publisher APIs",
+  "增加检索来源": "More sources",
+  "提高限额": "Higher limits",
+  "查影响因子和分区": "Impact factor & rank",
+  "搜正文片段": "Full-text snippets",
+  "下载全文，检索 ScienceDirect、Scopus": "Full text; search ScienceDirect, Scopus",
+  "下载全文，检索 Springer": "Full text; search Springer",
+  "检索 Web of Science": "Search Web of Science",
+  "检索 IEEE Xplore": "Search IEEE Xplore",
+  "检索 PubMed 更快（每秒 3 次提到 10 次）": "Faster PubMed (3 → 10 per second)",
+  "检索 CORE 开放全文，更稳定": "Steadier CORE open full text",
+  "检索 OpenAIRE，限额更高": "Higher OpenAIRE limits",
+  "查引文的限额更高，被引过万也能列全": "Higher citation limits; lists 10k+",
+  "申请教程": "Guide",
+  "可以用": "Works",
+  "没有填": "Empty",
+  "key 里不能有空格、换行或中文字符": "No spaces, line breaks or Chinese",
+  "太长了，请确认粘贴的是 key": "Too long; is this the key?",
+  "没有这一项": "Unknown item",
+  "测试超时，没法判断；检查网络或代理后再试": "Timed out; check network or proxy",
+  "请先粘贴 key；要删除请点“清除”": "Paste a key first; Clear removes it",
+  "此路径是文件，请选择文件夹": "That's a file; choose a folder",
+  "请输入完整的绝对路径": "Enter a full path",
+  "请选择下载文件夹或输入完整路径": "Choose a folder or enter a full path",
+  "PDF 已打开，但没保存": "PDF opened, not saved",
+  "一直加载或验证过不去": "Stuck loading or checking",
+  "其他问题": "Other problem",
+  "没出现机构登录或选学校": "No school login shown",
+  "跳到了个人账号登录": "Went to personal login",
+  "跳到了无关页面": "Went to unrelated page",
+  "选错了学校": "Wrong school",
+  "已在浏览器打开这篇文章": "Opened in your browser",
+  "当前没有正在下载的浏览器": "No download browser now",
+  "打开失败：不是有效的 DOI": "Couldn't open: not a DOI",
+  "打开失败：没有找到默认浏览器": "Couldn't open: no default browser",
+  "打开失败：没有这一项": "Couldn't open: unknown",
+  "这一篇在查开放来源，没有打开浏览器": "Checking open sources; no browser",
+  "通知开关必须为开启或关闭": "Must be on or off",
+  "语言只能是中文或英文": "Chinese or English only",
+  "需要你在浏览器里处理": "Needed in the browser",
+  "完成": "Done",
+  "已终止": "Stopped",
+  "已中断": "Interrupted",
+  "被拒绝：key 不对，或已失效": "Rejected: wrong or expired key",
+  "服务器限流，稍后再试；key 本身可能没问题": "Rate-limited; try later",
+  "没连上服务器，没法判断；检查网络或代理后再试": "Couldn't reach the server"
+ },
+ "patterns": [
+  [
+   "^完成 (\\d+)/(\\d+)$",
+   "Done $1/$2"
+  ],
+  [
+   "^已终止 (\\d+)/(\\d+)$",
+   "Stopped $1/$2"
+  ],
+  [
+   "^已中断 (\\d+)/(\\d+)$",
+   "Interrupted $1/$2"
+  ],
+  [
+   "^(\\d+) 篇失败$",
+   "$1 failed"
+  ],
+  [
+   "^已用 (.+)$",
+   "$1 elapsed"
+  ],
+  [
+   "^共 (\\d+) 篇$",
+   "$1 papers"
+  ],
+  [
+   "^未完成 (\\d+) 篇$",
+   "Not saved: $1"
+  ],
+  [
+   "^正文未下到 (\\d+) 篇$",
+   "No main text: $1"
+  ],
+  [
+   "^附录未下全 (\\d+) 篇$",
+   "Supp. missing: $1"
+  ],
+  [
+   "^已完成 (\\d+) 篇$",
+   "Saved: $1"
+  ],
+  [
+   "^另有 (\\d+) 篇未列出$",
+   "+$1 more"
+  ],
+  [
+   "^另有 (\\d+) 项$",
+   "+$1 more"
+  ],
+  [
+   "^剩 (.+)$",
+   "$1 left"
+  ],
+  [
+   "^终止整个下载任务？这一篇立即结束，剩下的 (\\d+) 篇不再下载。$",
+   "Stop the whole task? This one ends now; $1 more won't run."
+  ],
+  [
+   "^正在下载 (.+)$",
+   "Downloading $1"
+  ],
+  [
+   "^每家每小时 (\\d+) 篇$",
+   "$1/hour per publisher"
+  ],
+  [
+   "^登录页 (\\d+) 秒$",
+   "Login $1 s"
+  ],
+  [
+   "^已填 (\\d+)/(\\d+)$",
+   "$1/$2 set"
+  ],
+  [
+   "^附录 (\\d+)/(\\d+)$",
+   "Supp. $1/$2"
+  ],
+  [
+   "^已保存 (\\d+)/(\\d+)$",
+   "Saved $1/$2"
+  ],
+  [
+   "^正文 (\\d+) 篇$",
+   "Main $1"
+  ],
+  [
+   "^附录 (\\d+) 个$",
+   "Supp. $1"
+  ],
+  [
+   "^(\\d+) 篇未列出附录$",
+   "$1 list no supp."
+  ],
+  [
+   "^(.+) 等$",
+   "$1 etc."
+  ],
+  [
+   "^机构订阅 (\\d+)$",
+   "Subscription $1"
+  ],
+  [
+   "^预印本 (\\d+)$",
+   "Preprint $1"
+  ],
+  [
+   "^出版社 API (\\d+)$",
+   "Publisher API $1"
+  ],
+  [
+   "^开放获取 (\\d+)$",
+   "Open access $1"
+  ],
+  [
+   "^附录 (\\d+) 个已保存$",
+   "$1 supp. saved"
+  ],
+  [
+   "^补充材料已保存 (\\d+) 个$",
+   "$1 supp. files saved"
+  ],
+  [
+   "^已完成 (\\d+)/(\\d+) 篇，等待下一篇$",
+   "Done $1/$2; next soon"
+  ],
+  [
+   "^批量下载结束：成功 (\\d+)，失败 (\\d+)$",
+   "Batch done: $1 saved, $2 failed"
+  ],
+  [
+   "^第 (\\d+)/(\\d+) 篇已检查，等待下一篇$",
+   "Paper $1/$2 checked; next soon"
+  ],
+  [
+   "^第 (\\d+)/(\\d+) 篇已保存，等待下一篇$",
+   "Paper $1/$2 saved; next soon"
+  ],
+  [
+   "^第 (\\d+)/(\\d+) 篇未完成，等待下一篇$",
+   "Paper $1/$2 not saved; next soon"
+  ],
+  [
+   "^第 (\\d+)/(\\d+) 篇：进入机构访问$",
+   "Paper $1/$2: school access"
+  ],
+  [
+   "^这篇文章只在 (.+) 平台提供，暂不支持，当前路径已停止$",
+   "Only on $1, not supported yet; route stopped"
+  ],
+  [
+   "^被拒绝：key 不对，或已失效（(.+)）$",
+   "Rejected: wrong or expired key ($1)"
+  ],
+  [
+   "^服务器限流，稍后再试；key 本身可能没问题（(.+)）$",
+   "Rate-limited; try later ($1)"
+  ],
+  [
+   "^没连上服务器，没法判断；检查网络或代理后再试（(.+)）$",
+   "Couldn't reach the server ($1)"
+  ],
+  [
+   "^请输入 (\\d+) 到 (\\d+) 之间的整数$",
+   "Enter a whole number $1–$2"
+  ],
+  [
+   "^保存失败：(.+)$",
+   "Save failed: $1"
+  ],
+  [
+   "^清除失败：(.+)$",
+   "Clear failed: $1"
+  ],
+  [
+   "^记录失败：(.+)$",
+   "Report failed: $1"
+  ],
+  [
+   "^读取配置失败：(.+)$",
+   "Couldn't read settings: $1"
+  ],
+  [
+   "^打开失败：(.+)$",
+   "Couldn't open: $1"
+  ],
+  [
+   "^测试没有完成：(.+)$",
+   "Test didn't finish: $1"
+  ],
+  [
+   "^已收到：.+，正在处理$",
+   "Got it; working on it"
+  ],
+  [
+   "^找不到 paper-search 命令，没法测试；也可以在终端运行 (.+)$",
+   "paper-search not found; run $1 in a terminal"
+  ]
+ ]
+}

@@ -215,10 +215,19 @@ class CaptureMixin:
             from ..browser.preview import pause as pause_preview
 
             with pause_preview(getattr(page, "context", None)):
-                body, url, block = self._capture_pdf_channels(page, doi, result)
-                if (body is None and not block and len(result.pdf_attempts) == tried_before
-                        and not result.reason and self._wait_for_pdf_candidates(page, doi, result)):
+                try:
                     body, url, block = self._capture_pdf_channels(page, doi, result)
+                    if (body is None and not block and len(result.pdf_attempts) == tried_before
+                            and not result.reason and self._wait_for_pdf_candidates(page, doi, result)):
+                        body, url, block = self._capture_pdf_channels(page, doi, result)
+                except watchdog.BrowserBudgetExhausted as exc:
+                    # The step's time ran out between browser calls, so the browser is fine. A PDF
+                    # the article's own link already gave is saved unconfirmed for PaperSearch to
+                    # check, not lost with the time (Science, 2026-11-09).
+                    if self._fallback_pdf is None:
+                        raise
+                    self._event(result, "pdf_budget_exhausted", str(exc))
+                    body, url, block = None, "", None
             if body is None and not block and self._fallback_pdf is not None:
                 body, url = self._fallback_pdf
                 self._event(result, "pdf_saved_unconfirmed", f"{url} | no DOI or title on the first pages")
@@ -1756,15 +1765,15 @@ class CaptureMixin:
         if self._is_supplementary_url(url):
             return False
         if self.adapter.requires_complete_pdf:
-            # Never label a truncated or repaired transfer as saved.
-            if b"%%EOF" not in body[-2048:]:
+            # Never label a truncated or damaged transfer as saved.
+            from .. import pdf_text
+
+            if not pdf_text.complete(body):
                 return False
             try:
-                import pymupdf
-                with pymupdf.open(stream=body, filetype="pdf") as document:
-                    if not len(document) or document.is_repaired:
-                        return False
-            except Exception:
+                if not pdf_text.page_count(body):
+                    return False
+            except pdf_text.PdfError:
                 return False
         from .pdf_guard import classify_with_evidence
 

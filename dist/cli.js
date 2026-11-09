@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import * as dotenv from "dotenv";
 import { randomBytes } from "crypto";
-import { readFileSync } from "fs";
+import { readFileSync, unlinkSync } from "fs";
 import { createInterface as createPromiseInterface } from "readline/promises";
 import { emitKeypressEvents } from "readline";
 import { TOOLS } from "./core/tools.js";
@@ -15,13 +15,19 @@ import { CONFIG_KEYS, getConfigPath, importEnvFile, initUserConfig, listConfigEn
 import { apiKeySignupUrl } from "./config/apiKeySignup.js";
 import { setupGlobalProxy } from "./infrastructure/http/HttpClient.js";
 import { autoSyncSkill, defaultSkillTargetIds, describeSkillTargets, diffSkillTargets, installSkillTargets, parseSkillTargets, skillLocations, statusSkillTargets, } from "./management/skills/index.js";
+import { firstInstallNextSteps } from "./management/skills/nextSteps.js";
 import { renderDoctorTextReport, renderSkillDiffTextReport, } from "./management/reports/index.js";
 import { beginUpdateNotification, checkForUpdate, renderUpdateNotice } from "./management/updates/index.js";
 import { exportFailureReport } from "./management/failures/exportReport.js";
 import { renderFailuresText, summarizeFailures } from "./management/failures/index.js";
 import { createNodeHost } from "./management/carsi/host.js";
 import { InstallError, installCarsi, carsiStatus, renderStatusText, uninstallCarsi, updateCarsi, } from "./management/carsi/installer.js";
-import { resolveDefaultCarsiProfileDir } from "./capabilities/pdf-discovery/carsi/index.js";
+import { resolveDefaultCarsiProfileDir, takeDownloadLock } from "./capabilities/pdf-discovery/carsi/index.js";
+import { autoUpdateCarsi, withAutoUpdate } from "./management/carsi/autoUpdate.js";
+import { openSettingsWindow, settingsWindowEnv as windowEnv } from "./management/carsi/settingsWindow.js";
+import { paperSearchCommand } from "./config/selfCommand.js";
+import { TESTABLE_KEYS, probeKeyFor, testApiKey } from "./config/apiKeyTest.js";
+import { hasScreen } from "./management/carsi/runtime.js";
 import { fileURLToPath } from "node:url";
 import { resolveRunLogRoot } from "./infrastructure/runlog/RunLedger.js";
 import { runLiveSmoke } from "./management/smoke/index.js";
@@ -81,7 +87,8 @@ Usage:
   paper-search skills <status|update|diff> [--targets agents,codex]
   paper-search tools
   paper-search diagnostics
-  paper-search config <init|set|get|unset|list|doctor|path|import-env|keys>
+  paper-search config <init|set|get|unset|list|doctor|path|import-env|keys|test>
+  paper-search settings [download|wait|keys|<API_KEY_NAME>]
   paper-search setup [--all] [--install-skills agents,codex] [--skip-skills] [--skip-carsi|--install-carsi]
   paper-search download <paper-id> --platform pmc [--save-path ./downloads]
 
@@ -336,7 +343,11 @@ function carsiBackendForToolCall(tool, args) {
         !isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")) {
         return undefined;
     }
-    return withCliCarsiProgress(createCarsiBackend());
+    // After an upgrade, the extension is updated before the backend first starts.
+    return withCliCarsiProgress(withAutoUpdate(createCarsiBackend(), () => autoUpdateCarsi(createNodeHost(() => Promise.resolve("")), carsiContext(), () => {
+        const lockPath = takeDownloadLock(resolveDefaultCarsiProfileDir());
+        return () => unlinkSync(lockPath);
+    })));
 }
 function withCliCarsiProgress(backend) {
     const withBatchSession = backend.withBatchSession?.bind(backend);
@@ -435,6 +446,15 @@ async function run(parsed) {
     if (command === "carsi") {
         return handleCarsiCommand(positionals, flags);
     }
+    if (command === "settings") {
+        // Keys are typed into the window, which saves them; none pass through this command.
+        const opened = await openSettingsWindow({
+            executable: getConfigValue("PAPER_SEARCH_CARSI_EXECUTABLE"),
+            target: positionals[0],
+            env: settingsWindowEnv(),
+        });
+        return flags.format === "text" && opened.ok ? "设置窗口已打开。" : opened;
+    }
     if (command === "status") {
         return callTool("get_platform_status", { validate: flags.validate === true }, flags);
     }
@@ -490,8 +510,11 @@ async function run(parsed) {
     }
     throw new CliError(`Unknown command: ${command}`, "UNKNOWN_COMMAND");
 }
-function handleConfigCommand(positionals, flags) {
+async function handleConfigCommand(positionals, flags) {
     const subcommand = positionals[0] || "list";
+    if (subcommand === "test") {
+        return testConfiguredKeys(positionals[1], flags);
+    }
     if (subcommand === "path") {
         return { ok: true, path: getConfigPath() };
     }
@@ -704,7 +727,7 @@ async function handleSetupCommand(positionals, flags) {
             'Run "paper-search doctor --pretty" to review capability and platform health.',
             'Run "paper-search smoke --mock --pretty" for an offline self-check.',
             'Run "paper-search search \\"machine learning\\" --platform crossref --max-results 1 --pretty" for a no-key search check.',
-            ...(carsi.installed
+            ...(carsi.installed || carsi.skipped
                 ? []
                 : ['Run "paper-search carsi install" to download papers through your school\'s subscription.']),
         ];
@@ -731,8 +754,9 @@ async function handleSetupCommand(positionals, flags) {
 }
 /**
  * Setup's last question (ADR 0013): install the institutional download
- * extension. Not asked when it is installed already or with
- * --skip-carsi; --install-carsi installs without asking.
+ * extension. Not asked when it is installed already, with --skip-carsi, or on
+ * a computer without a screen (a server: the school login needs a visible
+ * browser); --install-carsi installs without asking.
  */
 async function offerCarsiInstall(session, flags) {
     const host = createNodeHost((question) => session.line(question));
@@ -741,6 +765,8 @@ async function offerCarsiInstall(session, flags) {
         return { installed: true, asked: false };
     if (flags.skipCarsi === true)
         return { installed: false, asked: false };
+    if (flags.installCarsi !== true && !hasScreen(host.platform, host.env))
+        return { installed: false, asked: false, skipped: "no_screen" };
     const answer = flags.installCarsi === true
         ? "y"
         : await session.line("Install school subscription downloads (CARSI)? It downloads papers through your school's subscription in your Google Chrome (about 0.5 GB to download). [y/N]: ");
@@ -778,6 +804,38 @@ function carsiContext() {
         now: () => new Date(),
     };
 }
+/**
+ * `config test [KEY] [--stdin]`: whether the services take the keys, one small
+ * request each. With --stdin the values to test come as a JSON object on stdin
+ * (the settings window tests what is typed before it is saved; nothing goes on
+ * the command line). Without KEY, every testable key that is set.
+ */
+async function testConfiguredKeys(key, flags) {
+    if (key !== undefined) {
+        assertConfigKey(key);
+        if (!probeKeyFor(key))
+            throw new CliError(`没有在线测试：${key}`, "UNTESTABLE_CONFIG_KEY");
+    }
+    const typed = flags.stdin === true ? JSON.parse(readFileSync(0, "utf8") || "{}") : {};
+    const value = (name) => (typeof typed[name] === "string" ? String(typed[name]) : getConfigValue(name)).trim();
+    const values = {};
+    for (const name of CONFIG_KEYS)
+        values[name] = value(name);
+    const keys = key !== undefined ? [key] : TESTABLE_KEYS.filter((name) => values[name]);
+    const results = [];
+    for (const name of keys)
+        results.push(await testApiKey(name, values));
+    const ok = results.length > 0 && results.every((result) => result.status === "valid");
+    if (flags.format === "text") {
+        const lines = results.length ? results.map((result) => `${result.key}：${result.message}`) : ["没有已填的 key 可以测试。"];
+        return lines.join("\n");
+    }
+    return key !== undefined ? { ok, ...results[0], exitCode: ok ? 0 : 1 } : { ok, results, exitCode: ok ? 0 : 1 };
+}
+/** What the settings window needs: the backend's data directory, this config, and this CLI for key tests. */
+function settingsWindowEnv() {
+    return windowEnv({ dataDir: resolveDefaultCarsiProfileDir(), configFile: getConfigPath(), cli: paperSearchCommand() });
+}
 /** Install or inspect school subscription downloads (CARSI, ADR 0013). */
 async function handleCarsiCommand(positionals, flags) {
     const sub = positionals[0];
@@ -802,6 +860,14 @@ async function handleCarsiCommand(positionals, flags) {
             }, context);
             if (outcome.status === "installed") {
                 host.log("安装完成，机构下载已启用。第一次下载时，在弹出的浏览器里登录学校。");
+                // First setup: the settings window, at the API keys; the user closes it when done.
+                const opened = await openSettingsWindow({
+                    executable: getConfigValue("PAPER_SEARCH_CARSI_EXECUTABLE"),
+                    target: "keys",
+                    env: settingsWindowEnv(),
+                });
+                if (opened.ok)
+                    host.log("已打开设置窗口：可以在里面填 API key、改下载文件夹；不需要的话点右上角 × 关掉。");
                 if (browser === "ego") {
                     host.log("用 ego 前，请在 ego 里打开 chrome://inspect/#remote-debugging，勾选 “Allow remote debugging for this browser instance”。");
                 }
@@ -981,10 +1047,10 @@ async function handleSmokeCommand(flags) {
                 ?.configured.includes("scihub"),
         },
         {
-            name: "citation_expansion uses Semantic Scholar Graph API",
+            name: "citation_expansion uses OpenAlex",
             ok: capabilityProfile.entries
                 .find((entry) => entry.id === "citation_expansion")
-                ?.configured.includes("semantic_scholar_graph") === true,
+                ?.configured.includes("openalex") === true,
         },
         {
             name: "pdf_discovery has source groups",
@@ -1024,7 +1090,14 @@ function handleSkillsCommand(positionals, flags) {
         return statusSkillTargets(targetIds, { skillsRoot, sourceRoot });
     }
     if (subcommand === "update") {
-        return installSkillTargets(targetIds, { skillsRoot, sourceRoot });
+        const before = statusSkillTargets(targetIds, { skillsRoot, sourceRoot });
+        const result = installSkillTargets(targetIds, { skillsRoot, sourceRoot });
+        // A first install usually happens inside an AI chat that cannot read the new Skill yet: the
+        // output carries what the AI should do next, since the Skill's own first-use steps are not loaded.
+        const fresh = before.targets.some((target) => target.status === "missing");
+        return fresh && result.installedCount > 0
+            ? { ...result, nextSteps: firstInstallNextSteps() }
+            : result;
     }
     if (subcommand === "diff") {
         const result = diffSkillTargets(targetIds, { skillsRoot, sourceRoot });

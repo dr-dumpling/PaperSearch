@@ -18,6 +18,8 @@ export interface RuntimePaths {
     root: string;
     bin: string;
     python: string;
+    /** uv's download cache, kept here so uninstalling removes it too. */
+    uvCache: string;
     venv: string;
     src: string;
     venvPython: string;
@@ -26,6 +28,13 @@ export interface RuntimePaths {
     logFile: string;
 }
 export declare function runtimePaths(root: string, platform: NodeJS.Platform): RuntimePaths;
+/**
+ * Whether this computer can show windows. School subscription downloads need a
+ * visible browser for the school login: on Linux an X or Wayland display (a
+ * server has neither); macOS and Windows always have one.
+ */
+export declare function hasScreen(platform: NodeJS.Platform, env: Record<string, string | undefined>): boolean;
+export declare const NO_SCREEN: string;
 /** ego lite, the user's own browser; only looked for on macOS (ADR 0013). */
 export declare function egoAppCandidates(home?: string): string[];
 export declare const CHROME_DOWNLOAD_URL = "https://www.google.com/chrome/";

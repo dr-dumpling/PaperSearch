@@ -23,7 +23,7 @@ description: |
 │    └─ 用户确认条目、需要全文 → 转到下面的“下载”
 │
 ├─ 查施引文献、参考文献 → citation_expansion
-│    run get_paper_citations / get_paper_references（Semantic Scholar）
+│    run get_paper_citations（OpenAlex）/ get_paper_references（出版商 Crossref 清单或 OpenAlex）
 │
 ├─ 查影响因子、分区 → journal_metrics
 │    journal-metrics（EasyScholar，需要 EASYSCHOLAR_KEY）
@@ -74,7 +74,14 @@ paper-search --version
 paper-search doctor --pretty
 ```
 
-给用户看可读的报告用 `paper-search doctor --format text`。命令缺失时按 `references/management-layer.md` 安装。更新时先区分包本体更新和 Skill 同步，不要只运行 `skills update`；步骤见 `references/management-layer.md` 的“包更新与功能配置”一节。
+给用户看可读的报告用 `paper-search doctor --format text`。刚替用户装好时，把能用的功能告诉用户，再问要不要装学校订阅下载（见“PDF 获取”一节），最后提醒新开一个对话 Skill 才生效。
+
+第一次使用时，只按用户要用的功能提缺的 key，并给出申请入口（`doctor` 的 To enable 一行）。配 key 有三种方式，用户选哪种都可以：
+
+- 用户把 key 直接发给你：运行 `paper-search config set <KEY> <值>` 保存，再运行 `paper-search config test <KEY>` 确认；回复里只说末四位，不复述完整的 key。
+- 装了学校订阅下载、用户就在这台电脑前：运行 `paper-search settings` 打开设置窗口，用户在窗口里填 key、下载文件夹和等待时间，点“测试”确认，填完点右上角 × 关闭。
+- 用户不想把 key 发进对话，或在没有图形界面的服务器上：请用户在自己的终端运行 `paper-search setup`。
+命令缺失时按 `references/management-layer.md` 安装。更新时先区分包本体更新和 Skill 同步，不要只运行 `skills update`；步骤见 `references/management-layer.md` 的“包更新与功能配置”一节。
 
 ### 默认下载文件夹
 
@@ -110,7 +117,11 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 
 ## 两种下载方式
 
-本 Skill 默认是开放版本：装好 `paper-search` 就能用开放下载。机构下载是可选扩展，默认不安装、不启用；用户需要下载学校订阅的文章或补充材料时，征得同意后用 `paper-search carsi install` 安装（见 `references/carsi-setup.md`）。
+本 Skill 默认是开放版本：装好 `paper-search` 就能用开放下载。机构下载是可选扩展，默认不安装、不启用；用户需要下载学校订阅的文章或补充材料时，征得同意后用 `paper-search carsi install` 安装；本机没有 Google Chrome 时先替用户装上 Chrome（见 `references/carsi-setup.md`）。
+
+两种情况不主动提安装，用户自己要求时才装：
+- 用户说过不装：`paper-search config get PAPER_SEARCH_CARSI_DECLINED` 为 `true`。用户说不装时，运行 `paper-search config set PAPER_SEARCH_CARSI_DECLINED true` 记下来。
+- 这台机器没有图形界面（Linux 上没有 `DISPLAY`、`WAYLAND_DISPLAY`）：学校登录要在看得见的浏览器里完成，装不了。
 
 | | 开放下载（默认） | 机构下载（可选扩展） |
 |---|---|---|
@@ -124,7 +135,7 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 两种方式用同一个下载命令，不需要分开调用：先试开放下载；拿不到时，机构下载已启用才继续用学校权限，它固定是最后一步。
 
 - 交付时告诉用户文件来自哪种方式：开放下载、Sci-Hub，还是机构下载。
-- 开放下载没拿到、机构下载又没装时：告诉用户开放渠道没有找到这篇；如果学校订阅了它，有两种办法：安装学校订阅下载（CARSI，本机要先装 Google Chrome）；或者在校园网里配出版社 API key，只对 Elsevier（DOI 以 10.1016 开头）和 Springer（10.1007）的论文有效，申请网址和配置命令见下载结果里 `publisher_api` 那一步的提示。安装前先征得用户同意，不擅自安装。
+- 开放下载没拿到、机构下载又没装时：告诉用户开放渠道没有找到这篇。不主动提安装时（见上），只说出版社 API key 这一种办法；否则说如果学校订阅了它，有两种办法：安装学校订阅下载（CARSI，本机要先装 Google Chrome）；或者在校园网里配出版社 API key，只对 Elsevier（DOI 以 10.1016 开头）和 Springer（10.1007）的论文有效，申请网址和配置命令见下载结果里 `publisher_api` 那一步的提示。安装前先征得用户同意，不擅自安装。
 - 用机构下载前，先运行 `paper-search carsi status --format text` 确认扩展可用：显示已安装并启用，或者“PaperSearch 配置”一行显示已启用并给出后端路径。后一种是用户自己维护的后端（例如开发版），第一行写“未安装”是正常的，直接使用，不要再安装或改路径；`paper-search doctor` 里 `entitled_access` 为 `available` 也说明后端能用。
 - 扩展自己的命令 `paper-search-carsi` 安装后通常不在 PATH 上：`command -v paper-search-carsi` 找不到时，用 `carsi status` 输出里“PaperSearch 配置”一行“后端”后面的完整路径调用，例如 `<后端路径> issues`、`<后端路径> progress --json`。
 
@@ -143,7 +154,7 @@ paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 - 正文加补充材料（`content` 为 `both`）；
 - 只要补充材料（`content` 为 `supplements`，正文已有时用）。
 
-问的时候顺带说明：补充材料只有部分出版社支持，见 `references/publisher-support.md`。用户已经说明的不再问。机构下载没启用时只走开放下载、只下正文；用户要补充材料时，告诉用户需要先安装学校订阅下载（`references/carsi-setup.md`）。
+问的时候顺带说明：补充材料只有部分出版社支持，见 `references/publisher-support.md`。用户已经说明的不再问。机构下载没启用时只走开放下载、只下正文；用户要补充材料时，告诉用户补充材料要靠学校订阅下载（`references/carsi-setup.md`）；用户说过不装时只说明这一点，不劝装。
 
 几十到几百篇用一次 `download_batch`，不要自己循环调用单篇下载。下载结束后运行 `paper-search failures --format text`，按失败类别向用户说明。需要向维护者报告时用 `paper-search failures --export ./failure-report.zip` 导出副本，先核对包内公开检查清单；详见 `references/browser-download.md`。不自动上传或提交 issue。
 

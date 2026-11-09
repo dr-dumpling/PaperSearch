@@ -3,9 +3,10 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, constants, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { withTimeout } from '../../infrastructure/security/SecurityUtils.js';
+import { plainText } from '../../utils/plainText.js';
 const hash = (value) => createHash('sha256').update(value).digest('hex').slice(0, 10);
 export function safeComponent(value, limit) {
-    let text = value.normalize('NFC').replace(/<[^>]*>/g, '').replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, '_').replace(/\s+/g, ' ').trim().replace(/[. ]+$/g, '');
+    let text = plainText(value.normalize('NFC')).replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, '_').replace(/\s+/g, ' ').trim().replace(/[. ]+$/g, '');
     if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(text))
         text = '_' + text;
     // Limit UTF-8 bytes too: Windows and Unix count path components differently.

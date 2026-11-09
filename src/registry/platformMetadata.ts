@@ -83,6 +83,7 @@ export const PLATFORM_METADATA: PlatformMetadata[] = [
     defaultInAll: true,
     supportedOptions: ['maxResults', 'year'],
     schemaKind: 'openalex',
+    optionalConfigKeys: [['OPENALEX_API_KEY']],
     supportsDoiLookup: true,
     doiLookupOrder: 20,
     capabilityProfileSources: [{ group: 'metadata_free', order: 20 }],

@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
+import { plainText } from "../../../utils/plainText.js";
 const DOWNLOAD_TOOL = "carsi_download";
 const CACHE_CLEAR_TOOL = "carsi_cache_clear";
 const BATCH_PROGRESS_TOOL = "carsi_batch_progress";
@@ -19,7 +20,8 @@ export const ACCEPTED_SERVER_NAMES = new Set([
 const SCHEMA_VALIDATOR = new AjvJsonSchemaValidator();
 const COMPATIBILITY_DOI = "10.1000/paper-search-compatibility";
 /** The probe and real invocation must validate and send the same policy. */
-export function createCarsiDownloadArguments(identifier, outputDir, strategy = "legal_only", batch, supplements, userWait, diagnosticsDir) {
+export function createCarsiDownloadArguments(identifier, outputDir, strategy = "legal_only", batch, supplements, userWait, diagnosticsDir, title) {
+    const plainTitle = title ? plainText(title).slice(0, 500) : "";
     return {
         identifier,
         output_dir: resolve(outputDir),
@@ -40,6 +42,7 @@ export function createCarsiDownloadArguments(identifier, outputDir, strategy = "
         ...(supplements ? { supplements } : {}),
         ...(userWait ? { user_wait: userWait } : {}),
         ...(diagnosticsDir ? { diagnostics_dir: resolve(diagnosticsDir) } : {}),
+        ...(plainTitle ? { title: plainTitle } : {}),
     };
 }
 export function selectCarsiBatchSupport(tools, strategy) {
@@ -59,6 +62,7 @@ export function selectCarsiBatchSupport(tools, strategy) {
         userWaitField: !!download &&
             acceptsDeclaredArguments(download.inputSchema, createCarsiDownloadArguments(COMPATIBILITY_DOI, "paper-search-carsi-output", strategy, undefined, undefined, "short")),
         diagnosticsDirField: !!download && acceptsDeclaredArguments(download.inputSchema, createCarsiDownloadArguments(COMPATIBILITY_DOI, "output", strategy, undefined, undefined, undefined, "diagnostics")),
+        ...(!!download && acceptsDeclaredArguments(download.inputSchema, createCarsiDownloadArguments(COMPATIBILITY_DOI, "output", strategy, undefined, undefined, undefined, undefined, "A compatibility title")) ? { titleField: true } : {}),
         ...(keepBrowser ? { keepBrowser: true } : {}),
         ...(progress.length === 1 && Object.hasOwn(progress[0].inputSchema.properties ?? {}, "results")
             ? { progressResults: true } : {}),

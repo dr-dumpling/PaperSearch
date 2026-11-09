@@ -6,6 +6,7 @@ import type {
   CarsiReadiness,
   CarsiToolDefinition,
 } from "./types.js";
+import { plainText } from "../../../utils/plainText.js";
 
 const DOWNLOAD_TOOL = "carsi_download";
 const CACHE_CLEAR_TOOL = "carsi_cache_clear";
@@ -40,7 +41,9 @@ export function createCarsiDownloadArguments(
   supplements?: "with" | "only",
   userWait?: "short",
   diagnosticsDir?: string,
+  title?: string,
 ): Record<string, string | boolean | number> {
+  const plainTitle = title ? plainText(title).slice(0, 500) : "";
   return {
     identifier,
     output_dir: resolve(outputDir),
@@ -61,6 +64,7 @@ export function createCarsiDownloadArguments(
     ...(supplements ? { supplements } : {}),
     ...(userWait ? { user_wait: userWait } : {}),
     ...(diagnosticsDir ? { diagnostics_dir: resolve(diagnosticsDir) } : {}),
+    ...(plainTitle ? { title: plainTitle } : {}),
   };
 }
 
@@ -75,6 +79,8 @@ export interface CarsiBatchSupport {
   /** The download tool declares the user_wait field. */
   userWaitField: boolean;
   diagnosticsDirField?: boolean;
+  /** The download tool declares ``title`` (the paper's title for the PDF identity check). */
+  titleField?: boolean;
   keepBrowser?: boolean;
   /** carsi_batch_progress declares ``results`` (the finished window's summary). */
   progressResults?: boolean;
@@ -133,6 +139,8 @@ export function selectCarsiBatchSupport(
       ),
     diagnosticsDirField: !!download && acceptsDeclaredArguments(download.inputSchema,
       createCarsiDownloadArguments(COMPATIBILITY_DOI, "output", strategy, undefined, undefined, undefined, "diagnostics")),
+    ...(!!download && acceptsDeclaredArguments(download.inputSchema, createCarsiDownloadArguments(COMPATIBILITY_DOI,
+      "output", strategy, undefined, undefined, undefined, undefined, "A compatibility title")) ? { titleField: true } : {}),
     ...(keepBrowser ? { keepBrowser: true } : {}),
     ...(progress.length === 1 && Object.hasOwn(progress[0].inputSchema.properties ?? {}, "results")
       ? { progressResults: true } : {}),

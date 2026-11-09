@@ -4,7 +4,7 @@
  * learns where to apply and how to enter the key in one go.
  */
 export const API_KEY_SIGNUP_URLS = {
-    EASYSCHOLAR_KEY: "https://www.easyscholar.cc/console/user/open",
+    EASYSCHOLAR_KEY: "https://www.easyscholar.cc/",
     SEMANTIC_SCHOLAR_API_KEY: "https://www.semanticscholar.org/product/api",
     CORE_API_KEY: "https://core.ac.uk/services/api",
     PUBMED_API_KEY: "https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/",
@@ -13,6 +13,7 @@ export const API_KEY_SIGNUP_URLS = {
     ELSEVIER_API_KEY: "https://dev.elsevier.com/apikey/manage",
     SPRINGER_API_KEY: "https://dev.springernature.com/",
     OPENAIRE_API_KEY: "https://develop.openaire.eu/",
+    OPENALEX_API_KEY: "https://openalex.org/settings/api",
 };
 export function apiKeySignupUrl(key) {
     return API_KEY_SIGNUP_URLS[key];
@@ -21,12 +22,23 @@ export function apiKeySignupUrl(key) {
 export function apiKeySetupCommand(key) {
     return `paper-search setup ${key}`;
 }
-/** One sentence: where to get `key` and how to enter it. */
+/**
+ * Keys the settings window (`paper-search settings`, part of school subscription
+ * downloads) can enter: every key above. Its list is
+ * carsi/paper_search_carsi/assets/api_keys.json; a test keeps the two equal.
+ * (Elsevier's institution token, which only institutions get, stays in the terminal.)
+ */
+export const SETTINGS_WINDOW_KEYS = new Set(Object.keys(API_KEY_SIGNUP_URLS));
+/**
+ * One sentence: where to get `key` and how to enter it. The terminal works
+ * everywhere, servers included; the settings window is the optional extra.
+ */
 export function apiKeyHint(key) {
     const url = apiKeySignupUrl(key);
-    const command = `\`${apiKeySetupCommand(key)}\``;
-    return url
-        ? `Get one at ${url}, then run ${command} in your own terminal.`
-        : `Run ${command} in your own terminal.`;
+    const enter = `run \`${apiKeySetupCommand(key)}\` in your own terminal`
+        + (SETTINGS_WINDOW_KEYS.has(key)
+            ? `; with school subscription downloads installed, \`paper-search settings ${key}\` opens a window for it instead`
+            : "");
+    return url ? `Get one at ${url}, then ${enter}.` : `${enter[0].toUpperCase()}${enter.slice(1)}.`;
 }
 //# sourceMappingURL=apiKeySignup.js.map

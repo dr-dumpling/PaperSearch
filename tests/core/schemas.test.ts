@@ -94,28 +94,10 @@ describe("schemas", () => {
     );
   });
 
-  it("defaults citation lookup limit to 100", () => {
-    expect(
-      parseToolArgs("get_paper_citations", { doi: "10.1000/example" }),
-    ).toEqual({
-      doi: "10.1000/example",
-      limit: 100,
-    });
-  });
-
-  it("bounds citation lookup limit to 1 through 100", () => {
-    expect(() =>
-      parseToolArgs("get_paper_citations", {
-        doi: "10.1000/example",
-        limit: 0,
-      }),
-    ).toThrow("Number must be greater than or equal to 1");
-    expect(() =>
-      parseToolArgs("get_paper_citations", {
-        doi: "10.1000/example",
-        limit: 101,
-      }),
-    ).toThrow("Number must be less than or equal to 100");
+  it("takes no limit for citations or references: both return everything", () => {
+    for (const tool of ["get_paper_citations", "get_paper_references"]) {
+      expect(parseToolArgs(tool, { doi: "10.1000/example", limit: 5 })).toEqual({ doi: "10.1000/example" });
+    }
   });
 
   it("preserves citation identifiers for handleToolCall priority resolution", () => {
@@ -124,13 +106,11 @@ describe("schemas", () => {
         paperId: "paper-1",
         doi: "10.1000/example",
         arxivId: "2401.00001",
-        limit: 3,
       }),
     ).toEqual({
       paperId: "paper-1",
       doi: "10.1000/example",
       arxivId: "2401.00001",
-      limit: 3,
     });
   });
 

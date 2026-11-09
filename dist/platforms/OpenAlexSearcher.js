@@ -2,6 +2,8 @@ import axios from 'axios';
 import { PaperFactory } from '../models/Paper.js';
 import { PaperSource } from './PaperSource.js';
 import { TIMEOUTS, USER_AGENT } from '../config/constants.js';
+/** OPENALEX_API_KEY, optional: a larger daily allowance. */
+const openAlexAuth = () => (process.env.OPENALEX_API_KEY ? { api_key: process.env.OPENALEX_API_KEY } : {});
 export class OpenAlexSearcher extends PaperSource {
     client;
     constructor() {
@@ -28,6 +30,7 @@ export class OpenAlexSearcher extends PaperSource {
     async search(query, options = {}) {
         try {
             const params = {
+                ...openAlexAuth(),
                 search: query,
                 per_page: Math.min(options.maxResults || 10, 200)
             };
@@ -57,7 +60,7 @@ export class OpenAlexSearcher extends PaperSource {
             return null;
         try {
             const workId = encodeURIComponent(`https://doi.org/${cleanDoi}`);
-            const response = await this.client.get(`/${workId}`);
+            const response = await this.client.get(`/${workId}`, { params: openAlexAuth() });
             return this.parseWork(response.data);
         }
         catch (error) {

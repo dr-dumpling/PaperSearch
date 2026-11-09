@@ -15,7 +15,7 @@ paper-search search "SGLT2 inhibitor heart failure" --platform pubmed --max-resu
 paper-search run get_paper_by_doi --arg doi="10.1038/nature12373" --pretty
 
 # 施引文献；参考文献把 get_paper_citations 换成 get_paper_references
-paper-search run get_paper_citations --arg doi="10.1038/nature12373" --arg limit=5 --pretty
+paper-search run get_paper_citations --arg doi="10.1038/nature12373" --pretty
 
 # 期刊影响因子和分区（需要 EasyScholar key）
 paper-search journal-metrics "Nature" "BMJ" --pretty
@@ -96,6 +96,12 @@ paper-search failures --format text
 
 Skill 随 npm 包发布（`skills/paper-search/`），全中文，开头有整体逻辑图，按需读这些参考文件：功能路由与开放下载的各个渠道、命令约定、机构下载的安装和使用、[出版社支持表](../skills/paper-search/references/publisher-support.md)、排障。它只告诉 AI 怎么调用 `paper-search`，不保存 key、Cookie 或账号。
 
+不经过 AI、自己在终端安装，一行即可（以 Claude Code 为例）：
+
+```bash
+npm install -g papersearch && paper-search skills update --targets claude
+```
+
 ```bash
 paper-search skills status --pretty
 paper-search skills update --targets claude
@@ -105,6 +111,7 @@ paper-search skills update --targets claude
 
 - `--targets all` 会同步到所有内置位置。更新会覆盖包里管理的文件，保留你在 Skill 目录里自己加的文件。
 - 升级 PaperSearch 后第一次运行时，装过的 Skill 会自动更新，被替换的旧文件备份在 `~/.local/share/paper-search-cli/skill-backups/`。不想自动更新：`paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false`。
+- 装了学校订阅下载的，升级后第一次用到它时，扩展也会先自动更新（终端里有一行说明），再接着下载。不想自动更新：`paper-search config set PAPER_SEARCH_CARSI_AUTO_UPDATE false`，之后自己运行 `paper-search carsi update`。
 - `paper-search doctor` 显示内置安装目标中的 Skill 位置和版本状态。
 
 ## 全部命令
@@ -119,6 +126,7 @@ paper-search skills update --targets claude
 | `paper-search update check` | 检查是否有新版本 |
 | `paper-search carsi` | 学校订阅下载（CARSI）的安装、状态、更新、卸载 |
 | `paper-search setup` / `config` | 配置 key、Skill 和扩展 |
+| `paper-search settings` | 打开设置窗口：下载文件夹、等待和提醒、API key（需装学校订阅下载、有图形界面） |
 | `paper-search doctor` | 健康检查：配置、可用功能、Skill 和扩展的状态 |
 | `paper-search skills` | Skill 的状态、差异和更新 |
 | `paper-search smoke` | 离线或真实的自检 |
@@ -136,7 +144,9 @@ paper-search skills update --targets claude
 | `UNPAYWALL_EMAIL`、`CROSSREF_MAILTO` | Unpaywall 按 DOI 找开放获取 PDF、Crossref 优先通道要用的联系邮箱 | `paper-search setup` 留空时自动生成 |
 | `GOOGLE_SCHOLAR_PROXY_URL` | Google Scholar 的出口代理；直连反复被拦时，用有授权的代理 | 不设置 |
 | `PAPER_SEARCH_SKILL_AUTO_UPDATE` | 设为 `false` 时，升级后不再自动更新已安装的 Skill | 开启 |
+| `PAPER_SEARCH_CARSI_AUTO_UPDATE` | 设为 `false` 时，升级后不再自动更新学校订阅下载扩展，改为自己运行 `paper-search carsi update` | 开启 |
 | `PAPER_SEARCH_UPDATE_NOTIFY` | 设为 `false` 时，不再提示有新版本 | 开启 |
+| `PAPER_SEARCH_CARSI_DECLINED` | 设为 `true` 时，AI 不再主动建议安装学校订阅下载（你说过不装时它会自己设上）；你要装时直接说即可 | 未设置 |
 | `PAPER_SEARCH_CARSI_ENABLED` | 学校订阅下载（CARSI）的开关 | `paper-search carsi install` 自动设置 |
 
 ## 排障

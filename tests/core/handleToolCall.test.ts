@@ -11,6 +11,8 @@ import { getGenericSearchToolPlatform } from "../../src/registry/platformMetadat
 import { TOOLS } from "../../src/core/tools.js";
 import { PaperFactory } from "../../src/models/Paper.js";
 import CitationService from "../../src/capabilities/citation-expansion/CitationService.js";
+import { OpenAlexGraph } from "../../src/capabilities/citation-expansion/OpenAlexGraph.js";
+import { CrossrefReferences } from "../../src/capabilities/citation-expansion/CrossrefReferences.js";
 
 function responseData(response: any): any {
   const text = response.content[0].text;
@@ -215,86 +217,121 @@ describe("handleToolCall", () => {
   });
 
   describe("citation expansion tools", () => {
-    it("returns citing papers from CitationService", async () => {
-      const citation = {
-        paperId: "citing-1",
-        title: "Citing Paper",
-        citationCount: 12,
-        referenceCount: 34,
-        year: 2024,
-        authors: [{ name: "A. Author" }],
-        venue: "Test Venue",
-        doi: "10.1000/citing",
-        url: "https://www.semanticscholar.org/paper/citing-1",
-      };
-      const getCitations = jest
-        .spyOn(CitationService.prototype, "getCitations")
-        .mockResolvedValue([citation]);
+    const work = (citedByCount = 0, referencedWorks: string[] = []) => ({ id: "W1", citedByCount, referencedWorks });
+    const openalexPaper = (paperId: string, title: string, doi: string, year?: number) =>
+      ({ paperId, title, citationCount: 0, referenceCount: 0, doi, year, source: "openalex" as const });
+    const deposited = (title: string, doi?: string, number?: number) =>
+      ({ paperId: doi || title, title, citationCount: 0, referenceCount: 0, doi, source: "crossref" as const, ...(number ? { number } : {}) });
 
-      const response = await handleToolCall(
-        "get_paper_citations",
-        { doi: "10.1000/example", limit: 5 },
-        {} as any,
-      );
-      const data = responseData(response);
+    it("takes every citing paper from OpenAlex", async () => {
+      const getCitations = jest.spyOn(CitationService.prototype, "getCitations");
+      jest.spyOn(OpenAlexGraph.prototype, "work").mockResolvedValue(work(2));
+      const citedBy = jest.spyOn(OpenAlexGraph.prototype, "citedBy").mockResolvedValue([
+        openalexPaper("W8", "Citing one", "10.1000/one"),
+        openalexPaper("W9", "Citing two", "10.1000/two"),
+      ]);
 
-      expect(getCitations).toHaveBeenCalledWith("DOI:10.1000/example", 5);
-      expect(data).toEqual({
-        target: "DOI:10.1000/example",
-        relation: "citations",
-        provider: "semantic_scholar",
-        total: 1,
-        papers: [citation],
-      });
+      const data = responseData(await handleToolCall("get_paper_citations", { doi: "10.1000/example" }, {} as any));
+
+      expect(citedBy).toHaveBeenCalledWith("W1");
+      expect(getCitations).not.toHaveBeenCalled();
+      expect(data).toMatchObject({ target: "DOI:10.1000/example", relation: "citations", provider: "openalex", total: 2, citedByCount: 2 });
+      expect(data.notes).toBeUndefined();
     });
 
-    it("returns cited references from CitationService", async () => {
-      const reference = {
-        paperId: "reference-1",
-        title: "Reference Paper",
-        citationCount: 7,
-        referenceCount: 21,
-        year: 2020,
-        authors: [{ name: "B. Author" }],
-        venue: "Reference Venue",
-        doi: "10.1000/reference",
-        url: "https://www.semanticscholar.org/paper/reference-1",
-      };
-      const getReferences = jest
-        .spyOn(CitationService.prototype, "getReferences")
-        .mockResolvedValue([reference]);
-
-      const response = await handleToolCall(
-        "get_paper_references",
-        { arxivId: "2401.00001", limit: 2 },
-        {} as any,
+    it("says so when a paper is cited more often than OpenAlex lists without a key", async () => {
+      jest.spyOn(OpenAlexGraph.prototype, "work").mockResolvedValue(work(29491));
+      jest.spyOn(OpenAlexGraph.prototype, "citedBy").mockResolvedValue(
+        Array.from({ length: 10000 }, (_, i) => openalexPaper(`W${i}`, `Citing ${i}`, `10.1000/${i}`)),
       );
-      const data = responseData(response);
 
-      expect(getReferences).toHaveBeenCalledWith("ARXIV:2401.00001", 2);
-      expect(data.relation).toBe("references");
+      const data = responseData(await handleToolCall("get_paper_citations", { doi: "10.1038/s41586-020-2649-2" }, {} as any));
+
+      expect(data.total).toBe(10000);
+      expect(data.notes[0]).toMatch(/^OpenAlex counts 29491 citing papers; without an API key it lists the newest 10000\. OPENALEX_API_KEY \(free\) lists them all: Get one at https:\/\/openalex\.org\/settings\/api/);
+    });
+
+    it("asks Semantic Scholar for citing papers only when OpenAlex has no record of the paper", async () => {
+      const citation = { paperId: "citing-1", title: "Citing Paper", citationCount: 12, referenceCount: 34, doi: "10.1000/citing" };
+      jest.spyOn(OpenAlexGraph.prototype, "work").mockResolvedValue(null);
+      const getCitations = jest.spyOn(CitationService.prototype, "getCitations").mockResolvedValue([citation]);
+
+      const data = responseData(await handleToolCall("get_paper_citations", { doi: "10.1000/example" }, {} as any));
+
+      expect(getCitations).toHaveBeenCalledWith("DOI:10.1000/example", 1000);
       expect(data.provider).toBe("semantic_scholar");
-      expect(data.total).toBe(1);
-      expect(data.papers).toEqual([reference]);
+      expect(data.papers).toEqual([citation]);
+      expect(data.notes[0]).toMatch(/OpenAlex has no record/);
     });
 
     it("uses paperId before doi and arxivId when multiple citation identifiers are present", async () => {
-      const getCitations = jest
-        .spyOn(CitationService.prototype, "getCitations")
-        .mockResolvedValue([]);
+      jest.spyOn(CitationService.prototype, "getCitationData").mockResolvedValue(null);
+      const getCitations = jest.spyOn(CitationService.prototype, "getCitations").mockResolvedValue([]);
 
-      await handleToolCall(
-        "get_paper_citations",
-        {
-          paperId: "semantic-paper-id",
-          doi: "10.1000/example",
-          arxivId: "2401.00001",
-          limit: 3,
-        },
-        {} as any,
-      );
+      await handleToolCall("get_paper_citations", { paperId: "semantic-paper-id", doi: "10.1000/example", arxivId: "2401.00001" }, {} as any);
 
-      expect(getCitations).toHaveBeenCalledWith("semantic-paper-id", 3);
+      expect(getCitations).toHaveBeenCalledWith("semantic-paper-id", 1000);
+    });
+
+    it("lists references from the publisher's deposit alone when it describes them, numbered as in the paper", async () => {
+      const work_ = jest.spyOn(OpenAlexGraph.prototype, "work");
+      jest.spyOn(CrossrefReferences.prototype, "list").mockResolvedValue([
+        deposited("The Global Epidemic of the Metabolic Syndrome", "10.1007/s11906-018-0812-z", 1),
+        deposited("Smith J. An unlinked reference. 2019.", undefined, 2),
+        deposited("Pathophysiology of acute kidney injury", "10.1002/cphy.c110041", 4),
+      ]);
+
+      const response = await handleToolCall("get_paper_references", { doi: "10.1016/j.arth.2024.06.028" }, {} as any);
+      const data = responseData(response);
+
+      expect(work_).not.toHaveBeenCalled();
+      expect(data.papers.map((p: any) => p.number)).toEqual([1, 2, 4]);
+      expect(data).toMatchObject({ provider: "crossref", total: 3, numberedTo: 4, missing: [3] });
+      expect(response.content[0].text).toMatch(/^Found 3 cited reference\(s\)\. The paper's list is numbered to 4; the publisher deposited 3 of them with Crossref, not #3\./);
+    });
+
+    it("takes OpenAlex's list, newest first, when the publisher deposited little more than DOIs", async () => {
+      jest.spyOn(CrossrefReferences.prototype, "list").mockResolvedValue([
+        deposited("", "10.1000/a"), deposited("", "10.1000/b"), deposited("Only one has a title", "10.1000/c"),
+      ]);
+      jest.spyOn(OpenAlexGraph.prototype, "work").mockResolvedValue(work(0, ["W2", "W3", "W4"]));
+      jest.spyOn(OpenAlexGraph.prototype, "works").mockResolvedValue([
+        openalexPaper("W2", "Older", "10.1000/a", 2010),
+        openalexPaper("W3", "Newer", "10.1000/b", 2020),
+      ]);
+
+      const data = responseData(await handleToolCall("get_paper_references", { doi: "10.1002/art.70156" }, {} as any));
+
+      expect(data.provider).toBe("openalex");
+      expect(data.papers.map((p: any) => p.title)).toEqual(["Newer", "Older"]);
+      expect(data.notes).toEqual([
+        "The publisher deposited little more than DOIs with Crossref; this is OpenAlex's list.",
+        "OpenAlex lists 3 references; 1 of them it has no record of any more.",
+      ]);
+    });
+
+    it("takes Semantic Scholar's list for a paper without a DOI", async () => {
+      const reference = { paperId: "reference-1", title: "Reference Paper", citationCount: 7, referenceCount: 21, doi: "10.1000/reference" };
+      jest.spyOn(CitationService.prototype, "getCitationData").mockResolvedValue(null);
+      const list = jest.spyOn(CrossrefReferences.prototype, "list");
+      const getReferenceList = jest.spyOn(CitationService.prototype, "getReferenceList").mockResolvedValue({ papers: [reference], withheld: false });
+
+      const data = responseData(await handleToolCall("get_paper_references", { arxivId: "2401.00001" }, {} as any));
+
+      expect(list).not.toHaveBeenCalled();
+      expect(getReferenceList).toHaveBeenCalledWith("ARXIV:2401.00001", 1000);
+      expect(data.provider).toBe("semantic_scholar");
+      expect(data.papers).toEqual([reference]);
+    });
+
+    it("says why when no source lists the references", async () => {
+      jest.spyOn(CrossrefReferences.prototype, "list").mockResolvedValue([]);
+      jest.spyOn(OpenAlexGraph.prototype, "work").mockResolvedValue(null);
+      jest.spyOn(CitationService.prototype, "getReferenceList").mockResolvedValue({ papers: [], withheld: true });
+
+      const response = await handleToolCall("get_paper_references", { doi: "10.1000/none" }, {} as any);
+
+      expect(response.content[0].text).toMatch(/^Found 0 cited reference\(s\)\. Neither Crossref nor OpenAlex lists references for this paper, and Semantic Scholar withholds them/);
     });
   });
 
