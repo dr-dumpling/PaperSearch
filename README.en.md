@@ -55,11 +55,15 @@ Please install PaperSearch: npm install -g papersearch, then run paper-search sk
 
 It installs the command and the Skill, checks them, and tells you what already works.
 
-Then **start a new chat** (most AI tools only read a newly installed Skill in a new chat) and say "**start setup**"; it walks you through step 3.
+Then **start a new chat** (most AI tools only read a newly installed Skill in a new chat) and send it:
+
+```text
+Start setup
+```
 
 ### 2. The school subscription downloads component installs automatically
 
-On a computer, your AI installs the [school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi) component automatically right after PaperSearch, and Chrome too if it is missing; when it is done, the settings window opens for step 3.
+On a computer, your AI installs the [school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi) component automatically right after PaperSearch, and Chrome too if it is missing; when it is done, the settings window opens.
 
 - Don't want it? Tell your AI and it is skipped for good; searching and open-access downloads work as before.
 - Servers without a screen don't get it.
