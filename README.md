@@ -125,28 +125,25 @@ paper-search carsi install                # 安装时选择你的学校
 paper-search carsi status --format text   # 查看是否装好
 ```
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="assets/carsi-capsule.webp" alt="进度胶囊：下载时缩成小胶囊，悬停查看每篇进度，最小化到程序坞照常下载，点一下就回来">
-      <p><b>进度胶囊</b></p>
-    </td>
-    <td width="50%" valign="top">
-      <img src="assets/carsi-signin.webp" alt="自动登录学校：点胶囊里的题名，浏览器回到前台；自动点机构登录、填好学校，转到学校登录页">
-      <p><b>自动登录学校</b></p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="assets/carsi-attention.webp" alt="需要你时提醒：要登录学校时胶囊变黄，点它切到浏览器，也能跳过这一篇">
-      <p><b>需要你时提醒</b></p>
-    </td>
-    <td width="50%" valign="top">
-      <img src="assets/carsi-finish.webp" alt="结束清单：跳过不想等的论文；下完列出结果，没下到的写明原因，点题名在自己的浏览器里打开">
-      <p><b>结束清单</b></p>
-    </td>
-  </tr>
-</table>
+**进度胶囊**
+
+<p align="center"><img src="assets/carsi-capsule.webp" width="840" alt="进度胶囊：下载时缩成小胶囊，悬停查看每篇进度，最小化到程序坞照常下载，点一下就回来"></p>
+
+**自动过验证**
+
+<p align="center"><img src="assets/carsi-verify.webp" width="840" alt="自动过验证：被人机验证页拦住时，验证自动通过，接着打开文章、取 PDF"></p>
+
+**自动登录学校**
+
+<p align="center"><img src="assets/carsi-signin.webp" width="840" alt="自动登录学校：点胶囊里的题名，浏览器回到前台；自动点机构登录、填好学校，转到学校登录页"></p>
+
+**需要你时提醒**
+
+<p align="center"><img src="assets/carsi-attention.webp" width="840" alt="需要你时提醒：要登录学校时胶囊变黄，点它切到浏览器，也能跳过这一篇"></p>
+
+**结束清单**
+
+<p align="center"><img src="assets/carsi-finish.webp" width="840" alt="结束清单：跳过不想等的论文；下完列出结果，没下到的写明原因，点题名在自己的浏览器里打开"></p>
 
 - **学校账号就能用**：不用另外申请 key；出版社 API key 只覆盖 Elsevier、Springer 两家。
 - **深度适配出版社**：深度优化了下载的通用流程，并且针对 30 多家出版社逐家写了专门规则，机构登录入口在哪、PDF 和补充材料怎么取，都按各自出版社的实际情况来，下载更准、更少漏篇。优化的出版社主要有：
@@ -193,16 +190,6 @@ paper-search carsi status --format text   # 查看是否装好
 | CORE | `CORE_API_KEY` | [CORE](https://core.ac.uk/services/api) |
 | OpenAIRE | `OPENAIRE_API_KEY` | [OpenAIRE](https://develop.openaire.eu/) |
 | OpenAlex（被引超过 1 万篇时列全） | `OPENALEX_API_KEY` | [OpenAlex](https://openalex.org/settings/api) |
-
-常用命令：
-
-```bash
-paper-search setup                    # 逐项填写常用的几项
-paper-search setup EASYSCHOLAR_KEY    # 只填某一项
-paper-search settings                 # 装了学校订阅下载时：在设置窗口里填
-paper-search config list --pretty     # 查看已配置的项，key 脱敏显示
-paper-search config test --format text  # 测试已填的 key 能不能用
-```
 
 配置保存在 `~/.config/paper-search-cli/config.json`，只有你自己能读。下载文件夹、联系邮箱、代理和自动更新等其他设置，见 [使用说明 · 其他设置](docs/guide.zh.md#其他设置)。
 

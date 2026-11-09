@@ -125,28 +125,25 @@ paper-search carsi install                # choose your school during installati
 paper-search carsi status --format text   # check that it is ready
 ```
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="assets/carsi-capsule.en.webp" alt="Progress capsule: a small capsule shows the progress, hover for each paper, minimized to the Dock it keeps downloading, one click brings it back">
-      <p><b>Progress capsule</b></p>
-    </td>
-    <td width="50%" valign="top">
-      <img src="assets/carsi-signin.en.webp" alt="School sign-in: clicking the title brings the browser forward; the institution login is clicked, the school filled in, then on to the school's login page">
-      <p><b>School sign-in</b></p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="assets/carsi-attention.en.webp" alt="Asks when needed: the capsule turns amber for the school login; click to switch to the browser, or skip the paper">
-      <p><b>Asks when needed</b></p>
-    </td>
-    <td width="50%" valign="top">
-      <img src="assets/carsi-finish.en.webp" alt="Results: skip a paper; the final card lists what was saved and why the rest wasn't; clicking a title opens it in your own browser">
-      <p><b>Results</b></p>
-    </td>
-  </tr>
-</table>
+**Progress capsule**
+
+<p align="center"><img src="assets/carsi-capsule.en.webp" width="840" alt="Progress capsule: a small capsule shows the progress, hover for each paper, minimized to the Dock it keeps downloading, one click brings it back"></p>
+
+**Verification pages**
+
+<p align="center"><img src="assets/carsi-verify.en.webp" width="840" alt="Verification pages: when a verification page stops the download it passes on its own, then the article and its PDF follow"></p>
+
+**School sign-in**
+
+<p align="center"><img src="assets/carsi-signin.en.webp" width="840" alt="School sign-in: clicking the title brings the browser forward; the institution login is clicked, the school filled in, then on to the school's login page"></p>
+
+**Asks when needed**
+
+<p align="center"><img src="assets/carsi-attention.en.webp" width="840" alt="Asks when needed: the capsule turns amber for the school login; click to switch to the browser, or skip the paper"></p>
+
+**Results**
+
+<p align="center"><img src="assets/carsi-finish.en.webp" width="840" alt="Results: skip a paper; the final card lists what was saved and why the rest wasn't; clicking a title opens it in your own browser"></p>
 
 - **Your school account is enough**: no keys to apply for; publisher API keys only cover Elsevier and Springer.
 - **Deep publisher adaptation**: the general download flow is deeply optimized, and more than 30 publishers have dedicated rules, one by one: where the institutional login is and how to fetch the PDF and supplementary files follow each publisher as it really is, so downloads are more accurate and fewer papers are missed. The main publishers:
@@ -193,16 +190,6 @@ Keys fall into four groups by what they are for. Get the key you need and enter 
 | CORE | `CORE_API_KEY` | [CORE](https://core.ac.uk/services/api) |
 | OpenAIRE | `OPENAIRE_API_KEY` | [OpenAIRE](https://develop.openaire.eu/) |
 | OpenAlex (all citing papers past 10,000) | `OPENALEX_API_KEY` | [OpenAlex](https://openalex.org/settings/api) |
-
-Common commands:
-
-```bash
-paper-search setup                    # the common settings, one by one
-paper-search setup EASYSCHOLAR_KEY    # just one of them
-paper-search settings                 # with school subscription downloads: fill them in a window
-paper-search config list --pretty     # what is set; keys are masked
-paper-search config test --format text  # whether the keys you set work
-```
 
 Settings are saved in `~/.config/paper-search-cli/config.json`, readable only by you. The download folder, contact emails, proxy, automatic updates and other settings are in [Guide · Other settings](docs/guide.en.md#other-settings).
 
