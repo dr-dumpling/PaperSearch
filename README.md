@@ -17,6 +17,7 @@
   <a href="docs/guide.zh.md#agent-skill"><img src="https://img.shields.io/badge/Agent%20Skill-bundled-D97757?style=flat-square" alt="随包 Agent Skill"></a>
   <a href="#快速开始"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-555555?style=flat-square" alt="支持 macOS 和 Windows"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2F9E44?style=flat-square" alt="MIT 许可证"></a>
+  <a href="https://linux.do/"><img src="https://img.shields.io/badge/LINUX%20DO-community-F1A033?style=flat-square" alt="LINUX DO 社区"></a>
 </p>
 
 <p align="center">
@@ -217,7 +218,7 @@ paper-search carsi status --format text   # 查看是否装好
 
 ## 致谢
 
-- 感谢 LinuxDo 社区：命令 + Skill 的路线和工作流改进来自社区交流与开源分享。
+- 感谢 [LINUX DO 社区](https://linux.do/)：命令 + Skill 的路线和工作流改进来自社区交流与开源分享。
 - [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp)：本项目参考了它的思路，并改成独立的命令行工具。
 - [Dianel555/paper-search-mcp-nodejs](https://github.com/Dianel555/paper-search-mcp-nodejs)（MIT）：命令行版最初由它的 Node.js 实现改编而来。
 - [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf)（MIT）：机构下载后端（`carsi/`）借鉴了它的架构（CARSI 等联盟登录、出版社网站抓取、会话复用、PDF 捕获）。
