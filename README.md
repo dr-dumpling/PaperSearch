@@ -72,12 +72,12 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 ### 3. 按需填 API key
 
-<p align="center"><img src="assets/config.webp" width="840" alt="填 key 演示：把 key 发给 AI，它替你保存并测试；自动装好学校订阅下载（CARSI）组件后，在设置窗口里填 key、改下载文件夹和等待时间"></p>
+<p align="center"><img src="assets/config.webp" width="840" alt="设置窗口：填 key、点“测试”确认，下载文件夹、等待时间和通知也在这里改"></p>
 
 在新对话里说“请开始配置”，AI 会告诉你还缺哪些 key、帮你设好下载文件夹。要用哪项再申请对应的 key（申请入口见 [API key](#2-api-key)），用下面任一方式填入：
 
-- **发给 AI**：把 key 直接发给它，它替你保存并测试。key 会留在这次对话的记录里，不想这样就用下面两种方式。
 - **设置窗口**（随学校订阅下载组件自动装好）：让 AI 打开设置，或点胶囊上的齿轮。API key、下载文件夹、等待时间和提醒都在这里改，每个 key 都能点“测试”。
+- **发给 AI**：把 key 直接发给它，它替你保存并测试。key 会留在这次对话的记录里，不想这样就用设置窗口或终端。
 - **终端**：运行 `paper-search setup <KEY>`，输入时不显示。
 
 ### 4. 对 AI 说一句话

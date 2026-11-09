@@ -72,12 +72,12 @@ On a computer, your AI installs the [school subscription downloads (CARSI)](#1-s
 
 ### 3. Add API keys when you need them
 
-<p align="center"><img src="assets/config.en.webp" width="840" alt="Key demo: send a key to your AI and it saves and tests it; once the school subscription downloads (CARSI) component is installed, set keys, the download folder and waiting times in the settings window"></p>
+<p align="center"><img src="assets/config.en.webp" width="840" alt="Settings window: enter keys and test them; the download folder, waiting times and notifications are here too"></p>
 
 Say "start setup" in the new chat and your AI tells you which keys are missing and sets the download folder. Get a key when you need that feature (sign-up pages: [API keys](#2-api-keys)) and enter it any of these ways:
 
-- **Send it to your AI**: paste the key into the chat; it saves and tests it. The key stays in that conversation's history; if you'd rather not, use one of the other two ways.
 - **Settings window** (installed automatically with the school subscription downloads component): ask your AI to open the settings, or click the gear on the capsule. API keys, the download folder, waiting times and notifications are all there, and every key has a Test button.
+- **Send it to your AI**: paste the key into the chat; it saves and tests it. The key stays in that conversation's history; if you'd rather not, use the settings window or the terminal.
 - **Terminal**: run `paper-search setup <KEY>`; the input is hidden.
 
 ### 4. Tell your AI tool what you need
