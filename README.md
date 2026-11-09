@@ -118,6 +118,16 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 开放渠道下不到的论文，可以借你学校的订阅来下。CARSI 是中国高校身份联盟，国内高校基本都已加入，用学校账号就能登录各家出版社。
 
+- **学校账号就能用**：不用另外申请 key；出版社 API key 只覆盖 Elsevier、Springer 两家。
+- **深度适配出版社**：深度优化了下载的通用流程，并且针对 30 多家出版社逐家写了专门规则，机构登录入口在哪、PDF 和补充材料怎么取，都按各自出版社的实际情况来，下载更准、更少漏篇。优化的出版社主要有：
+  - 综合：Elsevier（含 Cell、Lancet）、Springer Nature（含 Nature、BMC）、Wiley、Oxford Academic、Taylor & Francis、Sage、PNAS、Science
+  - 医学：NEJM、JAMA、AHA、ASH、Wolters Kluwer、Karger、Thieme
+  - 理工：ACS、IEEE、ACM
+  - 完整列表见 [出版社支持表](skills/paper-search/references/publisher-support.md)
+  - 需要支持别的出版社，欢迎[提 Issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose)，附上一篇你有权限的文章 DOI；适配规则会持续维护和更新。
+- **验证框自动点击**：遇到人机验证，程序自动定位并点击，网站放行后继续下载；过不去才提醒你。
+- **后台下载不打扰**：浏览器在后台工作。屏幕角落的进度胶囊显示进度；需要你登录学校或手动验证时变成琥珀色，点一下就切到浏览器，处理完程序接着下载。
+
 安装：
 
 ```bash
@@ -125,13 +135,16 @@ paper-search carsi install                # 安装时选择你的学校
 paper-search carsi status --format text   # 查看是否装好
 ```
 
+<details>
+<summary><b>查看演示（5 段）</b></summary>
+
 **进度胶囊**
 
 <p align="center"><img src="assets/carsi-capsule.webp" width="840" alt="进度胶囊：下载时缩成小胶囊，悬停查看每篇进度，最小化到程序坞照常下载，点一下就回来"></p>
 
 **自动过验证**
 
-<p align="center"><img src="assets/carsi-verify.webp" width="840" alt="自动过验证：被人机验证页拦住时，验证自动通过，接着打开文章、取 PDF"></p>
+<p align="center"><img src="assets/carsi-verify.webp" width="840" alt="自动过验证：被人机验证页拦住时，验证自动通过，不用你动手"></p>
 
 **自动登录学校**
 
@@ -145,15 +158,7 @@ paper-search carsi status --format text   # 查看是否装好
 
 <p align="center"><img src="assets/carsi-finish.webp" width="840" alt="结束清单：跳过不想等的论文；下完列出结果，没下到的写明原因，点题名在自己的浏览器里打开"></p>
 
-- **学校账号就能用**：不用另外申请 key；出版社 API key 只覆盖 Elsevier、Springer 两家。
-- **深度适配出版社**：深度优化了下载的通用流程，并且针对 30 多家出版社逐家写了专门规则，机构登录入口在哪、PDF 和补充材料怎么取，都按各自出版社的实际情况来，下载更准、更少漏篇。优化的出版社主要有：
-  - 综合：Elsevier（含 Cell、Lancet）、Springer Nature（含 Nature、BMC）、Wiley、Oxford Academic、Taylor & Francis、Sage、PNAS、Science
-  - 医学：NEJM、JAMA、AHA、ASH、Wolters Kluwer、Karger、Thieme
-  - 理工：ACS、IEEE、ACM
-  - 完整列表见 [出版社支持表](skills/paper-search/references/publisher-support.md)
-  - 需要支持别的出版社，欢迎[提 Issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose)，附上一篇你有权限的文章 DOI；适配规则会持续维护和更新。
-- **验证框自动点击**：遇到人机验证，程序自动定位并点击，网站放行后继续下载；过不去才提醒你。
-- **后台下载不打扰**：浏览器在后台工作。屏幕角落的进度胶囊显示进度；需要你登录学校或手动验证时变成琥珀色，点一下就切到浏览器，处理完程序接着下载。
+</details>
 
 ### 2. API key
 

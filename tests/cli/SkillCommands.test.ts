@@ -44,6 +44,9 @@ describe("skill CLI commands", () => {
     expect(updateOutput.status.targets[0].status).toBe("up_to_date");
     // the first install tells the AI what to do next; a later update does not
     expect(updateOutput.nextSteps).toHaveLength(3);
+    // and on stderr, for tools that keep only part of the JSON
+    expect(update.stderr).toContain("接下来请按顺序做");
+    expect(update.stderr).toContain("paper-search doctor --format text");
     const again = runCli([
       "skills",
       "update",
@@ -53,6 +56,7 @@ describe("skill CLI commands", () => {
       tempRoot,
     ]);
     expect(JSON.parse(again.stdout).nextSteps).toBeUndefined();
+    expect(again.stderr).not.toContain("接下来请按顺序做");
 
     const skillFile = join(
       tempRoot,

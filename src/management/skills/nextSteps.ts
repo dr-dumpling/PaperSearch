@@ -18,3 +18,9 @@ export function firstInstallNextSteps(
     "告诉用户：新开一个 AI 对话，Skill 才会生效。",
   ];
 }
+
+/** The same steps as text for stderr: a tool that keeps only some JSON fields (Codex reading it in
+ * PowerShell, 2026-11-09) still shows the command's stderr to the AI. */
+export function nextStepsNotice(steps: string[]): string {
+  return `paper-search：Skill 已装好。接下来请按顺序做：\n${steps.map((step, i) => `${i + 1}. ${step}`).join("\n")}\n`;
+}

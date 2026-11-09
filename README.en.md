@@ -118,6 +118,16 @@ Feature comparison:
 
 Papers the open channels cannot get can come through your school's subscriptions. CARSI is the China higher-education identity federation; almost every Chinese university has joined it, so your school account signs you in to the publishers.
 
+- **Your school account is enough**: no keys to apply for; publisher API keys only cover Elsevier and Springer.
+- **Deep publisher adaptation**: the general download flow is deeply optimized, and more than 30 publishers have dedicated rules, one by one: where the institutional login is and how to fetch the PDF and supplementary files follow each publisher as it really is, so downloads are more accurate and fewer papers are missed. The main publishers:
+  - General: Elsevier (including Cell and The Lancet), Springer Nature (including Nature and BMC), Wiley, Oxford Academic, Taylor & Francis, Sage, PNAS, Science
+  - Medicine: NEJM, JAMA, AHA, ASH, Wolters Kluwer, Karger, Thieme
+  - Science and engineering: ACS, IEEE, ACM
+  - Full list: [publisher support table](skills/paper-search/references/publisher-support.md) (Chinese)
+  - Need another publisher? [Open an issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) with the DOI of an article you can access; these rules are maintained and extended over time.
+- **Verification boxes clicked for you**: it finds and clicks human-verification boxes and carries on once the site lets it through; you are asked only when it does not pass.
+- **Quiet background downloads**: the browser works in the background. The progress capsule in a screen corner shows the progress; it turns amber when you need to sign in or verify, one click switches to the browser, and the download carries on once you are done.
+
 Install:
 
 ```bash
@@ -125,13 +135,16 @@ paper-search carsi install                # choose your school during installati
 paper-search carsi status --format text   # check that it is ready
 ```
 
+<details>
+<summary><b>See it in action (5 clips)</b></summary>
+
 **Progress capsule**
 
 <p align="center"><img src="assets/carsi-capsule.en.webp" width="840" alt="Progress capsule: a small capsule shows the progress, hover for each paper, minimized to the Dock it keeps downloading, one click brings it back"></p>
 
 **Verification pages**
 
-<p align="center"><img src="assets/carsi-verify.en.webp" width="840" alt="Verification pages: when a verification page stops the download it passes on its own, then the article and its PDF follow"></p>
+<p align="center"><img src="assets/carsi-verify.en.webp" width="840" alt="Verification pages: when a verification page stops the download, it passes on its own, no clicks from you"></p>
 
 **School sign-in**
 
@@ -145,15 +158,7 @@ paper-search carsi status --format text   # check that it is ready
 
 <p align="center"><img src="assets/carsi-finish.en.webp" width="840" alt="Results: skip a paper; the final card lists what was saved and why the rest wasn't; clicking a title opens it in your own browser"></p>
 
-- **Your school account is enough**: no keys to apply for; publisher API keys only cover Elsevier and Springer.
-- **Deep publisher adaptation**: the general download flow is deeply optimized, and more than 30 publishers have dedicated rules, one by one: where the institutional login is and how to fetch the PDF and supplementary files follow each publisher as it really is, so downloads are more accurate and fewer papers are missed. The main publishers:
-  - General: Elsevier (including Cell and The Lancet), Springer Nature (including Nature and BMC), Wiley, Oxford Academic, Taylor & Francis, Sage, PNAS, Science
-  - Medicine: NEJM, JAMA, AHA, ASH, Wolters Kluwer, Karger, Thieme
-  - Science and engineering: ACS, IEEE, ACM
-  - Full list: [publisher support table](skills/paper-search/references/publisher-support.md) (Chinese)
-  - Need another publisher? [Open an issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) with the DOI of an article you can access; these rules are maintained and extended over time.
-- **Verification boxes clicked for you**: it finds and clicks human-verification boxes and carries on once the site lets it through; you are asked only when it does not pass.
-- **Quiet background downloads**: the browser works in the background. The progress capsule in a screen corner shows the progress; it turns amber when you need to sign in or verify, one click switches to the browser, and the download carries on once you are done.
+</details>
 
 ### 2. API keys
 

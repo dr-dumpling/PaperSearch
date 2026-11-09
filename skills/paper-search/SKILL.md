@@ -76,7 +76,9 @@ paper-search doctor --pretty
 
 给用户看可读的报告用 `paper-search doctor --format text`。刚替用户装好时，把能用的功能告诉用户，再问要不要装学校订阅下载（见“PDF 获取”一节），最后提醒新开一个对话 Skill 才生效。
 
-第一次使用时，只按用户要用的功能提缺的 key，并给出申请入口（`doctor` 的 To enable 一行）。配 key 有三种方式，用户选哪种都可以：
+第一次使用时，如果学校订阅下载还没装（`doctor` 的 `entitled_access` 不是 `available`）、用户没说过不装（`PAPER_SEARCH_CARSI_DECLINED` 不是 `true`）、这台机器有图形界面，即使用户还没问到下载，也主动问一次要不要装。
+
+第一次使用时，只按用户要用的功能提缺的 key，并给出申请入口（`doctor` 的 To enable 一行）。用户问需要哪些配置时，下面三种填法都告诉用户。配 key 有三种方式，用户选哪种都可以：
 
 - 用户把 key 直接发给你：运行 `paper-search config set <KEY> <值>` 保存，再运行 `paper-search config test <KEY>` 确认；回复里只说末四位，不复述完整的 key。
 - 装了学校订阅下载、用户就在这台电脑前：运行 `paper-search settings` 打开设置窗口，用户在窗口里填 key、下载文件夹和等待时间，点“测试”确认，填完点右上角 × 关闭。

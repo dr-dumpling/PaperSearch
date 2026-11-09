@@ -15,7 +15,7 @@ import { CONFIG_KEYS, getConfigPath, importEnvFile, initUserConfig, listConfigEn
 import { apiKeySignupUrl } from "./config/apiKeySignup.js";
 import { setupGlobalProxy } from "./infrastructure/http/HttpClient.js";
 import { autoSyncSkill, defaultSkillTargetIds, describeSkillTargets, diffSkillTargets, installSkillTargets, parseSkillTargets, skillLocations, statusSkillTargets, } from "./management/skills/index.js";
-import { firstInstallNextSteps } from "./management/skills/nextSteps.js";
+import { firstInstallNextSteps, nextStepsNotice } from "./management/skills/nextSteps.js";
 import { renderDoctorTextReport, renderSkillDiffTextReport, } from "./management/reports/index.js";
 import { beginUpdateNotification, checkForUpdate, renderUpdateNotice } from "./management/updates/index.js";
 import { exportFailureReport } from "./management/failures/exportReport.js";
@@ -1095,9 +1095,11 @@ function handleSkillsCommand(positionals, flags) {
         // A first install usually happens inside an AI chat that cannot read the new Skill yet: the
         // output carries what the AI should do next, since the Skill's own first-use steps are not loaded.
         const fresh = before.targets.some((target) => target.status === "missing");
-        return fresh && result.installedCount > 0
-            ? { ...result, nextSteps: firstInstallNextSteps() }
-            : result;
+        if (!fresh || result.installedCount === 0)
+            return result;
+        const nextSteps = firstInstallNextSteps();
+        process.stderr.write(nextStepsNotice(nextSteps));
+        return { ...result, nextSteps };
     }
     if (subcommand === "diff") {
         const result = diffSkillTargets(targetIds, { skillsRoot, sourceRoot });

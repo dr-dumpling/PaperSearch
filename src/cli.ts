@@ -50,7 +50,7 @@ import {
   statusSkillTargets,
 } from "./management/skills/index.js";
 import type { SkillLocation } from "./management/skills/index.js";
-import { firstInstallNextSteps } from "./management/skills/nextSteps.js";
+import { firstInstallNextSteps, nextStepsNotice } from "./management/skills/nextSteps.js";
 import {
   renderDoctorTextReport,
   renderSkillDiffTextReport,
@@ -1387,9 +1387,10 @@ function handleSkillsCommand(
     // A first install usually happens inside an AI chat that cannot read the new Skill yet: the
     // output carries what the AI should do next, since the Skill's own first-use steps are not loaded.
     const fresh = before.targets.some((target) => target.status === "missing");
-    return fresh && result.installedCount > 0
-      ? { ...result, nextSteps: firstInstallNextSteps() }
-      : result;
+    if (!fresh || result.installedCount === 0) return result;
+    const nextSteps = firstInstallNextSteps();
+    process.stderr.write(nextStepsNotice(nextSteps));
+    return { ...result, nextSteps };
   }
 
   if (subcommand === "diff") {
