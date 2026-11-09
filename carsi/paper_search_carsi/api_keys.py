@@ -124,9 +124,10 @@ def test(service_id: str, values: dict[str, str]) -> dict[str, str]:
     # A test must not also update the Skill or check for a new version.
     env = {**os.environ, "PAPER_SEARCH_SKILL_AUTO_UPDATE": "false", "PAPER_SEARCH_UPDATE_NOTIFY": "false"}
     try:
+        # PaperSearch answers in UTF-8; left to the system encoding, Chinese Windows reads it as GBK and loses it all.
         done = subprocess.run([*command, "config", "test", service["keys"][0]["key"], "--stdin"], input=json.dumps(typed),
-                              capture_output=True, text=True, timeout=45, env=env)
-        reply = json.loads(done.stdout.strip().splitlines()[-1])
+                              capture_output=True, encoding="utf-8", errors="replace", timeout=45, env=env)
+        reply = json.loads((done.stdout or "").strip().splitlines()[-1])
     except subprocess.TimeoutExpired:
         return {"status": "unreachable", "message": "测试超时，没法判断；检查网络或代理后再试"}
     except (OSError, ValueError, IndexError) as exc:

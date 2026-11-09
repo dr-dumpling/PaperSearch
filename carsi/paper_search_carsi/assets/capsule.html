@@ -827,6 +827,8 @@ async function act(action, target) {
       try {
         const result = await api().test_api_key(target.dataset.service, values);
         keyError(result.message, result.status === "valid" ? "ok" : result.status === "invalid" ? "" : "wait");
+      } catch (error) {
+        keyError("测试没有完成：" + ((error && error.message) || String(error)));
       } finally { target.disabled = false; }
       return;
     }

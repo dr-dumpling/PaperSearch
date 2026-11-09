@@ -4,8 +4,8 @@ description: |
   用本机 paper-search 命令检索论文、搜正文片段、查期刊影响因子与分区、查施引和参考文献、下载论文 PDF 和补充材料。
   用户说“搜文献”“找论文”“文献检索”“查一下有没有相关研究”“帮我找几篇参考文献”“看看别人怎么做的”
   “Methods 里怎么做的”“方法学写法对照”“正文片段检索”“影响因子”“JCR 分区”“中科院分区”“期刊分区”“期刊等级”
-  “谁引用了这篇”“这篇的参考文献”“下载论文 PDF”“下载补充材料”“用学校权限下载”“批量下载”“验证 PMID”“验证 DOI”，
-  或用英文说 “search papers”“find papers”“literature search”“snippet search”“journal metrics”“impact factor”“citations” 时使用。
+  “谁引用了这篇”“这篇的参考文献”“下载论文 PDF”“下载补充材料”“用学校权限下载”“批量下载”“验证 PMID”“验证 DOI”“请开始配置”“配置 PaperSearch”，
+  或用英文说 “search papers”“find papers”“literature search”“snippet search”“journal metrics”“impact factor”“citations”“start setup” 时使用。
   本 Skill 只指导调用 paper-search；API key 通过 paper-search setup、paper-search config、.env 或环境变量配置，绝不写入 Skill 文件。
 ---
 
@@ -74,7 +74,14 @@ paper-search --version
 paper-search doctor --pretty
 ```
 
-给用户看可读的报告用 `paper-search doctor --format text`。刚替用户装好时，把能用的功能告诉用户，接着装上学校订阅下载（见“PDF 获取”一节），最后提醒新开一个对话 Skill 才生效。
+给用户看可读的报告用 `paper-search doctor --format text`。刚替用户装好时，把能用的功能告诉用户，接着装上学校订阅下载（见“PDF 获取”一节），最后提醒用户新开一个对话（Skill 要新对话才生效），在新对话里说“请开始配置”。
+
+用户说“请开始配置”（或“配置 PaperSearch”“start setup”）时，按顺序做：
+
+1. 运行 `paper-search doctor --format text`，告诉用户现在能用哪些功能、哪些还缺 key。
+2. 学校订阅下载按下一段处理。
+3. 设好默认下载文件夹（见“默认下载文件夹”）。
+4. 把下面三种填 key 的方式告诉用户；电脑上装了学校订阅下载时，直接运行 `paper-search settings` 打开设置窗口。
 
 第一次使用时，如果学校订阅下载还没装（`doctor` 的 `entitled_access` 不是 `available`）、用户没说过不要（`PAPER_SEARCH_CARSI_DECLINED` 不是 `true`）、这台机器有图形界面，不用先问，直接装上（见“PDF 获取”一节）。
 

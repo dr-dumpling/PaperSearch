@@ -352,6 +352,8 @@ class Api:
             return api_keys.test(str(service or ""), {str(k): str(v) for k, v in (values or {}).items()})
         except ValueError as exc:
             return {"status": "error", "message": str(exc)}
+        except Exception as exc:  # the window must get an answer, or it stays on 正在测试…
+            return {"status": "error", "message": f"测试没有完成：{type(exc).__name__}"}
 
     def open_signup(self, service: str, guide: bool = False) -> dict[str, Any]:
         """The service's page for getting a key, or its guide; only the listed pages open."""

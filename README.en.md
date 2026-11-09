@@ -55,6 +55,8 @@ Please install PaperSearch: npm install -g papersearch, then run paper-search sk
 
 It installs the command and the Skill, checks them, and tells you what already works.
 
+Then **start a new chat** (most AI tools only read a newly installed Skill in a new chat) and say "**start setup**"; it walks you through step 3.
+
 ### 2. The school subscription downloads component installs automatically
 
 On a computer, your AI installs the [school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi) component automatically right after PaperSearch, and Chrome too if it is missing; when it is done, the settings window opens for step 3.
@@ -68,7 +70,7 @@ On a computer, your AI installs the [school subscription downloads (CARSI)](#1-s
 
 <p align="center"><img src="assets/config.en.webp" width="840" alt="Key demo: send a key to your AI and it saves and tests it; once the school subscription downloads (CARSI) component is installed, set keys, the download folder and waiting times in the settings window"></p>
 
-Get a key when you need that feature (sign-up pages: [API keys](#2-api-keys)) and enter it any of these ways:
+Say "start setup" in the new chat and your AI tells you which keys are missing and sets the download folder. Get a key when you need that feature (sign-up pages: [API keys](#2-api-keys)) and enter it any of these ways:
 
 - **Send it to your AI**: paste the key into the chat; it saves and tests it. The key stays in that conversation's history; if you'd rather not, use one of the other two ways.
 - **Settings window** (installed automatically with the school subscription downloads component): ask your AI to open the settings, or click the gear on the capsule. API keys, the download folder, waiting times and notifications are all there, and every key has a Test button.
@@ -76,7 +78,7 @@ Get a key when you need that feature (sign-up pages: [API keys](#2-api-keys)) an
 
 ### 4. Tell your AI tool what you need
 
-Start a new AI session and say what you need, for example:
+Once set up, just say what you need, for example:
 
 | To do | You can say |
 |---|---|

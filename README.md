@@ -55,6 +55,8 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 它会装好命令和 Skill，自己检查一遍，告诉你哪些功能已经能用。
 
+装好后**新开一个对话**（多数 AI 工具要新对话才读得到刚装的 Skill），对它说“**请开始配置**”，它会带你做第 3 步。
+
 ### 2. 自动装好学校订阅下载组件
 
 在电脑上，AI 装好 PaperSearch 后会自动装好[学校订阅下载（CARSI）](#1-学校订阅下载carsi)组件，本机没有 Chrome 时一起装好；装完自动弹出设置窗口，接着做第 3 步。
@@ -68,7 +70,7 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 <p align="center"><img src="assets/config.webp" width="840" alt="填 key 演示：把 key 发给 AI，它替你保存并测试；自动装好学校订阅下载（CARSI）组件后，在设置窗口里填 key、改下载文件夹和等待时间"></p>
 
-要用哪项再申请对应的 key（申请入口见 [API key](#2-api-key)），用下面任一方式填入：
+在新对话里说“请开始配置”，AI 会告诉你还缺哪些 key、帮你设好下载文件夹。要用哪项再申请对应的 key（申请入口见 [API key](#2-api-key)），用下面任一方式填入：
 
 - **发给 AI**：把 key 直接发给它，它替你保存并测试。key 会留在这次对话的记录里，不想这样就用下面两种方式。
 - **设置窗口**（随学校订阅下载组件自动装好）：让 AI 打开设置，或点胶囊上的齿轮。API key、下载文件夹、等待时间和提醒都在这里改，每个 key 都能点“测试”。
@@ -76,7 +78,7 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 ### 4. 对 AI 说一句话
 
-新开一个 AI 会话，说你要做什么，例如：
+配置好后，直接说你要做什么，例如：
 
 | 想做什么 | 可以这样说 |
 |---|---|

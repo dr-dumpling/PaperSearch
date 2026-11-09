@@ -155,6 +155,16 @@ paper-search run search_semantic_snippets --arg query="comparative risk assessme
 
 只有 `snippetKind="body"` 的结果能作为正文片段证据；来自 `title` 或 `abstract` 的只是线索。引用或依赖某个片段前，核验题名、作者、年份、期刊或来源、DOI 或 PMID。
 
+回答里给出正文片段时，英文原句原样引用（不翻译、不改写、不拼接几句），下一行写出处，直接用这条结果的 `source`（第一作者 et al.、年份、期刊 · 章节 · DOI · 许可证）；要中文解释时另起一段：
+
+```text
+> "The primary outcome in the DAPA-HF trial was the composite of … whichever occurred first."
+> —— M. Kosiborod et al., 2019, Circulation · Clinical outcomes · DOI 10.1161/CIRCULATIONAHA.119.044138 · CC BY
+```
+
+- `title`、`abstract` 命中的结果不用这个样式，列出时标“线索（摘要）”或“线索（题名）”。
+- `paper.metadataStatus` 不是 `found` 时，出处里没有年份、期刊和 DOI：写“DOI 待核验”，引用前按上面的核验步骤补查；`lookup_failed` 时命令第一行会写明。
+
 ## 选择来源
 
 | 任务 | 首选 | 补充 |

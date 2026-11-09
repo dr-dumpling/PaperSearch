@@ -30,6 +30,12 @@ export interface SemanticSnippetResult {
         authors: string[];
         openAccessInfo: Record<string, unknown>;
         url: string;
+        doi: string | null;
+        pmid: string | null;
+        year: number | null;
+        journal: string | null;
+        /** found: DOI, year and journal looked up; not_found: Semantic Scholar has no record; lookup_failed: the lookup itself failed */
+        metadataStatus: 'found' | 'not_found' | 'lookup_failed';
     };
     snippet: {
         text: string;
@@ -39,6 +45,8 @@ export interface SemanticSnippetResult {
         annotations: Record<string, unknown>;
     };
     text: string;
+    /** One line to cite under the quoted sentence: first author et al., year, journal · section · DOI · licence */
+    source: string;
 }
 export declare class SemanticScholarSearcher extends PaperSource {
     private readonly rateLimiter;
@@ -55,6 +63,11 @@ export declare class SemanticScholarSearcher extends PaperSource {
      */
     getPaperDetails(paperId: string): Promise<Paper | null>;
     searchSnippets(options: SemanticSnippetSearchOptions): Promise<SemanticSnippetResult[]>;
+    /**
+     * The snippet endpoint gives only the title, authors and licence. DOI, PMID, year and journal come
+     * from one batch lookup of the matched papers; a failed lookup is marked on each result, not hidden.
+     */
+    private addSnippetPaperMetadata;
     /**
      * 下载PDF文件
      */

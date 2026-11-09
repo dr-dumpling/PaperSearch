@@ -16,6 +16,26 @@ import { TIMEOUTS, USER_AGENT } from '../config/constants.js';
 import { apiKeyHint } from '../config/apiKeySignup.js';
 import { logDebug } from '../utils/Logger.js';
 import { downloadPdfFromUrl, safeFilename } from '../infrastructure/pdf/PdfDownload.js';
+/** Semantic Scholar writes licences run together (CCBYNCND); spell them the usual way (CC BY-NC-ND). */
+function snippetLicense(openAccessInfo) {
+    const raw = typeof openAccessInfo?.license === 'string' ? openAccessInfo.license.trim() : '';
+    const rest = raw.toUpperCase().replace(/^CC[-_ ]?/, '');
+    if (!raw || rest === raw.toUpperCase())
+        return raw;
+    if (rest === '0')
+        return 'CC0';
+    const parts = rest.match(/BY|NC|ND|SA/g) || [];
+    return parts.join('') === rest.replace(/[-_ ]/g, '') ? `CC ${parts.join('-')}` : raw;
+}
+function snippetSource(result) {
+    const { paper, snippet } = result;
+    const first = paper.authors[0];
+    const who = first ? (paper.authors.length > 1 ? `${first} et al.` : first) : '';
+    const head = [who, paper.year ? String(paper.year) : '', paper.journal || ''].filter(Boolean).join(', ');
+    return [head || paper.title, snippet.section, paper.doi ? `DOI ${paper.doi}` : '', snippetLicense(paper.openAccessInfo)]
+        .filter(Boolean)
+        .join(' · ');
+}
 export class SemanticScholarSearcher extends PaperSource {
     rateLimiter;
     cache;
@@ -212,10 +232,58 @@ export class SemanticScholarSearcher extends PaperSource {
                 this.handleHttpError({ response, config: response.config }, 'snippet search');
             }
             const data = Array.isArray(response.data?.data) ? response.data.data : [];
-            return data.map(item => this.parseSnippet(item));
+            const results = data.map(item => this.parseSnippet(item));
+            await this.addSnippetPaperMetadata(results);
+            return results;
         }
         catch (error) {
             this.handleHttpError(error, 'snippet search');
+        }
+    }
+    /**
+     * The snippet endpoint gives only the title, authors and licence. DOI, PMID, year and journal come
+     * from one batch lookup of the matched papers; a failed lookup is marked on each result, not hidden.
+     */
+    async addSnippetPaperMetadata(results) {
+        const ids = [...new Set(results.map(result => result.paper.corpusId).filter(Boolean))];
+        const found = new Map();
+        let failed = false;
+        if (ids.length > 0) {
+            try {
+                await this.rateLimiter.waitForPermission();
+                const response = await ErrorHandler.retryWithBackoff(() => axios.post(`${this.baseApiUrl}/paper/batch`, { ids: ids.map(id => `CorpusId:${id}`) }, {
+                    params: { fields: 'externalIds,year,venue,journal' },
+                    headers: {
+                        'User-Agent': USER_AGENT,
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                        'x-api-key': this.apiKey
+                    },
+                    timeout: TIMEOUTS.DEFAULT,
+                    validateStatus: status => status < 500
+                }), { context: 'Semantic Scholar paper batch lookup' });
+                if (response.status >= 400 || !Array.isArray(response.data)) {
+                    throw new Error(`paper batch lookup returned HTTP ${response.status}`);
+                }
+                response.data.forEach((paper, index) => {
+                    if (paper)
+                        found.set(ids[index], paper);
+                });
+            }
+            catch (error) {
+                logDebug('Semantic Scholar paper batch lookup failed:', error?.message);
+                failed = true;
+            }
+        }
+        for (const result of results) {
+            const paper = found.get(result.paper.corpusId);
+            const journal = this.cleanText(paper?.journal?.name || paper?.venue || '');
+            result.paper.doi = paper?.externalIds?.DOI || null;
+            result.paper.pmid = paper?.externalIds?.PubMed ? String(paper.externalIds.PubMed) : null;
+            result.paper.year = typeof paper?.year === 'number' ? paper.year : null;
+            result.paper.journal = journal || null;
+            result.paper.metadataStatus = paper ? 'found' : failed ? 'lookup_failed' : 'not_found';
+            result.source = snippetSource(result);
         }
     }
     /**
@@ -370,7 +438,12 @@ export class SemanticScholarSearcher extends PaperSource {
                 title: this.cleanText(paper.title || ''),
                 authors: this.listParam(paper.authors),
                 openAccessInfo: paper.openAccessInfo || {},
-                url: corpusId ? `https://www.semanticscholar.org/paper/CorpusId:${corpusId}` : ''
+                url: corpusId ? `https://www.semanticscholar.org/paper/CorpusId:${corpusId}` : '',
+                doi: null,
+                pmid: null,
+                year: null,
+                journal: null,
+                metadataStatus: 'not_found'
             },
             snippet: {
                 text: this.cleanText(snippet.text || item?.text || ''),
@@ -379,7 +452,8 @@ export class SemanticScholarSearcher extends PaperSource {
                 snippetOffset: snippet.snippetOffset || {},
                 annotations: snippet.annotations || {}
             },
-            text: this.cleanText(snippet.text || item?.text || '')
+            text: this.cleanText(snippet.text || item?.text || ''),
+            source: ''
         };
     }
     listParam(value) {

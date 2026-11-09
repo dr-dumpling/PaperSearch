@@ -113,6 +113,27 @@ class ApiKeyTestButtonTests(unittest.TestCase):
         self.assertEqual(json.loads(kwargs["input"]), {"ELSEVIER_API_KEY": SECRET})
         self.assertEqual(kwargs["env"]["PAPER_SEARCH_SKILL_AUTO_UPDATE"], "false")
 
+    def test_a_chinese_reply_reads_right_where_the_system_encoding_is_not_utf8(self):
+        # Chinese Windows reads a child's output as GBK unless told the encoding; PaperSearch answers in UTF-8.
+        reply = '{"ok": true, "key": "EASYSCHOLAR_KEY", "status": "invalid", "message": "被拒绝：key 不对，或已失效（Key错误）"}\n'
+
+        def run_like_chinese_windows(command, **kwargs):
+            try:
+                out = reply.encode("utf-8").decode(kwargs.get("encoding") or "gbk", kwargs.get("errors") or "strict")
+            except UnicodeDecodeError:
+                out = None  # what subprocess leaves when its reader thread fails
+            return MagicMock(stdout=out)
+
+        with patch.dict(os.environ, {"PAPER_SEARCH_CLI": json.dumps(["/usr/bin/node", "/pkg/dist/cli.js"])}), \
+             patch("subprocess.run", side_effect=run_like_chinese_windows):
+            result = api_keys.test("easyscholar", {"EASYSCHOLAR_KEY": SECRET})
+        self.assertEqual(result, {"status": "invalid", "message": "被拒绝：key 不对，或已失效（Key错误）"})
+
+    def test_a_test_that_fails_unexpectedly_still_answers_the_window(self):
+        with patch.object(api_keys, "test", side_effect=AttributeError("stdout")):
+            result = Api(MagicMock(), MagicMock(), MagicMock()).test_api_key("easyscholar", {"EASYSCHOLAR_KEY": SECRET})
+        self.assertEqual(result, {"status": "error", "message": "测试没有完成：AttributeError"})
+
     def test_without_paper_search_the_test_names_the_terminal_command(self):
         with patch.dict(os.environ, {"PAPER_SEARCH_CLI": ""}), patch("shutil.which", return_value=None):
             result = api_keys.test("easyscholar", {"EASYSCHOLAR_KEY": SECRET})

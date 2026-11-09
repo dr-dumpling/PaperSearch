@@ -691,7 +691,10 @@ describe("CarsiMcpClient", () => {
       outputDir: tempDir,
       signal: controller.signal,
     });
-    setTimeout(() => controller.abort(), 250);
+    void abortOnceLogged(
+      controller,
+      (entry) => entry.event === "call" && entry.tool === "carsi_download",
+    );
 
     await expect(promise).resolves.toEqual({
       kind: "attempt_error",
@@ -707,7 +710,7 @@ describe("CarsiMcpClient", () => {
     const promise = fakeClient("startup_hang", {
       startupTimeoutMs: 2_000,
     }).probe(controller.signal);
-    setTimeout(() => controller.abort(), 250);
+    void abortOnceLogged(controller, (entry) => entry.event === "start");
 
     await expect(promise).resolves.toEqual({
       state: "incompatible",
@@ -878,6 +881,19 @@ describe("CarsiMcpClient", () => {
       .split("\n")
       .filter(Boolean)
       .map((line) => JSON.parse(line) as FakeLogEntry);
+  }
+
+  // Cancel only once the fake child has reached the step under test; a fixed delay can fire before
+  // a slow machine has even started the child, and then there is no child to check.
+  async function abortOnceLogged(
+    controller: AbortController,
+    reached: (entry: FakeLogEntry) => boolean,
+  ): Promise<void> {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline && !readLog().some(reached)) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+    }
+    controller.abort();
   }
 
   async function expectAllChildrenExited(): Promise<void> {

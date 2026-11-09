@@ -112,8 +112,8 @@ describe('SemanticScholarSearcher', () => {
               paper: {
                 corpusId: 123,
                 title: 'A snippet paper',
-                authors: ['Ada Lovelace'],
-                openAccessInfo: { status: 'GREEN' }
+                authors: ['Ada Lovelace', 'Charles Babbage'],
+                openAccessInfo: { status: 'GOLD', license: 'CCBYNCND' }
               },
               snippet: {
                 text: 'Matched body text.',
@@ -125,6 +125,17 @@ describe('SemanticScholarSearcher', () => {
             }
           ]
         }
+      } as any);
+      jest.spyOn(axios, 'post').mockResolvedValue({
+        status: 200,
+        data: [
+          {
+            externalIds: { DOI: '10.1000/snippet', PubMed: 4242, CorpusId: 123 },
+            year: 2021,
+            venue: 'J Snip',
+            journal: { name: 'Journal of Snippets', volume: '3' }
+          }
+        ]
       } as any);
 
       const results = await instance.searchSnippets({
@@ -144,15 +155,28 @@ describe('SemanticScholarSearcher', () => {
           headers: expect.objectContaining({ 'x-api-key': 'test-key' })
         })
       );
+      expect(axios.post).toHaveBeenCalledWith(
+        expect.stringContaining('/paper/batch'),
+        { ids: ['CorpusId:123'] },
+        expect.objectContaining({
+          params: { fields: 'externalIds,year,venue,journal' },
+          headers: expect.objectContaining({ 'x-api-key': 'test-key' })
+        })
+      );
       expect(results).toEqual([
         {
           score: 0.9,
           paper: {
             corpusId: '123',
             title: 'A snippet paper',
-            authors: ['Ada Lovelace'],
-            openAccessInfo: { status: 'GREEN' },
-            url: 'https://www.semanticscholar.org/paper/CorpusId:123'
+            authors: ['Ada Lovelace', 'Charles Babbage'],
+            openAccessInfo: { status: 'GOLD', license: 'CCBYNCND' },
+            url: 'https://www.semanticscholar.org/paper/CorpusId:123',
+            doi: '10.1000/snippet',
+            pmid: '4242',
+            year: 2021,
+            journal: 'Journal of Snippets',
+            metadataStatus: 'found'
           },
           snippet: {
             text: 'Matched body text.',
@@ -161,9 +185,62 @@ describe('SemanticScholarSearcher', () => {
             snippetOffset: { start: 1, end: 3 },
             annotations: { sentences: [] }
           },
-          text: 'Matched body text.'
+          text: 'Matched body text.',
+          source: 'Ada Lovelace et al., 2021, Journal of Snippets · Methods · DOI 10.1000/snippet · CC BY-NC-ND'
         }
       ]);
+    });
+
+    function mockSnippets(papers: Array<Record<string, unknown>>) {
+      jest.spyOn(axios, 'get').mockResolvedValue({
+        status: 200,
+        data: {
+          data: papers.map(paper => ({
+            score: 0.5,
+            paper,
+            snippet: { text: 'Body text.', snippetKind: 'body', section: 'Results' }
+          }))
+        }
+      } as any);
+    }
+
+    it('should mark a paper Semantic Scholar has no record of and cite it by its authors', async () => {
+      const instance = new SemanticScholarSearcher('test-key');
+      mockSnippets([{ corpusId: 7, title: 'Lonely paper', authors: ['Grace Hopper'], openAccessInfo: { license: 'CC0' } }]);
+      jest.spyOn(axios, 'post').mockResolvedValue({ status: 200, data: [null] } as any);
+
+      const [result] = await instance.searchSnippets({ query: 'q' });
+
+      expect(result.paper).toEqual(
+        expect.objectContaining({ doi: null, pmid: null, year: null, journal: null, metadataStatus: 'not_found' })
+      );
+      expect(result.source).toBe('Grace Hopper · Results · CC0');
+    });
+
+    it('should keep the snippets and mark them when the paper lookup fails', async () => {
+      const instance = new SemanticScholarSearcher('test-key');
+      mockSnippets([
+        { corpusId: 8, title: 'First', authors: [], openAccessInfo: { license: 'publisher-specific' } },
+        { corpusId: 9, title: 'Second', authors: ['Alan Turing'], openAccessInfo: {} }
+      ]);
+      jest.spyOn(axios, 'post').mockResolvedValue({ status: 403, data: { message: 'Forbidden' } } as any);
+
+      const results = await instance.searchSnippets({ query: 'q' });
+
+      expect(results.map(result => result.paper.metadataStatus)).toEqual(['lookup_failed', 'lookup_failed']);
+      expect(results.map(result => result.source)).toEqual([
+        'First · Results · publisher-specific',
+        'Alan Turing · Results'
+      ]);
+    });
+
+    it('should not look up papers when nothing matched', async () => {
+      const instance = new SemanticScholarSearcher('test-key');
+      mockSnippets([]);
+      const post = jest.spyOn(axios, 'post');
+
+      expect(await instance.searchSnippets({ query: 'q' })).toEqual([]);
+      expect(post).not.toHaveBeenCalled();
     });
   });
 });

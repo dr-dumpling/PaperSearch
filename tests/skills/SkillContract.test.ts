@@ -31,6 +31,8 @@ describe("paper-search bundled skill contract", () => {
     expect(skill).toContain("开放式的文献任务分两步");
     expect(skill).toContain("直接下载请求");
     expect(skill).toContain("paper-search doctor --pretty");
+    expect(skill).toContain("用户说“请开始配置”");
+    expect(skill).toContain("直接运行 `paper-search settings` 打开设置窗口");
     expect(skill).toContain("Sci-Hub");
   });
 
