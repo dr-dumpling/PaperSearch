@@ -135,9 +135,6 @@ paper-search carsi install                # choose your school during installati
 paper-search carsi status --format text   # check that it is ready
 ```
 
-<details>
-<summary><b>See it in action (5 clips)</b></summary>
-
 **Progress capsule**
 
 <p align="center"><img src="assets/carsi-capsule.en.webp" width="840" alt="Progress capsule: a small capsule shows the progress, hover for each paper, minimized to the Dock it keeps downloading, one click brings it back"></p>
@@ -157,8 +154,6 @@ paper-search carsi status --format text   # check that it is ready
 **Results**
 
 <p align="center"><img src="assets/carsi-finish.en.webp" width="840" alt="Results: skip a paper; the final card lists what was saved and why the rest wasn't; clicking a title opens it in your own browser"></p>
-
-</details>
 
 ### 2. API keys
 

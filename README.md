@@ -135,9 +135,6 @@ paper-search carsi install                # 安装时选择你的学校
 paper-search carsi status --format text   # 查看是否装好
 ```
 
-<details>
-<summary><b>查看演示（5 段）</b></summary>
-
 **进度胶囊**
 
 <p align="center"><img src="assets/carsi-capsule.webp" width="840" alt="进度胶囊：下载时缩成小胶囊，悬停查看每篇进度，最小化到程序坞照常下载，点一下就回来"></p>
@@ -157,8 +154,6 @@ paper-search carsi status --format text   # 查看是否装好
 **结束清单**
 
 <p align="center"><img src="assets/carsi-finish.webp" width="840" alt="结束清单：跳过不想等的论文；下完列出结果，没下到的写明原因，点题名在自己的浏览器里打开"></p>
-
-</details>
 
 ### 2. API key
 
