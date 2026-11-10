@@ -82,7 +82,7 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 ### 4. 对 AI 说一句话
 
-配置好后，在输入框里先引用 PaperSearch 的 Skill，再说你要做什么：输入 `$`（Claude Code 里是 `/`），选 `paper-search`。引用了它，AI 就一定用 PaperSearch 来查，不会改用自带的网页搜索。
+配置好后，引用 PaperSearch 的 Skill，说出你需要搜索的内容，比如：
 
 <p align="center"><img src="assets/ask-with-skill.png" width="645" alt="在输入框里引用 PaperSearch 的 Skill：要做的事后面带着 Paper Search 标签"></p>
 
