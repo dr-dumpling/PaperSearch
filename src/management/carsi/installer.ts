@@ -416,13 +416,20 @@ const ACCESS_PROBE = [
   "print(json.dumps({'configured': _any_institutional_configured(c), 'school': c.get('carsi_idp_name') or ''}))",
 ].join("\n");
 
+async function accessProbe(host: InstallerHost, paths: RuntimePaths, context: InstallContext): Promise<{ configured: boolean; school: string }> {
+  const probe = await check(host.run(paths.venvPython, ["-c", ACCESS_PROBE], { env: { CARSI_DATA_DIR: context.dataDir } }), "读取机构访问设置失败");
+  const access = JSON.parse(probe.stdout.trim().split("\n").pop() || "{}") as { configured?: boolean; school?: string };
+  return { configured: Boolean(access.configured), school: access.school || "" };
+}
+
+const NO_SCHOOL = "还没有配置学校：机构登录时需要你在选校页自己选";
+
 async function askSchool(
   host: InstallerHost, paths: RuntimePaths, options: InstallOptions, context: InstallContext, record: InstallRecord,
 ): Promise<void> {
   const env = { CARSI_DATA_DIR: context.dataDir };
-  const probe = await check(host.run(paths.venvPython, ["-c", ACCESS_PROBE], { env }), "读取机构访问设置失败");
-  const access = JSON.parse(probe.stdout.trim().split("\n").pop() || "{}") as { configured?: boolean; school?: string };
-  let school = access.school || "";
+  const access = await accessProbe(host, paths, context);
+  let school = access.school;
   const answer = options.skipSchool ? "" : (await host.ask(school
     ? `学校（CARSI；现在是“${school}”，回车保留）：`
     : "请输入你的学校（中文名、英文名或域名都可以；回车跳过，登录时在选校页自己选）：")).trim();
@@ -432,7 +439,7 @@ async function askSchool(
     await check(host.run(paths.executable, ["setup", "--carsi"], { env }), "开启 CARSI 失败");
   }
   if (school) record.school = school;
-  else warn(record, "还没有配置学校：机构登录时需要你在选校页自己选");
+  else warn(record, NO_SCHOOL);
 }
 
 interface SchoolCandidate { name: string; name_en: string; domain: string; entity_id: string }
@@ -648,6 +655,8 @@ export interface CarsiStatus {
   paperSearchVersion: string;
   upToDate: boolean;
   versions?: BrowserProbe;
+  /** The backend's current school (set during or after the install); absent when it could not be read. */
+  access?: { configured: boolean; school: string };
   runtimeBytes: number;
   notes: string[];
 }
@@ -660,8 +669,10 @@ export async function carsiStatus(host: InstallerHost, context: InstallContext):
   const enabled = context.getConfig("PAPER_SEARCH_CARSI_ENABLED") === "true";
   const notes: string[] = [];
   let versions: CarsiStatus["versions"];
+  let access: CarsiStatus["access"];
   if (existsSync(paths.venvPython)) {
     versions = await browserProbe(host, paths, context).catch(() => undefined);
+    access = await accessProbe(host, paths, context).catch(() => undefined);
   }
   const complete = Boolean(record?.finishedAt) && executableExists;
   const upToDate = record?.paperSearchVersion === context.paperSearchVersion;
@@ -687,6 +698,7 @@ export async function carsiStatus(host: InstallerHost, context: InstallContext):
     usesThisInstall: configuredExecutable === paths.executable,
     paperSearchVersion: context.paperSearchVersion, upToDate,
     ...(versions ? { versions } : {}),
+    ...(access ? { access } : {}),
     runtimeBytes: directoryBytes(paths.root), notes,
   };
 }
@@ -710,11 +722,12 @@ export function renderStatusText(status: CarsiStatus): string {
     }
     lines.push(`  ego lite：${status.versions?.ego || r.ego || "未检测到"}`);
     lines.push(`  Python：${r.python || "-"}；后端：${r.backend || "-"}；uv：${r.uv || "-"}`);
-    lines.push(`  学校：${r.school || "未配置"}`);
+    lines.push(`  学校：${(status.access ? status.access.school : r.school) || "未配置"}`);
     lines.push(`  安装时的 PaperSearch：${r.paperSearchVersion}（现在 ${status.paperSearchVersion}）`);
   }
   lines.push(`  PaperSearch 配置：${status.enabled ? "已启用" : "未启用"}，后端 ${status.configuredExecutable || "（未配置）"}`);
-  for (const warning of r?.warnings ?? []) lines.push(`  注意：${warning}`);
+  // A school set after the install (paper-search-carsi setup --institution) makes the install's warning stale.
+  for (const warning of r?.warnings ?? []) if (!(warning === NO_SCHOOL && status.access?.configured)) lines.push(`  注意：${warning}`);
   for (const note of status.notes) lines.push(`  → ${note}`);
   return lines.join("\n");
 }

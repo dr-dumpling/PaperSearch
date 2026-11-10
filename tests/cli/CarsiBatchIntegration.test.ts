@@ -7,6 +7,11 @@ import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { textPdf } from "../fixtures/textPdf.js";
 import type { CarsiBatchPaper } from "../../src/capabilities/pdf-discovery/carsi/types.js";
 
+// Each download saves into its own <YYYYMMDD-HHmmss>_PaperSearchDownload folder inside the download folder (2026-11-11).
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const runFolder = (root: string, below = "") =>
+  new RegExp("^" + escapeRe(root) + "[\\\\/]\\d{8}-\\d{6}_PaperSearchDownload" + below);
+
 const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
 
 describe("CARSI serial batch through the CLI", () => {
@@ -161,7 +166,7 @@ describe("CARSI serial batch through the CLI", () => {
     const papers = calls.filter((call) => call.tool === "carsi_batch_papers")
       .map((call) => call.arguments as { folder: string; papers: CarsiBatchPaper[] });
     expect(papers[0].papers.map((paper) => paper.index)).toEqual([1, 2, 3, 4, 5]);
-    expect(papers[0].folder).toBe(join(tempDir, "out"));
+    expect(papers[0].folder).toMatch(runFolder(join(tempDir, "out"), "$"));
     const ended = new Map(papers.flatMap((args) => args.papers).map((paper) => [paper.index, paper]));
     // Each as the batch ended it (the fake gives every paper the first one's PDF).
     const items = JSON.parse(result.stdout).data.items as Array<{ index: number; status: string }>;

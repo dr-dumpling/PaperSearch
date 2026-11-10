@@ -142,6 +142,15 @@ export function resolveDownloadPath(explicit?: string): string {
     ? join(homedir(), value.slice(2)) : value;
 }
 
+/** The folder one download run saves into: a new `<YYYYMMDD-HHmmss>_PaperSearchDownload` inside the download
+ * folder, so the papers of different runs are not mixed (user, 2026-11-11). The steps of the run get this path
+ * and keep it. */
+export function runDownloadFolder(explicit?: string, now: Date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
+  return join(resolveDownloadPath(explicit), `${stamp}_PaperSearchDownload`);
+}
+
 export function writeUserConfig(config: Record<string, string>): string {
   const filePath = getConfigPath();
   mkdirSync(dirname(filePath), { recursive: true });

@@ -347,6 +347,23 @@ describe("paper-search carsi install", () => {
     expect(renderStatusText(await carsiStatus(mac.host, mac.context))).toContain("  浏览器：ego lite");
   });
 
+  it("shows the school set after an install that skipped it", async () => {
+    // Installed with --skip-school, the school set later with paper-search-carsi setup --institution
+    // (Windows, 2026-11-11): the status reads the backend's settings now, not the install record.
+    let school = "";
+    const m = fakeMachine({
+      respond: (name, args) => name === "python" && args[1]?.includes("_any_institutional_configured")
+        ? { code: 0, stdout: JSON.stringify({ configured: Boolean(school), school }), stderr: "" }
+        : undefined,
+    });
+    await installCarsi(m.host, { ...YES, skipSchool: true }, m.context);
+    expect(renderStatusText(await carsiStatus(m.host, m.context))).toContain("注意：还没有配置学校");
+    school = "红木兰大学";
+    const text = renderStatusText(await carsiStatus(m.host, m.context));
+    expect(text).toContain("  学校：红木兰大学");
+    expect(text).not.toContain("还没有配置学校");
+  });
+
   it("asks before replacing another configured backend", async () => {
     const m = fakeMachine({
       answers: ["y", "n", ""],

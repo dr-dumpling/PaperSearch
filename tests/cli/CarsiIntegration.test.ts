@@ -13,6 +13,11 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 
+// Each download saves into its own <YYYYMMDD-HHmmss>_PaperSearchDownload folder inside the download folder (2026-11-11).
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const runFolder = (root: string, below = "") =>
+  new RegExp("^" + escapeRe(root) + "[\\\\/]\\d{8}-\\d{6}_PaperSearchDownload" + below);
+
 describe("CARSI CLI integration", () => {
   let tempDir: string;
 
@@ -105,7 +110,7 @@ describe("CARSI CLI integration", () => {
     expect(output.data).toEqual(
       expect.objectContaining({
         status: "ok",
-        path: expect.stringContaining(`${outputDir}/papers/`),
+        path: expect.stringMatching(runFolder(outputDir, "[\\\\/]papers[\\\\/]")),
         attempts: [
           expect.objectContaining({ stage: "primary", status: "skipped" }),
           expect.objectContaining({
@@ -146,7 +151,7 @@ describe("CARSI CLI integration", () => {
         tool: "carsi_download",
         arguments: {
           identifier: canonicalDoi,
-          output_dir: expect.stringContaining(`${outputDir}/papers/`),
+          output_dir: expect.stringMatching(runFolder(outputDir, "[\\\\/]papers[\\\\/]")),
           scihub_enabled: false,
           use_tor: false,
           bibtex: false,

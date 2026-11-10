@@ -274,10 +274,20 @@ function parseJsonArgs(value: FlagValue | undefined): Record<string, unknown> {
     );
   }
 
-  const raw = value.startsWith("@")
+  // Windows PowerShell 5.1 writes UTF-8 files with a BOM.
+  const raw = (value.startsWith("@")
     ? readFileSync(value.slice(1), "utf8")
-    : value;
-  const parsed = JSON.parse(raw);
+    : value).replace(/^\uFEFF/, "");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error: any) {
+    // Windows PowerShell drops the double quotes inside an argument it passes on (DeepSeek, 2026-11-11).
+    throw new CliError(
+      `--json-args is not valid JSON (${error?.message || String(error)}). In Windows PowerShell the double quotes inside the argument are dropped before paper-search sees them: write the JSON to a UTF-8 file and pass --json-args '@<file>'.`,
+      "INVALID_JSON_ARGS",
+    );
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new CliError(
       "--json-args must decode to a JSON object",

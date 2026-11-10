@@ -14,6 +14,7 @@
 
 - `paper-search search <query> [--platform NAME] [--sources CSV] [--max-results N] [--year YEAR] [--pretty]`
 - `paper-search run <tool-name> --arg key=value --json-args '{"key":"value"}' [--pretty]`
+  - Windows PowerShell 会去掉传给程序的参数里的双引号，直接写 JSON 会报 `is not valid JSON`：把 JSON 写进 UTF-8 文件，传 `--json-args '@<文件路径>'`（`@` 开头要加引号）。不要另写脚本绕过。
 - `paper-search download <paper-id> --platform NAME [--save-path PATH] [--pretty]`
 - `paper-search journal-metrics <journal...> [--file PATH] [--include-raw] [--pretty]`
 - `paper-search metrics ...` 是 `journal-metrics` 的别名。

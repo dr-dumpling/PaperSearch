@@ -1,4 +1,4 @@
-import { resolveDownloadPath } from "../config/ConfigService.js";
+import { runDownloadFolder } from "../config/ConfigService.js";
 import { parseToolArgs } from "./schemas.js";
 import { PaperFactory } from "../models/Paper.js";
 import { handleSemanticSnippets } from "../capabilities/body-snippet-search/handler.js";
@@ -127,7 +127,7 @@ const TOOL_HANDLERS = {
     get_paper_by_doi: async (args, searchers) => handleGetPaperByDoi(args, searchers),
     search_scihub: async (args, searchers) => {
         const { doiOrUrl, downloadPdf, savePath } = args;
-        const resolvedSavePath = resolveDownloadPath(savePath);
+        const resolvedSavePath = runDownloadFolder(savePath);
         const results = await searchers.scihub.search(doiOrUrl);
         if (results.length === 0) {
             return jsonTextResponse(`No paper found on Sci-Hub for: ${doiOrUrl}`);

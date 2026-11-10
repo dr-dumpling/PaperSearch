@@ -58,10 +58,12 @@ https://github.com/user-attachments/assets/c6ba529d-0b4e-4c2a-82cb-1ef8ba53274c
 请帮我安装 PaperSearch 的 Skill：npx skills add dr-dumpling/PaperSearch -g -y
 ```
 
+Windows 上这条命令需要 Git，没有的话先装 [Git for Windows](https://git-scm.com/download/win)。
+
 装好后引用 Skill，发这句：
 
 ```text
-$paper-search 请开始配置
+/paper-search 请开始配置
 ```
 
 AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好，再带你配置学校订阅下载（CARSI）和 API key。
@@ -92,11 +94,11 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 
 | 想做什么 | 可以这样说 |
 |---|---|
-| 检索论文 | `$paper-search` 找 2020 年以来 SGLT2 抑制剂治疗心力衰竭的随机对照试验，核对 DOI |
-| 搜正文片段 | `$paper-search` 这些试验的主要终点，原文是怎么定义的？摘几段原文 |
-| 查期刊 IF 与分区 | `$paper-search` 它们发表在哪些期刊？影响因子和分区各是多少 |
-| 查引文和参考文献 | `$paper-search` DAPA-HF 试验发表后，有哪些研究引用了它 |
-| 下载全文和补充材料 | `$paper-search` 把这些论文的全文和补充材料下载到 ./downloads |
+| 检索论文 | `/paper-search` 找 2020 年以来 SGLT2 抑制剂治疗心力衰竭的随机对照试验，核对 DOI |
+| 搜正文片段 | `/paper-search` 这些试验的主要终点，原文是怎么定义的？摘几段原文 |
+| 查期刊 IF 与分区 | `/paper-search` 它们发表在哪些期刊？影响因子和分区各是多少 |
+| 查引文和参考文献 | `/paper-search` DAPA-HF 试验发表后，有哪些研究引用了它 |
+| 下载全文和补充材料 | `/paper-search` 把这些论文的全文和补充材料下载到 ./downloads |
 
 **拿到结果：**
 
@@ -105,7 +107,7 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 <p align="center"><img src="assets/results.webp" width="840" alt="拿到结果：对话里列出下好的 6 篇和各自的补充材料数量；下载文件夹里每篇一个文件夹，补充材料在 supplements/ 里"></p>
 
 - 检索、正文片段、期刊指标和引文，直接在对话里列给你。
-- 下载的论文整理成文件夹，每篇一个文件夹，补充材料在 supplements/ 里；没拿到的篇目告诉你原因。
+- 每次下载在下载文件夹里新建一个 `年月日-时分秒_PaperSearchDownload` 文件夹，里面每篇一个文件夹，补充材料在 supplements/ 里；没拿到的篇目告诉你原因。
 
 ## 可选配置
 

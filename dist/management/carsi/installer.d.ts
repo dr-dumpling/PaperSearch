@@ -150,6 +150,11 @@ export interface CarsiStatus {
     paperSearchVersion: string;
     upToDate: boolean;
     versions?: BrowserProbe;
+    /** The backend's current school (set during or after the install); absent when it could not be read. */
+    access?: {
+        configured: boolean;
+        school: string;
+    };
     runtimeBytes: number;
     notes: string[];
 }

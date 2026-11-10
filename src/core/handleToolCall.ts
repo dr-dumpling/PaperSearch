@@ -1,4 +1,4 @@
-import { resolveDownloadPath } from "../config/ConfigService.js";
+import { runDownloadFolder } from "../config/ConfigService.js";
 import type { Searchers } from "./searchers.js";
 import type { CarsiBackend } from "../capabilities/pdf-discovery/carsi/index.js";
 import type { ToolName } from "./schemas.js";
@@ -246,7 +246,7 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
 
   search_scihub: async (args, searchers) => {
     const { doiOrUrl, downloadPdf, savePath } = args;
-    const resolvedSavePath = resolveDownloadPath(savePath);
+    const resolvedSavePath = runDownloadFolder(savePath);
 
     const results = await searchers.scihub.search(doiOrUrl);
     if (results.length === 0) {

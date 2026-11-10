@@ -58,10 +58,12 @@ Send your AI tool this sentence (Claude Code, Codex, DeepSeek, GLM, Kimi Code, Q
 Please install the PaperSearch Skill: npx skills add dr-dumpling/PaperSearch -g -y
 ```
 
+On Windows the command needs Git; install [Git for Windows](https://git-scm.com/download/win) first if you do not have it.
+
 Once it is installed, mention the Skill and send:
 
 ```text
-$paper-search Start setup
+/paper-search Start setup
 ```
 
 Your AI first asks whether to install the PaperSearch command-line program; once you agree, it installs it and then walks you through school subscription downloads (CARSI) and API keys.
@@ -92,11 +94,11 @@ Once set up, mention the PaperSearch Skill and say what you want to search for, 
 
 | To do | You can say |
 |---|---|
-| Search papers | `$paper-search` Find randomized trials of SGLT2 inhibitors in heart failure since 2020, and verify the DOIs |
-| Search full-text snippets | `$paper-search` How did these trials define their primary endpoint? Quote a few passages |
-| Look up journal IF and quartiles | `$paper-search` Which journals were they published in, and what are their impact factors and quartiles? |
-| Look up citations and references | `$paper-search` Which studies have cited the DAPA-HF trial since it was published? |
-| Download full texts and supplementary files | `$paper-search` Download the full texts and supplementary files of these papers to ./downloads |
+| Search papers | `/paper-search` Find randomized trials of SGLT2 inhibitors in heart failure since 2020, and verify the DOIs |
+| Search full-text snippets | `/paper-search` How did these trials define their primary endpoint? Quote a few passages |
+| Look up journal IF and quartiles | `/paper-search` Which journals were they published in, and what are their impact factors and quartiles? |
+| Look up citations and references | `/paper-search` Which studies have cited the DAPA-HF trial since it was published? |
+| Download full texts and supplementary files | `/paper-search` Download the full texts and supplementary files of these papers to ./downloads |
 
 **Results:**
 
@@ -105,7 +107,7 @@ Once set up, mention the PaperSearch Skill and say what you want to search for, 
 <p align="center"><img src="assets/results.en.webp" width="840" alt="Results: the chat lists the 6 papers saved and how many supplementary files each has; the download folder holds one folder per paper, supplementary files in supplements/"></p>
 
 - Search results, snippets, journal metrics and citations come back in the conversation.
-- Downloaded papers are organized into folders, one per paper, with supplementary files in supplements/; you are told why any paper was not obtained.
+- Each download gets its own `YYYYMMDD-HHmmss_PaperSearchDownload` folder inside your download folder, with one folder per paper and supplementary files in supplements/; you are told why any paper was not obtained.
 
 ## Optional setup
 

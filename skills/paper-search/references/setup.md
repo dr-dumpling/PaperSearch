@@ -36,4 +36,4 @@ paper-search config get DEFAULT_DOWNLOAD_PATH
 paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 ```
 
-之后下载不传 `savePath` / `--save-path`，文件自动存到这个文件夹；只有用户这一次指定了别的位置才传。没有设置时，文件会存到命令当前所在目录下的 `./downloads`，位置不固定，用户很难找到。用户也可以在进度胶囊的设置里改这个文件夹。
+之后下载不传 `savePath` / `--save-path`，文件自动存到这个文件夹里每次新建的 `<年月日-时分秒>_PaperSearchDownload` 文件夹；只有用户这一次指定了别的位置才传。没有设置时，文件会存到命令当前所在目录下的 `./downloads`，位置不固定，用户很难找到。用户也可以在进度胶囊的设置里改这个文件夹。

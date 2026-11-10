@@ -72,7 +72,7 @@ Both use the same download command: open downloading first, and when it finds no
 
 ### Download results
 
-In a download folder, `papers/` holds the papers, one folder each, with the main text named journal_year_title and supplementary files under that paper's `supplements/` with their original names. A paper that ran into a problem, or needs checking, also has a `diagnostics` folder with its diagnostic records and screenshots, named like its PDF, for tracking down the problem; they may contain login details, so do not pass them on. `runs/` at the top holds each download's run records. The short ID at the end of a folder name tells apart papers with the same title. A missing journal or year is written as unknown. The JSON a command returns gives each file's actual location.
+Each download gets its own `<YYYYMMDD-HHmmss>_PaperSearchDownload` folder inside the download folder. In it, `papers/` holds the papers, one folder each, with the main text named journal_year_title and supplementary files under that paper's `supplements/` with their original names. A paper that ran into a problem, or needs checking, also has a `diagnostics` folder with its diagnostic records and screenshots, named like its PDF, for tracking down the problem; they may contain login details, so do not pass them on. `runs/` holds that download's run records. The short ID at the end of a folder name tells apart papers with the same title. A missing journal or year is written as unknown. The JSON a command returns gives each file's actual location.
 
 ## Search sources
 

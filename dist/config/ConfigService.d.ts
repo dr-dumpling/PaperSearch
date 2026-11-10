@@ -12,6 +12,10 @@ export declare function isConfigTrue(key: ConfigKey): boolean;
 export declare function getConfigValue(key: ConfigKey): string;
 /** Resolve once at task start; GUI edits share the CLI config, not a second preference. */
 export declare function resolveDownloadPath(explicit?: string): string;
+/** The folder one download run saves into: a new `<YYYYMMDD-HHmmss>_PaperSearchDownload` inside the download
+ * folder, so the papers of different runs are not mixed (user, 2026-11-11). The steps of the run get this path
+ * and keep it. */
+export declare function runDownloadFolder(explicit?: string, now?: Date): string;
 export declare function writeUserConfig(config: Record<string, string>): string;
 export declare function initUserConfig(force?: boolean): {
     path: string;

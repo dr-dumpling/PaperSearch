@@ -105,7 +105,7 @@ describe("paper-search bundled skill contract", () => {
     // Codex, told nothing, searched ~/.npmrc and shell files for the command and printed a token (2026-11-10).
     expect(first).toContain("不要到别的目录翻找命令，也不要读 `~/.npmrc`");
     expect(first).toContain("接着做用户原来的请求");
-    // README's first sentence after installing the Skill is "$paper-search 请开始配置".
+    // README's first sentence after installing the Skill is "/paper-search 请开始配置".
     expect(readSkillFile("references/setup.md")).toContain("“只装了 Skill 时”征得同意装好");
   });
 

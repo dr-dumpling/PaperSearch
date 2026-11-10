@@ -1,5 +1,6 @@
-import { resolveDownloadPath } from "../../config/ConfigService.js";
-import { dirname } from "node:path";
+import { resolveDownloadPath, runDownloadFolder } from "../../config/ConfigService.js";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { Searchers } from "../../core/searchers.js";
 import { resolvePlatformId } from "../../registry/platformMetadata.js";
 import {
@@ -8,7 +9,7 @@ import {
 } from "./OpenAccessFallbackService.js";
 import type { CarsiBackend } from "./carsi/index.js";
 
-import { RunLedger } from "../../infrastructure/runlog/RunLedger.js";
+import { RunLedger, resolveRunLogRoot } from "../../infrastructure/runlog/RunLedger.js";
 import type {
   DownloadWithFallbackOptions,
   DownloadWithFallbackResult,
@@ -30,6 +31,34 @@ function jsonTextResponse(text: string) {
       },
     ],
   };
+}
+
+/**
+ * The folder of this download (runDownloadFolder). A caller's own serial batch, several calls with one batch id,
+ * keeps the folder its first call got: remembered for two days in the run ledger's batch-folders.json. With the
+ * ledger turned off every call gets its own folder.
+ */
+export function downloadRunFolder(savePath?: string, batchId?: string, now: Date = new Date()): string {
+  const root = batchId ? resolveRunLogRoot() : null;
+  if (!batchId || !root) return runDownloadFolder(savePath, now);
+  const file = join(root, "batch-folders.json");
+  let known: Record<string, { folder: string; at: number }> = {};
+  if (existsSync(file)) {
+    try {
+      known = JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+      // Only this function writes the file; an unreadable one starts afresh.
+      known = {};
+    }
+  }
+  const key = `${resolveDownloadPath(savePath)}\n${batchId}`;
+  if (known[key]) return known[key].folder;
+  const folder = runDownloadFolder(savePath, now);
+  for (const [k, v] of Object.entries(known)) if (now.getTime() - v.at > 2 * 86_400_000) delete known[k];
+  known[key] = { folder, at: now.getTime() };
+  mkdirSync(root, { recursive: true });
+  writeFileSync(file, `${JSON.stringify(known, null, 2)}\n`);
+  return folder;
 }
 
 /** One download recorded as its own run in the local run ledger. */
@@ -69,7 +98,7 @@ export async function handleDownloadPaper(
   carsiBackend?: CarsiBackend,
 ) {
   const { paperId, platform, savePath, useEntitledAccess } = args;
-  const resolvedSavePath = resolveDownloadPath(savePath);
+  const resolvedSavePath = downloadRunFolder(savePath);
   const resolvedPlatform = resolvePlatformId(platform);
 
   const result = await recordedDownload(
@@ -94,6 +123,7 @@ export async function handleDownloadWithFallback(
   searchers: Searchers,
   carsiBackend?: CarsiBackend,
 ) {
+  args = { ...args, savePath: downloadRunFolder(args.savePath, args.batch?.id) };
   const tiers = createDefaultDownloadTiers(carsiBackend);
   // A caller's own serial batch reports each item; a lone download is a batch of one.
   const download = async (options: DownloadWithFallbackOptions, callerBatch: boolean) => {
@@ -121,7 +151,7 @@ export async function handleDownloadBatch(
   searchers: Searchers,
   carsiBackend?: CarsiBackend,
 ) {
-  const result = await downloadBatch(searchers, args, carsiBackend);
+  const result = await downloadBatch(searchers, { ...args, savePath: downloadRunFolder(args.savePath) }, carsiBackend);
   return jsonTextResponse(
     `Download batch ${result.status}: ${result.succeeded}/${result.total} succeeded.\n\n${JSON.stringify(result, null, 2)}`,
   );
