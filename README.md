@@ -80,7 +80,7 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 - **用学校订阅下载**：API key、下载文件夹、等待时间和提醒都在设置窗口里填，每个 key 都能点“测试”。之后想改，让 AI 打开设置，或点胶囊上的齿轮。
 - **不用**：AI 列出还缺的 key 和申请入口（也见 [API key](#2-api-key)），你在终端运行 `paper-search setup` 填入，输入时不显示；填完 AI 逐个测试能不能用。
 
-### 4. 对 AI 说一句话
+### 4. 开始使用
 
 配置好后，引用 PaperSearch 的 Skill，说出你需要搜索的内容，比如：
 
