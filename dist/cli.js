@@ -24,6 +24,7 @@ import { createNodeHost } from "./management/carsi/host.js";
 import { InstallError, installCarsi, carsiStatus, renderStatusText, uninstallCarsi, updateCarsi, } from "./management/carsi/installer.js";
 import { resolveDefaultCarsiProfileDir, takeDownloadLock } from "./capabilities/pdf-discovery/carsi/index.js";
 import { autoUpdateCarsi, withAutoUpdate } from "./management/carsi/autoUpdate.js";
+import { withCliCarsiProgress } from "./management/carsi/cliProgress.js";
 import { openSettingsWindow, settingsWindowEnv as windowEnv } from "./management/carsi/settingsWindow.js";
 import { carsiLogin } from "./management/carsi/login.js";
 import { paperSearchCommand } from "./config/selfCommand.js";
@@ -354,37 +355,6 @@ function updateCarsiFirst() {
         const lockPath = takeDownloadLock(resolveDefaultCarsiProfileDir());
         return () => unlinkSync(lockPath);
     });
-}
-function withCliCarsiProgress(backend) {
-    const withBatchSession = backend.withBatchSession?.bind(backend);
-    return {
-        probe: (signal) => backend.probe(signal),
-        withBatchSession: withBatchSession && ((run) => withBatchSession((scoped) => run(withCliCarsiProgress(scoped)))),
-        reportBatchProgress: async (update, signal) => (await backend.reportBatchProgress?.(update, signal)) ?? false,
-        downloadLegalDoi: async (request) => {
-            const controller = new AbortController();
-            const cancel = () => controller.abort();
-            process.once("SIGINT", cancel);
-            process.once("SIGTERM", cancel);
-            if (process.stderr.isTTY) {
-                process.stderr.write("正在通过 CARSI 获取全文；若浏览器要求登录或安全验证，请在窗口中完成。\n");
-            }
-            try {
-                return await backend.downloadLegalDoi({
-                    ...request,
-                    signal: controller.signal,
-                    onProgress: (progress) => {
-                        process.stderr.write(`[CARSI] ${progress.message}\n`);
-                        request.onProgress?.(progress);
-                    },
-                });
-            }
-            finally {
-                process.removeListener("SIGINT", cancel);
-                process.removeListener("SIGTERM", cancel);
-            }
-        },
-    };
 }
 function getToolNames() {
     return TOOLS.map((tool) => tool.name);

@@ -82,15 +82,17 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 ### 4. 对 AI 说一句话
 
-配置好后，直接说你要做什么，例如：
+配置好后，在输入框里先引用 PaperSearch 的 Skill，再说你要做什么：输入 `$`（Claude Code 里是 `/`），选 `paper-search`。引用了它，AI 就一定用 PaperSearch 来查，不会改用自带的网页搜索。
+
+<p align="center"><img src="assets/ask-with-skill.png" width="645" alt="在输入框里引用 PaperSearch 的 Skill：要做的事后面带着 Paper Search 标签"></p>
 
 | 想做什么 | 可以这样说 |
 |---|---|
-| 检索论文 | 找 2020 年以来 SGLT2 抑制剂治疗心力衰竭的随机对照试验，核对 DOI |
-| 搜正文片段 | 这些试验的主要终点，原文是怎么定义的？摘几段原文 |
-| 查期刊 IF 与分区 | 它们发表在哪些期刊？影响因子和分区各是多少 |
-| 查引文和参考文献 | DAPA-HF 试验发表后，有哪些研究引用了它 |
-| 下载全文和补充材料 | 把这些论文的全文和补充材料下载到 ./downloads |
+| 检索论文 | `$paper-search` 找 2020 年以来 SGLT2 抑制剂治疗心力衰竭的随机对照试验，核对 DOI |
+| 搜正文片段 | `$paper-search` 这些试验的主要终点，原文是怎么定义的？摘几段原文 |
+| 查期刊 IF 与分区 | `$paper-search` 它们发表在哪些期刊？影响因子和分区各是多少 |
+| 查引文和参考文献 | `$paper-search` DAPA-HF 试验发表后，有哪些研究引用了它 |
+| 下载全文和补充材料 | `$paper-search` 把这些论文的全文和补充材料下载到 ./downloads |
 
 **拿到结果：**
 

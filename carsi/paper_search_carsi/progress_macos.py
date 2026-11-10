@@ -155,20 +155,67 @@ def install_notification_handler(callback: Callable[[str, str], Any]) -> None:
         _callback = callback
 
 
+def _host() -> NotificationBridge:
+    """The running native host, started on first use (called under _bridge_lock)."""
+    global _bridge
+    if _bridge is None:
+        if _callback is None:
+            raise RuntimeError("PaperSearch's notification click handler is unavailable")
+        _bridge = NotificationBridge(prepare_app(), _callback)
+    return _bridge
+
+
 def notify(title: str, body: str, state: dict[str, Any]) -> None:
     from .user_settings import notify_enabled
 
-    global _bridge
     with _bridge_lock:
         # A queued notification must also respect a switch turned off meanwhile.
         if not notify_enabled():
             return
-        if _bridge is None:
-            if _callback is None:
-                raise RuntimeError("PaperSearch's notification click handler is unavailable")
-            _bridge = NotificationBridge(prepare_app(), _callback)
-        _bridge.send("notify", title=title, body=body, current=str(state.get("current") or ""),
+        _host().send("notify", title=title, body=body, current=str(state.get("current") or ""),
                      run_id=str(state.get("run_id") or ""))
+
+
+# System Settings keeps each app's notification settings in com.apple.ncprefs ("apps", one
+# entry per app that has shown notifications): bit 25 of "flags" is "Allow notifications",
+# bits 3-5 the alert style (0 none, 1 banners, 2 alerts). Undocumented, read as System
+# Settings writes it (macOS 15, 2026-11-10). The host cannot ask instead: for its notifications
+# UNUserNotificationCenter answers "not determined" while PaperSearch is allowed.
+ALLOWED_FLAG = 1 << 25
+
+
+def notifications_allowed() -> str:
+    """"ok", "off" (not allowed, or nothing shown on screen), or "unknown"."""
+    try:
+        exported = subprocess.run(["defaults", "export", "com.apple.ncprefs", "-"], capture_output=True,
+                                  timeout=5, check=True).stdout
+        apps = plistlib.loads(exported).get("apps", [])
+    except (OSError, subprocess.SubprocessError, plistlib.InvalidFileException, ValueError, AttributeError) as exc:
+        logger.warning("notification settings unreadable: %s", type(exc).__name__)
+        return "unknown"
+    entry = next((app for app in apps if isinstance(app, dict) and app.get("bundle-id") == BUNDLE_ID), None)
+    if entry is None:
+        return "ok"  # never shown yet: the first notification lists PaperSearch in the settings
+    flags = entry.get("flags")
+    if not isinstance(flags, int):
+        return "unknown"
+    return "ok" if flags & ALLOWED_FLAG and (flags >> 3) & 7 else "off"
+
+
+def send_test(title: str, body: str) -> None:
+    """A notification for the settings' test: no task behind it, so a click does nothing."""
+    with _bridge_lock:
+        _host().send("notify", title=title, body=body, current="", run_id="")
+
+
+def open_settings() -> None:
+    """System Settings at PaperSearch's notifications (macOS 13+), else the Notifications pane."""
+    import platform
+
+    major = int((platform.mac_ver()[0] or "0").split(".")[0] or 0)
+    url = (f"x-apple.systempreferences:com.apple.Notifications-Settings.extension?id={BUNDLE_ID}" if major >= 13
+           else "x-apple.systempreferences:com.apple.preference.notifications")
+    subprocess.Popen(["open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def clear_notifications() -> None:

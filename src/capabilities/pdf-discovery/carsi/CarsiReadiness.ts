@@ -11,6 +11,7 @@ import { plainText } from "../../../utils/plainText.js";
 const DOWNLOAD_TOOL = "carsi_download";
 const CACHE_CLEAR_TOOL = "carsi_cache_clear";
 const BATCH_PROGRESS_TOOL = "carsi_batch_progress";
+const BATCH_PAPERS_TOOL = "carsi_batch_papers";
 export const CLOSE_BATCH_BROWSER = "carsi_close_batch_browser";
 const COMPATIBILITY_BATCH: CarsiBatchPosition = {
   id: "paper-search-compatibility",
@@ -86,6 +87,10 @@ export interface CarsiBatchSupport {
   progressResults?: boolean;
   /** carsi_batch_progress declares ``phase`` and ``channel`` (the open-access stretch). */
   progressPhase?: boolean;
+  /** carsi_batch_progress declares ``lanes`` (the open-access lane beside a running download). */
+  progressLanes?: boolean;
+  /** carsi_batch_papers exists (the papers behind the window's 成功, 失败 and 剩余). */
+  papersTool?: boolean;
 }
 
 export function selectCarsiBatchSupport(
@@ -95,6 +100,7 @@ export function selectCarsiBatchSupport(
   const download = tools.find((tool) => tool.name === DOWNLOAD_TOOL);
   const progress = tools.filter((tool) => tool.name === BATCH_PROGRESS_TOOL);
   const close = tools.filter((tool) => tool.name === CLOSE_BATCH_BROWSER);
+  const papers = tools.filter((tool) => tool.name === BATCH_PAPERS_TOOL);
   const keepBrowser = !!download && close.length === 1 && acceptsDeclaredArguments(close[0].inputSchema, {}) &&
     acceptsDeclaredArguments(download.inputSchema, {
       ...createCarsiDownloadArguments(COMPATIBILITY_DOI, "output", strategy, COMPATIBILITY_BATCH),
@@ -147,6 +153,10 @@ export function selectCarsiBatchSupport(
     ...(progress.length === 1 && ["phase", "channel"].every((name) =>
       Object.hasOwn(progress[0].inputSchema.properties ?? {}, name))
       ? { progressPhase: true } : {}),
+    ...(progress.length === 1 && Object.hasOwn(progress[0].inputSchema.properties ?? {}, "lanes")
+      ? { progressLanes: true } : {}),
+    ...(papers.length === 1 && ["batch_id", "folder", "papers"].every((name) =>
+      Object.hasOwn(papers[0].inputSchema.properties ?? {}, name)) ? { papersTool: true } : {}),
     progressTool:
       progress.length === 1 &&
       acceptsDeclaredArguments(progress[0].inputSchema, {

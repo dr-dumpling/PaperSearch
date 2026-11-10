@@ -32,6 +32,11 @@ log = logging.getLogger(__name__)
 # The longest legitimate call is a page load (60 s, the engine's longest
 # timeout); waits for the user are made of short calls.
 LIMIT_SEC = 90
+# A call already sent when its step's budget ran out may finish within this; the
+# next call then is not sent (BrowserBudgetExhausted) and the browser goes on. A
+# 0 s title read or wait cut at the deadline was taken for a stalled browser and
+# lost the PDF in hand (Science, 2026-11-09).
+OPERATION_GRACE_SEC = 5
 
 _inflight: dict[int, tuple[float, str, list[str], Any, Any, Any]] = {}
 _call_deadlines: dict[int, tuple[float, str]] = {}
@@ -269,7 +274,7 @@ def check(limit_sec: float) -> bool:
     deadlines = dict(_call_deadlines)
     overdue = [(key, entry) for key, entry in list(_inflight.items())
                if now - entry[0] > limit_sec
-               or (key in deadlines and now >= deadlines[key][0])]
+               or (key in deadlines and now >= deadlines[key][0] + OPERATION_GRACE_SEC)]
     if not overdue:
         return False
     key, entry = min(overdue, key=lambda pair: pair[1][0])

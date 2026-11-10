@@ -17,7 +17,7 @@ def article_pdf():
 
 
 class ChromiumPDFCaptureTests(unittest.TestCase):
-    def capture(self, status=200, content_type="application/pdf", body=None, body_error=False):
+    def capture(self, status=200, content_type="application/pdf", body=None, body_error=False, title=None):
         pdf_bytes = body if body is not None else article_pdf()
         pdf_url = "https://pdf.sciencedirectassets.com/example/main.pdf"
         downloader = PublisherBatchDownloader(config={}, profile=ELSEVIER_PROFILE)
@@ -25,6 +25,8 @@ class ChromiumPDFCaptureTests(unittest.TestCase):
         downloader._click_pdf_entry = Mock(return_value=True)
         downloader._pdf_candidates = Mock(return_value=[])
         downloader._fetch_page_state_pdf = Mock(return_value=(None, "", None))
+        if title is not None:
+            downloader._citation_title = Mock(return_value=title)
         page = Mock()
         page.context.browser.browser_type.name = "chromium"
         session = page.context.new_cdp_session.return_value
@@ -59,6 +61,19 @@ class ChromiumPDFCaptureTests(unittest.TestCase):
         session.send.assert_any_call("Fetch.continueRequest", {"requestId": "test-response"})
         session.send.assert_any_call("Fetch.disable")
         session.detach.assert_called_once()
+
+    def test_a_pdf_naming_neither_doi_nor_title_is_saved_at_once_unconfirmed(self):
+        # Science (2026-11-09): its PDF names neither on the first pages; trying the
+        # page's other addresses for a confirmed copy took the rest of the minute.
+        import pymupdf
+
+        with pymupdf.open() as document:
+            for _ in range(12):
+                document.new_page().insert_text((40, 50), "Research article\n" + "Results\n" * 40)
+            unknown = document.tobytes(deflate=False)
+        (body, url, block), downloader, _, _, pdf_url = self.capture(body=unknown, title="A fixture title found nowhere")
+        self.assertEqual((body, url, block), (unknown, pdf_url, None))
+        downloader._fetch_page_state_pdf.assert_not_called()
 
     def test_denied_response_is_not_treated_as_pdf(self):
         captured, downloader, session, body, url = self.capture(status=403)

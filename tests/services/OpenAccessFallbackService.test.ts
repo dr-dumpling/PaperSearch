@@ -96,7 +96,8 @@ describe("OpenAccessFallbackService", () => {
         [tier("unpaywall", unlabelled)],
       );
       expect(result.status).toBe("error");
-      expect(result.review).toEqual({ path: expect.stringContaining("/diagnostics/"), reason: "pdf_identity_unverified" });
+      expect(result.review).toEqual({ path: expect.stringMatching(/\/papers\/[^/]+\/diagnostics\/[^/]+_review\.pdf$/),
+        reason: "pdf_identity_unverified" });
       expect(readFileSync(result.review!.path)).toEqual(readFileSync(unlabelled));
     });
 
@@ -362,7 +363,7 @@ describe("OpenAccessFallbackService", () => {
       expect(downloadLegalDoi).toHaveBeenCalledWith({
         identifier: "10.1000/example",
         outputDir: expect.stringContaining(`${tempDir}/papers/`),
-        diagnosticsDir: expect.stringContaining(`${tempDir}/diagnostics/`),
+        diagnosticsDir: expect.stringMatching(new RegExp(`^${tempDir}/papers/[^/]+/diagnostics$`)),
       });
       expect(result).toEqual({
         status: "ok",
@@ -532,7 +533,7 @@ describe("OpenAccessFallbackService", () => {
     expect(downloadLegalDoi).toHaveBeenCalledWith({
       identifier: "not-a-doi",
       outputDir: expect.stringContaining("/papers/"),
-      diagnosticsDir: expect.stringContaining("/diagnostics/"),
+      diagnosticsDir: expect.stringMatching(/\/papers\/[^/]+\/diagnostics$/),
     });
     expect(result.attempts).toContainEqual({
       stage: "entitled_access",

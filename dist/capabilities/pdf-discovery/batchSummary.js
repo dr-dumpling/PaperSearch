@@ -4,14 +4,18 @@ import { dirname, join } from "node:path";
 import { sanitizeDoi } from "../../infrastructure/security/SecurityUtils.js";
 import { classifyFailureCode } from "../../infrastructure/runlog/failureClass.js";
 import { carsiShortReason } from "./carsi/index.js";
-/** Where a saved main text came from, as the finished window names it. */
-const SOURCE_LABELS = {
-    entitled_access: "机构订阅",
-    preprint: "预印本",
+/**
+ * Where a saved main text came from, as the finished window names it: the two
+ * ways of downloading (the guide's 开放下载 and 机构下载, the batch's two lanes),
+ * the open one's sources other than open access in brackets (user, 2026-11-10).
+ */
+const OPEN_DOWNLOAD = "开放下载";
+const ENTITLED_DOWNLOAD = "机构下载";
+const OPEN_DETAILS = {
     publisher_api: "出版社 API",
     scihub: "Sci-Hub",
+    preprint: "预印本",
 };
-const OPEN_ACCESS = "开放获取";
 /** Supplement outcomes that are no shortfall: the user or the batch ended them. */
 const NOT_A_SHORTFALL = new Set(["batch_stopped", "user_skipped", "cancelled"]);
 /**
@@ -83,6 +87,7 @@ export async function asWindowBatch(options, backend, download) {
 }
 export function batchResults(result, startedAt, folder) {
     const sources = new Map();
+    const details = new Map();
     const summary = {
         content: result.content,
         folder,
@@ -116,8 +121,10 @@ export function batchResults(result, startedAt, folder) {
             if (result.content === "supplements" || !item.path)
                 continue;
             summary.main += 1;
-            const label = sourceLabel(item);
+            const [label, detail] = sourceLabel(item);
             sources.set(label, (sources.get(label) ?? 0) + 1);
+            if (detail)
+                details.set(detail, (details.get(detail) ?? 0) + 1);
             continue;
         }
         summary.failures.push({
@@ -129,13 +136,31 @@ export function batchResults(result, startedAt, folder) {
         });
     }
     summary.sources = [...sources].sort((a, b) => b[1] - a[1]);
+    if (details.size)
+        summary.source_details = [[OPEN_DOWNLOAD, [...details].map(([name, n]) => `${name} ${n}`).join("、")]];
     return summary;
 }
+/**
+ * A paper for the window's lists (成功, 失败, 剩余): waiting in a lane, or its
+ * result as the finished card tells it (the way it came, or why it failed).
+ */
+export function batchPaper(request, item, waiting, content) {
+    const paper = { doi: item?.doi ?? request.doi ?? "", title: item?.title ?? request.title ?? "", journal: item?.journal ?? "" };
+    if (waiting || !item)
+        return { ...paper, state: waiting ?? "open" };
+    if (item.status !== "ok")
+        return { ...paper, state: "failed", ...failure(item, content) };
+    const [via, detail] = sourceLabel(item);
+    return { ...paper, state: "ok", via, ...(detail ? { detail } : {}), ...(item.path ? { path: item.path } : {}) };
+}
+/** The way a main text came (and, for the open one, its source when not open access). */
 function sourceLabel(item) {
     if (item.version === "preprint")
-        return SOURCE_LABELS.preprint;
+        return [OPEN_DOWNLOAD, OPEN_DETAILS.preprint];
     const saved = [...item.attempts].reverse().find((attempt) => attempt.status === "ok");
-    return (saved && SOURCE_LABELS[saved.stage]) || OPEN_ACCESS;
+    if (saved?.stage === "entitled_access")
+        return [ENTITLED_DOWNLOAD];
+    return [OPEN_DOWNLOAD, saved ? OPEN_DETAILS[saved.stage] : undefined];
 }
 /** The failure's class (ADR 0012) and its reason in a few words. */
 function failure(item, content) {

@@ -221,7 +221,6 @@ describe("paper-search carsi install", () => {
       expect.stringMatching(/^python -c import json\nfrom paper_search_carsi\.config/),
       "paper-search-carsi setup --carsi --institution 红木兰大学",
       "paper-search-carsi config get progress_notify",
-      "python -c import tkinter",
     ]);
     const record = JSON.parse(readFileSync(join(m.root, "install.json"), "utf8"));
     expect(Object.keys(record.steps)).toEqual(["preflight", "uv", "python", "backend", "browser", "config", "school", "notifications", "check"]);
@@ -438,7 +437,6 @@ describe("paper-search carsi install", () => {
       "uv pip install --python <root>/venv/bin/python --reinstall-package paper-search-carsi --exact <root>/src[ego]",
       expect.stringMatching(/^python -c import importlib\.metadata/),
       expect.stringMatching(/^python -c import json\nfrom paper_search_carsi\.browser/),
-      "python -c import tkinter",
     ]);
     expect(outcome.record).toMatchObject({ paperSearchVersion: "0.3.5", updatedAt: "2026-11-01T15:00:00.000Z", school: "红木兰大学" });
     // Not installed: nothing to update.
@@ -499,7 +497,6 @@ describe("paper-search carsi install", () => {
       "uv pip install --python <root>/venv/bin/python --reinstall-package paper-search-carsi --exact <root>/src[ego]",
       expect.stringMatching(/^python -c import importlib\.metadata/),
       expect.stringMatching(/^python -c import json\nfrom paper_search_carsi\.browser/),
-      "python -c import tkinter",
     ]);
     const note = `以前下载的 Camoufox 浏览器不再使用，可以手动删除：${m.camoufoxDir}（本机其他用 Camoufox 的程序可能也在用）`;
     expect(outcome.record).toMatchObject({ browser: "chrome", chrome: { path: m.chrome, version: "156.0.8078.81" },

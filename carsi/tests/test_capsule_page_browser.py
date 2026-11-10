@@ -562,6 +562,162 @@ class CapsulePageTests(unittest.TestCase):
             finally:
                 browser.close()
 
+    def test_the_counts_open_their_lists_of_papers(self):
+        """成功, 失败 and 剩余 open the batch's papers: a saved one shows its PDF in its folder,
+        a failed one opens its article page; no line under the title, each group opened on its
+        own, the whole list scrolling within half the screen (user, 2026-11-10)."""
+        import time
+        from patchright.sync_api import sync_playwright
+        from paper_search_carsi.progress_view import paper_lists, view
+        raw = dict(status='running', batch_id='b-lists', run_id='r-lists', current='10.1000/5', title='Being fetched',
+                   publisher='Karger', journal='Digestion', total=8, done=4, success=3, failed=1, stage='fetching_pdf')
+        def paper(index, state, **fields):
+            return {'index': index, 'doi': f'10.1000/{index}', 'title': f'Paper {index}', 'journal': 'Nature',
+                    'state': state, **fields}
+        listed = {'batch_id': 'b-lists', 'folder': '/papers', 'papers': {str(p['index']): p for p in (
+            paper(1, 'ok', via='开放下载'), paper(2, 'ok', via='开放下载', detail='出版社 API'), paper(3, 'ok', via='机构下载'),
+            paper(4, 'failed', cls='user_or_external', reason='等学校登录超时'),
+            paper(5, 'school', journal='Digestion'), paper(6, 'school'), paper(7, 'open'), paper(8, 'open'))}}
+        lists = paper_lists(listed, raw)
+        state = {**view(raw, time.time()), 'lists': True}
+        for english in (False, True):
+            with self.subTest(english=english), sync_playwright() as p:
+                browser, page = self.drag_page(p, 'darwin', english=english)
+                try:
+                    page.evaluate("""({state, lists}) => { window.openedPapers = [];
+                        Object.assign(pywebview.api, {paper_lists: async () => lists,
+                          show_paper: async (index) => { openedPapers.push(index); return '已打开所在文件夹'; }});
+                        testState = state; open = true; }""", {'state': {**state, **({'lang': 'en'} if english else {})},
+                                                              'lists': lists})
+                    page.evaluate("async lists => { window.firstLists = lists; await tick(); }", lists)
+                    page.wait_for_function("!root.classList.contains('animating')")
+                    if english:
+                        for kind in ('ok', 'failed', 'left'):
+                            page.locator(f'[data-act=papers][data-list={kind}]').click()
+                            page.wait_for_function("panel === 'papers' && papersList && !root.classList.contains('animating')")
+                            page.locator('[data-act=list_group]').last.click()
+                            page.wait_for_function("!root.classList.contains('animating')")
+                            self.assertIsNone(page.evaluate(r"""() => [root.innerText, ...[...root.querySelectorAll('[title], [aria-label]')]
+                                .flatMap(e => [e.title, e.getAttribute('aria-label') || ''])].join('\n').match(/[一-鿿]+/g)"""), kind)
+                            page.locator('[data-act=back]').click()
+                        continue
+                    page.locator('[data-act=papers][data-list=ok]').click()
+                    page.wait_for_function("panel === 'papers' && papersList && !root.classList.contains('animating')")
+                    self.assertEqual(page.locator('.head .title').inner_text(), '成功 3 篇')
+                    self.assertEqual(page.locator('.head .sub').count(), 0)  # no line under the title
+                    self.assertEqual(page.locator('.grp .row .reason').all_inner_texts(), ['开放下载（出版社 API 1）', '机构下载'])
+                    self.assertEqual(page.locator('.paper-list li').all_inner_texts(),
+                                     ['Paper 1\nNature · 开放获取', 'Paper 2\nNature · 出版社 API'])
+                    page.locator('.paper-list [data-act=show_paper]').nth(1).click()
+                    page.wait_for_function("openedPapers.length === 1")
+                    self.assertEqual(page.evaluate('openedPapers'), [2])
+                    self.assertIn('已打开所在文件夹', page.locator('#root').inner_text())
+                    page.locator('[data-act=list_group][data-group="1"]').click()  # both groups open
+                    page.wait_for_function("!root.classList.contains('animating')")
+                    self.assertEqual(page.locator('.paper-list li').all_inner_texts(),
+                                     ['Paper 1\nNature · 开放获取', 'Paper 2\nNature · 出版社 API', 'Paper 3\nNature'])
+                    page.locator('[data-act=list_group][data-group="0"]').click()
+                    page.wait_for_function("!root.classList.contains('animating')")
+                    self.assertEqual(page.locator('.paper-list li').all_inner_texts(), ['Paper 3\nNature'])
+                    # Dozens of papers scroll inside one area of half the screen; the title stays.
+                    many = {**lists, 'ok': {'count': 60, 'groups': [{'label': '机构下载', 'count': 60, 'more': 0, 'open': True,
+                            'papers': [{'index': i, 'title': f'Paper {i}', 'where': 'Nature', 'doi': ''} for i in range(1, 61)]}]}}
+                    page.evaluate("async many => { pywebview.api.paper_lists = async () => many; listOpen = null; await tick(); }", many)
+                    page.wait_for_function("!root.classList.contains('animating') && document.querySelectorAll('.paper-list li').length === 60")
+                    scroll = page.evaluate("""() => { const s = root.querySelector('.papers-scroll');
+                        return {most: parseFloat(s.style.maxHeight), height: s.clientHeight, inner: s.scrollHeight,
+                                half: Math.max(240, Math.round(screen.availHeight / 2) - 64), lists: root.querySelectorAll('.paper-list').length}; }""")
+                    self.assertEqual(scroll['most'], scroll['half'])
+                    self.assertLessEqual(scroll['height'], scroll['half'])
+                    self.assertGreater(scroll['inner'], scroll['height'])
+                    page.evaluate("pywebview.api.paper_lists = async () => window.firstLists")
+                    page.locator('[data-act=back]').click()
+                    page.wait_for_function("panel === '' && !root.classList.contains('animating')")
+                    self.assertEqual(page.locator('.stats [data-act=papers]').count(), 3)
+
+                    page.locator('[data-act=papers][data-list=failed]').click()
+                    page.wait_for_function("panel === 'papers' && papersList && !root.classList.contains('animating')")
+                    self.assertEqual(page.locator('.head .title').inner_text(), '失败 1 篇')
+                    self.assertEqual(page.locator('.grp .row').inner_text().split('\n')[:2], ['外部原因', '等学校登录超时'])
+                    page.locator('.paper-list [data-act=open_article]').click()
+                    page.wait_for_function("openedArticles.length === 1")
+                    self.assertEqual(page.evaluate('openedArticles'), ['10.1000/4'])
+                    page.keyboard.press('Escape')
+                    page.wait_for_function("panel === ''")
+
+                    page.locator('[data-act=papers][data-list=left]').click()
+                    page.wait_for_function("panel === 'papers' && papersList && !root.classList.contains('animating')")
+                    self.assertEqual(page.locator('.head .title').inner_text(), '剩余 4 篇')
+                    self.assertEqual(page.locator('.grp .row .reason').all_inner_texts(),
+                                     ['正在下载', '排队等机构下载', '开放下载还没查'])
+                    self.assertEqual(page.locator('.paper-list li').all_inner_texts(), ['Paper 5\nDigestion · 机构下载'])
+                    self.assertEqual(page.locator('.paper-list button').count(), 0)  # nothing to open yet
+                    # Without the batch's papers the counts stay plain numbers.
+                    page.evaluate("async s => { panel = ''; testState = s; await tick(); }", {**state, 'lists': False})
+                    page.wait_for_function("!root.classList.contains('animating')")
+                    self.assertEqual(page.locator('.stats [data-act=papers]').count(), 0)
+                finally:
+                    browser.close()
+
+    def test_the_notification_switch_checks_the_system_and_sends_a_test(self):
+        """Under the switch: a test notification, and what to change when the system keeps
+        them from showing or the user did not see one (user, 2026-11-10)."""
+        from patchright.sync_api import sync_playwright
+        for platform, english in (('darwin', False), ('win32', False), ('darwin', True)):
+            with self.subTest(platform=platform, english=english), sync_playwright() as p:
+                browser, page = self.drag_page(p, platform, english=english)
+                try:
+                    page.evaluate("""english => { window.settingsOpened = 0; window.check = 'off'; window.testResult = {state: 'sent'};
+                        Object.assign(pywebview.api, {
+                          settings: async () => ({notify: false, download_dir: '/papers', language: english ? 'en' : 'zh', fields: [
+                            {name: 'login', label: '学校登录页最多等', unit: '秒', value: 180, default: 180, page: 'wait'}]}),
+                          set_notifications: async (on) => ({ok: true, notify: on}),
+                          check_notifications: async () => ({state: check}),
+                          test_notification: async () => testResult,
+                          open_notification_settings: async () => { settingsOpened += 1; return true; }});
+                        if (english) testState = {...testState, lang: 'en'}; }""", english)
+                    page.evaluate("async () => { await tick(); await openSettings({page: 'wait'}); }")
+                    page.wait_for_selector('[data-act=notify]')
+                    self.assertEqual(page.locator('[data-act=test_notify]').count(), 0)  # switch off: nothing to test
+                    page.locator('input').first.fill('200')  # typed, not saved: kept through the checks below
+                    page.locator('[data-act=notify]').click()
+                    page.wait_for_selector('.nbox')
+                    box = page.locator('.nbox').inner_text()
+                    if english:
+                        self.assertIn("macOS blocks PaperSearch's notifications", box)
+                    elif platform == 'darwin':
+                        self.assertIn('macOS 没有允许 PaperSearch 发通知', box)
+                        self.assertIn('系统设置 › 通知 › PaperSearch', box)
+                    else:
+                        self.assertIn('Windows 关掉了 PaperSearch 的通知', box)
+                        self.assertIn('Windows PowerShell', box)
+                    page.locator('.nbox [data-act=notify_settings]').click()
+                    page.wait_for_function("settingsOpened === 1")
+                    page.locator('[data-act=test_notify]').click()
+                    page.wait_for_selector('.nnote.ok')
+                    self.assertEqual(page.locator('.nbox').count(), 0)
+                    sent = page.locator('.nnote.ok').inner_text()
+                    self.assertEqual(sent, '✓ Sent; see the top right' if english
+                                     else '✓ 已发出，右上角应弹出一条通知' if platform == 'darwin' else '✓ 已发出，右下角应弹出一条通知')
+                    page.locator('[data-act=notify_unseen]').click()
+                    page.wait_for_selector('.nbox ol')
+                    self.assertEqual(page.locator('.nbox li').count(), 3)
+                    if english:
+                        self.assertIsNone(page.evaluate("root.innerText.replace('中文', '').match(/[一-鿿]+/g)"))
+                    page.evaluate("testResult = {state: 'failed', message: '测试通知没有发出：RuntimeError'}")
+                    page.locator('[data-act=test_notify]').click()
+                    page.wait_for_selector('.nnote.bad')
+                    self.assertEqual(page.locator('input').first.input_value(), '200')
+                    # Off again: the test goes with the switch; on with nothing wrong: no box.
+                    page.locator('[data-act=notify]').click()
+                    page.wait_for_function("!document.querySelector('[data-act=test_notify]')")
+                    page.evaluate("check = 'ok'")
+                    page.locator('[data-act=notify]').click()
+                    page.wait_for_selector('[data-act=test_notify]')
+                    self.assertEqual(page.locator('.nbox').count(), 0)
+                finally:
+                    browser.close()
+
     def test_api_keys_page_and_the_download_behind_the_settings(self):
         from patchright.sync_api import sync_playwright
         with sync_playwright() as p:

@@ -14,8 +14,8 @@ export type AutoUpdateOutcome = "off" | "not_needed" | "busy" | "updated" | "fai
 export declare function autoUpdateCarsi(host: InstallerHost, context: InstallContext, lock: () => () => void): Promise<AutoUpdateOutcome>;
 /**
  * ``backend`` with ``update`` run once, before the first call that starts the
- * backend process: a probe, a download, or a batch progress report (a batch
- * session itself starts nothing). Calls made meanwhile wait for the same update.
+ * backend process: a probe, a download, or a batch progress or papers report (a
+ * batch session itself starts nothing). Calls made meanwhile wait for the same update.
  */
 export declare function withAutoUpdate(backend: CarsiBackend, update: () => Promise<unknown>): CarsiBackend;
 //# sourceMappingURL=autoUpdate.d.ts.map

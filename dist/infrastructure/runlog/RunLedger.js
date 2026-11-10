@@ -146,6 +146,15 @@ export class RunLedger {
         this.stages.delete(item.index);
         this.started.delete(item.index);
     }
+    /** The run's portable folder in the download folder: runs/<run id>. */
+    get packet() {
+        const root = typeof this.run.savePath === "string" ? this.run.savePath : "./downloads";
+        return resolve(root, "runs", String(this.run.runId));
+    }
+    /** Where the run's papers that went fine keep their backend records. */
+    get records() {
+        return join(this.packet, "records");
+    }
     close(extra = {}) {
         Object.assign(this.run, extra, {
             endedAt: new Date().toISOString(),
@@ -154,9 +163,8 @@ export class RunLedger {
         });
         this.writeRun();
         this.line(`end succeeded=${this.succeeded} failed=${this.failed}`);
-        // Keep the global index for `runs`/`failures`, and a portable packet beside this download.
-        const root = typeof this.run.savePath === "string" ? this.run.savePath : "./downloads";
-        const packet = resolve(root, "diagnostics", "runs", String(this.run.runId));
+        // Keep the global index for `runs`/`failures`, and a portable copy in the download folder's runs/.
+        const packet = this.packet;
         try {
             mkdirSync(packet, { recursive: true });
             for (const name of ["run.json", "items.jsonl", "timeline.log"]) {

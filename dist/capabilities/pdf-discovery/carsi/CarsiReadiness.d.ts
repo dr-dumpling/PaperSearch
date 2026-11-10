@@ -24,6 +24,10 @@ export interface CarsiBatchSupport {
     progressResults?: boolean;
     /** carsi_batch_progress declares ``phase`` and ``channel`` (the open-access stretch). */
     progressPhase?: boolean;
+    /** carsi_batch_progress declares ``lanes`` (the open-access lane beside a running download). */
+    progressLanes?: boolean;
+    /** carsi_batch_papers exists (the papers behind the window's 成功, 失败 and 剩余). */
+    papersTool?: boolean;
 }
 export declare function selectCarsiBatchSupport(tools: readonly CarsiToolDefinition[], strategy: CarsiDownloadStrategy): CarsiBatchSupport;
 export declare function validateCarsiContract(serverName: string | undefined, tools: readonly CarsiToolDefinition[]): CarsiReadiness;

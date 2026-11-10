@@ -1,4 +1,5 @@
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
+import { isInside } from "../outputLayout.js";
 export class CarsiToolResultError extends Error {
     code;
     constructor(code) {
@@ -107,8 +108,8 @@ function cleanLabel(value) {
 function insideOutputDir(file, outputDir) {
     if (!outputDir || typeof file !== "string" || !isAbsolute(file))
         return undefined;
-    const inside = relative(resolve(outputDir), resolve(file));
-    return inside && !inside.startsWith("..") && !isAbsolute(inside) ? resolve(file) : undefined;
+    // Links followed: the backend reports /private/tmp for the /tmp it was given (macOS).
+    return isInside(file, outputDir) ? resolve(file) : undefined;
 }
 /**
  * The backend's ``artifacts``: driver/publisher labels, the state code, record

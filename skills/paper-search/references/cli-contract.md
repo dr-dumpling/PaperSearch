@@ -161,9 +161,9 @@ paper-search run download_with_fallback --json-args '{"source":"crossref","paper
 
 一组论文（几十到几百篇）用一次按顺序执行的 `download_batch`，不要循环调用单篇下载：
 
-- `"mode"`：默认 `"two_phase"`，先对每篇试开放渠道，再只对仍缺的篇目走机构下载，浏览器登录集中在最后一段；进度窗口按整批计数（k / N），装了学校订阅下载时，5 篇以上的批量从开放渠道那一轮起就显示；`"per_item"` 每篇走完整个漏斗；`"entitled_only"` 跳过开放渠道，每篇直接走机构下载（用于测试学校这条路）。
+- `"mode"`：默认 `"two_phase"`，每篇先试开放渠道，没拿到的随即走机构下载（一次一篇），两路同时进行，浏览器和学校登录在开始后几秒就出现；进度窗口按整批计数（k / N），装了学校订阅下载时，5 篇以上的批量从开头就显示，并用一行显示开放下载（开放获取、出版社 API 等不用浏览器的渠道）和机构下载各下到多少篇；`"per_item"` 每篇走完整个漏斗；`"entitled_only"` 跳过开放渠道，每篇直接走机构下载（用于测试学校这条路）。
 - 不传 `savePath` 时存到 `DEFAULT_DOWNLOAD_PATH`；整批或每篇都可以带自己的 `savePath`，用户指定了别的文件夹时才传。
-- `"content"`：`"main"`（默认，只要正文）、`"supplements"`（只要本文的补充材料，不走正文的各层）、`"both"`。补充材料存在 `<savePath>/papers/<期刊_年份_标题_短标识>/supplements/`，清单与浏览器诊断在 `diagnostics/`，结果的 `supplements` 列出每个文件的状态；只经机构下载后端获取，哪些出版社有规则见 `publisher-support.md`。
+- `"content"`：`"main"`（默认，只要正文）、`"supplements"`（只要本文的补充材料，不走正文的各层）、`"both"`。补充材料存在 `<savePath>/papers/<期刊_年份_标题_短标识>/supplements/`，有文件没下到时清单与浏览器诊断在该篇的 `diagnostics/`（都下到时在这次运行的 `runs/<runId>/records/`），结果的 `supplements` 列出每个文件的状态；只经机构下载后端获取，哪些出版社有规则见 `publisher-support.md`。
 - 每次下载都会写一份本地运行记录，结果里的 `runLog` 是它的目录（`run.json`；`items.jsonl`，含每一层的耗时、代码，以及后端的页面事件和截图；`timeline.log`）。排查失败时读它，不要猜。结果列出每一篇和它的各次尝试。
 
 ```bash

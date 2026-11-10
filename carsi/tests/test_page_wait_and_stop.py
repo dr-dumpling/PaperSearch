@@ -165,8 +165,7 @@ class StatusLineTests(unittest.TestCase):
     """The progress window says which part of the paper it is fetching."""
 
     def test_main_text_and_supplements_are_told_apart(self):
-        from paper_search_carsi.progress_bar import ProgressWindow
-        text = ProgressWindow._status_text
+        from paper_search_carsi.progress_view import status_text as text
         base = {"phase": "第 3/7 篇：进入机构访问"}
         self.assertEqual(text({**base, "part": "main", "stage": "fetching_pdf"}, True), "正文 · 正在获取 PDF")
         self.assertEqual(text({**base, "part": "main", "stage": "waiting_login"}, True), "正文 · 等待机构登录")

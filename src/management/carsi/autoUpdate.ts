@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import type { CarsiBackend, CarsiBatchUpdate } from "../../capabilities/pdf-discovery/carsi/index.js";
+import type { CarsiBackend, CarsiBatchPapers, CarsiBatchUpdate } from "../../capabilities/pdf-discovery/carsi/index.js";
 import { InstallError, readInstallRecord, updateCarsi, type InstallContext, type InstallerHost } from "./installer.js";
 import { runtimePaths, runtimeRoot } from "./runtime.js";
 
@@ -62,8 +62,8 @@ export async function autoUpdateCarsi(
 
 /**
  * ``backend`` with ``update`` run once, before the first call that starts the
- * backend process: a probe, a download, or a batch progress report (a batch
- * session itself starts nothing). Calls made meanwhile wait for the same update.
+ * backend process: a probe, a download, or a batch progress or papers report (a
+ * batch session itself starts nothing). Calls made meanwhile wait for the same update.
  */
 export function withAutoUpdate(backend: CarsiBackend, update: () => Promise<unknown>): CarsiBackend {
   let pending: Promise<unknown> | undefined;
@@ -85,6 +85,12 @@ export function withAutoUpdate(backend: CarsiBackend, update: () => Promise<unkn
       ? { reportBatchProgress: async (progress: CarsiBatchUpdate, signal?: AbortSignal) => {
           await ready();
           return inner.reportBatchProgress!(progress, signal);
+        } }
+      : {}),
+    ...(inner.reportBatchPapers
+      ? { reportBatchPapers: async (papers: CarsiBatchPapers, last?: boolean) => {
+          await ready();
+          return inner.reportBatchPapers!(papers, last);
         } }
       : {}),
   });

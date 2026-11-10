@@ -42,8 +42,13 @@ class ServerContractTests(unittest.TestCase):
         self.assertEqual(
             set(self.out["tools"]),
             {"carsi_download", "carsi_cache_clear", "carsi_list_publishers",
-             "carsi_batch_progress", "carsi_close_batch_browser"},
+             "carsi_batch_progress", "carsi_batch_papers", "carsi_close_batch_browser"},
         )
+
+    def test_batch_papers_takes_the_list_and_its_folder(self):
+        papers = self.out["tools"]["carsi_batch_papers"]
+        self.assertEqual(set(papers["required"]), {"batch_id", "folder", "papers"})
+        self.assertEqual(papers["properties"]["papers"]["type"], "array")
 
     def test_download_schema_matches_paper_search_contract(self):
         props = self.out["tools"]["carsi_download"]["properties"]

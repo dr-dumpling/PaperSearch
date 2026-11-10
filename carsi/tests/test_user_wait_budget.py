@@ -189,6 +189,21 @@ class UserWaitBudgetTests(unittest.TestCase):
         self.assertFalse(getattr(result, "_user_wait_expired", False))
         self.assertIsNone(result._login_wait)
 
+    def test_a_verification_before_the_school_login_leaves_it_all_its_time(self):
+        # Elsevier, 2026-11-09: a 22 s verification and choosing the school used up
+        # 30 s before the school's login page had drawn; the login ended at once.
+        d = self.downloader()
+        clock = [1000.0]
+        page = Mock(url="https://cas.school.example/login")
+        page.frames = []
+        d._users_login_step = Mock(return_value=True)
+        result = DownloadResult(doi="10.1016/x", status="failed", article_url=ARTICLE)
+        result._user_wait_deadline = clock[0]  # the article's verification waits are spent
+        self.assertFalse(self.login_loop(d, page, result, clock))
+        self.assertTrue(result._user_wait_expired)
+        self.assertGreaterEqual(clock[0] - 1000, 180)
+        self.assertLess(clock[0] - 1000, 180 + 15)
+
     def test_a_login_that_waited_out_on_the_user_is_reported_as_a_login_timeout(self):
         result = DownloadResult(doi="10.1016/x", status="failed")
         result.state = result.reason = "sso_required"

@@ -852,6 +852,34 @@ describe("CarsiMcpClient", () => {
     await expectAllChildrenExited();
   });
 
+  it("sends a batch's papers on its backend, starting one only for the last list", async () => {
+    const update = { id: "batch-papers", folder: tempDir,
+      papers: [{ index: 1, doi: "10.1000/one", title: "One", journal: "", state: "open" as const }] };
+    await fakeClient("batch_browser_lanes").withBatchSession(async (backend) => {
+      // No backend yet: a list in the middle of the batch waits for one.
+      expect(await backend.reportBatchPapers!(update)).toBe(false);
+      expect(readLog().filter((row) => row.event === "start")).toHaveLength(0);
+      // The last one starts it; the finished card's report goes on the same process.
+      expect(await backend.reportBatchPapers!(update, true)).toBe(true);
+      expect(await backend.reportBatchProgress!({ id: "batch-papers", total: 1, done: 1, succeeded: 0, failed: 1, finished: true }))
+        .toBe(true);
+    });
+    expect(readLog().filter((row) => row.event === "start")).toHaveLength(1);
+    expect(readLog().filter((row) => row.event === "call" && row.tool === "carsi_batch_papers")
+      .map((row) => row.arguments)).toEqual([{ batch_id: "batch-papers", folder: tempDir, papers: update.papers }]);
+    await expectAllChildrenExited();
+
+    // A backend without the lists is asked once.
+    rmSync(logPath, { force: true });
+    await fakeClient("batch_browser").withBatchSession(async (backend) => {
+      expect(await backend.reportBatchPapers!(update, true)).toBe(false);
+      expect(await backend.reportBatchPapers!(update, true)).toBe(false);
+    });
+    expect(readLog().filter((row) => row.event === "start")).toHaveLength(1);
+    expect(readLog().some((row) => row.tool === "carsi_batch_papers")).toBe(false);
+    await expectAllChildrenExited();
+  });
+
   function fakeClient(
     scenario: string,
     overrides: {

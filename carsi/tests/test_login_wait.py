@@ -54,7 +54,7 @@ def test_capsule_takeover_removes_countdown_without_repeating_notification(tmp_p
     d = PublisherBatchDownloader({})
     result = DownloadResult(doi="10.1000/login", status="failed")
     try:
-        with d._login_wait_budget(result, "_user_wait_deadline", 1180, lambda: clock[0]) as wait:
+        with d._login_wait_budget(result, "_school_login_deadline", 1180, lambda: clock[0]) as wait:
             wait.observe(page, True)
             d._set_login_attention(result, "请在浏览器窗口完成机构登录", 1180, page=page)
             before = next(iter(progress_reporter.read_state()["attention"].values()))
@@ -74,7 +74,7 @@ def test_capsule_takeover_removes_countdown_without_repeating_notification(tmp_p
     except ValueError as exc:
         assert ending == "exception" and str(exc) == "fixture ended login"
     assert result._login_wait is None and result._attention_page is None
-    assert result._user_wait_deadline == 1580
+    assert result._school_login_deadline == 1580
     assert progress_reporter.read_state()["attention"] == {}
-    # The next login/verification in this article inherits only the time used.
-    assert d._user_wait_deadline(result) == 1580
+    # The next login in this article inherits only the time used.
+    assert d._school_login_deadline(result) == 1580

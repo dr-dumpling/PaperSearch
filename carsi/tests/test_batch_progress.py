@@ -141,6 +141,47 @@ class BatchProgressTests(unittest.TestCase):
         snap, _ = pr.read_snapshot()
         self.assertEqual((snap["status"], snap["channel"]), ("done", ""))
 
+    def test_the_open_access_lane_beside_a_running_download(self):
+        """Open access checked while the school's lane downloads (2026-11-09): the running
+        paper keeps its stage, line and prompt; the counts and the lanes line follow."""
+        from paper_search_carsi import progress_view
+
+        self.assertTrue(pr.sync_batch("b7", 40, 3, 3, 0, current="10.1000/3", phase="开放获取：已查 5/40 篇，找到 3 篇",
+                                      channel="开放获取", lanes="开放下载 3 篇 · 机构下载 0 篇"))
+        self.new_process()
+        with pr.tracked_download("10.1000/4", None, pr.BatchContext.from_args("b7", 4, 40, 3, 3, 0)) as outcome:
+            pr.set_attention("login", "请在浏览器窗口完成机构登录", current="10.1000/4")
+            before = pr.read_snapshot()[0]
+            self.assertEqual(before["lanes"], "开放下载 3 篇 · 机构下载 0 篇")
+            self.assertTrue(pr.sync_batch("b7", 40, 6, 6, 0, current="10.1000/9", phase="开放获取：已查 9/40 篇，找到 6 篇",
+                                          channel="开放获取", lanes="开放下载 6 篇 · 机构下载 0 篇"))
+            snap = pr.read_snapshot()[0]
+            self.assertEqual((snap["done"], snap["success"], snap["lanes"]), (6, 6, "开放下载 6 篇 · 机构下载 0 篇"))
+            for key in ("current", "stage", "phase", "channel", "attention", "awaiting_next", "run_id"):
+                self.assertEqual(snap.get(key), before.get(key), key)
+            shown = progress_view.view(snap, 0)
+            self.assertEqual((shown["lanes"], shown["actions"], shown["attention"]["short"]),
+                             ("开放下载 6 篇 · 机构下载 0 篇", True, "请登录学校"))
+            pr.clear_attention("login")
+            outcome["result"] = {"success": False}
+        # Between the school's papers the lane's update shows as before, with its line.
+        self.assertTrue(pr.sync_batch("b7", 40, 8, 6, 1, current="10.1000/11", phase="开放获取：已查 11/40 篇，找到 7 篇",
+                                      channel="开放获取", lanes="开放下载 7 篇 · 机构下载 0 篇"))
+        snap = pr.read_snapshot()[0]
+        self.assertEqual((snap["current"], snap["channel"], snap["awaiting_next"], snap["lanes"]),
+                         ("10.1000/11", "开放获取", True, "开放下载 7 篇 · 机构下载 0 篇"))
+        self.assertTrue(pr.sync_batch("b7", 40, 40, 38, 2, finished=True))
+        self.assertEqual(pr.read_snapshot()[0]["lanes"], "")
+        self.assertEqual(progress_view.view(pr.read_snapshot()[0], 0)["lanes"], "")
+
+    def test_the_lane_never_writes_over_a_download_in_another_process(self):
+        pr._atomic_write({"batch_id": "b8", "status": "running", "awaiting_next": False, "current": "10.1000/1",
+                          "owner_pid": os.getppid(), "total": 9, "done": 1, "success": 1, "failed": 0, "revision": 4})
+        self.new_process()
+        self.assertFalse(pr.sync_batch("b8", 9, 3, 3, 0, current="10.1000/3", lanes="开放下载 3 篇 · 机构下载 0 篇"))
+        snap = pr.read_snapshot()[0]
+        self.assertEqual((snap["current"], snap["done"], snap["revision"]), ("10.1000/1", 1, 4))
+
     def test_the_batch_end_keeps_the_batchs_start_time(self):
         self.item(1, 2, True)
         data = self.state(); data["started_at"] = "2026-11-07T10:00:00"
@@ -159,7 +200,8 @@ class BatchProgressTests(unittest.TestCase):
         folder = os.path.abspath("batch-downloads")
         results = {
             "content": "both", "folder": folder, "started": started.timestamp(), "stopped": False, "main": 1, "supplements": 3,
-            "no_supplements": 0, "sources": [["机构订阅", 1], ["bad", -1], "x"],
+            "no_supplements": 0, "sources": [["机构下载", 1], ["bad", -1], "x"],
+            "source_details": [["开放下载", "出版社 <b>API</b> 1"], ["", "x"], ["机构下载"], "x"],
             "failures": [{"cls": "no_access", "reason": "学校没有订阅", "title": "A  <i>paper</i>\n", "journal": "Arthritis &amp; Rheumatology",
                           "doi": "10.1000/2", "extra": "dropped"},
                          {"cls": "made_up", "reason": "下载时程序出错"}, {"cls": "no_access"}, "x"],
@@ -172,7 +214,8 @@ class BatchProgressTests(unittest.TestCase):
         self.assertEqual(snap["started_at"], started.isoformat(timespec="seconds"))
         self.assertEqual(snap["output_dir"], folder)  # the folder button opens the whole batch
         self.assertEqual(snap["results"], {
-            "content": "both", "main": 1, "supplements": 3, "no_supplements": 0, "sources": [["机构订阅", 1]],
+            "content": "both", "main": 1, "supplements": 3, "no_supplements": 0, "sources": [["机构下载", 1]],
+            "source_details": {"开放下载": "出版社 API 1"},
             "failures": [
                 {"cls": "no_access", "reason": "学校没有订阅", "title": "A paper", "journal": "Arthritis & Rheumatology",
                  "doi": "10.1000/2", "note": ""},
@@ -241,6 +284,9 @@ class BatchProgressTests(unittest.TestCase):
             channel="开放获取")), {"updated": True})
         snap = pr.read_snapshot()[0]
         self.assertEqual((snap["phase"], snap["channel"]), ("开放获取：已查 3/10 篇，找到 2 篇", "开放获取"))
+        self.assertEqual(json.loads(server.carsi_batch_progress(
+            "b6", 10, 3, 3, 0, current="10.1000/4", lanes="开放下载 3 篇 · 机构下载 0 篇")), {"updated": True})
+        self.assertEqual(pr.read_snapshot()[0]["lanes"], "开放下载 3 篇 · 机构下载 0 篇")
 
 
 if __name__ == "__main__":

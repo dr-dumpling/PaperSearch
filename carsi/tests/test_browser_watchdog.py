@@ -37,13 +37,24 @@ class WatchdogTests(unittest.TestCase):
         now = time.monotonic()
         loop = MagicMock(); loop.is_closed.return_value = False
         coro = object()
-        watchdog._inflight[1] = (now - 2, "Page.evaluate", [], loop, coro, None)
-        watchdog._call_deadlines[1] = (now - 1, "article preparation")
+        watchdog._inflight[1] = (now - 20, "Page.evaluate", [], loop, coro, None)
+        watchdog._call_deadlines[1] = (now - watchdog.OPERATION_GRACE_SEC - 1, "article preparation")
         with patch("paper_search_carsi.log.dump_stacks"):
             self.assertTrue(watchdog.check(90))
         self.assertEqual(watchdog.failure_code(), "browser_operation_timeout")
         self.assertEqual(watchdog.fired["operation"], "article preparation")
         loop.call_soon_threadsafe.assert_called_once_with(watchdog._cancel, coro)
+
+    def test_a_call_sent_just_before_the_deadline_may_finish(self):
+        # Science's PDF step (2026-11-09): a title read sent as the budget ran out
+        # was cut at once ("waited 0s") and ended the article as a stalled browser.
+        now = time.monotonic()
+        loop = MagicMock(); loop.is_closed.return_value = False
+        watchdog._inflight[1] = (now - 0.5, "Locator.text_content", [], loop, object(), None)
+        watchdog._call_deadlines[1] = (now - 0.1, "_capture_pdf")
+        self.assertFalse(watchdog.check(90))
+        self.assertIsNone(watchdog.fired)
+        loop.call_soon_threadsafe.assert_not_called()
 
     def test_calls_share_one_budget_and_late_candidates_are_not_sent(self):
         clock, sent = [100.0], []

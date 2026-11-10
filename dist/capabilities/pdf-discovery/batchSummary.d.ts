@@ -1,4 +1,4 @@
-import type { CarsiBackend, CarsiBatchResults } from "./carsi/index.js";
+import type { CarsiBackend, CarsiBatchPaper, CarsiBatchResults } from "./carsi/index.js";
 import type { DownloadBatchItemResult, DownloadBatchResult } from "./batch.js";
 import type { DownloadWithFallbackOptions, DownloadWithFallbackResult } from "./types.js";
 /**
@@ -25,4 +25,9 @@ export declare function asWindowBatch(options: DownloadWithFallbackOptions & {
     savePath: string;
 }, backend: CarsiBackend | undefined, download: (options: DownloadWithFallbackOptions) => Promise<DownloadWithFallbackResult>): Promise<DownloadWithFallbackResult>;
 export declare function batchResults(result: DownloadBatchResult, startedAt: number, folder: string): CarsiBatchResults;
+/**
+ * A paper for the window's lists (成功, 失败, 剩余): waiting in a lane, or its
+ * result as the finished card tells it (the way it came, or why it failed).
+ */
+export declare function batchPaper(request: DownloadWithFallbackOptions, item: DownloadBatchItemResult | undefined, waiting: "open" | "school" | undefined, content: DownloadBatchResult["content"]): Omit<CarsiBatchPaper, "index">;
 //# sourceMappingURL=batchSummary.d.ts.map

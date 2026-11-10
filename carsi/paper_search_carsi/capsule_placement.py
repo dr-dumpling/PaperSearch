@@ -260,14 +260,17 @@ class Placement:
             self.home = after
             self.direction = self._direction(pill_anchor(after, work))
         else:
-            # The pill goes to the card's top corner on the side nearer the
-            # screen edge (bottom corner when docked there), so opening it
-            # again puts the card back where it was dropped.
+            # The pill goes to the card's corner on the side nearer the screen
+            # edge, so opening it again puts the card back where it was
+            # dropped: the bottom corner when docked there or when the card
+            # sits so low that it would open up from there (it no longer jumps
+            # up to the card's top, 2026-11-10), otherwise the top corner.
+            w, h = self.home.width, self.home.height
+            from_bottom = direction_for(Rect(after.x, after.bottom - h, w, h), work, after.height)[0]
             self._dragged_card = after
-            self.direction = self._direction(("down", pill_anchor(after, work)[1]))
+            self.direction = self._direction((from_bottom, pill_anchor(after, work)[1]))
             self._direction_fixed = True
             vertical, horizontal = self.direction
-            w, h = self.home.width, self.home.height
             self.home = Rect(after.right - w if horizontal == "left" else after.x,
                              after.bottom - h if vertical == "up" else after.y, w, h)
         self.home = self._fit(self.home)

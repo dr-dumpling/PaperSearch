@@ -103,6 +103,25 @@ class SuspectBlockResolutionTests(unittest.TestCase):
         self.assertTrue(self.d._resolve_suspect_block(self.article, self.result, self.captured))
         self.assertIsNone(self.captured["block_reason"])
 
+    def test_a_pdf_let_through_as_a_download_ends_the_wait_unconfirmed(self):
+        # Science, a fresh profile (2026-11-09): past the check the PDF came as a
+        # download and the tab kept "Verification successful. Waiting for ...". It
+        # named neither DOI nor title, so it was the capture's fallback, lost when
+        # the wait ran out. Now the wait ends, with no block, for it to be saved.
+        self.d._fallback_pdf = None
+        def arrives(ms):
+            self.d._fallback_pdf = (b"%PDF-1.4 ...", self.pdf_tab.url)
+        self.article.wait_for_timeout.side_effect = arrives
+        self.d._is_challenge_page = lambda p: p is self.pdf_tab
+        self.assertFalse(self.d._resolve_suspect_block(self.article, self.result, self.captured))
+        self.assertIsNone(self.captured["block_reason"])
+        resolved = [e["detail"] for e in self.result.events if e["state"] == "challenge_resolved"]
+        self.assertEqual(resolved, ["pdf arrived while waiting, unconfirmed"])
+        # One that was already there before the wait does not end it.
+        self.d._fallback_pdf, self.captured["suspect_block"] = (b"%PDF-1.4 earlier", "x"), "403 https://pdf.sciencedirectassets.com/1/main.pdf"
+        self.article.wait_for_timeout.side_effect = lambda ms: self.captured.update(bytes=b"%PDF-1.7 ...")
+        self.assertTrue(self.d._resolve_suspect_block(self.article, self.result, self.captured))
+
     def test_unfinished_verification_is_a_timeout_not_a_block(self):
         self.d.PAGE_WAIT_SEC = 0.05
         self.d.login_timeout_sec = 0

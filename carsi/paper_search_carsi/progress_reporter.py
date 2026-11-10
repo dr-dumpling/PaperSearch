@@ -54,8 +54,8 @@ def progress_path() -> Path:
     return _progress_dir() / "current.json"
 
 
-def _atomic_write(payload: dict[str, Any]) -> None:
-    path = progress_path()
+def _atomic_write(payload: dict[str, Any], path: Path | None = None) -> None:
+    path = path or progress_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
     try:
@@ -265,8 +265,13 @@ def _batch_state(batch_id: str) -> dict[str, Any] | None:
 
 
 def _adopt_batch(batch_id: str, total: int, counts: tuple[int | None, int | None, int | None],
-                 **fields: Any) -> None:
-    """Continue this batch's report in the current process, or start it."""
+                 *, beside_download: bool = False, **fields: Any) -> bool | None:
+    """Continue this batch's report in the current process, or start it (True).
+
+    ``beside_download``: an update from the caller's other lane. While a download
+    of this batch runs here, only the totals and ``lanes`` change (False); while
+    one runs in another process, nothing is written (None). Decided under the
+    lock a starting download takes too, so neither overwrites the other."""
     global _STATE, _STARTED_MONO
     try:
         from .config import load_config
@@ -279,6 +284,20 @@ def _adopt_batch(batch_id: str, total: int, counts: tuple[int | None, int | None
             pass
     previous = _batch_state(batch_id)
     with _LOCK:
+        if beside_download:
+            if (_STATE.get("batch_id") == batch_id and _STATE.get("status") == "running"
+                    and not _STATE.get("awaiting_next")):
+                done, succeeded, failed = counts
+                _STATE.update(total=int(total), lanes=fields.get("lanes", ""),
+                              **({"done": done} if done is not None else {}),
+                              **({"success": succeeded} if succeeded is not None else {}),
+                              **({"failed": failed} if failed is not None else {}))
+                _write_state()
+                return False
+            owner = previous.get("owner_pid") if previous else None
+            if (previous is not None and previous.get("status") == "running" and not previous.get("awaiting_next")
+                    and isinstance(owner, int) and owner != os.getpid() and _pid_alive(owner)):
+                return None
         _STARTED_MONO = time.monotonic()
         if previous is None:
             previous = {
@@ -307,11 +326,12 @@ def _adopt_batch(batch_id: str, total: int, counts: tuple[int | None, int | None
         _STATE.pop("finished_at", None)
         _STATE.pop("results", None)
         _write_state()
+    return True
 
 
 def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int, *,
                current: str = "", finished: bool = False, results: Any = None,
-               phase: str = "", channel: str = "") -> bool:
+               phase: str = "", channel: str = "", lanes: str = "") -> bool:
     """Record batch totals for items finished without the backend, or the batch end.
 
     ``results`` (the batch end only) is the caller's summary of every item,
@@ -319,7 +339,10 @@ def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int
     report and never opens a window for a batch the backend did not show.
     ``phase`` replaces the waiting line and ``channel`` names where the caller
     fetches from (its open-access stretch, before any publisher); both are
-    short single lines and are dropped at the batch end."""
+    short single lines and are dropped at the batch end. ``lanes`` is one line on
+    what each lane got in a batch whose open-access checks run beside its downloads;
+    it may come while a download of the batch runs, which then keeps its paper,
+    stage and prompts (``_adopt_batch``)."""
     ctx = BatchContext.from_args(batch_id, max(1, min(done, total)), total, done, succeeded, failed)
     if ctx is None or done > total:
         return False
@@ -327,13 +350,17 @@ def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int
     previous = _batch_state(ctx.batch_id)
     if finished and previous is None and (done == 0 or summary is not None):
         return False
-    phase, channel = _short_line(phase), _short_line(channel)
-    _adopt_batch(ctx.batch_id, total, (done, succeeded, failed),
-                 **({"current": current} if current else {}),
-                 stage="saved_pending_verification" if finished else "starting",
-                 channel="" if finished else channel,
-                 phase=(f"批量下载结束：成功 {succeeded}，失败 {failed}" if finished
-                        else phase or f"已完成 {done}/{total} 篇，等待下一篇"))
+    phase, channel, lanes = _short_line(phase), _short_line(channel), _short_line(lanes)
+    adopted = _adopt_batch(ctx.batch_id, total, (done, succeeded, failed),
+                           beside_download=bool(lanes) and not finished,
+                           **({"current": current} if current else {}),
+                           **({"lanes": lanes} if lanes or finished else {}),
+                           stage="saved_pending_verification" if finished else "starting",
+                           channel="" if finished else channel,
+                           phase=(f"批量下载结束：成功 {succeeded}，失败 {failed}" if finished
+                                  else phase or f"已完成 {done}/{total} 篇，等待下一篇"))
+    if not adopted:
+        return adopted is False  # beside a download: written here, or left to its process
     with _LOCK:
         if finished:
             _STATE.update(status="done", awaiting_next=False,
@@ -367,6 +394,16 @@ _MAX_RESULT_FAILURES = 1000  # the caller's batch limit
 _MAX_RESULT_TEXT = 300
 
 
+def _display_text(value: Any) -> str:
+    """A caller's text for the window: plain, one line, bounded.
+
+    Crossref's titles and journals can keep HTML entities ("Arthritis &amp; Rheumatology")
+    and markup ("<i>Glossostemon bruguieri</i>"); the card shows plain text."""
+    if not isinstance(value, str):
+        return ""
+    return " ".join(re.sub(r"<[^<>]{1,40}>", "", html.unescape(value)).split())[:_MAX_RESULT_TEXT]
+
+
 def _batch_results(raw: Any) -> dict[str, Any] | None:
     """The caller's end-of-batch summary, checked and bounded for the window.
 
@@ -375,6 +412,7 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
     ``started`` (epoch seconds the batch began); ``stopped``;
     ``main`` (main texts saved), ``supplements`` (attachment files saved),
     ``no_supplements`` (pages that listed none); ``sources`` ([label, count]);
+    ``source_details`` ([label, text]: a label's sources, shown in brackets after its count);
     ``failures`` ([{cls, reason, title, journal, doi, note}]) with ``cls`` one
     of FAILURE_CLASSES and a short ``reason`` text; ``supplement_failures``, the
     same for papers whose main text was saved but not every supplementary file
@@ -386,13 +424,7 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
     def count(value: Any) -> int:
         return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 1_000_000 else 0
 
-    def text(value: Any) -> str:
-        # Crossref's titles and journals can keep HTML entities ("Arthritis &amp; Rheumatology")
-        # and markup ("<i>Glossostemon bruguieri</i>"); the card shows plain text.
-        if not isinstance(value, str):
-            return ""
-        return " ".join(re.sub(r"<[^<>]{1,40}>", "", html.unescape(value)).split())[:_MAX_RESULT_TEXT]
-
+    text = _display_text
     summary: dict[str, Any] = {
         "content": raw.get("content") if raw.get("content") in _RESULT_CONTENTS else "main",
         "main": count(raw.get("main")),
@@ -401,6 +433,9 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
         "sources": [[text(s[0]), count(s[1])] for s in (raw.get("sources") or [])[:8]
                     if isinstance(s, list) and len(s) == 2 and text(s[0]) and count(s[1])]
         if isinstance(raw.get("sources"), list) else [],
+        "source_details": {text(s[0]): text(s[1]) for s in (raw.get("source_details") or [])[:8]
+                           if isinstance(s, list) and len(s) == 2 and text(s[0]) and text(s[1])}
+        if isinstance(raw.get("source_details"), list) else {},
         "failures": [],
         "supplement_failures": [],
         "stopped": raw.get("stopped") is True,
@@ -421,6 +456,83 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
     if isinstance(started, (int, float)) and not isinstance(started, bool) and 0 < time.time() - started < 31 * 86400:
         summary["started"] = datetime.fromtimestamp(started).isoformat(timespec="seconds")
     return summary
+
+
+# A paper's states in the order it moves through them: open access not checked
+# yet, waiting for (or in) the institutional download, then its result.
+PAPER_STATES = {"open": 0, "school": 1, "ok": 2, "failed": 2}
+_PAPERS_LOCK = threading.Lock()
+
+
+def papers_path() -> Path:
+    return _progress_dir() / "papers.json"
+
+
+def _paper(raw: Any) -> dict[str, Any] | None:
+    """One paper as the caller sent it, checked and bounded (see ``sync_papers``)."""
+    if not isinstance(raw, dict) or raw.get("state") not in PAPER_STATES:
+        return None
+    index = raw.get("index")
+    if not isinstance(index, int) or isinstance(index, bool) or not 1 <= index <= _MAX_RESULT_FAILURES:
+        return None
+    paper = {"index": index, "state": raw["state"],
+             **{field: _display_text(raw.get(field)) for field in ("doi", "title", "journal")}}
+    if paper["state"] == "ok":
+        paper.update(via=_display_text(raw.get("via")), detail=_display_text(raw.get("detail")))
+        path = raw.get("path")
+        if isinstance(path, str) and 0 < len(path) <= 4096 and os.path.isabs(path):
+            paper["path"] = path
+    elif paper["state"] == "failed":
+        paper.update(cls=raw.get("cls") if raw.get("cls") in FAILURE_CLASSES else "unexplained",
+                     reason=_display_text(raw.get("reason")))
+    return paper
+
+
+def sync_papers(batch_id: str, folder: str, papers: Any) -> bool:
+    """Each paper of a batch, for the lists behind the window's 成功, 失败 and 剩余.
+
+    The caller sends every paper once, then the ones that changed; they are merged
+    into ``papers.json`` by ``index`` (1..N), and a paper's state only moves forward
+    (``PAPER_STATES``). Another batch starts a new list. Wire shape of a paper:
+    ``index``, ``doi``, ``title``, ``journal``, ``state``; a saved one adds ``via``
+    (开放下载 or 机构下载), ``detail`` (the open source when not open access: 出版社 API,
+    Sci-Hub, 预印本) and ``path`` (the PDF, absolute); a failed one ``cls`` (one of
+    FAILURE_CLASSES) and ``reason``. ``folder`` is the batch's download folder: the
+    window opens a PDF only from inside it. Kept apart from the progress file, which
+    the downloading process rewrites every moment."""
+    if not isinstance(batch_id, str) or not 0 < len(batch_id) <= 128 or not isinstance(papers, list):
+        return False
+    with _PAPERS_LOCK:
+        try:
+            listed = json.loads(papers_path().read_text(encoding="utf-8"))
+        except Exception:
+            listed = None
+        if not isinstance(listed, dict) or listed.get("batch_id") != batch_id or not isinstance(listed.get("papers"), dict):
+            listed = {"batch_id": batch_id, "folder": "", "papers": {}}
+        if isinstance(folder, str) and 0 < len(folder) <= 4096 and os.path.isabs(folder):
+            listed["folder"] = folder
+        known = listed["papers"]
+        for raw in papers[:_MAX_RESULT_FAILURES]:
+            paper = _paper(raw)
+            if paper is None:
+                continue
+            before = known.get(str(paper["index"]))
+            if before and PAPER_STATES.get(before.get("state"), 0) > PAPER_STATES[paper["state"]]:
+                continue  # a late report never takes a paper back
+            known[str(paper["index"])] = paper
+        try:
+            _atomic_write(listed, papers_path())
+        except Exception:
+            return False  # the lists are optional; the download goes on
+    return True
+
+
+def read_papers() -> dict[str, Any] | None:
+    try:
+        listed = json.loads(papers_path().read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return listed if isinstance(listed, dict) and isinstance(listed.get("papers"), dict) else None
 
 
 @contextmanager

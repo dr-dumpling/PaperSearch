@@ -19,6 +19,9 @@ globalThis.fetch = async (input) => {
       || url.pathname !== '/tools/idconv/api/v1/articles/' || !/^10\.1000\//i.test(doi)) {
     throw new Error(`Unexpected fetch in offline CARSI CLI test: ${url.origin}${url.pathname}`);
   }
+  // A slower open-access lane, for tests of what happens beside a download.
+  const delay = Number(process.env.PAPER_SEARCH_TEST_PMC_DELAY_MS || 0);
+  if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
   if (process.env.PAPER_SEARCH_TEST_PMC_LOG) {
     appendFileSync(process.env.PAPER_SEARCH_TEST_PMC_LOG, `${doi.toLowerCase()}\n`);
   }

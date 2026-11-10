@@ -85,7 +85,7 @@ stdout 输出一份 JSON：成功与否、文件位置、每一层的尝试记�
 
 | 内容 | 位置 |
 |---|---|
-| 下载的论文 | 你指定的目录：`papers/`（每篇一个文件夹，正文和补充材料）和 `diagnostics/`（运行记录副本、附件清单、截图） |
+| 下载的论文 | 你指定的目录：`papers/`（每篇一个文件夹，正文和补充材料；出过问题的篇目另有 `diagnostics/`，放诊断记录和截图）和 `runs/`（运行记录副本） |
 | 配置和 API key | `~/.config/paper-search-cli/config.json`（权限 `0600`） |
 | 运行记录 | `~/.local/share/paper-search-cli/runs/` |
 | 机构下载的学校设置和登录状态 | `~/.local/share/paper-search-cli/carsi/` |
@@ -111,7 +111,7 @@ carsi/paper_search_carsi/
 ├── publishers/         出版社配置（builtin/*.json）和通用网站规则
 ├── adapters/           出版社适配器
 ├── progress_capsule.py 进度胶囊（页面在 assets/capsule.html）
-└── progress_bar.py     旧版进度窗口（胶囊用不了时）
+└── capsule_window.py   胶囊在 Mac/Windows 上的窗口：位置、屏幕、拖动
 skills/paper-search/    随包 Skill 和参考文件
 tests/、carsi/tests/    两侧的自动化测试
 ```

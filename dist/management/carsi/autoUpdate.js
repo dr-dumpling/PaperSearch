@@ -58,8 +58,8 @@ export async function autoUpdateCarsi(host, context, lock) {
 }
 /**
  * ``backend`` with ``update`` run once, before the first call that starts the
- * backend process: a probe, a download, or a batch progress report (a batch
- * session itself starts nothing). Calls made meanwhile wait for the same update.
+ * backend process: a probe, a download, or a batch progress or papers report (a
+ * batch session itself starts nothing). Calls made meanwhile wait for the same update.
  */
 export function withAutoUpdate(backend, update) {
     let pending;
@@ -80,6 +80,12 @@ export function withAutoUpdate(backend, update) {
             ? { reportBatchProgress: async (progress, signal) => {
                     await ready();
                     return inner.reportBatchProgress(progress, signal);
+                } }
+            : {}),
+        ...(inner.reportBatchPapers
+            ? { reportBatchPapers: async (papers, last) => {
+                    await ready();
+                    return inner.reportBatchPapers(papers, last);
                 } }
             : {}),
     });

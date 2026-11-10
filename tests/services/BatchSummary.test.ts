@@ -56,7 +56,7 @@ describe("a lone download as a batch of one", () => {
     await asWindowBatch({ source: "crossref", paperId: "10.1000/x", doi: "10.1000/x", savePath }, fakeBackend(updates),
       async () => ({ status: "ok", path: join(paperDir, "A Paper.pdf"),
         attempts: [{ stage: "entitled_access", status: "ok", message: "" }] }));
-    expect(updates.at(-1)?.results).toEqual(expect.objectContaining({ folder: paperDir, main: 1, sources: [["机构订阅", 1]] }));
+    expect(updates.at(-1)?.results).toEqual(expect.objectContaining({ folder: paperDir, main: 1, sources: [["机构下载", 1]] }));
   });
 
   it("opens no window for a copy that never reached the backend", async () => {

@@ -156,7 +156,7 @@ export async function downloadWithFallback(
     try {
       const destination = result.version === "preprint"
         ? createOutputLayout(savePath, `arxiv:${result.arxivId}`, context.arxivPaper || {}, true) : layout;
-      organizeFiles(result, destination, context.savePath);
+      organizeFiles(result, destination, context.savePath, undefined, options.recordsDir);
     } catch (error) {
       // Keep the retrieved file and report a concrete filing failure.
       attempts.push({ stage: "output_layout", status: "error", code: "output_layout_failed",

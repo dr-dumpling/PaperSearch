@@ -68,6 +68,10 @@ class EnglishTableTests(unittest.TestCase):
         for status in ("被拒绝：key 不对，或已失效（HTTP 401）", "服务器限流，稍后再试；key 本身可能没问题（HTTP 429）",
                        "没连上服务器，没法判断；检查网络或代理后再试（ECONNRESET）", "附录 2 个已保存", "机构订阅 3 · 开放获取 1"):
             self.assertFalse(HAN.search(english(status)), status)
+        # The two ways of downloading, as the batch's line and its finished card name them (2026-11-10).
+        self.assertEqual(english("开放下载 15 篇 · 机构下载 9 篇"), "Open download 15 · School download 9")
+        self.assertEqual(english("机构下载 30 · 开放下载 18（出版社 API 3、Sci-Hub 1、预印本 1）"),
+                         "School download 30 · Open download 18 (Publisher API 3, Sci-Hub 1, Preprint 1)")
 
     def test_what_the_progress_card_shows(self):
         now = 1_000_000.0

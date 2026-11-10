@@ -163,4 +163,4 @@ paper-search doctor --pretty
 - 不写论文正文，不做语言润色。
 - 不把 API key、token、Cookie 写入 Skill、README 或回复。
 
-下载结果分在下载文件夹（`savePath`，没传时用 `DEFAULT_DOWNLOAD_PATH`）的 `papers/` 与 `diagnostics/`。正文按“期刊_年份_标题”命名，附件保留原名；使用结果返回的实际 `path` / `supplements[].file`，不要自行拼 DOI 文件名。过长名称会截短，完整标题在诊断元数据中。
+下载结果分在下载文件夹（`savePath`，没传时用 `DEFAULT_DOWNLOAD_PATH`）的 `papers/`，每篇一个文件夹；出过问题的篇目在该文件夹的 `diagnostics/` 里有诊断记录和截图（可能带登录信息，不要发给别人），整批运行记录在 `runs/`。正文按“期刊_年份_标题”命名，附件保留原名；使用结果返回的实际 `path` / `supplements[].file`，不要自行拼 DOI 文件名。过长名称会截短，完整标题见返回结果。

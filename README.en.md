@@ -82,15 +82,17 @@ After "Start setup", your AI first asks whether you want school subscription dow
 
 ### 4. Tell your AI tool what you need
 
-Once set up, just say what you need, for example:
+Once set up, mention the PaperSearch Skill in the message box first, then say what you need: type `$` (`/` in Claude Code) and pick `paper-search`. With the Skill mentioned, the AI searches with PaperSearch rather than its own web search.
+
+<p align="center"><img src="assets/ask-with-skill.png" width="645" alt="Mentioning the PaperSearch Skill in the message box: the request ends with a Paper Search tag"></p>
 
 | To do | You can say |
 |---|---|
-| Search papers | Find randomized trials of SGLT2 inhibitors in heart failure since 2020, and verify the DOIs |
-| Search full-text snippets | How did these trials define their primary endpoint? Quote a few passages |
-| Look up journal IF and quartiles | Which journals were they published in, and what are their impact factors and quartiles? |
-| Look up citations and references | Which studies have cited the DAPA-HF trial since it was published? |
-| Download full texts and supplementary files | Download the full texts and supplementary files of these papers to ./downloads |
+| Search papers | `$paper-search` Find randomized trials of SGLT2 inhibitors in heart failure since 2020, and verify the DOIs |
+| Search full-text snippets | `$paper-search` How did these trials define their primary endpoint? Quote a few passages |
+| Look up journal IF and quartiles | `$paper-search` Which journals were they published in, and what are their impact factors and quartiles? |
+| Look up citations and references | `$paper-search` Which studies have cited the DAPA-HF trial since it was published? |
+| Download full texts and supplementary files | `$paper-search` Download the full texts and supplementary files of these papers to ./downloads |
 
 **Results:**
 

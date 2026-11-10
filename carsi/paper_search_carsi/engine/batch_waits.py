@@ -78,7 +78,8 @@ class UserWaitMixin:
         request with a human-verification page. Every open tab is checked; the
         verification tab is brought to the front, the user is asked to
         complete it, and the loop waits until the PDF is captured (success),
-        no verification/suspect page is left (the capture loop continues), or
+        no verification/suspect page is left (the capture loop continues), a
+        PDF naming neither DOI nor title came through (saved unconfirmed), or
         the bounded wait ends (only then ``ip_blocked``). Returns False when
         the route must stop.
         """
@@ -108,7 +109,8 @@ class UserWaitMixin:
             return self._wait_out_suspect_block(page, result, captured, suspect, suspect_host, started)
         finally:
             self._note_wait(result, f"the PDF step's {suspect[:120]}", started,
-                            "pdf" if captured.get("bytes") else captured.get("block_reason") or "page changed")
+                            "pdf" if captured.get("bytes") or captured.get("unconfirmed_pdf")
+                            else captured.get("block_reason") or "page changed")
 
     def _wait_out_suspect_block(self, page: Any, result: DownloadResult, captured: dict[str, Any], suspect: str,
                                 suspect_host: str, started: float) -> bool:
@@ -126,6 +128,7 @@ class UserWaitMixin:
             reporter = None
         shown = ""  # "verification" | "login" | "unknown"
         verification_tab = None
+        fallback = getattr(self, "_fallback_pdf", None)
         try:
             while time.time() < deadline:
                 self._check_user_decision(result, page)
@@ -133,6 +136,15 @@ class UserWaitMixin:
                     self._event(result, "challenge_resolved", "pdf captured while waiting")
                     captured["suspect_block"] = None
                     return True
+                if getattr(self, "_fallback_pdf", None) is not fallback:
+                    # The verification let the PDF through as a download, and the tab
+                    # stays on "Verification successful. Waiting for ..." (Science, a
+                    # fresh profile, 2026-11-09). It names neither DOI nor title on its
+                    # first pages: the capture ends here and saves it unconfirmed.
+                    self._event(result, "challenge_resolved", "pdf arrived while waiting, unconfirmed")
+                    captured["suspect_block"] = None
+                    captured["unconfirmed_pdf"] = True
+                    return False
                 try:
                     pages = [p for p in list(page.context.pages) if not p.is_closed()]
                 except Exception:
@@ -351,14 +363,23 @@ class UserWaitMixin:
         return (getattr(self, "config", None) or {}).get("user_wait") == "short"
 
     def _user_wait_deadline(self, result: DownloadResult) -> float:
-        """One deadline for all waits on the user in this article (verification,
-        school login, the PDF step): ``login_timeout_sec`` from the first of them."""
-        wait = getattr(result, "_login_wait", None)
-        if wait is not None and wait.attribute == "_user_wait_deadline":
-            return wait.deadline
+        """One deadline for the verification waits in this article (at the article,
+        the PDF step): ``login_timeout_sec`` from the first of them. The school
+        login has its own (``_school_login_deadline``)."""
         deadline = getattr(result, "_user_wait_deadline", None)
         if deadline is None:
             deadline = result._user_wait_deadline = time.time() + self.login_timeout_sec
+        return deadline
+
+    def _school_login_deadline(self, result: DownloadResult) -> float:
+        """The school login's own time: ``login_timeout_sec`` from when this article
+        first reaches it, however often it is entered. A verification and the
+        program's own steps before it never shorten it (Elsevier: a 22 s
+        verification and choosing the school left 1 s of 30 on the school's login
+        page, 2026-11-09; OUP's login has had its own since 2026-11-02)."""
+        deadline = getattr(result, "_school_login_deadline", None)
+        if deadline is None:
+            deadline = result._school_login_deadline = time.time() + self.login_timeout_sec
         return deadline
 
     def _wait_deadline(self, result: DownloadResult, deadline: float | None = None) -> float:

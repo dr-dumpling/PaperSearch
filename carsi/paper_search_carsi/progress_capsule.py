@@ -1,14 +1,13 @@
 """The download progress capsule: a small always-on-top floating pill.
 
 Collapsed it shows how far the task is ("12/40  正文 · Wiley"). Hovering opens
-a card with the paper, the counts and every action of the classic window
-(skip, no access, stop, problem report, settings, output folder). A step that
-needs the user (school login, verification) turns amber with a breathing glow
-and raises one system notification. Clicking the reminder activates the task's
-browser. The page is HTML (``assets/capsule.html``)
-drawn by pywebview with the system web engine: WebKit on macOS, WebView2 on
-Windows. Without pywebview or a usable engine the classic window
-(``progress_bar``) opens instead.
+a card with the paper, the counts and every action (skip, no access, stop,
+problem report, settings, output folder). A step that needs the user (school
+login, verification) turns amber with a breathing glow and raises one system
+notification. Clicking the reminder activates the task's browser. The page is
+HTML (``assets/capsule.html``) drawn by pywebview with the system web engine:
+WebKit on macOS, WebView2 on Windows. It is the only progress window: without
+pywebview or a usable engine there is none, and the download goes on.
 
 Usage: ``paper-search-carsi progress`` (or ``python -m paper_search_carsi.progress_capsule``).
 Spawned automatically by ``progress_reporter.ensure_progress_bar`` when a download starts.
@@ -27,8 +26,12 @@ from pathlib import Path
 from typing import Any
 
 from . import api_keys, download_directory, i18n, progress_view, user_settings
-from .capsule_placement import Placement, Rect, ScreenArea
-from .progress_reporter import progress_path, read_state, take_settings_request
+from .capsule_placement import Placement, Rect
+from .capsule_window import (_MacDrag, _cocoa_call, _enable_inactive_hover, _mac_button_held, _mac_pointer,
+                             _prepare_nonactivating_start, _round_windows_corners, _screen_areas, _set_window_frame,
+                             _window_geometry, _window_scale, _windows_button_held, _windows_pointer,
+                             _windows_taskbar_icon)
+from .progress_reporter import papers_path, progress_path, read_papers, read_state, take_settings_request
 
 ASSETS = Path(__file__).with_name("assets")
 PAGE = ASSETS / "capsule.html"
@@ -37,8 +40,8 @@ PAGE = ASSETS / "capsule.html"
 def page_html() -> str:
     """The page with its English table in it (the window loads it as one string)."""
     return PAGE.read_text(encoding="utf-8").replace("/*CAPSULE_EN*/null", i18n.TABLE.read_text(encoding="utf-8"))
-# PaperSearch's icon (assets/icon.svg) for the Dock and the Windows taskbar.
-ICON, TASKBAR_ICON = ASSETS / "icon-512.png", ASSETS / "icon-64.png"
+# PaperSearch's icon (assets/icon.svg) for the Dock.
+ICON = ASSETS / "icon-512.png"
 # The first, collapsed frame; the page then reports the size it needs.
 START_SIZE = (260, 56)
 MIN_SIZE = (60, 30)
@@ -46,6 +49,31 @@ MIN_SIZE = (60, 30)
 
 def _corner() -> str:
     return "top" if sys.platform == "darwin" else "bottom"
+
+
+# Windows toasts go out under PowerShell's registered app id: Settings names them "Windows PowerShell".
+_TOAST_MANAGER = ("[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]>$null;"
+                  "$n=[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
+                  "'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe');")
+
+
+def _powershell(script: str, **env: str) -> str:
+    done = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                          env={**os.environ, **env}, capture_output=True, text=True, timeout=10, check=True,
+                          creationflags=0x08000000)
+    return done.stdout.strip()
+
+
+def _windows_toast(title: str, body: str) -> None:
+    # The texts go in by environment so no quoting is needed.
+    _powershell(_TOAST_MANAGER
+                + "$x=[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent("
+                  "[Windows.UI.Notifications.ToastTemplateType]::ToastText02);"
+                  "$t=$x.GetElementsByTagName('text');"
+                  "$t.Item(0).AppendChild($x.CreateTextNode($env:PSC_TITLE))>$null;"
+                  "$t.Item(1).AppendChild($x.CreateTextNode($env:PSC_BODY))>$null;"
+                  "$n.Show([Windows.UI.Notifications.ToastNotification]::new($x))",
+                PSC_TITLE=title, PSC_BODY=body)
 
 
 def notify(title: str, body: str, state: dict[str, Any] | None = None) -> None:
@@ -58,26 +86,27 @@ def notify(title: str, body: str, state: dict[str, Any] | None = None) -> None:
 
             native_notify(title, body, state or {})
         elif os.name == "nt":
-            # Windows toast through PowerShell's registered app id; the texts go in by
-            # environment so no quoting is needed.
-            script = (
-                "[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]>$null;"
-                "$x=[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent("
-                "[Windows.UI.Notifications.ToastTemplateType]::ToastText02);"
-                "$t=$x.GetElementsByTagName('text');"
-                "$t.Item(0).AppendChild($x.CreateTextNode($env:PSC_TITLE))>$null;"
-                "$t.Item(1).AppendChild($x.CreateTextNode($env:PSC_BODY))>$null;"
-                "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
-                "'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe'"
-                ").Show([Windows.UI.Notifications.ToastNotification]::new($x))"
-            )
-            subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-                           env={**os.environ, "PSC_TITLE": title, "PSC_BODY": body},
-                           capture_output=True, timeout=10, check=True, creationflags=0x08000000)
+            _windows_toast(title, body)
     except Exception as exc:
         import logging
 
         logging.getLogger(__name__).warning("progress notification failed: %s", type(exc).__name__)
+
+
+def notifications_allowed() -> str:
+    """Whether the system lets PaperSearch's notifications show: "ok", "off" or "unknown"."""
+    if sys.platform == "darwin":
+        from .progress_macos import notifications_allowed as mac_allowed
+
+        return mac_allowed()
+    if os.name == "nt":
+        # Enabled, or DisabledForUser / DisabledForApplication / DisabledByGroupPolicy / DisabledByManifest.
+        setting = _powershell(_TOAST_MANAGER + "$n.Setting")
+        return "ok" if setting == "Enabled" else "off" if setting.startswith("Disabled") else "unknown"
+    return "unknown"
+
+
+TEST_NOTIFICATION = "测试通知：需要你登录或验证时，会这样提醒你"
 
 
 class Notifier:
@@ -128,6 +157,9 @@ class Api:
         self._native_geometry = False
         self._drag_origin: tuple[float, float, float, float] | None = None
         self._drag_pointer: tuple[float, float] | None = None
+        self._mac_drag: _MacDrag | None = None  # macOS: presses tracked natively (main)
+        self._native_drag = False  # this drag follows the mouse natively, not the page
+        self._papers_seen: tuple[int, str] = (0, "")  # papers.json: when read, its batch
         self._hovering = False
         self._layout: tuple[int, bool, Rect, Rect] | None = None
         self._closed = False
@@ -145,7 +177,11 @@ class Api:
         """The capsule's view of the progress file; ``hovering`` keeps a finished window open."""
         self._hovering = bool(hovering) or self._dragging
         try:
-            shown = progress_view.view(read_state(), time.time())
+            snapshot = read_state()
+            shown = progress_view.view(snapshot, time.time())
+            # 成功, 失败 and 剩余 open their lists once the caller has sent this batch's papers.
+            if snapshot and snapshot.get("batch_id") and self._papers_batch() == snapshot["batch_id"]:
+                shown["lists"] = True
         except Exception:
             shown = {"mode": "idle"}
         shown["lang"] = self._lang
@@ -252,6 +288,40 @@ class Api:
     def open_folder(self) -> bool:
         return progress_view.open_folder(str((read_state() or {}).get("output_dir") or ""))
 
+    # --- the lists behind 成功, 失败 and 剩余 ---------------------------------
+    def _papers_batch(self) -> str:
+        """The batch of the papers file, read again only when the file changed."""
+        try:
+            changed = papers_path().stat().st_mtime_ns
+        except OSError:
+            return ""
+        if changed != self._papers_seen[0]:
+            self._papers_seen = (changed, str((read_papers() or {}).get("batch_id") or ""))
+        return self._papers_seen[1]
+
+    def paper_lists(self) -> dict[str, Any]:
+        return progress_view.paper_lists(read_papers(), read_state())
+
+    def show_paper(self, index: int) -> str:
+        """A saved PDF of the running or finished batch, shown in its folder; only inside the batch's folder."""
+        listed, state = read_papers() or {}, read_state() or {}
+        key = str(index) if isinstance(index, int) and not isinstance(index, bool) else ""
+        paper = (listed.get("papers") or {}).get(key) if listed.get("batch_id") == state.get("batch_id") else None
+        path = str((paper or {}).get("path") or "") if (paper or {}).get("state") == "ok" else ""
+        folder = str(listed.get("folder") or "")
+        if not path or not folder:
+            return "打开失败：没有这篇的 PDF"
+        real, base = os.path.realpath(path), os.path.realpath(folder)
+        try:
+            inside = os.path.commonpath([real, base]) == base
+        except ValueError:  # another drive (Windows)
+            inside = False
+        if not inside or not real.lower().endswith(".pdf"):
+            return "打开失败：PDF 不在这批的下载文件夹里"
+        if not progress_view.reveal_file(real):
+            return "打开失败：文件已被移走或删除"
+        return "已打开所在文件夹"
+
     # --- settings ---------------------------------------------------------
     def settings(self) -> dict[str, Any]:
         values = user_settings.current()
@@ -284,6 +354,51 @@ class Api:
         except (OSError, ValueError) as exc:
             return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
         return {"ok": True, "notify": enabled}
+
+    # The settings' check of system notifications (user, 2026-11-10): a switch turned on,
+    # or a test notification, says when the system keeps them from showing.
+    def check_notifications(self) -> dict[str, str]:
+        """"ok", "off" (the system keeps PaperSearch's notifications from showing) or "unknown"."""
+        try:
+            return {"state": notifications_allowed()}
+        except Exception as exc:
+            import logging
+
+            logging.getLogger(__name__).warning("notification check failed: %s", type(exc).__name__)
+            return {"state": "unknown"}
+
+    def test_notification(self) -> dict[str, str]:
+        """A test notification, unless the system keeps it from showing: "sent", "off" or "failed"."""
+        if self.check_notifications()["state"] == "off":
+            return {"state": "off"}
+        title = "PaperSearch"
+        body = i18n.translate(TEST_NOTIFICATION, user_settings.language())
+        try:
+            if sys.platform == "darwin":
+                from .progress_macos import send_test
+
+                send_test(title, body)
+            elif os.name == "nt":
+                _windows_toast(title, body)
+            else:
+                return {"state": "failed", "message": "测试通知没有发出：这台电脑不发系统通知"}
+        except Exception as exc:
+            return {"state": "failed", "message": f"测试通知没有发出：{type(exc).__name__}"}
+        return {"state": "sent"}
+
+    def open_notification_settings(self) -> bool:
+        try:
+            if sys.platform == "darwin":
+                from .progress_macos import open_settings
+
+                open_settings()
+            elif os.name == "nt":
+                os.startfile("ms-settings:notifications")  # type: ignore[attr-defined]
+            else:
+                return False
+        except Exception:
+            return False
+        return True
 
     def save_settings(self, values: dict[str, Any], download_dir: str | None = None) -> dict[str, Any]:
         """Check the fields of one settings page, then save them all; nothing is
@@ -392,25 +507,44 @@ class Api:
             return _windows_pointer()
         return x, y
 
+    def _mac_press(self) -> tuple[float, float, float, float] | None:
+        """The press a macOS drag began with, followed natively from now on (_MacDrag)."""
+        if self._mac_drag is None or not (sys.platform == "darwin" and self._native_geometry):
+            return None
+        try:
+            return _cocoa_call(self._mac_drag.start)
+        except TimeoutError as exc:
+            import logging
+
+            logging.getLogger(__name__).warning("capsule drag follows the page: %s", exc)
+            return None
+
     def set_dragging(self, active: bool, screen_x: float | None = None,
                      screen_y: float | None = None) -> None:
         """Freeze resizing while held, then place the window on its drop screen."""
         with self._geometry_lock:
             if active:
-                x, y, _, _ = _window_geometry(self._window, self._native_geometry)
                 scale = _window_scale(self._window)
-                point = self._drag_point(screen_x or 0, screen_y or 0)
-                self._drag_origin = (*point, x * scale, y * scale)
-                self._drag_pointer = point
+                press = self._mac_press()
+                self._native_drag = press is not None
+                if press is None:
+                    x, y, _, _ = _window_geometry(self._window, self._native_geometry)
+                    point = self._drag_point(screen_x or 0, screen_y or 0)
+                    press = (*point, x * scale, y * scale)
+                self._drag_origin = press
+                self._drag_pointer = press[:2]
                 self._dragging = self._hovering = True
                 self._placement.rescale(scale)
                 self._layout = None
             elif self._dragging:
                 try:
-                    if screen_x is not None and screen_y is not None:
+                    if not self._native_drag and screen_x is not None and screen_y is not None:
                         self.move_drag(screen_x, screen_y)
                 finally:
                     self._dragging = False
+                if self._native_drag:
+                    self._native_drag = False
+                    self._drag_pointer = _cocoa_call(self._mac_drag.stop) or self._drag_pointer
                 origin, point = self._drag_origin, self._drag_pointer
                 self._drag_origin = None
                 self._drag_pointer = None
@@ -427,8 +561,8 @@ class Api:
     def move_drag(self, screen_x: float, screen_y: float) -> None:
         """Use pointer deltas, independent of the web engine's screen origin."""
         with self._geometry_lock:
-            if not self._dragging or self._drag_origin is None:
-                return
+            if not self._dragging or self._drag_origin is None or self._native_drag:
+                return  # on macOS the window follows the mouse itself (_MacDrag)
             sx, sy, x, y = self._drag_origin
             if not self._button_held():
                 # The page reports the release late, and the pointer may have
@@ -517,396 +651,11 @@ class Api:
             pass
 
 
-def _enable_inactive_hover(window: Any) -> None:
-    """WKWebView's normal tracking is key-window-only; track our own window always."""
-    if sys.platform != "darwin":
-        return
-    import AppKit
-    from PyObjCTools import AppHelper
-
-    class CapsuleTrackingOwner(AppKit.NSObject):
-        def mouseEntered_(self, event):
-            self.send_(True)
-
-        def mouseExited_(self, event):
-            self.send_(False)
-
-        def send_(self, inside):
-            # evaluate_js waits for WebKit: never block Cocoa's event thread.
-            def send():
-                try:
-                    window.evaluate_js("observeHover()")
-                except Exception:
-                    pass  # The window can close while a tracking event is queued.
-            threading.Thread(target=send, daemon=True).start()
-
-    def install():
-        native = window.native
-        native.setAcceptsMouseMovedEvents_(True)
-        owner = CapsuleTrackingOwner.alloc().init()
-        view = native.contentView()
-        options = (AppKit.NSTrackingMouseEnteredAndExited | AppKit.NSTrackingActiveAlways
-                   | AppKit.NSTrackingInVisibleRect)
-        area = AppKit.NSTrackingArea.alloc().initWithRect_options_owner_userInfo_(
-            view.bounds(), options, owner, None)
-        view.addTrackingArea_(area)
-        window._capsule_tracking = (owner, area)  # Retain both while the window lives.
-    AppHelper.callAfter(install)
-
-
-def _cocoa_call(action):
-    """Wait for the one native geometry operation instead of queuing frames."""
-    from PyObjCTools import AppHelper
-
-    complete, cancelled = threading.Event(), threading.Event()
-    result, errors = [], []
-
-    def apply():
-        try:
-            if not cancelled.is_set():
-                result.append(action())
-        except Exception as exc:
-            errors.append(exc)
-        finally:
-            complete.set()
-
-    AppHelper.callAfter(apply)
-    if not complete.wait(2):
-        cancelled.set()
-        raise TimeoutError("capsule native geometry did not complete")
-    if errors:
-        raise errors[0]
-    return result[0]
-
-
-def _window_geometry(window: Any, native: bool = False) -> tuple[float, float, float, float]:
-    if sys.platform == "darwin" and native:
-        import AppKit
-
-        def read():
-            frame = window.native.frame()
-            top = AppKit.NSScreen.screens()[0].frame().size.height
-            return frame.origin.x, top - frame.origin.y - frame.size.height, frame.size.width, frame.size.height
-        return _cocoa_call(read)
-    if sys.platform == "win32":
-        n = window.native
-        scale = _window_scale(window)
-        return n.Location.X / scale, n.Location.Y / scale, n.Width / scale, n.Height / scale
-    return window.x, window.y, window.width, window.height
-
-
-def _mac_pointer() -> tuple[float, float]:
-    import AppKit
-
-    def read():
-        point = AppKit.NSEvent.mouseLocation()
-        top = AppKit.NSScreen.screens()[0].frame().size.height
-        return point.x, top - point.y
-    return _cocoa_call(read)
-
-
-def _mac_button_held() -> bool:
-    import AppKit
-
-    return bool(_cocoa_call(lambda: AppKit.NSEvent.pressedMouseButtons() & 1))
-
-
-def _windows_button_held() -> bool:
-    import ctypes
-
-    user32 = ctypes.windll.user32
-    # The physical button state: the primary one is the right button when the
-    # user swapped them (SM_SWAPBUTTON).
-    button = 0x02 if user32.GetSystemMetrics(23) else 0x01
-    return bool(user32.GetAsyncKeyState(button) & 0x8000)
-
-
-def _windows_pointer() -> tuple[float, float]:
-    import ctypes
-    from ctypes import wintypes
-
-    point = wintypes.POINT()
-    if not ctypes.windll.user32.GetCursorPos(ctypes.byref(point)):
-        raise OSError("Cannot read capsule pointer position")
-    return point.x, point.y
-
-
-def _window_scale(window: Any = None) -> float:
-    if sys.platform != "win32":
-        return 1.0
-    if window is not None:
-        return float(window.native._scale)
-    import ctypes
-
-    return ctypes.windll.user32.GetDpiForSystem() / 96
-
-
-def _screen_areas(window: Any = None) -> list[ScreenArea]:
-    """Use native work areas in the same logical coordinate space as the window."""
-    if sys.platform == "darwin":
-        import AppKit
-
-        def read():
-            screens = AppKit.NSScreen.screens()
-            top = screens[0].frame().origin.y + screens[0].frame().size.height
-
-            def rect(frame):
-                return Rect(frame.origin.x, top - frame.origin.y - frame.size.height,
-                            frame.size.width, frame.size.height)
-
-            return [ScreenArea(str(s.deviceDescription()["NSScreenNumber"]),
-                               rect(s.frame()), rect(s.visibleFrame())) for s in screens]
-        return _cocoa_call(read) if window is not None else read()
-    if sys.platform == "win32":
-        return _windows_screen_areas(window)
-    import webview
-
-    return [ScreenArea(str(i), Rect(s.x, s.y, s.width, s.height), Rect(s.x, s.y, s.width, s.height))
-            for i, s in enumerate(webview.screens)]
-
-
-def _windows_screen_areas(window: Any = None) -> list[ScreenArea]:
-    import ctypes
-    from ctypes import wintypes
-
-    class MonitorInfo(ctypes.Structure):
-        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
-                    ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD),
-                    ("szDevice", wintypes.WCHAR * 32)]
-
-    user = ctypes.windll.user32
-    user.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MonitorInfo)]
-    user.GetMonitorInfoW.restype = wintypes.BOOL
-    user.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
-    user.MonitorFromWindow.restype = wintypes.HANDLE
-    scale = _window_scale(window)
-    if scale <= 0:
-        raise RuntimeError("Invalid capsule monitor DPI")
-    current = user.MonitorFromWindow(window.native.Handle.ToInt64(), 2) if window is not None else None
-    areas = []
-    failures = []
-
-    def collect(handle, _dc, _rect, _data):
-        info = MonitorInfo()
-        info.cbSize = ctypes.sizeof(info)
-        if not user.GetMonitorInfoW(handle, ctypes.byref(info)):
-            failures.append(handle)
-            return False
-
-        def rect(r):
-            return Rect(r.left / scale, r.top / scale, (r.right - r.left) / scale,
-                        (r.bottom - r.top) / scale)
-
-        areas.append((handle == current if current is not None else bool(info.dwFlags & 1),
-                      ScreenArea(info.szDevice, rect(info.rcMonitor), rect(info.rcWork))))
-        return True
-
-    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HANDLE, wintypes.HDC,
-                                      ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
-    user.EnumDisplayMonitors.argtypes = [wintypes.HDC, ctypes.POINTER(wintypes.RECT), callback_type, wintypes.LPARAM]
-    user.EnumDisplayMonitors.restype = wintypes.BOOL
-    if not user.EnumDisplayMonitors(None, None, callback_type(collect), 0) or failures or not areas:
-        raise OSError("Cannot read capsule monitor work areas")
-    return [s for _, s in sorted(areas, key=lambda item: not item[0])]
-
-
-def _cocoa_rect(frame: Rect) -> Any:
-    """``frame`` (top-left coordinates from the primary screen's top) as a Cocoa rect."""
-    import AppKit
-
-    top = AppKit.NSScreen.screens()[0].frame().size.height
-    return AppKit.NSMakeRect(frame.x, top - frame.y - frame.height, frame.width, frame.height)
-
-
-def _moved_origin(ns_window: Any) -> tuple[float, float]:
-    """pywebview's moved-event origin, also for a window not yet on any screen: it read
-    that window's screen, found none, and the capsule remembered on a second display
-    never opened (2026-11-07). The primary screen stands in."""
-    import AppKit
-
-    frame = ns_window.frame()
-    screen = (ns_window.screen() or AppKit.NSScreen.screens()[0]).frame()
-    return frame.origin.x, screen.size.height - frame.size.height - frame.origin.y
-
-
-def _set_window_frame(window: Any, frame: Rect) -> None:
-    """Move and resize in one native operation, without activating the window."""
-    if sys.platform == "darwin":
-        _cocoa_call(lambda: window.native.setFrame_display_(_cocoa_rect(frame), True))
-    elif sys.platform == "win32":
-        window._capsule_set_frame(frame)
-    else:
-        from webview.window import FixPoint
-
-        window.resize(frame.width, frame.height, fix_point=FixPoint.NORTH | FixPoint.WEST)
-        window.move(frame.x, frame.y)
-
-
-def _windows_taskbar_icon(window: Any) -> None:
-    """PaperSearch's icon on the window's taskbar button (WinForms through pythonnet)."""
-    try:
-        from System.Drawing import Bitmap, Icon
-
-        window.native.Icon = Icon.FromHandle(Bitmap(str(TASKBAR_ICON)).GetHicon())
-    except Exception:
-        pass
-
-
-def _round_windows_corners(window: Any) -> None:
-    """Windows 11 rounds a frameless window only when asked (DWM corner preference)."""
-    try:
-        import ctypes
-
-        from ctypes import wintypes
-
-        hwnd = int(window.native.Handle.ToInt64())
-        set_attribute = ctypes.WinDLL("dwmapi").DwmSetWindowAttribute
-        set_attribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
-        set_attribute.restype = ctypes.c_long
-        value = ctypes.c_int(2)  # DWMWCP_ROUND
-        set_attribute(hwnd, 33, ctypes.byref(value), ctypes.sizeof(value))
-    except Exception:
-        pass
-
-
-def _classic(separate: bool = False) -> None:
-    """The classic window. ``separate``: in a process of its own, where pywebview has
-    already set up Cocoa in this one; Tk's own setup then crashed (2026-11-07)."""
-    if separate:
-        import subprocess
-
-        subprocess.run([sys.executable, "-m", "paper_search_carsi.progress_bar"], check=False)
-        return
-    from .progress_bar import main as classic_window
-
-    classic_window()
-
-
-def _prepare_nonactivating_start(window: Any) -> None:
-    """Show the capsule without taking keyboard focus; clicks can still activate it.
-
-    pywebview's focus=False also disables keyboard entry in Settings, so only
-    suppress initial activation, not the window's ability to become active.
-    """
-    if sys.platform == "darwin":
-        from webview.platforms import cocoa
-
-        import objc
-
-        def acceptsFirstMouse_(self, event):
-            # Accept the first grab instead of consuming it just for activation.
-            return self.pywebview_window is window
-
-        objc.classAddMethods(cocoa.BrowserView.WebKitHost, [acceptsFirstMouse_])
-
-        def windowDidMove_(self, notification):
-            i = cocoa.BrowserView.get_instance('window', notification.object())
-            if i:
-                i.pywebview_window.events.moved.set(*_moved_origin(i.window))
-
-        objc.classAddMethods(cocoa.BrowserView.WindowDelegate, [windowDidMove_])
-        original = cocoa.BrowserView.first_show
-
-        def first_show(view):
-            if view.pywebview_window is not window:
-                return original(view)
-            home = getattr(window, "_capsule_home", None)
-            if home is not None:
-                # The remembered place, from the primary screen's top like every
-                # other capsule move: pywebview's own x/y count from the screen
-                # with the active window, another display when one is in use.
-                view.window.setFrame_display_(_cocoa_rect(home), False)
-            if not view.hidden:
-                view.window.orderFrontRegardless()
-            view.shown.set()
-            if not cocoa.BrowserView.app.isRunning():
-                menu = view._recreate_menus(view.menu)
-                cocoa.BrowserView.app.setMainMenu_(menu)
-                cocoa.AppHelper.installMachInterrupt()
-                cocoa.BrowserView.app.run()
-
-        cocoa.BrowserView.first_show = first_show
-    elif os.name == "nt":
-        import ctypes
-        from ctypes import wintypes
-
-        user32 = ctypes.windll.user32
-        get_style = user32.GetWindowLongPtrW
-        set_style = user32.SetWindowLongPtrW
-        get_style.argtypes = [wintypes.HWND, ctypes.c_int]
-        get_style.restype = ctypes.c_ssize_t
-        set_style.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
-        set_style.restype = ctypes.c_ssize_t
-        user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
-                                        ctypes.c_int, ctypes.c_int, wintypes.UINT]
-        user32.SetForegroundWindow.argtypes = [wintypes.HWND]
-        initial = []
-
-        def before_show():
-            from webview.window import FixPoint
-
-            native = window.native
-            hwnd = native.Handle.ToInt64()
-            initial.append((hwnd, get_style(hwnd, -20)))
-            set_style(hwnd, -20, initial[-1][1] | 0x08000000)  # WS_EX_NOACTIVATE
-            # WinForms' geometry methods omit SWP_NOACTIVATE: even an animated
-            # resize can steal focus after the nonactivating initial show.
-            # Preserve their logical-pixel geometry, only for this capsule.
-            def resize(width, height, fix_point):
-                width, height = int(width * native._scale), int(height * native._scale)
-                x, y = native.Location.X, native.Location.Y
-                if fix_point & FixPoint.EAST:
-                    x += native.Width - width
-                if fix_point & FixPoint.SOUTH:
-                    y += native.Height - height
-                user32.SetWindowPos(hwnd, None, x, y, width, height, 0x0054)
-
-            def move(x, y):
-                user32.SetWindowPos(hwnd, None, int(x * native._scale), int(y * native._scale),
-                                    0, 0, 0x0055)  # NOSIZE | NOZORDER | NOACTIVATE | SHOWWINDOW
-
-            native.resize, native.move = resize, move
-
-            def set_frame(frame):
-                scale = native._scale
-                # NOZORDER | NOACTIVATE; preserve hidden/minimized state as well.
-                if not user32.SetWindowPos(hwnd, None, round(frame.x * scale), round(frame.y * scale),
-                                          round(frame.width * scale), round(frame.height * scale), 0x0014):
-                    raise OSError("Cannot update capsule window frame")
-
-            window._capsule_set_frame = set_frame
-            # pywebview's Shown handler calls WebView2.Focus() after raising
-            # events.shown. That explicit focus defeats the initial native
-            # style, even if we restore the style later. Suppress just this
-            # first Focus call; later user-initiated restores keep normal input.
-            original = native.on_shown
-
-            def first_shown(*_):
-                native.Shown -= first_shown
-                native.Shown += original
-                window.events.shown.set()
-
-            native.Shown -= original
-            native.Shown += first_shown
-
-        def activate_on_input():
-            if initial:
-                hwnd, style = initial.pop()
-                set_style(hwnd, -20, style)
-                user32.SetForegroundWindow(hwnd)
-
-        window.events.before_show += before_show
-        # Keep the style through the native startup sequence. Restoring it on
-        # shown allows Application.Run/WebView2 to focus the just-shown form.
-        window._capsule_activate_on_input = activate_on_input
-
-
 def main() -> None:
     try:
         import webview
-    except Exception:  # pywebview missing: the classic window
-        _classic()
-        return
+    except ImportError as exc:
+        raise SystemExit(f"进度胶囊需要 pywebview，当前环境里没有（{exc}）；请运行 paper-search carsi update")
     try:
         page = page_html()
         screens = _screen_areas()
@@ -936,6 +685,9 @@ def main() -> None:
                 logging.getLogger(__name__).warning("notification host unavailable: %s", type(exc).__name__)
         api._native_geometry = sys.platform == "darwin"
         _prepare_nonactivating_start(window)
+        if sys.platform == "darwin":
+            api._mac_drag = _MacDrag(window)
+            window.events.loaded += lambda: api._mac_drag.install_soon()
         # Do not persist native moved events: animated resizing emits them too.
         # Only the user's completed drag updates the collapsed home.
         window.events.loaded += lambda: _enable_inactive_hover(window)
@@ -951,14 +703,13 @@ def main() -> None:
         progress_view.write_window_lock()
         # icon: the Dock icon on macOS, instead of a blank one; watch: notifications and closing.
         webview.start(func=api.watch, icon=str(ICON) if sys.platform == "darwin" else None)
-    except Exception:  # no usable web engine (e.g. WebView2 missing): the classic window
+    except Exception:  # no usable web engine (e.g. WebView2 missing): no window this time
         if sys.platform == "darwin":
             from .progress_macos import close
 
             close()
         progress_view.release_window_lock()
-        _classic(separate=sys.platform == "darwin")
-        return
+        raise
     progress_view.release_window_lock()
     if sys.platform == "darwin":
         from .progress_macos import close

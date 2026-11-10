@@ -16,6 +16,9 @@ const logPath = argumentValue("--log");
 const resultFile = argumentValue("--file") || "/tmp/fake-carsi.pdf";
 const resultSource = argumentValue("--source") || "Publisher(Campus)";
 
+let reportBesideDownload = () => {};
+const laneReported = new Promise((resolve) => { reportBesideDownload = resolve; });
+
 function log(event, detail = {}) {
   if (!logPath) return;
   appendFileSync(logPath, `${JSON.stringify({ event, ...detail })}\n`, "utf8");
@@ -132,6 +135,11 @@ if (
       },
       async (args, extra) => {
         log("call", { tool: "carsi_download", arguments: args });
+        if (scenario === "batch_browser_lanes") {
+          // The first download lasts until the open-access lane has reported beside it.
+          await (args.identifier.endsWith("/one") ? Promise.race([laneReported, delay(8000)]) : delay(100));
+          log("done", { tool: "carsi_download", identifier: args.identifier });
+        }
 
         if (scenario === "batch_browser_verification_timeout" && args.identifier.endsWith("/first")) {
           return { content: [{ type: "text", text: JSON.stringify({
@@ -302,11 +310,28 @@ if (
           failed: z.number().int(),
           current: z.string().optional(),
           finished: z.boolean().optional(),
-          ...(scenario.endsWith("_phase") ? { phase: z.string().optional(), channel: z.string().optional() } : {}),
+          ...(scenario.endsWith("_phase") || scenario.endsWith("_lanes")
+            ? { phase: z.string().optional(), channel: z.string().optional() } : {}),
+          ...(scenario.endsWith("_lanes") ? { lanes: z.string().optional() } : {}),
         },
       },
       async (args) => {
         log("call", { tool: "carsi_batch_progress", arguments: args });
+        if (!args.finished) reportBesideDownload();
+        return { content: [{ type: "text", text: JSON.stringify({ updated: true }) }] };
+      },
+    );
+  }
+
+  if (scenario.endsWith("_lanes")) {
+    server.registerTool(
+      "carsi_batch_papers",
+      {
+        description: "Fake batch papers tool",
+        inputSchema: { batch_id: z.string(), folder: z.string(), papers: z.array(z.any()) },
+      },
+      async (args) => {
+        log("call", { tool: "carsi_batch_papers", arguments: args });
         return { content: [{ type: "text", text: JSON.stringify({ updated: true }) }] };
       },
     );

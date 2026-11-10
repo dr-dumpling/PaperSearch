@@ -170,7 +170,7 @@ export async function installCarsi(
     config: () => writeConfig(host, paths, options, context, record!),
     school: () => askSchool(host, paths, options, context, record!),
     notifications: () => askNotifications(host, paths, context, record!),
-    check: () => selfCheck(host, paths, context, record!),
+    check: () => selfCheck(paths, context),
   };
   for (const step of INSTALL_STEPS) {
     if (record.steps[step]) continue;
@@ -516,9 +516,7 @@ async function saveSchool(
   return "";
 }
 
-async function selfCheck(host: InstallerHost, paths: RuntimePaths, context: InstallContext, record: InstallRecord): Promise<void> {
-  const tk = await host.run(paths.venvPython, ["-c", "import tkinter"]);
-  if (tk.code !== 0) warn(record, "这个 Python 没有 tkinter：下载照常，只是没有进度窗口");
+async function selfCheck(paths: RuntimePaths, context: InstallContext): Promise<void> {
   const readiness = await context.readiness(paths.executable);
   if (readiness.state !== "available") {
     throw new Error(`后端握手没有通过（${readiness.state}${readiness.message ? `：${readiness.message}` : ""}）`);
@@ -563,7 +561,7 @@ export async function updateCarsi(
     host.log(`== ${settings.browser === "ego" ? "检测 ego lite" : STEP_LABELS.browser}`);
     await installBrowser(host, paths, settings, context, record);
     host.log("== 自检");
-    await selfCheck(host, paths, context, record);
+    await selfCheck(paths, context);
   } catch (error) {
     writeRecord(paths, record);
     const message = describe(error);

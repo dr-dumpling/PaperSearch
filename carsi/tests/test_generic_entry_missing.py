@@ -40,7 +40,7 @@ class GenericEntryMissingTests(unittest.TestCase):
         d._click_sso_entry = Mock(side_effect=list(entries))
         result = DownloadResult(doi=DOI, status="failed", article_url="https://doi.org/" + DOI)
         d._item_result = result
-        with patch.object(batch.time, "sleep"), patch.object(d, "_user_wait_deadline", return_value=0):
+        with patch.object(batch.time, "sleep"), patch.object(d, "_school_login_deadline", return_value=0):
             signed_in = d._complete_login_from_current_page(page, result)
         return signed_in, result
 

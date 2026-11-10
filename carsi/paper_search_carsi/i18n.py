@@ -13,6 +13,7 @@ from pathlib import Path
 TABLE = Path(__file__).resolve().parent / "assets" / "capsule_en.json"
 LANGUAGES = ("zh", "en")
 _HAN = re.compile(r"[\u4e00-\u9fff]")
+_BRACKETS = re.compile(r"^(.+?)（(.+)）$")
 
 
 @lru_cache(maxsize=1)
@@ -36,6 +37,10 @@ def _one(text: str) -> str:
             if pattern.search(core):
                 exact = pattern.sub(target, core)
                 break
+    parts = _BRACKETS.match(core) if exact is None else None
+    if parts:
+        # "开放下载 18（出版社 API 3、预印本 1）": the text and what its brackets list, each on its own.
+        exact = f"{_one(parts[1])} ({', '.join(_one(item) for item in parts[2].split('、'))})"
     return text if exact is None else text.replace(core, exact)
 
 

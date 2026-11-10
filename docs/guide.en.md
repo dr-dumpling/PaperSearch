@@ -65,14 +65,14 @@ A literature request
 
 Both use the same download command: open downloading first, and when it finds nothing, the institutional download if it is installed.
 
-- For dozens to hundreds of papers, use one `download_batch`: open channels are tried for every paper first, then the institutional download for papers still without a main text. Afterwards `paper-search failures` sorts the papers not downloaded into four classes: no access (with the evidence, such as the page's own words), needs you (login, verification, waiting), site not supported yet, and cause unknown.
+- For dozens to hundreds of papers, use one `download_batch`: each paper tries the open channels first, and one they miss goes straight on to the institutional download while the open channels go on with the rest; the school login comes within seconds. Afterwards `paper-search failures` sorts the papers not downloaded into four classes: no access (with the evidence, such as the page's own words), needs you (login, verification, waiting), site not supported yet, and cause unknown.
 - For arXiv papers the published version is tried first; the preprint is downloaded only when none was found. The result says `version: "preprint"` and, when known, gives the published DOI.
 - To leave out Sci-Hub, set `"useSciHub": false` in `download_with_fallback` / `download_batch`.
 - Every PDF is checked against the DOI and title on its first page; a file that does not match is not counted as a success and is kept aside for review.
 
 ### Download results
 
-A download folder has two parts. `papers/` holds the papers, one folder each, with the main text named journal_year_title and supplementary files under that paper's `supplements/` with their original names. `diagnostics/` holds run records, file manifests and screenshots, for tracking down problems. The short ID at the end of a folder name tells apart papers with the same title. A missing journal or year is written as unknown. The JSON a command returns gives each file's actual location.
+In a download folder, `papers/` holds the papers, one folder each, with the main text named journal_year_title and supplementary files under that paper's `supplements/` with their original names. A paper that ran into a problem, or needs checking, also has a `diagnostics` folder with its diagnostic records and screenshots, named like its PDF, for tracking down the problem; they may contain login details, so do not pass them on. `runs/` at the top holds each download's run records. The short ID at the end of a folder name tells apart papers with the same title. A missing journal or year is written as unknown. The JSON a command returns gives each file's actual location.
 
 ## Search sources
 

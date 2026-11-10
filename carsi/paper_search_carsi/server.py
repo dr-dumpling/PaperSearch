@@ -213,6 +213,7 @@ def carsi_batch_progress(
     results: dict[str, Any] | None = None,
     phase: str = "",
     channel: str = "",
+    lanes: str = "",
 ) -> str:
     """Update the progress window of a serial batch without downloading.
 
@@ -223,16 +224,37 @@ def carsi_batch_progress(
     started (epoch seconds), stopped, main/supplements/no_supplements counts, sources
     ([label, count]) and failures ([{cls, reason, title, journal, doi, note}]).
 
-    phase: the status line while the batch waits for its next item, e.g. "开放获取：已查 15/40 篇".
-    channel: where the caller is fetching from, shown in place of a publisher, e.g. "开放获取".
+    phase: the status line while the batch waits for its next item, e.g. "开放下载：已查 15/40 篇".
+    channel: where the caller is fetching from, shown in place of a publisher, e.g. "开放下载".
+    lanes: one line on the papers each lane got in a batch whose open-access checks run
+    beside its institutional downloads ("开放下载 15 篇 · 机构下载 9 篇"). Sent beside a
+    running download of the batch too: then only the counts and this line change.
     """
     from . import progress_reporter
 
     label = current if _DOI_RE.fullmatch(current or "") else ""
     updated = progress_reporter.sync_batch(batch_id, total, done, succeeded, failed,
                                            current=label, finished=finished, results=results,
-                                           phase=phase, channel=channel)
+                                           phase=phase, channel=channel, lanes=lanes)
     return json.dumps({"updated": updated})
+
+
+@mcp_app.tool()
+def carsi_batch_papers(batch_id: str, folder: str, papers: list[dict[str, Any]]) -> str:
+    """Each paper of a batch for the progress window's lists (成功, 失败, 剩余).
+
+    Send every paper once, then the ones that changed; merged by index, a paper's
+    state only moves forward (open → school → ok or failed). papers: [{index (1..N),
+    doi, title, journal, state ("open": open access not checked yet, "school": waiting
+    for or in the institutional download, "ok", "failed"); a saved one adds via
+    (开放下载 or 机构下载), detail (出版社 API, Sci-Hub, 预印本) and path (the PDF,
+    absolute); a failed one cls (no_access, user_or_external, unsupported, unexplained)
+    and reason}]. folder: the batch's download folder (absolute); the window opens
+    a PDF only from inside it. Never touches the running download's progress.
+    """
+    from . import progress_reporter
+
+    return json.dumps({"updated": progress_reporter.sync_papers(batch_id, folder, papers)})
 
 
 @mcp_app.tool()

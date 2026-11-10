@@ -203,7 +203,7 @@ _LOGIN_MESSAGES = {
     "institution_pdf_entitlement_missing": "已登录学校，但学校没有这篇文章的全文权限；换一篇学校订阅的文章再试",
     "login_credentials_rejected": "学校登录页没有接受账号或密码",
     "institution_not_registered": "出版社的机构列表里没有找到你的学校",
-    "login_not_reached": "程序没能进入学校登录页（一直停在出版社页面）；详情见诊断文件",
+    "login_not_reached": "程序没能进入学校登录页的输入步骤（停在出版社页面或跳转途中）；详情见诊断文件",
 }
 
 
@@ -482,7 +482,7 @@ def _cmd_settings(args: argparse.Namespace) -> int:
                          ensure_ascii=False))
         return 1
     try:
-        import webview  # noqa: F401  (the settings need the capsule's web view, not the classic window)
+        import webview  # noqa: F401  (the settings are a page of the capsule's web view)
     except Exception:
         print(json.dumps({"ok": False, "error": f"设置窗口需要 pywebview，当前环境里没有；请运行 paper-search carsi update，或在终端运行 {terminal}"},
                          ensure_ascii=False))

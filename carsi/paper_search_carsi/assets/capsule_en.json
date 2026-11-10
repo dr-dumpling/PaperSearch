@@ -187,6 +187,8 @@
   "预印本": "Preprint",
   "出版社 API": "Publisher API",
   "开放获取": "Open access",
+  "开放下载": "Open download",
+  "机构下载": "School download",
   "学校登录页最多等": "Wait for school login",
   "其他页面最多等": "Wait for other pages",
   "验证提醒前最多等": "Wait before check alert",
@@ -239,7 +241,36 @@
   "已中断": "Interrupted",
   "被拒绝：key 不对，或已失效": "Rejected: wrong or expired key",
   "服务器限流，稍后再试；key 本身可能没问题": "Rate-limited; try later",
-  "没连上服务器，没法判断；检查网络或代理后再试": "Couldn't reach the server"
+  "没连上服务器，没法判断；检查网络或代理后再试": "Couldn't reach the server",
+  "正在下载": "Downloading now",
+  "排队等机构下载": "Queued for school",
+  "开放下载还没查": "Open not checked yet",
+  "没有论文": "No papers",
+  "正在读取…": "Loading…",
+  "打开失败：没有这篇的 PDF": "Couldn't open: no PDF saved",
+  "打开失败：PDF 不在这批的下载文件夹里": "Couldn't open: PDF outside the batch folder",
+  "打开失败：文件已被移走或删除": "Couldn't open: file moved or deleted",
+  "打开所在文件夹": "Show in folder",
+  "已打开所在文件夹": "Shown in its folder",
+  "没看到？": "Didn't see it?",
+  "看看要改哪里": "What to change",
+  "测试通知没有发出": "Test not sent",
+  "macOS 没有允许 PaperSearch 发通知": "macOS blocks PaperSearch's notifications",
+  "Windows 关掉了 PaperSearch 的通知": "Windows turned PaperSearch's notifications off",
+  "打开系统通知设置": "Notification settings",
+  "打开通知设置": "Notification settings",
+  "在“系统设置 › 通知 › PaperSearch”里打开“允许通知”，提醒样式选“横幅”或“提醒”。": "In System Settings › Notifications › PaperSearch, allow notifications, style Banners or Alerts.",
+  "通知以“Windows PowerShell”的名义发出：在“设置 › 系统 › 通知”里打开通知，并允许 Windows PowerShell。": "They come as \"Windows PowerShell\": in Settings › System › Notifications, turn them on and allow it.",
+  "没看到通知时，检查这几处": "No notification? Check these",
+  "系统设置 › 通知 › PaperSearch：允许通知，样式选“横幅”": "System Settings › Notifications › PaperSearch: allow, Banners",
+  "勿扰或专注模式开着时，通知不会弹出": "Do Not Disturb or a Focus hides them",
+  "设置 › 系统 › 通知：打开通知，并允许 Windows PowerShell": "Settings › System › Notifications: on, allow PowerShell",
+  "勿扰模式开着时，通知不会弹出": "Do Not Disturb hides them",
+  "测试通知：需要你登录或验证时，会这样提醒你": "Test: this is how you'll be asked to sign in",
+  "测试通知没有发出：这台电脑不发系统通知": "Test not sent: no system notifications here",
+  "✓ 已发出，右上角应弹出一条通知": "✓ Sent; see the top right",
+  "✓ 已发出，右下角应弹出一条通知": "✓ Sent; see the bottom right",
+  "改好后再点一次“测试”": "Then press Test again"
  },
  "patterns": [
   [
@@ -355,6 +386,14 @@
    "Open access $1"
   ],
   [
+   "^开放下载 (\\d+)(?: 篇)?$",
+   "Open download $1"
+  ],
+  [
+   "^机构下载 (\\d+)(?: 篇)?$",
+   "School download $1"
+  ],
+  [
    "^附录 (\\d+) 个已保存$",
    "$1 supp. saved"
   ],
@@ -437,6 +476,30 @@
   [
    "^找不到 paper-search 命令，没法测试；也可以在终端运行 (.+)$",
    "paper-search not found; run $1 in a terminal"
+  ],
+  [
+   "^成功 (\\d+) 篇$",
+   "Saved $1"
+  ],
+  [
+   "^失败 (\\d+) 篇$",
+   "Failed $1"
+  ],
+  [
+   "^剩余 (\\d+) 篇$",
+   "Left $1"
+  ],
+  [
+   "^第 (\\d+) 篇$",
+   "Paper $1"
+  ],
+  [
+   "^(\\d+) 篇$",
+   "$1"
+  ],
+  [
+   "^测试通知没有发出：(.+)$",
+   "Test not sent: $1"
   ]
  ]
 }

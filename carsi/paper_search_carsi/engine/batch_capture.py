@@ -716,16 +716,24 @@ class CaptureMixin:
             # article page shows "Download PDF", 2026-11-02).
             before_click = self._pdf_candidates(page, doi) if bound_pdf_urls is None else []
             click_started = time.time()
+            fallback = getattr(self, "_fallback_pdf", None)
             if self._click_pdf_entry(page, result, doi=doi, bound=bound_pdf_urls):
                 begin("click", self._clicked_pdf_control(result), click_started)
                 # Until the PDF (or a block) arrives, or Firefox shows one it may
                 # read in its viewer. OUP's watermarked PDF URL names no article,
                 # so its response is what counts (BJS, 2026-11-01).
-                pump_until(page, lambda: bool(captured["bytes"] or captured["block_reason"]) or (
+                pump_until(page, lambda: bool(captured["bytes"] or captured["block_reason"]
+                                              or getattr(self, "_fallback_pdf", None) is not fallback) or (
                     not self._is_chromium(page) and self._pdf_viewer_present(page)
                     and self._native_viewer_pdf_allowed(str(getattr(page, "url", "") or ""), **fallback_options)), 5_000)
                 if captured["bytes"] or captured["block_reason"]:
                     return captured["bytes"], str(captured["url"]), captured["block_reason"]
+                if getattr(self, "_fallback_pdf", None) is not fallback:
+                    # The article's own PDF link gave a PDF naming neither DOI nor title.
+                    # The page's other addresses give the same file (Science's reader and
+                    # PDF addresses took the rest of the minute every time, 2026-11-09):
+                    # it is saved now, unconfirmed, for PaperSearch to check.
+                    return None, "", None
                 self._wait_past_redirect_page(page, result)  # e.g. a sign-in round trip first
                 if not self._resolve_suspect_block(page, result, captured):
                     return None, "", captured["block_reason"]
@@ -767,8 +775,8 @@ class CaptureMixin:
             # document; try each URL once.
             candidates = list(dict.fromkeys(str(url).split("#", 1)[0] for url in candidates if url))
             for pdf_url in candidates:
-                if captured["bytes"] or captured["block_reason"]:
-                    break
+                if captured["bytes"] or captured["block_reason"] or getattr(self, "_fallback_pdf", None) is not None:
+                    break  # a PDF naming neither DOI nor title is in hand: saved unconfirmed, as after the click
                 if pdf_url in rejected_pdf_urls:
                     continue
                 if entitlement_denied():

@@ -15,6 +15,8 @@ export { carsiAttemptDetails, carsiShortReason } from "./CarsiAttempt.js";
 
 export type {
   CarsiBackend,
+  CarsiBatchPaper,
+  CarsiBatchPapers,
   CarsiBatchPosition,
   CarsiBatchResults,
   CarsiBatchUpdate,

@@ -1,4 +1,4 @@
-import type { CarsiBatchUpdate, CarsiDownloadRequest, CarsiBackend, CarsiInvocationOutcome, CarsiMcpClientOptions, CarsiReadiness } from "./types.js";
+import type { CarsiBatchPapers, CarsiBatchUpdate, CarsiDownloadRequest, CarsiBackend, CarsiInvocationOutcome, CarsiMcpClientOptions, CarsiReadiness } from "./types.js";
 export declare const CARSI_STARTUP_TIMEOUT_MS = 15000;
 export declare const CARSI_TOOL_TIMEOUT_MS = 15000;
 export declare const CARSI_DOWNLOAD_TIMEOUT_MS = 1200000;
@@ -15,15 +15,27 @@ export declare class CarsiMcpClient implements CarsiBackend {
     private retainedSession?;
     /** Inside a batch, the session progress reports reuse until the first download. */
     private progressSession?;
+    /** Downloads under way: a progress report then opens no backend process of its own. */
+    private downloads;
+    /** The backend answered once that it takes no paper lists: none are sent again. */
+    private papersUnsupported;
     withBatchSession<T>(run: (backend: CarsiBackend) => Promise<T>): Promise<T>;
     constructor(options?: CarsiMcpClientOptions);
     probe(signal?: AbortSignal): Promise<CarsiReadiness>;
     downloadLegalDoi(request: CarsiDownloadRequest): Promise<CarsiInvocationOutcome>;
+    private download;
     /**
      * Update batch progress on the retained session, or on a short progress-only
      * session if the browser has not been opened.
      */
     reportBatchProgress(update: CarsiBatchUpdate, signal?: AbortSignal): Promise<boolean>;
+    /** The batch's papers for the window's lists, on the backend the batch already has. */
+    reportBatchPapers(update: CarsiBatchPapers, last?: boolean): Promise<boolean>;
+    /**
+     * A report on the batch's backend: its retained session, the session kept for
+     * reports until the first download, or a short one of its own (``mayOpen``).
+     */
+    private report;
     private closeProgressSession;
     private clearThenDownload;
     private openSession;

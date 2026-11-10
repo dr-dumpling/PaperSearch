@@ -2,7 +2,7 @@
 const MESSAGES = {
     login_required: "需要机构登录。请在 PaperSearch 专属下载环境完成登录后重试。",
     login_timeout: "等待机构登录超时。请检查下载浏览器并完成登录后重试；超时不代表没有全文权限。",
-    login_not_reached: "程序没能进入学校登录页（一直停在出版社页面），这不是没有权限；已记为原因不明，待排查。",
+    login_not_reached: "程序没能进入学校登录页的输入步骤（停在出版社页面或跳转途中），这不是没有权限；已记为原因不明，待排查。",
     login_page_closed: "机构登录页面已关闭。请重新打开下载浏览器后重试。",
     browser_closed: "下载浏览器被关闭了，这一篇没有下完；需要时重新下载即可。",
     login_credentials_rejected: "机构登录凭证被拒绝。请在下载浏览器核查登录提示并手动处理；不自动重复提交。",

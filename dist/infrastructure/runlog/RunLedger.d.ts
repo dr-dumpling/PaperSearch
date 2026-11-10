@@ -50,6 +50,10 @@ export declare class RunLedger {
     phase(text: string): void;
     stage(item: RunItem, record: DownloadStageRecord): void;
     item(item: RunItem, result: DownloadWithFallbackResult): void;
+    /** The run's portable folder in the download folder: runs/<run id>. */
+    get packet(): string;
+    /** Where the run's papers that went fine keep their backend records. */
+    get records(): string;
     close(extra?: Record<string, unknown>): void;
     private writeRun;
     private line;

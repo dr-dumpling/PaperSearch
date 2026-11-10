@@ -5,19 +5,23 @@
 <title>PaperSearch</title>
 <style>
 :root {
-  --bg: rgba(255, 255, 255, 0.96); --fg: #111827; --dim: #6b7280; --faint: #9ca3af;
+  /* Opaque: a transparent window has nothing behind it to blur, and the desktop showed
+     through the card (user, 2026-11-10). */
+  --bg: #ffffff; --fg: #111827; --dim: #6b7280; --faint: #9ca3af;
   --line: rgba(17, 24, 39, 0.10); --track: rgba(17, 24, 39, 0.10); --hover: rgba(17, 24, 39, 0.06);
   --accent: #2563eb; --ok: #16a34a; --bad: #dc2626;
   --warn: #92400e; --warn-bg: #fef3c7; --warn-line: #f3d27a; --warn-dot: #d97706;
-  --shadow: 0 10px 28px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.10);
+  /* Inside the window's 10 px margin (body.mac): a shadow running past it was cut off
+     square on the desktop (2026-11-10). */
+  --shadow: 0 3px 7px rgba(0, 0, 0, 0.14), 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: rgba(32, 33, 36, 0.96); --fg: #f3f4f6; --dim: #a1a1aa; --faint: #71717a;
+    --bg: #202124; --fg: #f3f4f6; --dim: #a1a1aa; --faint: #71717a;
     --line: rgba(255, 255, 255, 0.12); --track: rgba(255, 255, 255, 0.14); --hover: rgba(255, 255, 255, 0.08);
     --accent: #60a5fa; --ok: #4ade80; --bad: #f87171;
     --warn: #fbbf24; --warn-bg: #3a2d10; --warn-line: #6b5216; --warn-dot: #fbbf24;
-    --shadow: 0 10px 28px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow: 0 3px 7px rgba(0, 0, 0, 0.42), 0 1px 2px rgba(0, 0, 0, 0.32);
   }
 }
 html, body { margin: 0; background: transparent; overflow: hidden; }
@@ -29,7 +33,7 @@ body {
 body.mac { padding: 10px; }            /* room for the shadow around a transparent window */
 #root { position: relative; box-sizing: border-box; overflow: hidden; display: inline-block; background: var(--bg); border: 0.5px solid var(--line); cursor: default; }
 #root.dragging, #root.dragging * { cursor: default; }
-body.mac #root { box-shadow: var(--shadow); -webkit-backdrop-filter: blur(20px); }
+body.mac #root { box-shadow: var(--shadow); }
 #root.pill { border-radius: 999px; }
 #root.card { border-radius: 16px; width: 330px; box-sizing: border-box; }
 body:not(.mac) #root { border-radius: 8px; border: none; }
@@ -98,7 +102,10 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .steps .label { font-size: 12px; color: var(--accent); white-space: nowrap; }
 .line { font-size: 12px; color: var(--dim); margin-top: 8px; }
 .stats { display: flex; padding: 12px 0; border-top: 0.5px solid var(--line); border-bottom: 0.5px solid var(--line); }
-.stats div { flex: 1; }
+.stats div, .stats .stat { flex: 1; }
+.stats .stat { padding: 0; border: none; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.stats .stat:hover span, .stats .stat:focus-visible span { color: var(--accent); }
+.stats .stat:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .stats b { display: block; font-size: 18px; font-weight: 600; line-height: 1.2; }
 .stats span { font-size: 11px; color: var(--dim); }
 .actions { display: flex; align-items: center; gap: 6px; margin-top: 12px; position: relative; }
@@ -125,6 +132,18 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
                   background: var(--hover); border: 0.5px solid var(--line); border-radius: 6px; padding: 0 8px; }
 .settings input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .settings .err { color: var(--bad); font-size: 11px; text-align: right; margin: -6px 0 6px; }
+/* The check of system notifications under its switch: a test, and what to change when they do not show. */
+#notify-test-button { margin-left: auto; margin-right: 10px; }
+#notify-test-button .btn { padding: 2px 9px; }
+.nnote { font-size: 12px; color: var(--dim); margin: 2px 0 6px; }
+.nnote.ok { color: var(--ok); }
+.nnote.bad { color: var(--bad); }
+.nnote .link-btn { border: none; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
+.nbox { border-radius: 8px; padding: 9px 11px; margin: 4px 0 8px; font-size: 12px; line-height: 1.55;
+        background: var(--warn-bg); color: var(--warn); border: 0.5px solid var(--warn-line); }
+.nbox b { display: block; font-size: 13px; margin-bottom: 3px; }
+.nbox ol { margin: 4px 0 6px; padding-left: 18px; }
+.nbox .btn { margin-top: 2px; color: var(--warn); border-color: var(--warn-line); }
 .switch { width: 34px; height: 20px; border-radius: 10px; background: var(--track); position: relative; border: none; padding: 0; cursor: pointer; }
 .switch::after { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; }
 .switch.on { background: var(--accent); }
@@ -196,6 +215,9 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .paper-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 196px; overflow-y: auto; }
 .paper-list.scroll { -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent); mask-image: linear-gradient(to bottom, #000 80%, transparent); }
 .paper-list li { font-size: 12px; padding: 3px 0; }
+/* A list page scrolls as one, up to half the screen; its groups open in full inside it. */
+.papers-scroll { overflow-y: auto; overscroll-behavior: contain; }
+.papers-scroll .paper-list { max-height: none; overflow: visible; }
 .paper-list .t, .paper-list .w { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .paper-list .w, .paper-list .more { color: var(--faint); }
 .paper-list .open-article { display: block; width: 100%; padding: 0; border: none; background: none; text-align: left;
@@ -219,17 +241,26 @@ const EN = /*CAPSULE_EN*/null;
 const EN_PATTERNS = EN ? EN.patterns.map(([source, target]) => [new RegExp(source), target]) : [];
 const HAN = /[\u4e00-\u9fff]/;
 let lang = "zh";
+const BRACKETS = /^(.+?)（(.+)）$/;
+function trOne(core) {
+  if (!HAN.test(core)) return core;
+  let english = Object.hasOwn(EN.exact, core) ? EN.exact[core] : null;
+  if (english === null) {
+    const found = EN_PATTERNS.find(([pattern]) => pattern.test(core));
+    if (found) english = core.replace(found[0], found[1]);
+  }
+  const parts = english === null && BRACKETS.exec(core);
+  // "开放下载 18（出版社 API 3、预印本 1）": the text and what its brackets list, each on its own.
+  if (parts) english = trOne(parts[1]) + " (" + parts[2].split("、").map(trOne).join(", ") + ")";
+  return english === null ? core : english;
+}
 function tr(text) {
   if (lang !== "en" || !EN || !text || !HAN.test(text)) return text;
   return String(text).split(" · ").map((part) => {
     const core = part.trim();
     if (!core || !HAN.test(core)) return part;
-    let english = Object.hasOwn(EN.exact, core) ? EN.exact[core] : null;
-    if (english === null) {
-      const found = EN_PATTERNS.find(([pattern]) => pattern.test(core));
-      if (found) english = core.replace(found[0], found[1]);
-    }
-    return english === null ? part : part.replace(core, english);
+    const english = trOne(core);
+    return english === core ? part : part.replace(core, english);
   }).join(" · ");
 }
 function localize(node) {
@@ -293,6 +324,7 @@ let open = false;          // the card is showing
 let panel = "";            // "", "menu", "report", "confirm", "settings": kept until the user leaves it
 let flash = { text: "", until: 0 };
 let settings = null, settingsErrors = {}, notifyOn = true;
+let notifyCheck = null;  // the notification check under the switch: {state: testing, sent, off, unseen or failed}
 // Settings pages: "home" lists download, wait and keys. settingsOnly: this window was started
 // just to show them (`paper-search-carsi settings`), so it closes with them unless a download runs.
 const SETTINGS_PAGES = ["home", "download", "wait", "keys"];
@@ -355,6 +387,8 @@ function paperBlock() {
   } else if (v.line) {
     html += '<div class="line">' + esc(v.line) + "</div>";
   }
+  // What each lane got (开放下载, 机构下载), on one line.
+  if (v.lanes) html += '<div class="line">' + esc(v.lanes) + "</div>";
   return html + "</div>";
 }
 
@@ -382,13 +416,19 @@ function actionsBlock() {
   return html;
 }
 
+// A count opens its list of papers once the batch has sent them (user, 2026-11-10).
+function stat(list, value, label, color) {
+  const inner = "<b" + (color ? ' style="color:' + color + '"' : "") + ">" + value + "</b><span>" + label + "</span>";
+  return V.lists && list ? '<button type="button" class="stat" data-act="papers" data-list="' + list + '">' + inner + "</button>"
+    : "<div>" + inner + "</div>";
+}
+
 function runningCard() {
   const v = V;
   const sub = [v.total ? v.done + "/" + v.total : "", v.part, v.elapsed ? "已用 " + v.elapsed : ""].filter(Boolean).join(" · ");
   return '<div class="card-body">' + header(v.headline, sub, false) + paperBlock()
-    + '<div class="stats"><div><b style="color:var(--ok)">' + v.ok + '</b><span>成功</span></div>'
-    + '<div><b style="color:var(--bad)">' + v.bad + '</b><span>失败</span></div>'
-    + "<div><b>" + (v.left == null ? "—" : v.left) + "</b><span>剩余</span></div></div>"
+    + '<div class="stats">' + stat("ok", v.ok, "成功", "var(--ok)") + stat("failed", v.bad, "失败", "var(--bad)")
+    + stat("left", v.left == null ? "—" : v.left, "剩余") + "</div>"
     + actionsBlock() + "</div>";
 }
 
@@ -443,9 +483,8 @@ function reasonRow(g, i, brief) {
 function doneCard() {
   const v = V, s = v.summary;
   let html = '<div class="card-body">' + header(v.headline, v.total ? "共 " + v.total + " 篇" : "", true)
-    + '<div class="stats done-stats"><div><b style="color:var(--ok)">' + v.ok + "</b><span>成功</span></div>"
-    + '<div><b' + (v.bad ? ' style="color:var(--bad)"' : "") + ">" + v.bad + "</b><span>失败</span></div>"
-    + "<div><b>" + esc(v.elapsed || "—") + "</b><span>用时</span></div></div>";
+    + '<div class="stats done-stats">' + stat("ok", v.ok, "成功", "var(--ok)") + stat("failed", v.bad, "失败", v.bad ? "var(--bad)" : "")
+    + stat("", esc(v.elapsed || "—"), "用时") + "</div>";
   if (s && s.groups.length) {
     const apart = s.supplement_groups && s.supplement_groups.length;
     html += '<div class="sec"><div class="sec-h"><b>' + (apart ? "正文未下到 " : "未完成 ") + v.bad + " 篇</b><span>按原因</span></div>"
@@ -463,6 +502,50 @@ function doneCard() {
   if (v.completion_detail) html += '<div class="line">' + esc(v.completion_detail) + "</div>";
   return html + (v.folder ? '<div class="actions"><button class="btn link" data-act="folder">' + icon("folder") + "打开文件夹</button></div>" : "")
     + "</div>";
+}
+
+// The list behind a count: its groups (by way, by reason, by lane), each opened on its own.
+const LIST_TITLES = { ok: "成功", failed: "失败", left: "剩余" };
+let papersKind = "", papersList = null, listOpen = null;
+function shownList() { return (papersList || {})[papersKind] || { count: 0, groups: [] }; }
+function listGroupOpen(i) { return listOpen ? listOpen.has(i) : !!(shownList().groups[i] || {}).open; }
+async function loadPapers() {
+  try { papersList = await api().paper_lists(); } catch (e) { papersList = papersList || {}; }
+}
+
+function listRow(g, i) {
+  const opened = listGroupOpen(i);
+  let html = '<div class="grp"><button type="button" class="row" data-act="list_group" data-group="' + i + '" aria-expanded="' + opened + '">'
+    + (papersKind === "failed" ? '<span class="tag ' + esc(g.cls) + '">' + esc(CLASS_TAGS[g.cls] || "") + "</span>" : "")
+    + '<span class="reason">' + esc(g.label) + '</span><span class="n">' + g.count + " 篇</span>" + icon(opened ? "down" : "right") + "</button>";
+  if (!opened) return html + "</div>";
+  return html + '<ul class="paper-list">'
+    + g.papers.map((p) => {
+      const lines = '<div class="t">' + esc(p.title) + "</div>" + (p.where ? '<div class="w">' + esc(p.where) + "</div>" : "");
+      // A saved paper shows its PDF in its folder; a failed one opens its article page, to fetch it by hand.
+      if (papersKind === "ok") {
+        return '<li><button type="button" class="open-article" data-act="show_paper" data-index="' + p.index + '" title="打开所在文件夹">' + lines + "</button></li>";
+      }
+      if (papersKind === "failed" && p.doi) {
+        return '<li><button type="button" class="open-article" data-act="open_article" data-doi="' + esc(p.doi)
+          + '" title="在浏览器打开这篇文章">' + lines + "</button></li>";
+      }
+      return "<li>" + lines + "</li>";
+    }).join("")
+    + (g.more ? '<li class="more">另有 ' + g.more + " 篇未列出</li>" : "") + "</ul></div>";
+}
+
+function papersCard() {
+  const list = shownList();
+  const note = flash.text && Date.now() < flash.until ? flash.text : "";
+  let html = '<div class="card-body"><div class="head"><button class="iconbtn" data-act="back" aria-label="返回">' + icon("left") + "</button>"
+    + '<div class="drag capsule-drag-region"><div class="text"><div class="title">' + LIST_TITLES[papersKind] + " " + list.count + " 篇</div></div></div></div>";
+  if (note) html += '<div class="line">' + esc(note) + "</div>";
+  if (!list.groups.length) html += '<div class="line">' + (papersList ? "没有论文" : "正在读取…") + "</div>";
+  // Half the screen at most, the title staying in place above it (user, 2026-11-10).
+  const most = Math.max(240, Math.round((screen.availHeight || 900) / 2) - 64);
+  return html + '<div class="sec papers-scroll" style="max-height:' + most + 'px">'
+    + list.groups.map((g, i) => listRow(g, i)).join("") + "</div></div>";
 }
 
 function idleCard() {
@@ -541,8 +624,10 @@ function settingsDownload() {
 
 function settingsWait() {
   return settingsHead("等待和提醒") + fieldRows("wait")
-    + '<div class="row"><span>需要处理时发系统通知</span><button class="switch' + (notifyOn ? " on" : "")
+    + '<div class="row"><span>需要处理时发系统通知</span><span id="notify-test-button">' + notifyTestButton() + "</span>"
+    + '<button class="switch' + (notifyOn ? " on" : "")
     + '" data-act="notify" role="switch" aria-checked="' + notifyOn + '" aria-label="系统通知"></button></div>'
+    + '<div id="notify-test">' + notifyTest() + "</div>"
     + '<div class="err" id="notify-error" role="status"></div>' + settingsFoot();
 }
 
@@ -588,6 +673,50 @@ function settingsCard() {
   return '<div class="card-body settings">' + page() + "</div>";
 }
 
+// The check of system notifications under the switch (user, 2026-11-10).
+const NOTIFY_HELP = {
+  mac: { corner: "右上角", off: "macOS 没有允许 PaperSearch 发通知", button: "打开系统通知设置",
+         where: "在“系统设置 › 通知 › PaperSearch”里打开“允许通知”，提醒样式选“横幅”或“提醒”。",
+         checks: ["系统设置 › 通知 › PaperSearch：允许通知，样式选“横幅”", "勿扰或专注模式开着时，通知不会弹出"] },
+  win: { corner: "右下角", off: "Windows 关掉了 PaperSearch 的通知", button: "打开通知设置",
+         where: "通知以“Windows PowerShell”的名义发出：在“设置 › 系统 › 通知”里打开通知，并允许 Windows PowerShell。",
+         checks: ["设置 › 系统 › 通知：打开通知，并允许 Windows PowerShell", "勿扰模式开着时，通知不会弹出"] },
+};
+// The test sits on the switch's row (user, 2026-11-10); what it found goes under the row.
+function notifyTestButton() {
+  return notifyOn ? '<button class="btn" data-act="test_notify"' + ((notifyCheck || {}).state === "testing" ? " disabled" : "") + ">测试</button>" : "";
+}
+function notifyTest() {
+  if (!notifyOn) return "";
+  const help = NOTIFY_HELP[document.body.classList.contains("mac") ? "mac" : "win"], c = notifyCheck || {};
+  let html = "";
+  if (c.state === "sent") {
+    html += '<div class="nnote ok">✓ 已发出，' + help.corner + "应弹出一条通知</div>"
+      + '<div class="nnote">没看到？<button type="button" class="link-btn" data-act="notify_unseen">看看要改哪里</button></div>';
+  }
+  if (c.state === "failed") html += '<div class="nnote bad">' + esc(c.message || "测试通知没有发出") + "</div>";
+  const open = '<button class="btn" data-act="notify_settings">' + help.button + "</button>";
+  if (c.state === "off") html += '<div class="nbox"><b>' + help.off + "</b>" + help.where + "<br>" + open + "</div>";
+  if (c.state === "unseen") {
+    html += '<div class="nbox"><b>没看到通知时，检查这几处</b><ol>'
+      + help.checks.concat(["改好后再点一次“测试”"]).map((line) => "<li>" + line + "</li>").join("") + "</ol>" + open + "</div>";
+  }
+  return html;
+}
+function updateNotifyTest() {
+  // Only this part, keeping what the user is typing in the fields above.
+  const box = root.querySelector("#notify-test"), button = root.querySelector("#notify-test-button");
+  if (!box || !button) return;
+  const previous = root.getBoundingClientRect();
+  box.innerHTML = notifyTest();
+  button.innerHTML = notifyTestButton();
+  localize(box); localize(button);
+  root.classList.remove("animating");
+  root.style.width = ""; root.style.height = "";
+  root.style.removeProperty("--content-max-height");
+  fit(previous);
+}
+
 function updateStrip() {
   // Progress behind the settings: refresh only this line, keeping what the user is typing.
   const strip = root.querySelector("#task-strip");
@@ -606,7 +735,7 @@ function updateStrip() {
 }
 
 async function loadSettings() {
-  settings = await api().settings(); notifyOn = settings.notify; settingsErrors = {};
+  settings = await api().settings(); notifyOn = settings.notify; settingsErrors = {}; notifyCheck = null;
   try { apiKeys = await api().api_keys(); } catch (error) { apiKeys = null; }
 }
 
@@ -663,6 +792,7 @@ function render(force) {
   let html, shape = "card";
   if (panel === "settings") html = settingsCard();
   else if (!open) { html = pill(); shape = "pill"; }
+  else if (panel === "papers" && V.lists && (V.mode === "running" || V.mode === "done")) html = papersCard();
   else if (V.mode === "attention") html = attentionCard();
   else if (V.mode === "running") html = runningCard();
   else if (V.mode === "done") html = doneCard();
@@ -763,6 +893,7 @@ async function tick() {
   // A prompt only turns the capsule amber (with a system notification); hovering opens it.
   // Once the prompt is handled an open card folds back unless the pointer is on it.
   if (before === "attention" && V.mode !== "attention" && !hovering && !dragging && !panel) open = false;
+  if (panel === "papers" && open) await loadPapers();  // an open list follows the download
   render(switched);
   // Also detect a real pointer departure when clamping moved the window away
   // from a stationary cursor (there may be no further native boundary event).
@@ -779,6 +910,15 @@ async function act(action, target) {
     case "close": closing = true; ++fitGeneration; clearInterval(pollTimer); clearTimeout(hoverTimer); clearTimeout(leaveTimer); return api().request_close();  // no call left waiting on a closed page
     case "folder": return api().open_folder();
     case "open_article": return say(await api().open_article(target.dataset.doi));
+    case "papers": papersKind = target.dataset.list; panel = "papers"; listOpen = null; papersList = null; render(true);
+      await loadPapers(); return render(true);
+    case "list_group": {
+      const i = Number(target.dataset.group);
+      listOpen = new Set(shownList().groups.map((_, j) => j).filter(listGroupOpen));
+      if (!listOpen.delete(i)) listOpen.add(i);
+      return render(true);
+    }
+    case "show_paper": return say(await api().show_paper(Number(target.dataset.index)));
     case "group": return toggleGroup(Number(target.dataset.group));
     case "show_browser": {
       try { await inputActivation; }
@@ -853,11 +993,23 @@ async function act(action, target) {
         target.classList.toggle("on", notifyOn);
         target.setAttribute("aria-checked", String(notifyOn));
         root.querySelector('#notify-error').textContent = "";
+        // Turned on: say at once when the system keeps the notifications from showing.
+        notifyCheck = null;
+        if (notifyOn && (await api().check_notifications()).state === "off") notifyCheck = { state: "off" };
+        updateNotifyTest();
       } catch (error) {
         root.querySelector('#notify-error').textContent = error.message || "通知设置保存失败";
       } finally { target.disabled = false; }
       return;
     }
+    case "test_notify": {
+      notifyCheck = { state: "testing" };
+      updateNotifyTest();
+      try { notifyCheck = await api().test_notification(); } catch (e) { notifyCheck = { state: "failed" }; }
+      return updateNotifyTest();
+    }
+    case "notify_unseen": notifyCheck = { state: "unseen" }; return updateNotifyTest();
+    case "notify_settings": return api().open_notification_settings();
     case "choose_folder": {
       const selected = await api().choose_download_directory();
       if (selected) { settings.download_dir = selected; root.querySelector('#download-dir').value = selected; }
@@ -885,7 +1037,7 @@ async function act(action, target) {
 }
 
 // A paper list scrolls; pressing in it must not drag the window.
-const interactive = (target) => target.closest('button, input, select, textarea, a, [contenteditable="true"], [role="button"], .paper-list');
+const interactive = (target) => target.closest('button, input, select, textarea, a, [contenteditable="true"], [role="button"], .paper-list, .papers-scroll');
 root.addEventListener("pointerdown", (event) => {
   if (event.button === 0 && api().activate_on_input) inputActivation = api().activate_on_input();
   if (event.button === 0 && event.target.closest(".attention-target")) {

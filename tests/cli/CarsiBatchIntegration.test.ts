@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import { pathToFileURL } from "url";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { textPdf } from "../fixtures/textPdf.js";
+import type { CarsiBatchPaper } from "../../src/capabilities/pdf-discovery/carsi/types.js";
 
 const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
 
@@ -17,7 +18,7 @@ describe("CARSI serial batch through the CLI", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  function run(scenario: string, tool: string, args: Record<string, unknown>) {
+  function run(scenario: string, tool: string, args: Record<string, unknown>, extraEnv: NodeJS.ProcessEnv = {}) {
     const binDir = join(tempDir, "bin");
     const logPath = join(tempDir, "fake.log");
     const pdfPath = join(tempDir, "fake.pdf");
@@ -42,6 +43,7 @@ describe("CARSI serial batch through the CLI", () => {
       PAPER_SEARCH_CONFIG_FILE: join(tempDir, "config.json"),
       PAPER_SEARCH_HIDE_SETUP_HINT: "1",
       PAPER_SEARCH_CARSI_ENABLED: "true",
+      ...extraEnv,
     };
     delete env.PAPER_SEARCH_UNPAYWALL_EMAIL;
     delete env.UNPAYWALL_EMAIL;
@@ -59,7 +61,7 @@ describe("CARSI serial batch through the CLI", () => {
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-    return { result, calls: events.filter((event) => event.event === "call"),
+    return { result, events, calls: events.filter((event) => event.event === "call"),
       starts: events.filter((event) => event.event === "start").length };
   }
 
@@ -92,7 +94,8 @@ describe("CARSI serial batch through the CLI", () => {
       expect.objectContaining({ batch_id: downloads[0].batch_id, total: 2, done: 2, succeeded: 1, failed: 1, finished: true }),
     ]);
     expect(progress[1]).not.toHaveProperty("results");
-    expect(result.stderr).toContain("[批量] 机构下载 2/2：10.1000/two");
+    // Item two's open-access check may still run when item one's download starts.
+    expect(result.stderr).toMatch(/\[批量\] 机构下载( 2\/2|第 2 篇（开放来源还在查）)：10\.1000\/two/);
   });
 
   it("keeps one backend through the CLI progress wrapper until the batch ends", () => {
@@ -113,32 +116,65 @@ describe("CARSI serial batch through the CLI", () => {
     expect(result.stderr).toContain("[批量] 机构下载 2/2：10.1000/two");
   });
 
-  it.each([
-    ["batch_browser", false],
-    ["batch_browser_phase", true],
-  ])("%s: a large batch shows its open-access stretch through one backend before the first download", (scenario, phase) => {
-    const { result, calls, starts } = run(scenario as string, "download_batch", {
+  it.each(["batch_browser", "batch_browser_phase"])(
+    "%s: a backend that cannot show both lanes gets no open-access line beside its downloads", (scenario) => {
+    const { result, calls, starts } = run(scenario, "download_batch", {
       items: ["one", "two", "three", "four", "five"].map((id) => ({ source: "no_searcher", paperId: `10.1000/${id}` })),
       savePath: join(tempDir, "out"),
       useSciHub: false,
     });
     expect(result.status).toBe(0);
+    // No open-access copy: the first item goes to the school at once, and every
+    // open-access report then carries the lanes line this backend does not declare.
     const progress = calls.filter((call) => call.tool === "carsi_batch_progress").map((call) => call.arguments);
-    // No open-access copy: nothing settles in the open stretch, and the school's stretch carries on.
-    expect(progress.slice(0, 5).map((args) => [args.done, args.total, args.finished])).toEqual(
-      [1, 2, 3, 4, 5].map(() => [0, 5, false]));
-    if (phase) {
-      expect(progress.slice(0, 5).map((args) => [args.phase, args.channel])).toEqual(
-        [1, 2, 3, 4, 5].map((k) => [`开放获取：已查 ${k}/5 篇，找到 0 篇`, "开放获取"]));
-    } else {
-      expect(progress[0]).not.toHaveProperty("phase");
-    }
+    expect(progress.every((args) => args.finished)).toBe(true);
     const downloads = calls.filter((call) => call.tool === "carsi_download").map((call) => call.arguments);
     expect(downloads.map((args) => [args.batch_index, args.batch_total])).toEqual(
       [1, 2, 3, 4, 5].map((k) => [k, 5]));
-    // One backend for the open-access reports, then the download backend kept for the batch.
-    expect(starts).toBe(2);
+    // Nor the papers' lists, which cost it no backend start of their own.
+    expect(calls.some((call) => call.tool === "carsi_batch_papers")).toBe(false);
+    expect(starts).toBe(1);
   });
+
+  it("batch_browser_lanes: open access reports both lanes while the school's downloads run, through their backend", () => {
+    const { result, events, calls, starts } = run("batch_browser_lanes", "download_batch", {
+      items: ["one", "two", "three", "four", "five"].map((id) => ({ source: "no_searcher", paperId: `10.1000/${id}` })),
+      savePath: join(tempDir, "out"),
+      useSciHub: false,
+    }, { PAPER_SEARCH_TEST_PMC_DELAY_MS: "600" });
+    expect(result.status).toBe(0);
+    const progress = calls.filter((call) => call.tool === "carsi_batch_progress").map((call) => call.arguments);
+    const lanes = progress.filter((args) => !args.finished);
+    expect(lanes.length).toBeGreaterThan(0);
+    expect(lanes.every((args) => /^开放下载 0 篇 · 机构下载 [0-5] 篇$/.test(args.lanes))).toBe(true);
+    expect(lanes.map((args) => args.done)).toEqual(lanes.map((args) => args.done).sort((a, b) => a - b));
+    // At least one arrived while a download ran (between its call and its end).
+    const during = events.some((event, at) => event.event === "call" && event.tool === "carsi_batch_progress"
+      && !event.arguments.finished
+      && events.slice(0, at).filter((e) => e.event === "call" && e.tool === "carsi_download").length
+        > events.slice(0, at).filter((e) => e.event === "done").length);
+    expect(during).toBe(true);
+    const downloads = calls.filter((call) => call.tool === "carsi_download").map((call) => call.arguments);
+    expect(downloads.map((args) => [args.batch_index, args.batch_total, args.keep_browser])).toEqual(
+      [1, 2, 3, 4, 5].map((k) => [k, 5, true]));
+    // The window's lists ride on the same backend: every paper first, then as each ended.
+    const papers = calls.filter((call) => call.tool === "carsi_batch_papers")
+      .map((call) => call.arguments as { folder: string; papers: CarsiBatchPaper[] });
+    expect(papers[0].papers.map((paper) => paper.index)).toEqual([1, 2, 3, 4, 5]);
+    expect(papers[0].folder).toBe(join(tempDir, "out"));
+    const ended = new Map(papers.flatMap((args) => args.papers).map((paper) => [paper.index, paper]));
+    // Each as the batch ended it (the fake gives every paper the first one's PDF).
+    const items = JSON.parse(result.stdout).data.items as Array<{ index: number; status: string }>;
+    expect([...ended.values()].map((paper) => [paper.index, paper.state])).toEqual(
+      items.map((item) => [item.index, item.status === "ok" ? "ok" : "failed"]));
+    expect(items.filter((item) => item.status === "ok").length).toBeGreaterThan(0);
+    for (const paper of ended.values()) {
+      if (paper.state === "ok") expect(paper).toMatchObject({ via: "机构下载", path: expect.any(String) });
+      else expect(paper.reason).toBeTruthy();
+    }
+    // One backend for the downloads and the reports beside them.
+    expect(starts).toBe(1);
+  }, 90_000);
 
   it("a backend without batch support gets the plain contract", () => {
     const { result, calls } = run("success", "download_with_fallback", {

@@ -63,6 +63,11 @@ export interface DownloadWithFallbackOptions {
   shortUserWait?: boolean;
   /** Called after every stage (run ledger). */
   onStage?: (record: DownloadStageRecord) => void;
+  /**
+   * Where a download that went fine keeps the backend's record and screenshots: its
+   * run's folder. A paper that failed keeps them beside it (user, 2026-11-10).
+   */
+  recordsDir?: string;
   /** main (default) / supplements / both; see DownloadContent. */
   content?: DownloadContent;
 }

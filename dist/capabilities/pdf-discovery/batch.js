@@ -1,17 +1,19 @@
 import { resolveDownloadPath } from "../../config/ConfigService.js";
 import { dirname, relative, resolve } from "node:path";
-import { createOutputLayout, lookupOutputMetadata, organizeFiles } from "./outputLayout.js";
+import { createOutputLayout, inPaperDir, lookupOutputMetadata, organizeFiles } from "./outputLayout.js";
 import { randomUUID } from "node:crypto";
 import { RunLedger } from "../../infrastructure/runlog/RunLedger.js";
 import { classifyFailureCode, FAILURE_CLASS_NAMES, } from "../../infrastructure/runlog/failureClass.js";
 import { createDefaultDownloadTiers, downloadWithFallback, } from "./OpenAccessFallbackService.js";
 import { carsiShortReason } from "./carsi/index.js";
 import { fetchSupplementsOnly } from "./tiers/entitledAccess.js";
-import { batchFolder, reportBatchResults, supplementShortfall } from "./batchSummary.js";
+import { batchFolder, batchPaper, reportBatchResults, supplementShortfall } from "./batchSummary.js";
+import { PaperList } from "./batchPapers.js";
 export const MAX_BATCH_ITEMS = 1000;
 /** From this many items the progress window opens at the start, in the open-access stretch. */
 export const OPEN_PROGRESS_MIN_ITEMS = 5;
-const OPEN_CHANNEL = "开放获取";
+/** Every source that needs no browser: open access, publisher APIs, Sci-Hub when on (the guide's 开放下载). */
+const OPEN_CHANNEL = "开放下载";
 /**
  * One item of a serial batch. When the item reaches the entitled-access
  * backend, the backend records it in its progress window itself; items that
@@ -70,9 +72,10 @@ export async function downloadSupplementsOnly(request, backend, searchers, paper
     request = { ...request, savePath: resolveDownloadPath(request.savePath) };
     const startedAt = Date.now();
     const metadata = searchers ? await lookupOutputMetadata(searchers, request.doi ? "crossref" : request.source, request.doi || request.paperId) : {};
-    const layout = createOutputLayout(request.savePath, request.doi || request.paperId, { ...metadata, title: request.title || metadata.title });
+    let layout = createOutputLayout(request.savePath, request.doi || request.paperId, { ...metadata, title: request.title || metadata.title });
+    // The main text's folder, with its diagnostics inside it.
     if (paperDir && !relative(resolve(request.savePath, "papers"), paperDir).startsWith(".."))
-        layout.paperDir = paperDir;
+        layout = inPaperDir(layout, paperDir);
     let trace;
     const files = await fetchSupplementsOnly(backend, {
         identifier: request.doi || request.paperId,
@@ -83,8 +86,9 @@ export async function downloadSupplementsOnly(request, backend, searchers, paper
     }, value => { trace = value; });
     let filingFailed = false;
     try {
+        const status = files?.every((file) => file.status === "saved") ? "ok" : "error";
         if (files)
-            organizeFiles({ supplements: files, trace }, layout, layout.paperDir);
+            organizeFiles({ supplements: files, trace, status }, layout, layout.paperDir, undefined, request.recordsDir);
     }
     catch {
         filingFailed = true;
@@ -185,7 +189,7 @@ function runItem(index, request) {
 }
 /** Request options that report each stage of ``item`` to the ledger. */
 function recorded(request, ledger, item) {
-    return ledger ? { ...request, onStage: (record) => ledger.stage(item, record) } : request;
+    return ledger ? { ...request, onStage: (record) => ledger.stage(item, record), recordsDir: ledger.records } : request;
 }
 function openLedger(mode, batchId, options, log) {
     const ledger = RunLedger.open({
@@ -308,6 +312,9 @@ async function downloadPerItem(searchers, options, backend, log, createTiers, pa
     const batchId = randomUUID();
     const total = options.items.length;
     const ledger = openLedger("per_item", batchId, options, log);
+    const content = options.content ?? "main";
+    const papers = new PaperList(backend, batchId, options.savePath, options.items.map((item) => batchPaper(itemOptions(item, options), undefined, "open", content)));
+    await papers.send();
     const items = [];
     let succeeded = 0;
     let failed = 0;
@@ -333,6 +340,7 @@ async function downloadPerItem(searchers, options, backend, log, createTiers, pa
         await reportBatchItem({ ...request, batch }, finished, backend);
         ledger?.item(entry, finished);
         items.push(finished);
+        papers.set(offset, batchPaper(request, finished, undefined, content));
         if (publisherBlocked(result))
             log(blockedNotice(request.doi || request.paperId));
         if (stoppedByUser(finished)) {
@@ -343,16 +351,27 @@ async function downloadPerItem(searchers, options, backend, log, createTiers, pa
                 const restFinished = itemResult({ status: "error", attempts: [notReached()] }, rest + 1, restRequest);
                 ledger?.item(runItem(rest + 1, restRequest), restFinished);
                 items.push(restFinished);
+                papers.set(rest, batchPaper(restRequest, restFinished, undefined, content));
             }
             log(STOP_NOTICE);
             break;
         }
+        await papers.send();
     }
+    await papers.send(true);
     ledger?.close();
     return summary("per_item", batchId, items, {
         content: options.content ?? "main",
         ...(ledger ? { runLog: ledger.dir } : {}),
     });
+}
+/** An item a lane could not finish: the error stands as its result; the other lane goes on. */
+function laneError(stage, error) {
+    return {
+        status: "error",
+        attempts: [{ stage, status: "error", code: "stage_exception",
+                message: error instanceof Error ? `${error.name}: ${error.message}` : String(error) }],
+    };
 }
 async function downloadTwoPhase(searchers, options, backend, log, createTiers, mode = "two_phase", pause = wait) {
     const batchId = randomUUID();
@@ -360,100 +379,210 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
     const ledger = openLedger(mode, batchId, options, log);
     const requests = options.items.map((item) => itemOptions(item, options));
     const entries = requests.map((request, offset) => runItem(offset + 1, request));
-    const items = new Array(total);
-    const pending = [];
-    // Phase 1: open stages for every item; no browser is needed yet. A large
-    // batch shows the window from here on: one count for the whole batch, where
-    // an item counts once its result is settled (with supplementary files too,
-    // an open-access item settles only after its files, in phase 3).
+    const results = new Array(total);
+    const content = options.content ?? "main";
+    const papers = new PaperList(backend, batchId, options.savePath, requests.map((request) => batchPaper(request, undefined, mode === "entitled_only" ? "school" : "open", content)));
+    const recordedOffsets = new Set();
+    /** An item goes to the run record once, when it has settled. */
+    const record = (offset) => {
+        if (recordedOffsets.has(offset))
+            return;
+        recordedOffsets.add(offset);
+        ledger?.item(entries[offset], results[offset]);
+    };
+    const id = (offset) => requests[offset].doi || requests[offset].paperId;
+    // Two lanes at once. The open lane checks every item in turn, needing no
+    // browser; each item it misses joins the queue of the entitled lane, which
+    // starts on the first one at once and takes them one after another (one
+    // browser, one school login). A large batch shows the window from the start:
+    // one count for the whole batch, where an item counts once its result is
+    // settled (with supplementary files too, an open-access item settles only
+    // after its files, after both lanes).
     const settlesInOpen = options.content !== "both";
     const openProgress = mode !== "entitled_only" && total >= OPEN_PROGRESS_MIN_ITEMS && !!backend?.reportBatchProgress;
+    const missed = [];
+    const queue = [];
+    let openRunning = mode !== "entitled_only";
+    let checked = 0;
     let openFound = 0;
+    let succeeded = 0;
+    let failed = 0;
+    /** Of the entitled lane's 成功: arXiv copies, open ones (as the finished card counts them). */
+    let preprints = 0;
+    let away = false;
+    let stopped = false;
+    let wake;
+    const notify = () => {
+        const resume = wake;
+        wake = undefined;
+        resume?.();
+    };
+    const settledOk = () => (settlesInOpen ? openFound : 0) + succeeded;
+    // The window's lines while the lanes run, one report after another so that
+    // the counts never go back. Beside a running download only the counts and
+    // the lanes lines change (a backend that cannot do that gets none of these).
+    // One line in the window: the papers each lane got, which add up to its 成功
+    // (失败 and 剩余 are the batch's alone; a lane's "left" read as all going to
+    // the school, the user's review 2026-11-10).
+    const lanes = () => `${OPEN_CHANNEL} ${openFound + preprints} 篇 · 机构下载 ${succeeded - preprints} 篇`;
+    let reports = Promise.resolve();
+    const reportProgress = (current) => {
+        if (!openProgress)
+            return reports;
+        const update = {
+            id: batchId, total, done: settledOk() + failed, succeeded: settledOk(), failed, current, finished: false,
+            ...(openRunning ? { phase: `${OPEN_CHANNEL}：已查 ${checked}/${total} 篇，找到 ${openFound} 篇`, channel: OPEN_CHANNEL } : {}),
+            ...(missed.length ? { lanes: lanes() } : {}),
+        };
+        reports = reports.then(() => backend.reportBatchProgress(update)).catch(() => false);
+        return reports;
+    };
+    // The window's lists, queued behind the progress reports in the order things happened.
+    const sendPapers = (last = false) => {
+        reports = reports.then(() => papers.send(last));
+        return reports;
+    };
+    const settle = (offset, waiting) => papers.set(offset, batchPaper(requests[offset], results[offset], waiting, content));
+    const openLane = async () => {
+        try {
+            for (const [offset, request] of requests.entries()) {
+                if (stopped)
+                    break;
+                log(`[批量] 开放来源 ${offset + 1}/${total}：${id(offset)}`);
+                const tiers = createTiers(backend).filter((tier) => tier.stage !== "entitled_access" && tier.stage !== "preprint");
+                let result;
+                try {
+                    result = await downloadWithFallback(searchers, recorded(request, ledger, entries[offset]), tiers);
+                }
+                catch (error) {
+                    result = laneError("open_access", error);
+                    log(`[批量] 开放来源出错（${id(offset)}）：${result.attempts[0].message}；这一篇转机构下载`);
+                }
+                results[offset] = itemResult(result, offset + 1, request);
+                checked = offset + 1;
+                settle(offset, result.status === "ok" ? undefined : "school");
+                if (result.status === "ok") {
+                    openFound += 1;
+                    if (settlesInOpen)
+                        record(offset);
+                }
+                else {
+                    if (!missed.length) {
+                        log(`[批量] 开放来源没有找到 ${id(offset)}，机构下载同时开始`);
+                        ledger?.phase("机构下载开始，开放来源同时进行");
+                    }
+                    missed.push(offset);
+                    queue.push(offset);
+                    notify();
+                }
+                await reportProgress(id(offset));
+                await sendPapers();
+            }
+        }
+        finally {
+            openRunning = false;
+            notify();
+        }
+        if (!stopped) {
+            log(`[批量] 开放来源查完：获取 ${openFound}/${total} 篇；` +
+                (missed.length ? `${missed.length} 篇转机构下载` : "无需机构下载"));
+            ledger?.phase(`开放来源查完：${missed.length} 篇转机构下载`);
+        }
+    };
+    const entitledLane = async () => {
+        for (;;) {
+            while (!queue.length && openRunning && !stopped)
+                await new Promise((resume) => { wake = resume; });
+            const offset = stopped ? undefined : queue.shift();
+            if (offset === undefined)
+                return;
+            const request = requests[offset];
+            const step = succeeded + failed + 1;
+            log(openRunning
+                ? `[批量] 机构下载第 ${step} 篇（开放来源还在查）：${id(offset)}`
+                : `[批量] 机构下载 ${step}/${missed.length}：${id(offset)}`);
+            const done = settledOk() + failed;
+            const batch = { id: batchId, index: done + 1, total, done, succeeded: settledOk(), failed };
+            let result;
+            try {
+                result = await pastHourlyLimit(() => downloadBatchItem(searchers, recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entries[offset]), createTiers(backend).filter((tier) => tier.stage === "entitled_access" || mode !== "entitled_only" && tier.stage === "preprint"), backend), log, pause);
+            }
+            catch (error) {
+                result = laneError("entitled_access", error);
+                log(`[批量] 机构下载出错（${id(offset)}）：${result.attempts[0].message}`);
+            }
+            if (result.status === "ok")
+                succeeded += 1;
+            else
+                failed += 1;
+            if (result.status === "ok" && result.version === "preprint")
+                preprints += 1;
+            if (!away && waitedOutOnUser(result)) {
+                away = true;
+                log(AWAY_NOTICE);
+            }
+            const open = results[offset];
+            results[offset] = itemResult({
+                ...result,
+                attempts: [...open.attempts, ...result.attempts],
+                ...(result.review ?? open.review ? { review: result.review ?? open.review } : {}),
+            }, offset + 1, request);
+            record(offset);
+            settle(offset);
+            if (publisherBlocked(result))
+                log(blockedNotice(id(offset)));
+            if (stoppedByUser(result)) {
+                stopped = true;
+                return;
+            }
+            // More to come: the lanes line goes on (after the last item the window has its end).
+            if (openRunning || queue.length)
+                await reportProgress("");
+            await sendPapers();
+        }
+    };
     if (mode === "entitled_only") {
         for (const [offset, request] of requests.entries()) {
-            items[offset] = itemResult({ status: "error", attempts: [] }, offset + 1, request);
-            pending.push(offset);
+            results[offset] = itemResult({ status: "error", attempts: [] }, offset + 1, request);
+            missed.push(offset);
+            queue.push(offset);
         }
+        log(`[批量] 跳过开放来源，${total} 篇直接进入机构下载`);
+        ledger?.phase(`机构下载 ${total} 篇`);
     }
     else
         ledger?.phase(`开放来源 ${total} 篇`);
-    for (const [offset, request] of mode === "entitled_only" ? [] : requests.entries()) {
-        log(`[批量] 开放来源 ${offset + 1}/${total}：${request.doi || request.paperId}`);
-        const tiers = createTiers(backend).filter((tier) => tier.stage !== "entitled_access" && tier.stage !== "preprint");
-        const result = await downloadWithFallback(searchers, recorded(request, ledger, entries[offset]), tiers);
-        items[offset] = itemResult(result, offset + 1, request);
-        if (result.status !== "ok")
-            pending.push(offset);
-        else {
-            openFound += 1;
-            if (options.content !== "both")
-                ledger?.item(entries[offset], result);
-        }
-        if (openProgress) {
-            const settled = settlesInOpen ? openFound : 0;
-            await backend.reportBatchProgress({
-                id: batchId, total, done: settled, succeeded: settled, failed: 0,
-                current: request.doi || request.paperId, finished: false,
-                phase: `${OPEN_CHANNEL}：已查 ${offset + 1}/${total} 篇，找到 ${openFound} 篇`, channel: OPEN_CHANNEL,
-            }).catch(() => false);
-        }
-    }
-    // Phase 2: entitled access only, for the items still missing.
-    const remaining = pending.length;
-    log(mode === "entitled_only"
-        ? `[批量] 跳过开放来源，${remaining} 篇直接进入机构下载`
-        : `[批量] 开放来源获取 ${total - remaining}/${total} 篇；` +
-            (remaining ? `剩余 ${remaining} 篇进入机构下载` : "无需机构下载"));
-    ledger?.phase(`机构下载 ${remaining} 篇`);
-    // The window counts the whole batch: items settled before this stretch come first.
-    const settledBefore = settlesInOpen ? total - remaining : 0;
-    let succeeded = 0;
-    let failed = 0;
-    let away = false;
-    let stopped = false;
-    for (const [step, offset] of pending.entries()) {
-        const request = requests[offset];
-        log(`[批量] 机构下载 ${step + 1}/${remaining}：${request.doi || request.paperId}`);
-        const batch = { id: batchId, index: settledBefore + step + 1, total, done: settledBefore + step,
-            succeeded: settledBefore + succeeded, failed };
-        const result = await pastHourlyLimit(() => downloadBatchItem(searchers, recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entries[offset]), createTiers(backend).filter((tier) => tier.stage === "entitled_access" || mode !== "entitled_only" && tier.stage === "preprint"), backend), log, pause);
-        if (result.status === "ok")
-            succeeded += 1;
-        else
-            failed += 1;
-        if (!away && waitedOutOnUser(result)) {
-            away = true;
-            log(AWAY_NOTICE);
-        }
-        const open = items[offset];
-        items[offset] = itemResult({
-            ...result,
-            attempts: [...open.attempts, ...result.attempts],
-            ...(result.review ?? open.review ? { review: result.review ?? open.review } : {}),
-        }, offset + 1, request);
-        ledger?.item(entries[offset], items[offset]);
-        if (publisherBlocked(result))
-            log(blockedNotice(request.doi || request.paperId));
-        if (stoppedByUser(result)) {
-            stopped = true;
-            for (const rest of pending.slice(step + 1)) {
-                items[rest] = itemResult({ ...items[rest], status: "error", attempts: [...items[rest].attempts, notReached()] }, rest + 1, requests[rest]);
-                ledger?.item(entries[rest], items[rest]);
+    void sendPapers();
+    await Promise.all([mode === "entitled_only" ? undefined : openLane(), entitledLane()]);
+    await reports;
+    // Stopped in the window: the items neither lane reached end as not downloaded.
+    if (stopped) {
+        for (const [offset, request] of requests.entries()) {
+            const item = results[offset];
+            if (!item)
+                results[offset] = itemResult({ status: "error", attempts: [notReached()] }, offset + 1, request);
+            else if (queue.includes(offset)) {
+                results[offset] = itemResult({ ...item, status: "error", attempts: [...item.attempts, notReached()] }, offset + 1, request);
             }
-            log(STOP_NOTICE);
-            break;
+            else if (!recordedOffsets.has(offset) && item.status === "ok") {
+                item.supplements = [{ status: "skipped", label: "", reason: "batch_stopped" }];
+            }
+            record(offset);
         }
+        log(STOP_NOTICE);
     }
-    // Phase 3: supplementary files for the items the open stages already got.
+    const items = results;
+    const remaining = missed.length;
+    // Then supplementary files for the items the open stages already got.
     if (options.content === "both" && !stopped) {
-        const open = requests.map((_, offset) => offset).filter((offset) => !pending.includes(offset));
+        const open = requests.map((_, offset) => offset).filter((offset) => !missed.includes(offset));
         if (open.length)
             ledger?.phase(`补充材料 ${open.length} 篇`);
         let supplementsSucceeded = 0;
         let supplementsFailed = 0;
         for (const [step, offset] of open.entries()) {
-            log(`[批量] 补充材料 ${step + 1}/${open.length}：${requests[offset].doi || requests[offset].paperId}`);
-            // Every item of the entitled stretch has settled; these come after them.
+            log(`[批量] 补充材料 ${step + 1}/${open.length}：${id(offset)}`);
+            // Every item of the entitled lane has settled; these come after them.
             const batch = { id: batchId, index: remaining + step + 1, total, done: remaining + step,
                 succeeded: succeeded + supplementsSucceeded, failed: failed + supplementsFailed };
             const request = { ...requests[offset], batch };
@@ -465,17 +594,20 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
                 else
                     supplementsFailed += 1;
             }
-            ledger?.item(entries[offset], items[offset]);
+            record(offset);
             if (stoppedByUser(items[offset])) {
                 for (const rest of open.slice(step + 1)) {
                     items[rest].supplements = [{ status: "skipped", label: "", reason: "batch_stopped" }];
-                    ledger?.item(entries[rest], items[rest]);
+                    record(rest);
                 }
                 log(STOP_NOTICE);
                 break;
             }
         }
     }
+    // Every paper as it ended, before the window's finished card.
+    requests.forEach((_, offset) => settle(offset));
+    await sendPapers(true);
     ledger?.close({ entitledAccessItems: remaining });
     return summary(mode, batchId, items, {
         content: options.content ?? "main",

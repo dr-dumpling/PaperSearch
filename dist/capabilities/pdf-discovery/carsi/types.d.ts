@@ -29,8 +29,44 @@ export interface CarsiBatchUpdate {
     results?: CarsiBatchResults;
     /** While waiting for the next item: the window's status line. */
     phase?: string;
-    /** Where the batch fetches from before any publisher, e.g. "开放获取". */
+    /** Where the batch fetches from before any publisher, e.g. "开放下载". */
     channel?: string;
+    /**
+     * The papers each lane of the batch got, on one line: "开放下载 15 篇 · 机构下载 9 篇".
+     * Beside a running download the backend then changes only the counts and this
+     * line; a backend that does not declare it is not sent the update at all.
+     */
+    lanes?: string;
+}
+/**
+ * One paper of a batch for the progress window's lists behind 成功, 失败 and 剩余
+ * (wire shape of carsi_batch_papers). Its state only moves forward: "open" (open
+ * access not checked yet), "school" (waiting for or in the institutional download),
+ * then "ok" or "failed".
+ */
+export interface CarsiBatchPaper {
+    /** 1..N, the paper's place in the batch. */
+    index: number;
+    doi: string;
+    title: string;
+    journal: string;
+    state: "open" | "school" | "ok" | "failed";
+    /** Saved: 开放下载 or 机构下载. */
+    via?: string;
+    /** Saved by 开放下载 from elsewhere than open access: 出版社 API, Sci-Hub, 预印本. */
+    detail?: string;
+    /** Saved: the PDF (absolute); the window opens it only from inside the batch's folder. */
+    path?: string;
+    cls?: FailureClass;
+    /** Failed: a few words, e.g. 学校没有订阅. */
+    reason?: string;
+}
+/** Every paper once, then the ones that changed (merged by index). */
+export interface CarsiBatchPapers {
+    id: string;
+    /** The batch's download folder (absolute). */
+    folder: string;
+    papers: CarsiBatchPaper[];
 }
 /**
  * The batch's outcome as the progress window shows it; sent as is (wire
@@ -50,8 +86,13 @@ export interface CarsiBatchResults {
     supplements: number;
     /** Supplements-only batch: article pages that listed none. */
     no_supplements: number;
-    /** Where the saved main texts came from: [label, count], most first. */
+    /** Where the saved main texts came from: [label, count], most first (开放下载, 机构下载). */
     sources: Array<[string, number]>;
+    /**
+     * A label's sources in brackets after its count, e.g. ["开放下载", "出版社 API 3"].
+     * A backend that does not know it drops it and shows the counts alone.
+     */
+    source_details?: Array<[string, string]>;
     failures: Array<{
         cls: FailureClass;
         /** A few words, e.g. 学校没有订阅. */
@@ -151,6 +192,14 @@ export interface CarsiBackend {
      * false when the backend does not offer it; never throws for that.
      */
     reportBatchProgress?(update: CarsiBatchUpdate, signal?: AbortSignal): Promise<boolean>;
+    /**
+     * Optional: the batch's papers for the progress window's lists. Resolves true once
+     * the backend has them, false when it does not take them or this report did not
+     * reach it (then the caller sends them again with the next one). They ride on a
+     * backend process the batch already has; only the ``last`` report of a batch may
+     * start one, as the finished card's report after it would.
+     */
+    reportBatchPapers?(update: CarsiBatchPapers, last?: boolean): Promise<boolean>;
 }
 export interface CarsiMcpClientOptions {
     command?: string;

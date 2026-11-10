@@ -79,9 +79,8 @@ class ProgressWindowSpawnTests(unittest.TestCase):
 
     def test_window_module_imports_without_opening_a_window(self):
         import importlib
-        for name in ("paper_search_carsi.progress_capsule", "paper_search_carsi.progress_bar"):
-            module = importlib.import_module(name)
-            self.assertTrue(callable(module.main))
+        module = importlib.import_module("paper_search_carsi.progress_capsule")
+        self.assertTrue(callable(module.main))
 
 
 class WindowsProcessLivenessTests(unittest.TestCase):
@@ -121,7 +120,7 @@ class WindowsProcessLivenessTests(unittest.TestCase):
 
 class AutoCloseTests(unittest.TestCase):
     def ac(self, enabled=True, linger=8.0):
-        from paper_search_carsi.progress_bar import AutoClose
+        from paper_search_carsi.progress_view import AutoClose
         return AutoClose(enabled=enabled, linger=linger)
 
     def test_finished_task_closes_after_the_linger_period(self):
@@ -152,7 +151,7 @@ class AutoCloseTests(unittest.TestCase):
         self.assertFalse(ac.should_close(None, 99))
 
     def test_from_env_only_enables_for_auto_spawned_windows(self):
-        from paper_search_carsi.progress_bar import AutoClose
+        from paper_search_carsi.progress_view import AutoClose
         with patch.dict(os.environ, {"CARSI_PROGRESS_BAR_CHILD": "1", "CARSI_PROGRESS_BAR_LINGER": "3"}):
             ac = AutoClose.from_env()
         self.assertTrue(ac.enabled); self.assertEqual(ac.linger, 3.0)

@@ -120,7 +120,7 @@ describe("serial download batch", () => {
         total: 3, done: 3, succeeded: 2, failed: 1, finished: true,
         results: expect.objectContaining({
           content: "main", main: 2, stopped: false,
-          sources: [["开放获取", 1], ["机构订阅", 1]],
+          sources: [["开放下载", 1], ["机构下载", 1]],
           failures: [{ cls: "unexplained", reason: "需要学校登录", doi: "10.1000/fail" }],
         }),
       }),
@@ -172,11 +172,13 @@ describe("serial download batch", () => {
     expect(lines).toContain("[批量] 跳过开放来源，2 篇直接进入机构下载");
   });
 
-  it("two_phase: open stages for every item first, then entitled access for the rest", async () => {
+  it("two_phase: entitled access starts on the first item open access misses, while open access goes on", async () => {
     const order: string[] = [];
     const entitled: DownloadTierContext[] = [];
     const updates: CarsiBatchUpdate[] = [];
     const lines: string[] = [];
+    let browserStarted!: () => void;
+    const started = new Promise<void>((resolve) => { browserStarted = resolve; });
     const tiers = (): DownloadTier[] => [
       {
         id: "oa",
@@ -184,6 +186,9 @@ describe("serial download batch", () => {
         run: async (context) => {
           order.push(`oa:${context.doi}`);
           expect(context.batch).toBeUndefined();
+          // The second item's check waits for the browser: one lane after the other, it never would.
+          if (context.doi === "10.1000/oa") await started;
+          order.push(`oa-done:${context.doi}`);
           return context.doi === "10.1000/oa"
             ? { status: "ok", verified: true, path: "/tmp/oa.pdf", message: "ok" }
             : { status: "skipped", message: "no oa" };
@@ -195,6 +200,7 @@ describe("serial download batch", () => {
         run: async (context) => {
           order.push(`entitled:${context.doi}`);
           entitled.push(context);
+          browserStarted();
           return context.doi === "10.1000/ok"
             ? { status: "ok", verified: true, path: "/tmp/ok.pdf", message: "ok" }
             : { status: "error", message: "failed", code: "login_required" };
@@ -215,20 +221,15 @@ describe("serial download batch", () => {
       (line) => lines.push(line),
       tiers,
     );
-    expect(order).toEqual([
-      "oa:10.1000/ok",
-      "oa:10.1000/oa",
-      "oa:10.1000/fail",
-      "entitled:10.1000/ok",
-      "entitled:10.1000/fail",
-    ]);
-    // the window counts the whole batch: the open-access item has settled first
+    expect(order.indexOf("entitled:10.1000/ok")).toBeLessThan(order.indexOf("oa-done:10.1000/oa"));
+    expect(order.filter((step) => step.startsWith("entitled:"))).toEqual(["entitled:10.1000/ok", "entitled:10.1000/fail"]);
+    // The window counts the whole batch: what has settled when each paper starts.
     expect(entitled.map((c) => [c.batch?.index, c.batch?.total, c.batch?.done, c.batch?.succeeded])).toEqual([
-      [2, 3, 1, 1],
+      [1, 3, 0, 0],
       [3, 3, 2, 2],
     ]);
     expect(entitled[0].savePath).toContain("/tmp/own/papers/");
-    // Under five items the open-access stretch is not shown; the last entitled item ends the count.
+    // Under five items the open-access lane is not shown; the last entitled item ends the count.
     expect(updates).toEqual([
       expect.objectContaining({ total: 3, done: 3, succeeded: 2, failed: 1, finished: true }),
       expect.objectContaining({
@@ -241,12 +242,25 @@ describe("serial download batch", () => {
     );
     expect(result.items[0].attempts.map((a) => a.stage)).toEqual(["unpaywall", "entitled_access"]);
     expect(result.items[1].attempts.map((a) => a.stage)).toEqual(["unpaywall"]);
-    expect(lines).toContain("[批量] 开放来源获取 1/3 篇；剩余 2 篇进入机构下载");
+    expect(lines).toContain("[批量] 开放来源没有找到 10.1000/ok，机构下载同时开始");
+    expect(lines).toContain("[批量] 开放来源查完：获取 1/3 篇；2 篇转机构下载");
+    const ledger = readFileSync(join(result.runLog!, "items.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    expect(ledger.map((item) => item.index).sort()).toEqual([1, 2, 3]);
   });
 
-  it("two_phase: five or more items show the window from the open-access stretch on", async () => {
+  it("two_phase: five or more items show both lanes, the counts never going back", async () => {
     const entitled: DownloadTierContext[] = [];
     const updates: CarsiBatchUpdate[] = [];
+    let openChecked!: () => void;
+    const checkedAll = new Promise<void>((resolve) => { openChecked = resolve; });
+    const backend: CarsiBackend = {
+      ...fakeBackend(updates),
+      reportBatchProgress: async (update) => {
+        updates.push(update);
+        if (update.phase?.includes("已查 6/6")) openChecked();
+        return true;
+      },
+    };
     const tiers = (): DownloadTier[] => [
       {
         id: "oa",
@@ -260,6 +274,8 @@ describe("serial download batch", () => {
         stage: "entitled_access",
         run: async (context) => {
           entitled.push(context);
+          // The first school download lasts while open access checks every item.
+          if (context.doi === "10.1000/ok") await checkedAll;
           return context.doi === "10.1000/ok"
             ? { status: "ok", verified: true, path: "/tmp/ok.pdf", message: "ok" }
             : { status: "error", message: "failed", code: "login_required" };
@@ -269,26 +285,27 @@ describe("serial download batch", () => {
     await downloadBatch(
       {} as never,
       { items: ["oa1", "ok", "oa2", "oa3", "fail", "oa4"].map((id) => ({ doi: `10.1000/${id}` })), savePath: "/tmp/out" },
-      fakeBackend(updates),
+      backend,
       () => {},
       tiers,
     );
-    expect(updates.slice(0, 6).map((u) => [u.done, u.total, u.succeeded, u.failed, u.finished, u.phase, u.channel])).toEqual([
-      [1, 6, 1, 0, false, "开放获取：已查 1/6 篇，找到 1 篇", "开放获取"],
-      [1, 6, 1, 0, false, "开放获取：已查 2/6 篇，找到 1 篇", "开放获取"],
-      [2, 6, 2, 0, false, "开放获取：已查 3/6 篇，找到 2 篇", "开放获取"],
-      [3, 6, 3, 0, false, "开放获取：已查 4/6 篇，找到 3 篇", "开放获取"],
-      [3, 6, 3, 0, false, "开放获取：已查 5/6 篇，找到 3 篇", "开放获取"],
-      [4, 6, 4, 0, false, "开放获取：已查 6/6 篇，找到 4 篇", "开放获取"],
+    expect(updates.slice(0, 6).map((u) => [u.done, u.total, u.succeeded, u.failed, u.finished, u.phase, u.channel, u.lanes])).toEqual([
+      [1, 6, 1, 0, false, "开放下载：已查 1/6 篇，找到 1 篇", "开放下载", undefined],
+      [1, 6, 1, 0, false, "开放下载：已查 2/6 篇，找到 1 篇", "开放下载", "开放下载 1 篇 · 机构下载 0 篇"],
+      [2, 6, 2, 0, false, "开放下载：已查 3/6 篇，找到 2 篇", "开放下载", "开放下载 2 篇 · 机构下载 0 篇"],
+      [3, 6, 3, 0, false, "开放下载：已查 4/6 篇，找到 3 篇", "开放下载", "开放下载 3 篇 · 机构下载 0 篇"],
+      [3, 6, 3, 0, false, "开放下载：已查 5/6 篇，找到 3 篇", "开放下载", "开放下载 3 篇 · 机构下载 0 篇"],
+      [4, 6, 4, 0, false, "开放下载：已查 6/6 篇，找到 4 篇", "开放下载", "开放下载 4 篇 · 机构下载 0 篇"],
     ]);
-    // The school's stretch carries on from the four settled items.
-    expect(entitled.map((c) => [c.batch?.index, c.batch?.total, c.batch?.done, c.batch?.succeeded])).toEqual([
-      [5, 6, 4, 4],
-      [6, 6, 5, 5],
-    ]);
+    // Between the school's papers the lanes line goes on; the last one ends the count.
     expect(updates.slice(6)).toEqual([
+      expect.objectContaining({ total: 6, done: 5, succeeded: 5, failed: 0, finished: false, lanes: "开放下载 4 篇 · 机构下载 1 篇" }),
       expect.objectContaining({ total: 6, done: 6, succeeded: 5, failed: 1, finished: true }),
       expect.objectContaining({ total: 6, done: 6, succeeded: 5, failed: 1, finished: true, results: expect.any(Object) }),
+    ]);
+    expect(entitled.map((c) => [c.batch?.index, c.batch?.total, c.batch?.done, c.batch?.succeeded])).toEqual([
+      [2, 6, 1, 1],
+      [6, 6, 5, 5],
     ]);
   });
 
@@ -312,7 +329,7 @@ describe("serial download batch", () => {
       tiers,
     );
     expect(updates.slice(0, 5).map((u) => [u.done, u.total, u.phase])).toEqual([1, 2, 3, 4, 5].map((k) =>
-      [0, 5, `开放获取：已查 ${k}/5 篇，找到 ${k} 篇`]));
+      [0, 5, `开放下载：已查 ${k}/5 篇，找到 ${k} 篇`]));
     expect(visits).toEqual([0, 1, 2, 3, 4].map((done) =>
       expect.objectContaining({ id: result.batchId, index: done + 1, total: 5, done })));
   });
@@ -496,7 +513,8 @@ describe("serial download batch", () => {
     expect(results).toEqual({
       content: "main", folder: join(root, "papers"), started: expect.any(Number), stopped: false,
       main: 1, supplements: 1, no_supplements: 0,
-      sources: [["出版社 API", 1]],
+      sources: [["开放下载", 1]],
+      source_details: [["开放下载", "出版社 API 1"]],
       failures: [
         { cls: "no_access", reason: "学校没有订阅", title: "A Denied Paper", doi: "10.1000/denied", note: "附录 1 个已保存" },
         { cls: "unsupported", reason: "没有有效 DOI" },
@@ -621,6 +639,16 @@ describe("backend batch support", () => {
         phase: { type: "string" }, channel: { type: "string" } } },
     };
     expect(selectCarsiBatchSupport([download, withPhase], "legal_only").progressPhase).toBe(true);
+  });
+
+  it("sends the lanes line only to a backend that declares it", () => {
+    const download = { name: "carsi_download", inputSchema: { type: "object", properties: base } };
+    expect(selectCarsiBatchSupport([download, progress], "legal_only").progressLanes).toBeUndefined();
+    const withLanes = {
+      ...progress,
+      inputSchema: { ...progress.inputSchema, properties: { ...progress.inputSchema.properties, lanes: { type: "string" } } },
+    };
+    expect(selectCarsiBatchSupport([download, withLanes], "legal_only").progressLanes).toBe(true);
   });
 
   it("adds the batch fields to the download arguments", () => {

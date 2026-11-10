@@ -15,9 +15,10 @@ export interface DownloadBatchItem {
     savePath?: string;
 }
 /**
- * two_phase (default): every item first tries the open stages; only the items
- * still missing then go through entitled access, one after another, so the
- * browser and logins are needed in one stretch at the end.
+ * two_phase (default): every item first tries the open stages; the items they
+ * miss go through entitled access one after another, starting with the first
+ * one missed while the open stages go on with the rest (the browser and the
+ * school's login come within seconds, not after the whole open stretch).
  * per_item: each item runs the whole funnel before the next one starts.
  * entitled_only: skip the open stages; every item goes straight to entitled
  * access (testing the institutional route, or a list already known closed).

@@ -18,7 +18,7 @@ export const CARSI_DOWNLOAD_TIMEOUT_MS = 1_200_000;
 export const CARSI_CLEANUP_TIMEOUT_MS = 5_000;
 const CARSI_BACKEND_SOURCE = "carsi";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.5.6";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.5.7";
 const NO_BATCH_SUPPORT = {
     downloadFields: false,
     supplementsField: false,
@@ -157,6 +157,10 @@ export class CarsiMcpClient {
     retainedSession;
     /** Inside a batch, the session progress reports reuse until the first download. */
     progressSession;
+    /** Downloads under way: a progress report then opens no backend process of its own. */
+    downloads = 0;
+    /** The backend answered once that it takes no paper lists: none are sent again. */
+    papersUnsupported = false;
     async withBatchSession(run) {
         const scoped = new CarsiMcpClient({
             command: this.command, args: this.args, profileDir: this.profileDir,
@@ -206,6 +210,15 @@ export class CarsiMcpClient {
         return readiness;
     }
     async downloadLegalDoi(request) {
+        this.downloads += 1;
+        try {
+            return await this.download(request);
+        }
+        finally {
+            this.downloads -= 1;
+        }
+    }
+    async download(request) {
         const validation = sanitizeDoi(request.identifier);
         if (!validation.valid) {
             return {
@@ -233,6 +246,10 @@ export class CarsiMcpClient {
         let outcome;
         try {
             session ??= await this.openSession(request.signal);
+            // A batch's backend from its first download on: its other lane's progress
+            // reports use it meanwhile (whether it stays is decided below).
+            if (this.keepBatchBrowser && session.batchSupport.keepBrowser && request.batch)
+                this.retainedSession = session;
             if (session.readiness.state !== "available") {
                 outcome = { kind: "backend_unavailable", readiness: session.readiness };
             }
@@ -292,37 +309,71 @@ export class CarsiMcpClient {
             return false;
         }
         const current = update.current ? sanitizeDoi(update.current) : undefined;
+        // The lanes line rides on the batch's backend once there, never starting one of its own.
+        return this.report(update.lanes === undefined, signal, async (session) => {
+            if (!session.batchSupport.progressTool || (update.lanes !== undefined && !session.batchSupport.progressLanes)) {
+                return false;
+            }
+            assertProtocolIntegrity(session.protocolState);
+            const result = await session.client.callTool({
+                name: "carsi_batch_progress",
+                arguments: {
+                    batch_id: update.id,
+                    total: update.total,
+                    done: update.done,
+                    succeeded: update.succeeded,
+                    failed: update.failed,
+                    current: current?.valid ? current.sanitized.toLowerCase() : "",
+                    finished: update.finished,
+                    ...(update.finished && update.results && session.batchSupport.progressResults
+                        ? { results: update.results } : {}),
+                    ...(!update.finished && session.batchSupport.progressPhase
+                        ? { phase: update.phase ?? "", channel: update.channel ?? "" } : {}),
+                    ...(!update.finished && update.lanes !== undefined ? { lanes: update.lanes } : {}),
+                },
+            }, undefined, requestOptions(this.toolTimeoutMs, signal));
+            assertProtocolIntegrity(session.protocolState);
+            return batchProgressUpdated(result);
+        });
+    }
+    /** The batch's papers for the window's lists, on the backend the batch already has. */
+    async reportBatchPapers(update, last = false) {
+        if (this.papersUnsupported || typeof update.id !== "string" || !update.id.trim() || update.id.length > 128) {
+            return false;
+        }
+        return this.report(last, undefined, async (session) => {
+            if (!session.batchSupport.papersTool) {
+                this.papersUnsupported = true;
+                return false;
+            }
+            assertProtocolIntegrity(session.protocolState);
+            const result = await session.client.callTool({ name: "carsi_batch_papers", arguments: { batch_id: update.id, folder: update.folder, papers: update.papers } }, undefined, requestOptions(this.toolTimeoutMs));
+            assertProtocolIntegrity(session.protocolState);
+            return batchProgressUpdated(result);
+        });
+    }
+    /**
+     * A report on the batch's backend: its retained session, the session kept for
+     * reports until the first download, or a short one of its own (``mayOpen``).
+     */
+    async report(mayOpen, signal, call) {
         let session = this.retainedSession ?? this.progressSession;
+        // A download is opening its own backend process; a second one only for a
+        // report would write the same window's state.
+        if (!session && (this.downloads || !mayOpen))
+            return false;
+        let opened = false;
         let updated = false;
         try {
             if (!session) {
                 session = await this.openSession(signal);
+                opened = true;
                 // One backend process serves a batch's reports until its first download.
-                if (this.keepBatchBrowser)
+                if (this.keepBatchBrowser && !this.downloads)
                     this.progressSession = session;
             }
-            if (session.readiness.state === "available" &&
-                session.batchSupport.progressTool) {
-                assertProtocolIntegrity(session.protocolState);
-                const result = await session.client.callTool({
-                    name: "carsi_batch_progress",
-                    arguments: {
-                        batch_id: update.id,
-                        total: update.total,
-                        done: update.done,
-                        succeeded: update.succeeded,
-                        failed: update.failed,
-                        current: current?.valid ? current.sanitized.toLowerCase() : "",
-                        finished: update.finished,
-                        ...(update.finished && update.results && session.batchSupport.progressResults
-                            ? { results: update.results } : {}),
-                        ...(!update.finished && session.batchSupport.progressPhase
-                            ? { phase: update.phase ?? "", channel: update.channel ?? "" } : {}),
-                    },
-                }, undefined, requestOptions(this.toolTimeoutMs, signal));
-                assertProtocolIntegrity(session.protocolState);
-                updated = batchProgressUpdated(result);
-            }
+            if (session.readiness.state === "available")
+                updated = await call(session);
         }
         catch {
             updated = false;
@@ -331,7 +382,8 @@ export class CarsiMcpClient {
                 session = undefined;
             }
         }
-        if (session && session !== this.retainedSession && session !== this.progressSession &&
+        // Only a process opened for this report, and not kept for the next ones.
+        if (opened && session && session !== this.progressSession &&
             !(await this.closeSession(session)))
             return false;
         return updated;

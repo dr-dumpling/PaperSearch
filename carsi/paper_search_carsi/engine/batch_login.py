@@ -332,8 +332,8 @@ class LoginMixin:
             settle(page, 2_000)
         self._select_institution(page, result)
 
-        deadline = self._user_wait_deadline(result)
-        with self._login_wait_budget(result, "_user_wait_deadline", deadline, time.time) as wait:
+        deadline = self._school_login_deadline(result)
+        with self._login_wait_budget(result, "_school_login_deadline", deadline, time.time) as wait:
             last_state = ""
             last_auto_action = ""
             last_auto_action_at = 0.0
@@ -1408,6 +1408,7 @@ class LoginMixin:
         - ``school_login``: the school's own login page, the user's step;
         - ``school_choice``: a school chooser with no school configured, also the user's;
         - ``institution_chooser``: a chooser where the configured school was to be chosen;
+        - ``authentication_redirect``: the school's site, its login not shown (yet);
         - ``publisher``: the publisher's own pages: the login was never reached;
         - ``other`` or ``closed``.
         """

@@ -151,3 +151,44 @@ def test_enabling_lazily_starts_one_host_and_disabling_reclaims_it():
         factory.return_value.close.assert_called_once()
         mac.notify('PaperSearch', 'queued', {'current':'doi','run_id':'run'})
         assert factory.call_count == 1
+
+
+def ncprefs(*apps):
+    return Mock(stdout=plistlib.dumps({"apps": list(apps)}))
+
+
+@pytest.mark.parametrize("apps, state", [
+    # Allow notifications (bit 25) with banners or alerts, as System Settings writes them (macOS 15).
+    ([{"bundle-id": mac.BUNDLE_ID, "flags": 41951246}], "ok"),
+    ([{"bundle-id": mac.BUNDLE_ID, "flags": 0x2000010}], "ok"),
+    ([{"bundle-id": mac.BUNDLE_ID, "flags": 41951246 & ~(1 << 25)}], "off"),  # Allow notifications off
+    ([{"bundle-id": mac.BUNDLE_ID, "flags": 0x2000006}], "off"),  # allowed, alert style none
+    ([{"bundle-id": "com.google.Chrome", "flags": 0}], "ok"),  # never shown yet
+    ([{"bundle-id": mac.BUNDLE_ID, "flags": "x"}], "unknown"),
+])
+def test_what_the_system_settings_say_about_papersearchs_notifications(apps, state):
+    # The settings' check of system notifications (user, 2026-11-10).
+    with patch.object(mac.subprocess, "run", return_value=ncprefs(*apps)) as read:
+        assert mac.notifications_allowed() == state
+    assert read.call_args.args[0] == ["defaults", "export", "com.apple.ncprefs", "-"]
+
+
+def test_unreadable_notification_settings_are_unknown():
+    for failure in (OSError("defaults"), mac.subprocess.CalledProcessError(1, "defaults")):
+        with patch.object(mac.subprocess, "run", side_effect=failure):
+            assert mac.notifications_allowed() == "unknown"
+    with patch.object(mac.subprocess, "run", return_value=Mock(stdout=b"not a plist")):
+        assert mac.notifications_allowed() == "unknown"
+
+
+def test_a_test_notification_has_no_task_and_the_settings_open_at_papersearch():
+    host = Mock()
+    with patch.object(mac, "_host", return_value=host):
+        mac.send_test("PaperSearch", "测试通知")
+    host.send.assert_called_once_with("notify", title="PaperSearch", body="测试通知", current="", run_id="")
+    for version, url in (("14.5", f"x-apple.systempreferences:com.apple.Notifications-Settings.extension?id={mac.BUNDLE_ID}"),
+                         ("12.7.1", "x-apple.systempreferences:com.apple.preference.notifications")):
+        with patch("platform.mac_ver", return_value=(version, ("", "", ""), "arm64")), \
+                patch.object(mac.subprocess, "Popen") as opened:
+            mac.open_settings()
+        assert opened.call_args.args[0] == ["open", url]
