@@ -18,7 +18,7 @@ export const CARSI_DOWNLOAD_TIMEOUT_MS = 1_200_000;
 export const CARSI_CLEANUP_TIMEOUT_MS = 5_000;
 const CARSI_BACKEND_SOURCE = "carsi";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.5.5";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.5.6";
 const NO_BATCH_SUPPORT = {
     downloadFields: false,
     supplementsField: false,

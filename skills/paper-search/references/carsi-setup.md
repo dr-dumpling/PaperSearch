@@ -38,7 +38,7 @@ paper-search carsi login --doi <学校订阅的一篇文章的 DOI>
 - 用在用户想在批量下载前先登录、或想试试登录是否正常时；平时不需要，下载遇到登录会自己停下等用户。
 - 它打开下载用的浏览器，自动过网站验证、选学校，停在学校登录页等用户登录（最多等 `browser_login_timeout` 秒，`--max-wait <秒>` 只改这一次）；登录后核对这篇文章能看全文，不下载 PDF，登录状态留给之后的下载。
 - 只有 `success: true`（`state: signed_in`）才算登录成功。`access_without_login`：这篇不用登录就能看（开放获取或校园网），换一篇需要订阅的文章再试；`login_timeout`、`browser_closed`、`institution_pdf_entitlement_missing` 等按回复里的 `message` 告诉用户。
-- 不要自己启动 Chrome、不要打开或改动下载浏览器的资料目录，也不要翻源码另找登录办法；没装学校订阅下载或没配置学校时，按回复里的提示处理。
+- 下载浏览器和它的资料目录由程序管理，登录用这条命令或直接下载；不要翻源码另找登录办法。没装学校订阅下载或没配置学校时，按回复里的提示处理。
 
 ## 更新与卸载
 
@@ -60,7 +60,7 @@ paper-search-carsi setup --carsi --institution "学校名"
 - 配置后，选联盟、选学校、点继续由程序完成；用户只在学校登录页输入账号密码、完成人机验证。
 - 没有配置学校时，CARSI 照样开启，由用户在选校页自己选。
 - 出版社列表里找不到用户的学校时，报告找不到，不改选别的学校。
-- 后端命令要和下载使用同一个数据目录（PaperSearch 默认 `${XDG_DATA_HOME:-~/.local/share}/paper-search-cli/carsi`）；需要时在命令前加 `CARSI_DATA_DIR=<该目录>`。不要复制其他浏览器的会话。
+- 后端命令要和下载使用同一个数据目录（PaperSearch 默认 `${XDG_DATA_HOME:-~/.local/share}/paper-search-cli/carsi`）；需要时在命令前加 `CARSI_DATA_DIR=<该目录>`。登录状态保存在这个目录的下载浏览器里。
 
 ## 浏览器
 
@@ -82,4 +82,3 @@ paper-search-carsi config set browser_backend chrome
 
 - 账号、密码、验证码只由用户在浏览器里输入；不在聊天、命令参数、配置或日志里出现。
 - `doctor` 显示 `entitled_access` 为 `available`，只说明后端能连上，不代表已登录或对某篇有权限。
-- 不要把维护者的后端路径、学校配置、浏览器资料或下载诊断写进 Skill、README，或打包发布。

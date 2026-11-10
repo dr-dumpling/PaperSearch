@@ -202,11 +202,11 @@ paper-search config list --pretty
 paper-search doctor --pretty
 ```
 
-不要让用户把密钥贴到聊天里，不要把密钥写进 Skill、README、测试或日志。`doctor` 和 `config` 的输出会把已配置的密钥脱敏。
+`doctor` 和 `config` 的输出会把已配置的密钥脱敏。
 
 `PAPER_SEARCH_CARSI_ENABLED` 是不保密的严格开关：只有字符串 `true` 启用；`TRUE`、`1`、`yes` 或前后带空格的写法都算关闭。
 
-用户的学校用 `paper-search-carsi setup --carsi --institution "<学校>"` 配置，数据目录要和下载用的相同，见 `carsi-setup.md`。agent 不得写入维护者的学校，也不得换成记忆里的其他登录方；`doctor=available` 不能说成学校会话有效或对某篇有权限的证明。
+用户的学校用 `paper-search-carsi setup --carsi --institution "<学校>"` 配置，数据目录要和下载用的相同，见 `carsi-setup.md`。学校只写用户自己告诉你的那一所；`doctor=available` 不能说成学校会话有效或对某篇有权限的证明。
 
 ### arXiv
 

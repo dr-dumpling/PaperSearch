@@ -78,7 +78,7 @@ After "Start setup", your AI first asks whether to add [school subscription down
 After "Start setup", your AI first asks whether you want school subscription downloads, then goes step by step down the route you pick:
 
 - **With school subscription downloads**: API keys, the download folder, waiting times and notifications all go in the settings window, and every key has a Test button. To change them later, ask your AI to open the settings, or click the gear on the capsule.
-- **Without**: your AI lists the missing keys and where to get them (also in [API keys](#2-api-keys)); pick one way to enter them: paste a key into the chat and it saves and tests it (the key stays in the chat history), or run `paper-search setup` in a terminal, where the input is hidden.
+- **Without**: your AI lists the missing keys and where to get them (also in [API keys](#2-api-keys)); you enter them by running `paper-search setup` in a terminal, where the input is hidden, and your AI then tests each one.
 
 ### 4. Tell your AI tool what you need
 
@@ -118,7 +118,7 @@ Feature comparison:
 | &emsp;Subscription papers | — | ✅ (Elsevier, Springer) | ✅ (30+ major publishers) |
 | &emsp;Supplementary files | — | — | ✅ |
 | **You need** | Node.js 18 or later | Keys from each provider | Google Chrome, a school account |
-| **How to turn it on** | Quick start step 1 | Settings window, your AI or terminal | Agree during setup |
+| **How to turn it on** | Quick start step 1 | Settings window or terminal | Agree during setup |
 
 ### 1. School subscription downloads (CARSI)
 

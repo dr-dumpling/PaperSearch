@@ -100,7 +100,7 @@ paper-search setup
 paper-search smoke --mock --pretty
 ```
 
-用户把 key 直接发给 Agent 时，用 `paper-search config set <KEY> <值>` 保存、`paper-search config test <KEY>` 确认，回复只提末四位。`setup` 前后都可以用 `doctor` 看能力概况。缺少、不可用或降级的能力会写明用户需要配置哪个 key、email、来源或环境项。第一次配置还要问用户下载的论文默认放到哪个文件夹，设到 `DEFAULT_DOWNLOAD_PATH`，见 SKILL.md 的“默认下载文件夹”。
+配 key 时，请用户在自己的终端运行 `paper-search setup <KEY>`（输入时不显示），或在设置窗口里填，再用 `paper-search config test <KEY>` 确认。`setup` 前后都可以用 `doctor` 看能力概况。缺少、不可用或降级的能力会写明用户需要配置哪个 key、email、来源或环境项。第一次配置还要问用户下载的论文默认放到哪个文件夹，设到 `DEFAULT_DOWNLOAD_PATH`，见 SKILL.md 的“默认下载文件夹”。
 
 维护者或本地开发版的更新步骤：
 
@@ -146,7 +146,7 @@ paper-search config get EASYSCHOLAR_KEY --pretty
 paper-search doctor --pretty
 ```
 
-不要让用户把密钥贴到聊天里，不要把密钥写进 Skill、README、测试或日志。`doctor` 和 `config` 的输出会把已配置的密钥脱敏。
+`doctor` 和 `config` 的输出会把已配置的密钥脱敏。
 
 ## CLI 新版提醒
 

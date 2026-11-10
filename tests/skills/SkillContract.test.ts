@@ -42,6 +42,11 @@ describe("paper-search bundled skill contract", () => {
     expect(setup).toContain("一次只问一个问题");
     expect(setup).toContain("A. 机构配置");
     expect(setup).toContain("B. 不用机构配置");
+    // Agents' skill vetting rejects a Skill that asks for API keys in the chat (Codex skill-vetter, 2026-11-10).
+    for (const text of [setup, readSkillFile("references/management-layer.md")]) {
+      expect(text).not.toMatch(/发给你|直接发给 Agent|key 是直接发给/);
+    }
+    expect(setup).toContain("paper-search setup --skip-carsi");
     expect(skill).toContain("Sci-Hub");
   });
 
@@ -144,9 +149,10 @@ describe("paper-search bundled skill contract", () => {
 
     expect(bundledText).toContain("机构下载后端（CARSI）是唯一可选的授权下载后端");
     expect(bundledText).toContain("PAPER_SEARCH_CARSI_ENABLED");
-    // Signing in first goes through the download's own steps (2026-11-09), never a browser the agent starts.
+    // Signing in first goes through the download's own steps (2026-11-09); the programme manages the browser.
     expect(bundledText).toContain("paper-search carsi login --doi");
-    expect(bundledText).toContain("不自己启动 Chrome");
+    expect(bundledText).toContain("下载浏览器和它的资料目录由程序管理");
+    expect(bundledText).toContain("不要翻源码另找登录办法");
     expect(bundledText).toContain("useEntitledAccess");
     expect(bundledText).toContain(
       "primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access",

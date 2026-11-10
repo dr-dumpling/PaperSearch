@@ -150,10 +150,9 @@ paper-search doctor --pretty
 
 - 不凭模型记忆编造 PMID、DOI、期刊、年份或作者；关键论文输出前按 `references/capability-routing.md` 核验。
 - 同一篇论文的 PMID、DOI、题名、第一作者和年份应一致；不一致时标为可疑。
-- 不让用户在聊天里发送 API key、密码或验证码；`config`、`doctor` 的输出已脱敏，也不要复述或保存原始密钥。
-- 学校登录、二次验证及复杂验证码由用户在下载浏览器里完成；后端每次验证等待最多尝试点击可识别的 Turnstile 复选框 3 次，仍需人工时再提示用户。agent 不另开浏览器代填账号密码或操作验证。
-- 测试下载时用 `paper-search download` 或 `paper-search run download_batch` 和默认设置，不直接调用后端 `paper-search-carsi` 的命令（如 `publisher-check`），不改等待时间，不换数据目录。
-- 用户想先登录学校、或想试试能不能登录时，运行 `paper-search carsi login --doi <学校订阅的一篇文章的 DOI>`（见 `references/carsi-setup.md`）：只有回复 `success: true` 才算登录成功。agent 不自己启动 Chrome、不动下载浏览器的资料目录，也不翻源码另找登录办法。
+- 学校登录、二次验证及复杂验证码由用户在下载浏览器里完成；后端每次验证等待最多尝试点击可识别的 Turnstile 复选框 3 次，仍需人工时再提示用户。账号密码由用户自己在登录页输入，不要询问用户的账号密码。
+- 测试下载时用 `paper-search download` 或 `paper-search run download_batch`，保持默认的等待时间和数据目录。
+- 用户想先登录学校、或想试试能不能登录时，运行 `paper-search carsi login --doi <学校订阅的一篇文章的 DOI>`（见 `references/carsi-setup.md`）：只有回复 `success: true` 才算登录成功。下载浏览器和它的资料目录由程序管理；不要翻源码另找登录办法。
 - 下载结果以命令的最终返回和实际保存的文件为准；每个文件都要核对身份（首页的 DOI 和题名）才算成功，交付时给出实际文件路径。
 - “没有权限”必须有依据，原因不明的不说成没有权限。
 - 出版社支持表说明的是程序能不能走通这类网站，不代表用户学校订阅了某本期刊。

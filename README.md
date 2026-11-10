@@ -78,7 +78,7 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 说了“请开始配置”后，AI 先问你要不要用学校订阅下载，再按你的选择一步步来：
 
 - **用学校订阅下载**：API key、下载文件夹、等待时间和提醒都在设置窗口里填，每个 key 都能点“测试”。之后想改，让 AI 打开设置，或点胶囊上的齿轮。
-- **不用**：AI 列出还缺的 key 和申请入口（也见 [API key](#2-api-key)），你选一种填法：把 key 直接发给它，它替你保存并测试（key 会留在对话记录里）；或在终端运行 `paper-search setup`，输入时不显示。
+- **不用**：AI 列出还缺的 key 和申请入口（也见 [API key](#2-api-key)），你在终端运行 `paper-search setup` 填入，输入时不显示；填完 AI 逐个测试能不能用。
 
 ### 4. 对 AI 说一句话
 
@@ -118,7 +118,7 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 | &emsp;下载非 OA 文章 | — | ✅（Elsevier、Springer） | ✅（30+主流出版社） |
 | &emsp;下载补充材料 | — | — | ✅ |
 | **需要准备** | Node.js 18 或以上 | 到各家网站申请 key | Google Chrome、学校账号 |
-| **怎么开启** | 快速开始第 1 步 | 设置窗口、发给 AI 或终端 | 配置时同意安装 |
+| **怎么开启** | 快速开始第 1 步 | 设置窗口或终端 | 配置时同意安装 |
 
 ### 1. 学校订阅下载（CARSI）
 
