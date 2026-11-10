@@ -40,7 +40,11 @@ PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Clau
 
 
 
-https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
+
+
+https://github.com/user-attachments/assets/c6ba529d-0b4e-4c2a-82cb-1ef8ba53274c
+
+
 
 
 
