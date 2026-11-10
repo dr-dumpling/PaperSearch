@@ -40,7 +40,11 @@ PaperSearch provides the `paper-search` command and a bundled Skill. Once instal
 
 
 
-https://github.com/user-attachments/assets/9d54521b-bdb9-451c-89d8-889ec203bec1
+
+
+https://github.com/user-attachments/assets/6c75c5de-9dd5-42e0-9dea-f44a1b4f3aac
+
+
 
 
 
