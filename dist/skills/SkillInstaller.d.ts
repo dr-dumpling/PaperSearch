@@ -86,6 +86,10 @@ export interface SkillDiffResult {
     statusCounts: Record<string, number>;
 }
 export declare const SKILL_TARGETS: SkillTarget[];
+/** The targets used when none are named (setup's default, `skills status/update/diff`): the Skill's
+ * installed copies, one target per directory, so an update never adds a copy next to one installed
+ * another way (`npx skills add -g` keeps it in ~/.agents/skills and links ~/.claude/skills to it).
+ * With no copy anywhere: ~/.agents/skills when it exists, else codex, claude and cursor. */
 export declare function defaultSkillTargetIds(root?: string): string[];
 export declare function parseSkillTargets(raw: string, root?: string): string[];
 export declare function describeSkillTargets(targetIds: string[], root?: string): Array<{

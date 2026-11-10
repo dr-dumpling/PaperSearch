@@ -2,6 +2,16 @@
 
 用这一篇判断 `paper-search` 是否已安装、已配置、运行正常，以及已安装的 Skill 是否与包内的一致。这些命令只帮助判断能不能用，本身不做文献任务。
 
+## 只装了 Skill 时
+
+用户先装了这个 Skill（例如用 `npx skills add`），`command -v paper-search` 却找不到命令时，直接按下面做。不要到别的目录翻找命令，也不要读 `~/.npmrc`、shell 配置这类文件：里面可能有令牌，会出现在输出里。
+
+1. 运行 `node --version`。没有 Node.js 或版本低于 22 时，请用户先装 Node.js 的 LTS 版（https://nodejs.org），装好后新开终端再继续；不替用户装 Node.js。
+2. 先问用户，同意后才装：说明要用 npm 全局安装 PaperSearch 的命令行程序（npm 包 `papersearch`，提供 `paper-search` 命令），命令是 `npm install -g papersearch@latest`。
+3. 用户同意后运行它，再运行 `paper-search --version` 确认。报权限错误（`EACCES`）时不加 `sudo`，把命令交给用户在自己的终端运行。Windows 的 PowerShell 拦住 `npm`、`paper-search`（脚本执行策略）时，改用 `npm.cmd`、`paper-search.cmd`，不改执行策略。
+4. 不运行 `paper-search skills update`：Skill 已经装好，就是你正在读的这份，再装会多出一份同名 Skill。以后升级 PaperSearch 时，这份 Skill 会自动更新。
+5. 运行 `paper-search doctor --format text`，用一句话告诉用户现在能用哪些功能，然后接着做用户原来的请求：是“请开始配置”就按 `setup.md` 往下走；是文献请求就先提一句需要配置时说“请开始配置”，再去做。
+
 ## 管理命令
 
 ```bash
@@ -10,8 +20,8 @@ paper-search doctor --format text
 paper-search smoke --mock --pretty
 paper-search smoke --live --pretty
 paper-search skills status --pretty
-paper-search skills diff --targets agents --format text
-paper-search skills update --targets agents --pretty
+paper-search skills diff --format text
+paper-search skills update --pretty
 paper-search tools --pretty
 paper-search config list --pretty
 ```
@@ -23,8 +33,8 @@ paper-search config list --pretty
 | `paper-search smoke --mock --pretty` | 离线检查命令接线、能力概况的判断和 Skill 同步状态的判断 | 改过代码或安装之后，或没有网络时 |
 | `paper-search smoke --live --pretty` | 小规模真实检查：免费元数据来源、已配置 key 的功能、Sci-Hub 镜像是否可用 | 用户要求本机实测，或怀疑来源、网络有问题 |
 | `paper-search skills status --pretty` | 显示已安装的 Skill 是否与包内 Skill 一致 | 安装、更新检查，或排查 agent 读到旧 Skill |
-| `paper-search skills diff --targets agents --format text` | 预览包内 Skill 与已安装 Skill 的差异 | 更新 Skill 之前 |
-| `paper-search skills update --targets agents --pretty` | 把包管理的 Skill 文件同步到用户的 Skill 目录，保留用户自己加的文件 | 用户确认更新 Skill 之后 |
+| `paper-search skills diff --format text` | 预览包内 Skill 与已安装 Skill 的差异 | 更新 Skill 之前 |
+| `paper-search skills update --pretty` | 把包管理的 Skill 文件同步到用户的 Skill 目录，保留用户自己加的文件 | 用户确认更新 Skill 之后 |
 | `paper-search tools --pretty` | 列出 `paper-search run` 的工具名和参数结构 | 不确定工具名或参数时 |
 | `paper-search config list --pretty` | 显示脱敏后的配置状态 | 确认 key、email、开关是否已配置 |
 
@@ -70,14 +80,14 @@ agent 做判断时读 JSON 输出；只有用户需要可读报告时才用 `--f
 
 npm 包在 `skills/paper-search` 下自带一份 Skill（包内 Skill）。安装或更新用户可见的 Skill 文件需要明确执行命令。
 
-支持的目标：`agents`、`codex`、`claude`、`cursor`、`gemini`、`antigravity`。
+支持的目标：`agents`、`codex`、`claude`、`cursor`、`gemini`、`antigravity`。不写 `--targets` 时只针对已经装了 Skill 的位置（链接到同一个文件夹的算一处），不会在别处多装一份；一个都没装时，装到 `~/.agents/skills`，没有这个文件夹时装到 codex、claude、cursor。
 
 包更新后的例行同步：
 
 ```bash
-paper-search skills status --targets agents --pretty
-paper-search skills diff --targets agents --format text
-paper-search skills update --targets agents --pretty
+paper-search skills status --pretty
+paper-search skills diff --format text
+paper-search skills update --pretty
 ```
 
 `skills update` 覆盖包管理的文件，保留用户自己加的文件；`skills diff` 只显示包管理文件的差异，用户自己加的文件只列文件名。
@@ -94,7 +104,7 @@ paper-search skills update --targets agents --pretty
 
 ```bash
 npm install -g papersearch@latest
-paper-search skills update --targets agents --pretty
+paper-search skills update --pretty
 paper-search doctor --pretty
 paper-search setup
 paper-search smoke --mock --pretty
@@ -109,7 +119,7 @@ git pull
 npm install
 npm run build
 npm install -g .
-paper-search skills update --targets agents --pretty
+paper-search skills update --pretty
 paper-search doctor --pretty
 paper-search setup
 paper-search smoke --mock --pretty

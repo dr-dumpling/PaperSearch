@@ -18,9 +18,27 @@ const TARGET_ALIASES = new Map([
     ['agent-skills', 'agents'],
     ['claude-code', 'claude']
 ]);
+/** The targets used when none are named (setup's default, `skills status/update/diff`): the Skill's
+ * installed copies, one target per directory, so an update never adds a copy next to one installed
+ * another way (`npx skills add -g` keeps it in ~/.agents/skills and links ~/.claude/skills to it).
+ * With no copy anywhere: ~/.agents/skills when it exists, else codex, claude and cursor. */
 export function defaultSkillTargetIds(root = homedir()) {
-    const agentsRoot = join(resolve(root), '.agents', 'skills');
-    return existsSync(agentsRoot) ? ['agents'] : ['codex', 'claude', 'cursor'];
+    const base = resolve(root);
+    const directories = new Set();
+    const installed = [];
+    for (const target of SKILL_TARGETS) {
+        const dest = skillDestination(target, base);
+        if (!existsSync(dest))
+            continue;
+        const directory = realpathSync(dest);
+        if (directories.has(directory))
+            continue;
+        directories.add(directory);
+        installed.push(target.id);
+    }
+    if (installed.length > 0)
+        return installed;
+    return existsSync(join(base, '.agents', 'skills')) ? ['agents'] : ['codex', 'claude', 'cursor'];
 }
 export function parseSkillTargets(raw, root = homedir()) {
     const text = raw.trim();

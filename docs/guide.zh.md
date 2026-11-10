@@ -96,7 +96,15 @@ paper-search failures --format text
 
 Skill 随 npm 包发布（`skills/paper-search/`），全中文，开头有整体逻辑图，按需读这些参考文件：功能路由与开放下载的各个渠道、命令约定、机构下载的安装和使用、[出版社支持表](../skills/paper-search/references/publisher-support.md)、排障。它只告诉 AI 怎么调用 `paper-search`，不保存 key、Cookie 或账号。
 
-不经过 AI、自己在终端安装，一行即可（以 Claude Code 为例）：
+单独安装 Skill（需要 Node.js 22 或以上），运行后选你用的 AI 工具：
+
+```bash
+npx skills add dr-dumpling/PaperSearch -g
+```
+
+第一次用时，AI 发现还没装 `paper-search` 命令，会先问你，同意后再装。
+
+不经过 AI、自己在终端把命令和 Skill 一起装好，一行即可（以 Claude Code 为例）：
 
 ```bash
 npm install -g papersearch && paper-search skills update --targets claude
@@ -104,10 +112,10 @@ npm install -g papersearch && paper-search skills update --targets claude
 
 ```bash
 paper-search skills status --pretty
-paper-search skills update --targets claude
+paper-search skills update
 ```
 
-`--targets` 可选 `codex`、`claude`、`cursor`、`gemini`、`antigravity`、`agents`（共享目录 `~/.agents/skills/`）。其他读取 Skill 文件夹的 AI 工具，把随包 Skill 复制到它的 Skill 目录即可：`npm root -g` 可查看全局 npm 目录，随包 Skill 位于其下的 `papersearch/skills/paper-search/`；复制时保留完整文件夹及 `references/`，更新时从新版本复制。安装后新开 AI 会话即可使用。
+不写 `--targets` 时只检查、更新已经装了 Skill 的位置，不会在别处多装一份。`--targets` 可选 `codex`、`claude`、`cursor`、`gemini`、`antigravity`、`agents`（共享目录 `~/.agents/skills/`）。其他读取 Skill 文件夹的 AI 工具，把随包 Skill 复制到它的 Skill 目录即可：`npm root -g` 可查看全局 npm 目录，随包 Skill 位于其下的 `papersearch/skills/paper-search/`；复制时保留完整文件夹及 `references/`，更新时从新版本复制。安装后新开 AI 会话即可使用。
 
 - `--targets all` 会同步到所有内置位置。更新会覆盖包里管理的文件，保留你在 Skill 目录里自己加的文件。
 - 升级 PaperSearch 后第一次运行时，装过的 Skill 会自动更新，被替换的旧文件备份在 `~/.local/share/paper-search-cli/skill-backups/`。不想自动更新：`paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false`。
@@ -159,7 +167,7 @@ paper-search skills update --targets claude
 | 学校订阅的文章下载不到 | `paper-search carsi status --format text` 看学校订阅下载是否装好；`paper-search failures --format text` 看每篇的原因 |
 | 来源限流 | 减小 `--max-results`、配置对应 key，或换来源 |
 | Google Scholar 出验证页 | 等一会儿再试，或改用 `--sources no-key` |
-| AI 读到的 Skill 是旧的 | `paper-search skills status --pretty`，再 `paper-search skills update --targets <工具>`；新开一个 AI 会话 |
+| AI 读到的 Skill 是旧的 | `paper-search skills status --pretty`，再 `paper-search skills update`；新开一个 AI 会话 |
 | 先登录学校、或试一下能不能登录 | `paper-search carsi login --doi <学校订阅的一篇文章的 DOI>`：弹出下载用的浏览器，在学校登录页登录即可 |
 | 更新或卸载学校订阅下载 | `paper-search carsi update`；`paper-search carsi uninstall` |
 | Windows 的 PowerShell 拦住 `npm` | 改用 `npm.cmd`，或在命令提示符里运行 |

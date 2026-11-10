@@ -1,13 +1,15 @@
 {
   "groups": [
     {
-      "title": "查期刊、搜正文",
+      "title": "查期刊、搜正文（推荐配置）",
       "services": [
         {
           "id": "easyscholar",
           "name": "EasyScholar",
           "use": "查影响因子和分区",
           "url": "https://www.easyscholar.cc/",
+          "guide": "https://docs.qq.com/aio/DTUxwZ3hUckVtZVJN",
+          "guide_label": "申请教程",
           "keys": [
             {
               "key": "EASYSCHOLAR_KEY",
@@ -32,7 +34,7 @@
       ]
     },
     {
-      "title": "出版社接口",
+      "title": "出版社接口（非必须）",
       "services": [
         {
           "id": "elsevier",
@@ -61,7 +63,7 @@
       ]
     },
     {
-      "title": "增加检索来源",
+      "title": "增加检索来源（非必须）",
       "services": [
         {
           "id": "wos",
@@ -90,7 +92,7 @@
       ]
     },
     {
-      "title": "提高限额",
+      "title": "提高限额（非必须）",
       "services": [
         {
           "id": "pubmed",

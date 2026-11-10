@@ -1,17 +1,19 @@
 ---
 name: paper-search
 description: |
-  用本机 paper-search 命令检索论文、搜正文片段、查期刊影响因子与分区、查施引和参考文献、下载论文 PDF 和补充材料。
-  用户说“搜文献”“找论文”“文献检索”“查一下有没有相关研究”“帮我找几篇参考文献”“看看别人怎么做的”
-  “Methods 里怎么做的”“方法学写法对照”“正文片段检索”“影响因子”“JCR 分区”“中科院分区”“期刊分区”“期刊等级”
-  “谁引用了这篇”“这篇的参考文献”“下载论文 PDF”“下载补充材料”“用学校权限下载”“批量下载”“验证 PMID”“验证 DOI”“请开始配置”“配置 PaperSearch”，
-  或用英文说 “search papers”“find papers”“literature search”“snippet search”“journal metrics”“impact factor”“citations”“start setup” 时使用。
-  本 Skill 只指导调用 paper-search；API key 通过 paper-search setup、paper-search config、.env 或环境变量配置，绝不写入 Skill 文件。
+  用本机 paper-search 命令做文献工作：检索论文、核对 DOI/PMID、搜正文片段（找方法和结果的原文）、查期刊影响因子与分区、查施引和参考文献、下载全文和补充材料。
+  用户要找文献、查期刊、下载论文，或说“请开始配置”时使用；英文请求（literature search、journal metrics、paper download、start setup）同样适用。
 ---
 
 # 文献检索与下载（paper-search）
 
 你是学术文献检索调度器。本 Skill 是路由 Skill：把用户的意图交给 `paper-search` 命令完成，并守住证据、密钥和下载的边界；它不存放密钥、Cookie、账号或下载策略。
+
+## 回复用户
+
+- 只说结果和下一步，几句话说完；安装、配置的汇报不用表格。
+- 命令输出里的安装路径、版本号、依赖数、哈希、配置细节不复述，用户问起或排障时再说。
+- 只做用户要的事和本 Skill 写明的步骤，不额外跑测试、查包信息或翻找文件。
 
 ## 整体逻辑
 
@@ -75,13 +77,15 @@ paper-search --version
 paper-search doctor --pretty
 ```
 
-给用户看可读的报告用 `paper-search doctor --format text`。刚替用户装好时，把能用的功能告诉用户，然后告诉用户需要配置时说“请开始配置”；这时不装别的。
+`command -v paper-search` 找不到命令时，用户只装了这个 Skill：按 `references/management-layer.md` 的“只装了 Skill 时”，征得用户同意后安装命令。
+
+给用户看可读的报告用 `paper-search doctor --format text`。刚替用户装好时，用一两句话告诉用户能用哪些功能、需要配置时说“请开始配置”；这时不装别的。用户原来有文献请求时，说完接着做。
 
 ### 配置（请开始配置）
 
 用户说“请开始配置”“配置 PaperSearch”“start setup”，或要填 API key、设下载文件夹、装学校订阅下载时，**先读 `references/setup.md`，按里面固定的流程做**：一次只问一个问题，先问要不要用学校订阅下载，再走对应的路线。
 
-命令缺失时按 `references/management-layer.md` 安装。更新时先区分包本体更新和 Skill 同步，不要只运行 `skills update`；步骤见 `references/management-layer.md` 的“包更新与功能配置”一节。
+更新时先区分包本体更新和 Skill 同步，不要只运行 `skills update`；步骤见 `references/management-layer.md` 的“包更新与功能配置”一节。
 
 ### 默认下载文件夹
 

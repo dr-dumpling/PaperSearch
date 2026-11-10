@@ -31,13 +31,15 @@ class ApiKeyTests(unittest.TestCase):
     def test_the_list_shows_whether_each_key_is_set_and_only_its_last_four_characters(self):
         listing = api_keys.listing()
         self.assertEqual((listing["filled"], listing["total"]), (1, 10))
-        self.assertEqual([g["title"] for g in listing["groups"]], ["查期刊、搜正文", "出版社接口", "增加检索来源", "提高限额"])
+        self.assertEqual([g["title"] for g in listing["groups"]], ["查期刊、搜正文（推荐配置）", "出版社接口（非必须）", "增加检索来源（非必须）", "提高限额（非必须）"])
         pubmed = self.service(listing, "pubmed")
         self.assertEqual((pubmed["set"], pubmed["masked"]), (True, "••••efgh"))
         self.assertNotIn("abcd1234efgh", json.dumps(listing, ensure_ascii=False))
         # Elsevier's institution token only reaches institutions: the window asks for the API key alone.
         self.assertEqual([k["key"] for k in self.service(listing, "elsevier")["keys"]], ["ELSEVIER_API_KEY"])
-        self.assertEqual(self.service(listing, "semantic_scholar")["guide_label"], "申请教程")
+        for service in ("easyscholar", "semantic_scholar"):  # both recommended keys come with a tutorial
+            self.assertEqual(self.service(listing, service)["guide_label"], "申请教程")
+        self.assertEqual(self.service(listing, "easyscholar")["guide"], "https://docs.qq.com/aio/DTUxwZ3hUckVtZVJN")
         every = [s for g in listing["groups"] for s in g["services"]]
         self.assertEqual([s["id"] for s in every if not s["use"]], [])  # each says what it is for
 

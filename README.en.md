@@ -24,7 +24,7 @@ One sentence and your AI searches, verifies and downloads full texts and supplem
   <a href="#demo-video">Demo video</a> · <a href="#quick-start">Quick start</a> · <a href="#1-school-subscription-downloads-carsi">School subscription downloads</a> · <a href="#2-api-keys">API keys</a> · <a href="docs/guide.en.md">Guide</a> · <a href="docs/ARCHITECTURE.zh.md">Architecture</a> · <a href="docs/ROADMAP.zh.md">Roadmap</a> · <a href="https://github.com/dr-dumpling/PaperSearch/issues/new/choose">Report an issue</a>
 </p>
 
-PaperSearch provides the `paper-search` command and a bundled Skill. Once installed, Claude Code, Codex, Cursor, Kimi Code, Qwen Code, CodeBuddy, TRAE and other AI tools that can run local commands can do this for you:
+PaperSearch provides the `paper-search` command and a bundled Skill. Once installed, Claude Code, Codex, DeepSeek, GLM, Kimi Code, Qwen Code, CodeBuddy and other AI tools that can run local commands can do this for you:
 
 - **Search papers**: query more than 20 sources at once, including PubMed, Crossref, OpenAlex, Semantic Scholar and arXiv, with duplicates merged by DOI and DOIs verified.
 - **Search full-text snippets**: search the paper bodies Semantic Scholar indexes for passages on methods or results, with their sources.
@@ -46,23 +46,23 @@ https://github.com/user-attachments/assets/9d54521b-bdb9-451c-89d8-889ec203bec1
 
 ## Quick start
 
-### 1. Install in the chat
+### 1. Install
 
-Send your AI tool this sentence (Node.js 18 or later is needed):
-
-```text
-Please install PaperSearch: npm install -g papersearch, then run paper-search skills update to give yourself its Skill.
-```
-
-It installs the command and the Skill, checks them, and tells you what already works.
-
-When you want to set it up, send it:
+Send your AI tool this sentence (Claude Code, Codex, DeepSeek, GLM, Kimi Code, Qwen Code, CodeBuddy and others all work):
 
 ```text
-Start setup
+Please install the PaperSearch Skill: npx skills add dr-dumpling/PaperSearch -g -y
 ```
 
-<p align="center"><img src="assets/install.en.webp" width="840" alt="Install demo: send your AI one sentence; it installs PaperSearch and the Skill, lists what works, and tells you to say Start setup when you want to set it up"></p>
+Once it is installed, mention the Skill and send:
+
+```text
+$paper-search Start setup
+```
+
+Your AI first asks whether to install the PaperSearch command-line program; once you agree, it installs it and then walks you through school subscription downloads (CARSI) and API keys.
+
+<p align="center"><img src="assets/install.en.webp" width="840" alt="Install demo: send your AI one sentence and it installs the Skill; mention the Skill and say Start setup, and it asks before installing the command-line program, lists what works, and goes on to setup"></p>
 
 ### 2. Add school subscription downloads during setup
 
@@ -80,9 +80,9 @@ After "Start setup", your AI first asks whether you want school subscription dow
 - **With school subscription downloads**: API keys, the download folder, waiting times and notifications all go in the settings window, and every key has a Test button. To change them later, ask your AI to open the settings, or click the gear on the capsule.
 - **Without**: your AI lists the missing keys and where to get them (also in [API keys](#2-api-keys)); you enter them by running `paper-search setup` in a terminal, where the input is hidden, and your AI then tests each one.
 
-### 4. Tell your AI tool what you need
+### 4. Start using it
 
-Once set up, mention the PaperSearch Skill in the message box first, then say what you need: type `$` (`/` in Claude Code) and pick `paper-search`. With the Skill mentioned, the AI searches with PaperSearch rather than its own web search.
+Once set up, mention the PaperSearch Skill and say what you want to search for, for example:
 
 <p align="center"><img src="assets/ask-with-skill.png" width="645" alt="Mentioning the PaperSearch Skill in the message box: the request ends with a Paper Search tag"></p>
 
@@ -119,7 +119,7 @@ Feature comparison:
 | &emsp;Open-access papers | ✅ | — | — |
 | &emsp;Subscription papers | — | ✅ (Elsevier, Springer) | ✅ (30+ major publishers) |
 | &emsp;Supplementary files | — | — | ✅ |
-| **You need** | Node.js 18 or later | Keys from each provider | Google Chrome, a school account |
+| **You need** | Node.js 22 or later | Keys from each provider | Google Chrome, a school account |
 | **How to turn it on** | Quick start step 1 | Settings window or terminal | Agree during setup |
 
 ### 1. School subscription downloads (CARSI)
@@ -167,21 +167,21 @@ paper-search carsi status --format text   # check that it is ready
 
 Keys fall into four groups by what they are for. Get the key you need and enter it any of the ways in [Quick start step 3](#3-add-api-keys-when-you-need-them).
 
-#### Journal metrics and full-text snippets
+#### Journal metrics and full-text snippets (recommended)
 
 | Feature | Key | Where to get it |
 |---|---|---|
-| Look up impact factors and quartiles | `EASYSCHOLAR_KEY` | [EasyScholar](https://www.easyscholar.cc/) |
-| Search full-text snippets | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api) |
+| Look up impact factors and quartiles | `EASYSCHOLAR_KEY` | [EasyScholar](https://www.easyscholar.cc/) ([guide](https://docs.qq.com/aio/DTUxwZ3hUckVtZVJN), in Chinese) |
+| Search full-text snippets | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api) ([guide](https://docs.qq.com/aio/DTW9RdFVHc2hJUmpx), in Chinese) |
 
-#### Subscribed full texts through publisher APIs
+#### Subscribed full texts through publisher APIs (optional)
 
 | Publisher | Key | Where to get it |
 |---|---|---|
 | Elsevier | `ELSEVIER_API_KEY`; off campus, subscription articles also need `ELSEVIER_INSTTOKEN` | [Elsevier](https://dev.elsevier.com/apikey/manage) |
 | Springer | `SPRINGER_API_KEY` | [Springer Nature](https://dev.springernature.com/) |
 
-#### More search sources
+#### More search sources (optional)
 
 | Source | Key | Where to get it |
 |---|---|---|
@@ -190,7 +190,7 @@ Keys fall into four groups by what they are for. Get the key you need and enter 
 | ScienceDirect, Scopus | `ELSEVIER_API_KEY` (the same key as above) | [Elsevier](https://dev.elsevier.com/apikey/manage) |
 | Springer | `SPRINGER_API_KEY` (the same key as above) | [Springer Nature](https://dev.springernature.com/) |
 
-#### Higher limits, steadier access
+#### Higher limits, steadier access (optional)
 
 | Source | Key | Where to get it |
 |---|---|---|

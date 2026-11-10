@@ -6,7 +6,7 @@
 
 export function firstInstallNextSteps(): string[] {
   return [
-    "运行 paper-search doctor --format text，用一句话告诉用户现在能用哪些功能、哪些还缺 key。",
+    "运行 paper-search doctor --format text，用一两句话告诉用户现在能用哪些功能、哪些还缺 key；不复述安装路径、版本和依赖数，不用表格。",
     "告诉用户：需要配置时说“请开始配置”（要不要装学校订阅下载，到时会先问用户）。用户这样说时，先读刚装好的 paper-search Skill 里的 references/setup.md，再照着做。",
   ];
 }

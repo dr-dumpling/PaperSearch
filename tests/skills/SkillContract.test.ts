@@ -82,15 +82,46 @@ describe("paper-search bundled skill contract", () => {
     );
     expect(management).toContain("不更新包本体");
     expect(management).toContain("npm install -g papersearch@latest");
-    expect(management).toContain(
-      "paper-search skills update --targets agents --pretty",
-    );
+    expect(management).toContain("paper-search skills update --pretty");
     expect(management).toContain("paper-search doctor --pretty");
     expect(management).toContain("paper-search setup");
     expect(management).toContain("git pull");
     expect(management).toContain("npm run build");
     expect(management).toContain("npm install -g .");
     expect(management).toContain("能力概况");
+  });
+
+  it("installs the command only with the user's yes when only the Skill is installed", () => {
+    const skill = readSkillFile("SKILL.md");
+    const management = readSkillFile("references/management-layer.md");
+    const first = management.slice(management.indexOf("## 只装了 Skill 时"), management.indexOf("## 管理命令"));
+
+    expect(skill).toContain("“只装了 Skill 时”，征得用户同意后安装命令");
+    expect(first).toContain("同意后才装");
+    expect(first).toContain("npm install -g papersearch@latest");
+    // The Skill came first (npx skills add): installing it again would leave two copies of one name.
+    expect(first).toContain("不运行 `paper-search skills update`");
+    expect(first).toContain("不加 `sudo`");
+    // Codex, told nothing, searched ~/.npmrc and shell files for the command and printed a token (2026-11-10).
+    expect(first).toContain("不要到别的目录翻找命令，也不要读 `~/.npmrc`");
+    expect(first).toContain("接着做用户原来的请求");
+    // README's first sentence after installing the Skill is "$paper-search 请开始配置".
+    expect(readSkillFile("references/setup.md")).toContain("“只装了 Skill 时”征得同意装好");
+  });
+
+  it("keeps what the AI shows and says short", () => {
+    // DeepSeek, 2026-11-10: a 500-character description listed in the skill picker, replies of 1,000+
+    // characters with tables of paths and versions, and the PowerShell execution policy changed unasked.
+    const skill = readSkillFile("SKILL.md");
+    const description = skill.split("---")[1].split("description:")[1];
+    expect(description.replace(/\s/g, "").length).toBeLessThan(220);
+    expect(description).toContain("请开始配置");
+    expect(skill).toContain("## 回复用户");
+    expect(skill).toContain("安装、配置的汇报不用表格");
+    expect(readSkillFile("references/setup.md")).toContain("只推荐两个 key");
+    for (const file of ["references/management-layer.md", "references/troubleshooting.md"]) {
+      expect(readSkillFile(file)).toContain("不改执行策略");
+    }
   });
 
   it("clearly exposes the five agent-facing literature capabilities", () => {

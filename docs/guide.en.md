@@ -96,7 +96,15 @@ In a download folder, `papers/` holds the papers, one folder each, with the main
 
 The Skill ships in the npm package (`skills/paper-search/`). It is written in Chinese, opens with the same overall diagram, and points the AI to focused references as needed: routing and the open download channels, the command contract, installing and using the institutional download, the [publisher support table](../skills/paper-search/references/publisher-support.md), and troubleshooting. It only tells the AI how to call `paper-search`; it keeps no keys, cookies or accounts.
 
-To install from your own terminal instead of through your AI, one line does it (Claude Code as the example):
+To install the Skill on its own (Node.js 22 or later), run this and pick the AI tools you use:
+
+```bash
+npx skills add dr-dumpling/PaperSearch -g
+```
+
+The first time you use it, your AI finds that the `paper-search` command is not installed yet, asks you, and installs it once you agree.
+
+To install the command and the Skill together from your own terminal, without your AI, one line does it (Claude Code as the example):
 
 ```bash
 npm install -g papersearch && paper-search skills update --targets claude
@@ -104,10 +112,10 @@ npm install -g papersearch && paper-search skills update --targets claude
 
 ```bash
 paper-search skills status --pretty
-paper-search skills update --targets claude
+paper-search skills update
 ```
 
-`--targets` takes `codex`, `claude`, `cursor`, `gemini`, `antigravity` or `agents` (the shared `~/.agents/skills/` directory). For other AI tools that read Skill folders, copy the bundled Skill into their Skill directory: run `npm root -g` to locate the global npm directory; the bundled Skill is under `papersearch/skills/paper-search/` there. Copy the entire folder, including `references/`, and copy it again after an update. Start a new AI session after installation.
+Without `--targets`, these check and update only the places where the Skill is already installed, never adding a copy elsewhere. `--targets` takes `codex`, `claude`, `cursor`, `gemini`, `antigravity` or `agents` (the shared `~/.agents/skills/` directory). For other AI tools that read Skill folders, copy the bundled Skill into their Skill directory: run `npm root -g` to locate the global npm directory; the bundled Skill is under `papersearch/skills/paper-search/` there. Copy the entire folder, including `references/`, and copy it again after an update. Start a new AI session after installation.
 
 - `--targets all` syncs the Skill to all built-in locations. Updating overwrites the files the package manages and keeps files you added to the Skill directory.
 - The first run after upgrading PaperSearch updates the Skill you installed; replaced files are backed up under `~/.local/share/paper-search-cli/skill-backups/`. To turn this off: `paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false`.
@@ -159,7 +167,7 @@ Change them with `paper-search config set <setting> <value>`, or run `paper-sear
 | Subscribed articles do not download | `paper-search carsi status --format text` to check school subscription downloads; `paper-search failures --format text` for each paper's reason |
 | A source rate-limits | Lower `--max-results`, configure its key, or switch sources |
 | Google Scholar shows a human check | Wait and retry, or use `--sources no-key` |
-| The AI reads an old Skill | `paper-search skills status --pretty`, then `paper-search skills update --targets <tool>`; start a new AI session |
+| The AI reads an old Skill | `paper-search skills status --pretty`, then `paper-search skills update`; start a new AI session |
 | Sign in to your school first, or check that signing in works | `paper-search carsi login --doi <DOI of an article your school subscribes to>`: the download browser opens; sign in on your school's page |
 | Update or remove school subscription downloads | `paper-search carsi update`; `paper-search carsi uninstall` |
 | PowerShell on Windows blocks `npm` | Use `npm.cmd`, or run it in Command Prompt |

@@ -24,7 +24,7 @@
   <a href="#演示视频">演示视频</a> · <a href="#快速开始">快速开始</a> · <a href="#1-学校订阅下载carsi">学校订阅下载</a> · <a href="#2-api-key">API key</a> · <a href="docs/guide.zh.md">使用说明</a> · <a href="docs/ARCHITECTURE.zh.md">架构说明</a> · <a href="docs/ROADMAP.zh.md">路线图</a> · <a href="https://github.com/dr-dumpling/PaperSearch/issues/new/choose">反馈问题</a>
 </p>
 
-PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Claude Code、Codex、Cursor、Kimi Code、Qwen Code、CodeBuddy、TRAE 等支持本机命令调用的 AI 工具，就能替你：
+PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Claude Code、Codex、DeepSeek、GLM、Kimi Code、Qwen Code、CodeBuddy 等支持本机命令调用的 AI 工具，就能替你：
 
 - **检索论文**：一次查 PubMed、Crossref、OpenAlex、Semantic Scholar、arXiv 等 20 多个数据源，按 DOI 合并重复，核对 DOI。
 - **搜正文片段**：利用 Semantic Scholar 收录的论文正文，搜原句，找到方法、结果的原文和出处。
@@ -46,23 +46,23 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 
 ## 快速开始
 
-### 1. 在对话里安装
+### 1. 安装
 
-把这句话发给你的 AI 工具（需要 Node.js 18 或以上）：
-
-```text
-请帮我安装 PaperSearch：npm install -g papersearch，再用 paper-search skills update 给你自己装上 Skill。
-```
-
-它会装好命令和 Skill，自己检查一遍，告诉你哪些功能已经能用。
-
-需要配置时，发给它这句：
+把这句话发给你的 AI 工具（Claude Code、Codex、DeepSeek、GLM、Kimi Code、Qwen Code、CodeBuddy 等等都行）：
 
 ```text
-请开始配置
+请帮我安装 PaperSearch 的 Skill：npx skills add dr-dumpling/PaperSearch -g -y
 ```
 
-<p align="center"><img src="assets/install.webp" width="840" alt="安装演示：把一句话发给 AI，它装好 PaperSearch 和 Skill，列出能用的功能，提醒需要配置时说“请开始配置”"></p>
+装好后引用 Skill，发这句：
+
+```text
+$paper-search 请开始配置
+```
+
+AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好，再带你配置学校订阅下载（CARSI）和 API key。
+
+<p align="center"><img src="assets/install.webp" width="840" alt="安装演示：把一句话发给 AI，它先装好 Skill；引用 Skill 说“请开始配置”，它先问再装命令行程序，列出能用的功能，接着带你配置"></p>
 
 ### 2. 配置时装上学校订阅下载
 
@@ -119,7 +119,7 @@ https://github.com/user-attachments/assets/7573a2a8-0778-4062-aa3e-4ccffb482b0b
 | &emsp;下载 OA 文章 | ✅ | — | — |
 | &emsp;下载非 OA 文章 | — | ✅（Elsevier、Springer） | ✅（30+主流出版社） |
 | &emsp;下载补充材料 | — | — | ✅ |
-| **需要准备** | Node.js 18 或以上 | 到各家网站申请 key | Google Chrome、学校账号 |
+| **需要准备** | Node.js 22 或以上 | 到各家网站申请 key | Google Chrome、学校账号 |
 | **怎么开启** | 快速开始第 1 步 | 设置窗口或终端 | 配置时同意安装 |
 
 ### 1. 学校订阅下载（CARSI）
@@ -167,21 +167,21 @@ paper-search carsi status --format text   # 查看是否装好
 
 按用途分四类，需要哪类就申请对应的 key，再用[快速开始第 3 步](#3-按需填-api-key)里的任一方式填入。
 
-#### 查期刊、搜正文
+#### 查期刊、搜正文（推荐配置）
 
 | 功能 | 要填的 key | 去哪里申请 |
 |---|---|---|
-| 查影响因子和分区 | `EASYSCHOLAR_KEY` | [EasyScholar](https://www.easyscholar.cc/) |
-| 搜正文片段 | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api) |
+| 查影响因子和分区 | `EASYSCHOLAR_KEY` | [EasyScholar](https://www.easyscholar.cc/)（[申请教程](https://docs.qq.com/aio/DTUxwZ3hUckVtZVJN)） |
+| 搜正文片段 | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api)（[申请教程](https://docs.qq.com/aio/DTW9RdFVHc2hJUmpx)） |
 
-#### 下载订阅全文（出版社接口）
+#### 下载订阅全文（出版社接口，非必须）
 
 | 出版社 | 要填的 key | 去哪里申请 |
 |---|---|---|
 | Elsevier | `ELSEVIER_API_KEY`；校外下订阅文章还要 `ELSEVIER_INSTTOKEN` | [Elsevier](https://dev.elsevier.com/apikey/manage) |
 | Springer | `SPRINGER_API_KEY` | [Springer Nature](https://dev.springernature.com/) |
 
-#### 增加检索来源
+#### 增加检索来源（非必须）
 
 | 来源 | 要填的 key | 去哪里申请 |
 |---|---|---|
@@ -190,7 +190,7 @@ paper-search carsi status --format text   # 查看是否装好
 | ScienceDirect、Scopus | `ELSEVIER_API_KEY`（和上面同一个） | [Elsevier](https://dev.elsevier.com/apikey/manage) |
 | Springer | `SPRINGER_API_KEY`（和上面同一个） | [Springer Nature](https://dev.springernature.com/) |
 
-#### 提高限额、更稳定
+#### 提高限额、更稳定（非必须）
 
 | 来源 | 要填的 key | 去哪里申请 |
 |---|---|---|

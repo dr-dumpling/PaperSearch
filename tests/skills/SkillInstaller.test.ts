@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
@@ -25,6 +25,25 @@ describe('SkillInstaller', () => {
     expect(defaultSkillTargetIds(tempRoot)).toEqual(['codex', 'claude', 'cursor']);
     installSkillTargets(['agents'], { skillsRoot: tempRoot });
     expect(defaultSkillTargetIds(tempRoot)).toEqual(['agents']);
+  });
+
+  it('defaults to the copies already installed, one target per directory', () => {
+    // `npx skills add -g` keeps the Skill in ~/.agents/skills and links Claude Code's folder to it
+    // (2026-11-10): updating without --targets must not add a second copy anywhere.
+    installSkillTargets(['agents'], { skillsRoot: tempRoot });
+    mkdirSync(join(tempRoot, '.claude', 'skills'), { recursive: true });
+    symlinkSync(
+      join(tempRoot, '.agents', 'skills', 'paper-search'),
+      join(tempRoot, '.claude', 'skills', 'paper-search'),
+      'junction'
+    );
+    expect(defaultSkillTargetIds(tempRoot)).toEqual(['agents']);
+    expect(parseSkillTargets('', tempRoot)).toEqual(['agents']);
+
+    const claudeOnly = join(tempRoot, 'claude-only');
+    installSkillTargets(['claude'], { skillsRoot: claudeOnly });
+    mkdirSync(join(claudeOnly, '.agents', 'skills'), { recursive: true });
+    expect(defaultSkillTargetIds(claudeOnly)).toEqual(['claude']);
   });
 
   it('parses aliases, all targets, and skip targets', () => {
