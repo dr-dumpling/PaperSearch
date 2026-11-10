@@ -151,7 +151,7 @@ paper-search carsi status --format text   # 查看是否装好
 
 **自动登录学校**
 
-<p align="center"><img src="assets/carsi-signin.webp" width="840" alt="自动登录学校：点胶囊里的题名，浏览器回到前台；自动点机构登录、填好学校，转到学校登录页"></p>
+<p align="center"><img src="assets/carsi-signin.webp" width="840" alt="自动登录学校：自动点机构登录、填好学校，转到学校登录页"></p>
 
 **需要你时提醒**
 

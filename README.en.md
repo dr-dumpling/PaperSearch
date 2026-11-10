@@ -151,7 +151,7 @@ paper-search carsi status --format text   # check that it is ready
 
 **School sign-in**
 
-<p align="center"><img src="assets/carsi-signin.en.webp" width="840" alt="School sign-in: clicking the title brings the browser forward; the institution login is clicked, the school filled in, then on to the school's login page"></p>
+<p align="center"><img src="assets/carsi-signin.en.webp" width="840" alt="School sign-in: the institution login is clicked and your school filled in, on to your school login page"></p>
 
 **Asks when needed**
 
