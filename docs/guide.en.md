@@ -72,7 +72,7 @@ Both use the same download command: open downloading first, and when it finds no
 
 ### Download results
 
-Each download gets its own `<YYYYMMDD-HHmmss>_PaperSearchDownload` folder inside the download folder. In it, `papers/` holds the papers, one folder each, with the main text named journal_year_title and supplementary files under that paper's `supplements/` with their original names. A paper that ran into a problem, or needs checking, also has a `diagnostics` folder with its diagnostic records and screenshots, named like its PDF, for tracking down the problem; they may contain login details, so do not pass them on. `runs/` holds that download's run records. The short ID at the end of a folder name tells apart papers with the same title. A missing journal or year is written as unknown. The JSON a command returns gives each file's actual location.
+Each download gets its own `<YYYYMMDD-HHmmss>_PaperSearchDownload` folder inside the download folder, holding that download's papers: main texts alone lie directly in it; downloaded with their supplementary files, each paper has a folder, its supplementary files under `supplements/` with their original names. The main text is named journal_year_title; PDFs that come out with the same name get a short code added, so none is overwritten, and the short ID at the end of a folder name tells apart papers with the same title. The diagnostic records and screenshots of a paper that ran into a problem, or needs checking, are kept out of the download folder, in PaperSearch's own run records (`~/.local/share/paper-search-cli/runs/`, removed after 30 days), for tracking down the problem; they may contain login details, so do not pass them on. A missing journal or year is written as unknown. The JSON a command returns gives each file's actual location.
 
 ## Search sources
 
@@ -135,6 +135,7 @@ Without `--targets`, these check and update only the places where the Skill is a
 | `paper-search carsi` | Install, check, update or remove school subscription downloads (CARSI) |
 | `paper-search setup` / `config` | Configure keys, the Skill and the extension |
 | `paper-search settings` | Open the settings window: download folder, waits and reminders, API keys (needs school subscription downloads and a screen) |
+| `paper-search uninstall` | Uninstall: lists what goes (school subscription downloads and its login, run records, config and API keys, the Skill in each AI tool), then removes it all once you agree; downloaded papers stay; `--dry-run` only lists |
 | `paper-search doctor` | Health check: configuration, available features, Skill and extension status |
 | `paper-search skills` | Skill status, differences and updates |
 | `paper-search smoke` | Offline or live self-check |
@@ -170,6 +171,7 @@ Change them with `paper-search config set <setting> <value>`, or run `paper-sear
 | The AI reads an old Skill | `paper-search skills status --pretty`, then `paper-search skills update`; start a new AI session |
 | Sign in to your school first, or check that signing in works | `paper-search carsi login --doi <DOI of an article your school subscribes to>`: the download browser opens; sign in on your school's page |
 | Update or remove school subscription downloads | `paper-search carsi update`; `paper-search carsi uninstall` |
+| Uninstall PaperSearch | `paper-search uninstall`, then `npm uninstall -g papersearch` |
 | PowerShell on Windows blocks `npm` | Use `npm.cmd`, or run it in Command Prompt |
 | Reporting a failed download | Use the download-failure issue template with the version, OS, website and DOI; `paper-search failures --export ./failure-report.zip` exports the failure records — check the `summary.md` and screenshots in it for personal information before attaching it |
 | How to upgrade | `npm install -g papersearch@latest`; the first run after an upgrade updates the Skill you installed |

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, } from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { describeFailure } from "./failureClass.js";
@@ -27,6 +27,36 @@ export function resolveRunLogRoot(env = process.env, home = homedir()) {
         ? resolve(env.XDG_DATA_HOME)
         : join(home, ".local", "share");
     return join(base, "paper-search-cli", "runs");
+}
+/** Run folders (records, diagnostics) are kept this long, then removed as a new run starts (user, 2026-11-11). */
+export const RUN_KEEP_DAYS = 30;
+/** Remove the run folders started more than RUN_KEEP_DAYS ago; only run folders, nothing else in ``root``. */
+export function pruneOldRuns(root, now = new Date()) {
+    const cutoff = now.getTime() - RUN_KEEP_DAYS * 86_400_000;
+    const removed = [];
+    let names = [];
+    try {
+        names = readdirSync(root);
+    }
+    catch {
+        return removed;
+    }
+    for (const name of names) {
+        const started = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})-[0-9a-f]{6}$/.exec(name);
+        if (!started)
+            continue;
+        const [year, month, day, hour, minute, second] = started.slice(1).map(Number);
+        if (new Date(year, month - 1, day, hour, minute, second).getTime() >= cutoff)
+            continue;
+        try {
+            rmSync(join(root, name), { recursive: true, force: true });
+            removed.push(name);
+        }
+        catch {
+            // A file still in use (Windows): the next run removes it.
+        }
+    }
+    return removed;
 }
 const MAX_BACKEND_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_EVENTS = 400;
@@ -75,6 +105,7 @@ export class RunLedger {
             process.stderr.write(`[运行记录] 无法创建目录 ${dir}：${describe(error)}\n`);
             return null;
         }
+        pruneOldRuns(root, now);
         const ledger = new RunLedger(dir, {
             schema: 1,
             runId,
@@ -146,14 +177,16 @@ export class RunLedger {
         this.stages.delete(item.index);
         this.started.delete(item.index);
     }
-    /** The run's portable folder in the download folder: runs/<run id>. */
-    get packet() {
-        const root = typeof this.run.savePath === "string" ? this.run.savePath : "./downloads";
-        return resolve(root, "runs", String(this.run.runId));
-    }
     /** Where the run's papers that went fine keep their backend records. */
     get records() {
-        return join(this.packet, "records");
+        return join(this.dir, "records");
+    }
+    /**
+     * Where the run's other papers keep their diagnostics: the run's folder, not the
+     * download folder, which holds only papers (user, 2026-11-11).
+     */
+    get diagnostics() {
+        return join(this.dir, "diagnostics");
     }
     close(extra = {}) {
         Object.assign(this.run, extra, {
@@ -163,19 +196,6 @@ export class RunLedger {
         });
         this.writeRun();
         this.line(`end succeeded=${this.succeeded} failed=${this.failed}`);
-        // Keep the global index for `runs`/`failures`, and a portable copy in the download folder's runs/.
-        const packet = this.packet;
-        try {
-            mkdirSync(packet, { recursive: true });
-            for (const name of ["run.json", "items.jsonl", "timeline.log"]) {
-                const source = join(this.dir, name);
-                if (existsSync(source) && resolve(source) !== join(packet, name))
-                    copyFileSync(source, join(packet, name));
-            }
-        }
-        catch (error) {
-            this.warn(error);
-        }
     }
     writeRun() {
         try {

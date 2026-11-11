@@ -171,7 +171,7 @@ describe("supplementary files", () => {
       backend, () => {}, tiers,
     );
     expect(result.items.map((i) => i.supplements?.[0]?.label)).toEqual(["S1", "E1"]);
-    expect(requests).toEqual([expect.objectContaining({ identifier: "10.1000/oa", supplements: "only", outputDir: expect.stringContaining("/tmp/out/papers/") })]);
+    expect(requests).toEqual([expect.objectContaining({ identifier: "10.1000/oa", supplements: "only", outputDir: expect.stringMatching(/^\/tmp\/out\/[^/]+_[0-9a-f]{10}$/) })]);
     const ledger = readFileSync(join(result.runLog!, "items.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(ledger.find((i) => i.doi === "10.1000/oa").supplements[0].label).toBe("S1");
     expect(ledger.find((i) => i.doi === "10.1000/oa").stages.map((s: { stage: string }) => s.stage)).toContain("supplements");

@@ -1,13 +1,13 @@
 import { resolveDownloadPath } from "../../config/ConfigService.js";
-import { dirname, relative, resolve } from "node:path";
-import { createOutputLayout, inPaperDir, lookupOutputMetadata, organizeFiles } from "./outputLayout.js";
+import { dirname } from "node:path";
+import { createOutputLayout, inPaperDir, isInside, lookupOutputMetadata, organizeFiles } from "./outputLayout.js";
 import { randomUUID } from "node:crypto";
 import { RunLedger } from "../../infrastructure/runlog/RunLedger.js";
 import { classifyFailureCode, FAILURE_CLASS_NAMES, } from "../../infrastructure/runlog/failureClass.js";
 import { createDefaultDownloadTiers, downloadWithFallback, } from "./OpenAccessFallbackService.js";
 import { carsiShortReason } from "./carsi/index.js";
 import { fetchSupplementsOnly } from "./tiers/entitledAccess.js";
-import { batchFolder, batchPaper, reportBatchResults, supplementShortfall } from "./batchSummary.js";
+import { batchPaper, reportBatchResults, supplementShortfall } from "./batchSummary.js";
 import { PaperList } from "./batchPapers.js";
 export const MAX_BATCH_ITEMS = 1000;
 /** From this many items the progress window opens at the start, in the open-access stretch. */
@@ -72,15 +72,15 @@ export async function downloadSupplementsOnly(request, backend, searchers, paper
     request = { ...request, savePath: resolveDownloadPath(request.savePath) };
     const startedAt = Date.now();
     const metadata = searchers ? await lookupOutputMetadata(searchers, request.doi ? "crossref" : request.source, request.doi || request.paperId) : {};
-    let layout = createOutputLayout(request.savePath, request.doi || request.paperId, { ...metadata, title: request.title || metadata.title });
-    // The main text's folder, with its diagnostics inside it.
-    if (paperDir && !relative(resolve(request.savePath, "papers"), paperDir).startsWith(".."))
+    let layout = createOutputLayout(request.savePath, request.doi || request.paperId, { ...metadata, title: request.title || metadata.title }, false, { diagnosticsDir: request.diagnosticsDir });
+    // The main text's folder: its supplementary files go beside it.
+    if (paperDir && isInside(paperDir, request.savePath))
         layout = inPaperDir(layout, paperDir);
     let trace;
     const files = await fetchSupplementsOnly(backend, {
         identifier: request.doi || request.paperId,
         outputDir: layout.paperDir,
-        diagnosticsDir: layout.diagnosticsDir,
+        diagnosticsDir: layout.workDiagnosticsDir,
         ...(request.batch ? { batch: request.batch } : {}),
         ...(request.shortUserWait ? { userWait: "short" } : {}),
     }, value => { trace = value; });
@@ -189,7 +189,9 @@ function runItem(index, request) {
 }
 /** Request options that report each stage of ``item`` to the ledger. */
 function recorded(request, ledger, item) {
-    return ledger ? { ...request, onStage: (record) => ledger.stage(item, record), recordsDir: ledger.records } : request;
+    return ledger
+        ? { ...request, onStage: (record) => ledger.stage(item, record), recordsDir: ledger.records, diagnosticsDir: ledger.diagnostics }
+        : request;
 }
 function openLedger(mode, batchId, options, log) {
     const ledger = RunLedger.open({
@@ -245,7 +247,7 @@ export async function downloadBatch(searchers, options, backend, log = (line) =>
             : options.mode === "per_item"
                 ? downloadPerItem(searchers, options, backend, log, createTiers, pause)
                 : downloadTwoPhase(searchers, options, backend, log, createTiers, options.mode === "entitled_only" ? "entitled_only" : "two_phase", pause));
-        await reportBatchResults(result, backend, startedAt, batchFolder(options.savePath));
+        await reportBatchResults(result, backend, startedAt, options.savePath);
         return result;
     };
     const result = await (backend?.withBatchSession ? backend.withBatchSession(run) : run(backend));

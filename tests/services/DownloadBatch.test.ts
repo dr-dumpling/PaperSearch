@@ -1,6 +1,6 @@
 import { tmpdir } from "node:os";
-import { readFileSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "@jest/globals";
 import { downloadBatch } from "../../src/capabilities/pdf-discovery/batch.js";
 import type {
@@ -75,10 +75,10 @@ describe("serial download batch", () => {
       await downloadBatch({} as any, { mode: "per_item", items: [{ doi: "10.1000/a" }, { doi: "10.1000/b" }] },
         undefined, () => {}, tiers);
       expect(seen).toHaveLength(2);
-      expect(seen.every(path => path.startsWith(join(first, "papers")))).toBe(true);
+      expect(seen.every(path => dirname(path) === first)).toBe(true);
       await downloadBatch({} as any, { mode: "per_item", items: [{ doi: "10.1000/c" }] },
         undefined, () => {}, tiers);
-      expect(seen[2]).toContain(join(second, "papers"));
+      expect(dirname(seen[2])).toBe(second);
     } finally {
       if (oldFile === undefined) delete process.env.PAPER_SEARCH_CONFIG_FILE;
       else process.env.PAPER_SEARCH_CONFIG_FILE = oldFile;
@@ -228,7 +228,7 @@ describe("serial download batch", () => {
       [1, 3, 0, 0],
       [3, 3, 2, 2],
     ]);
-    expect(entitled[0].savePath).toContain("/tmp/own/papers/");
+    expect(dirname(entitled[0].savePath!)).toBe("/tmp/own");
     // Under five items the open-access lane is not shown; the last entitled item ends the count.
     expect(updates).toEqual([
       expect.objectContaining({ total: 3, done: 3, succeeded: 2, failed: 1, finished: true }),
@@ -478,7 +478,6 @@ describe("serial download batch", () => {
     const updates: CarsiBatchUpdate[] = [];
     const before = Math.floor(Date.now() / 1000);
     const root = mkdtempSync(join(tmpdir(), "batch-summary-"));
-    mkdirSync(join(root, "papers"));
     const tiers = (): DownloadTier[] => [
       {
         id: "api",
@@ -511,7 +510,7 @@ describe("serial download batch", () => {
     const results = updates.at(-1)?.results;
     // The folder button opens every paper of the batch.
     expect(results).toEqual({
-      content: "main", folder: join(root, "papers"), started: expect.any(Number), stopped: false,
+      content: "main", folder: root, started: expect.any(Number), stopped: false,
       main: 1, supplements: 1, no_supplements: 0,
       sources: [["开放下载", 1]],
       source_details: [["开放下载", "出版社 API 1"]],

@@ -14,8 +14,6 @@ export declare function supplementShortfall(item: DownloadBatchItemResult): stri
  * so this never changes the batch result.
  */
 export declare function reportBatchResults(result: DownloadBatchResult, backend: CarsiBackend | undefined, startedAt: number, folder: string): Promise<void>;
-/** A batch's folder for the window's button: every paper of the batch, not the last one's folder. */
-export declare function batchFolder(savePath: string): string;
 /**
  * One download outside a batch, run as a batch of one so the progress window
  * ends with the same finished card (its reason when it failed). Reported only

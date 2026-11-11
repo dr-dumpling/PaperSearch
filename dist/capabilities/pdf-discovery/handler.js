@@ -91,7 +91,7 @@ async function recordedDownload(options, download) {
         ...(options.title ? { title: options.title } : {}),
     };
     const result = await download({ ...options, savePath: options.savePath, onStage: (record) => ledger.stage(item, record),
-        recordsDir: ledger.records });
+        recordsDir: ledger.records, diagnosticsDir: ledger.diagnostics });
     ledger.item(item, result);
     ledger.close();
     return { ...result, runLog: ledger.dir };

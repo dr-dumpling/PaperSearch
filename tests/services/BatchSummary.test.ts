@@ -52,7 +52,7 @@ describe("a lone download as a batch of one", () => {
   it("points a saved paper's folder button at its own folder", async () => {
     const updates: CarsiBatchUpdate[] = [];
     const savePath = root();
-    const paperDir = join(savePath, "papers", "Spine_2026_A Paper_abc");
+    const paperDir = join(savePath, "Spine_2026_A Paper_abc");
     await asWindowBatch({ source: "crossref", paperId: "10.1000/x", doi: "10.1000/x", savePath }, fakeBackend(updates),
       async () => ({ status: "ok", path: join(paperDir, "A Paper.pdf"),
         attempts: [{ stage: "entitled_access", status: "ok", message: "" }] }));

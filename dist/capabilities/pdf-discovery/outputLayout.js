@@ -5,9 +5,8 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import { withTimeout } from '../../infrastructure/security/SecurityUtils.js';
 import { plainText } from '../../utils/plainText.js';
 /**
- * Each paper's own diagnostics, inside its folder. They keep full addresses and
- * may carry login tokens (unmasked by the user's choice, 2026-10-29); the guide
- * and the Skill say not to pass them on. A plain name (user, 2026-11-10).
+ * Diagnostics keep full addresses and may carry login tokens (unmasked by the
+ * user's choice, 2026-10-29); the guide and the Skill say not to pass them on.
  */
 export const DIAGNOSTICS_FOLDER = 'diagnostics';
 const hash = (value) => createHash('sha256').update(value).digest('hex').slice(0, 10);
@@ -32,7 +31,7 @@ export async function lookupOutputMetadata(searchers, source, id) {
         return {};
     }
 }
-export function createOutputLayout(root, identity, metadata, preprint = false) {
+export function createOutputLayout(root, identity, metadata, preprint = false, placement = {}) {
     const base = resolve(root);
     const key = hash(identity.trim().toLowerCase());
     const year = metadata.year || metadata.publishedDate?.getUTCFullYear();
@@ -45,12 +44,22 @@ export function createOutputLayout(root, identity, metadata, preprint = false) {
     const title = safeComponent(metadata.title || identity, Math.max(8, budget - prefix.length));
     const name = `${prefix}${title}`;
     // Stable identity suffix prevents different papers with identical titles colliding.
-    const paperDir = join(base, 'papers', `${name}_${key}`);
-    return { name, paperDir, diagnosticsDir: join(paperDir, DIAGNOSTICS_FOLDER), metadata: { ...metadata, identity, ...(preprint ? { journal: 'arXiv' } : {}) } };
+    const paperDir = join(base, `${name}_${key}`);
+    return {
+        name, paperDir, fileDir: placement.flat ? base : paperDir,
+        workDiagnosticsDir: join(paperDir, DIAGNOSTICS_FOLDER),
+        diagnosticsDir: placement.diagnosticsDir || join(base, DIAGNOSTICS_FOLDER),
+        metadata: { ...metadata, identity, ...(preprint ? { journal: 'arXiv' } : {}) },
+    };
 }
-/** The layout with another folder for the paper (an existing download's), its diagnostics inside it. */
+/** The layout with another folder for the paper (an existing download's, its supplementary files beside its main text). */
 export function inPaperDir(layout, paperDir) {
-    return { ...layout, paperDir, diagnosticsDir: join(paperDir, DIAGNOSTICS_FOLDER) };
+    return { ...layout, paperDir, fileDir: paperDir, workDiagnosticsDir: join(paperDir, DIAGNOSTICS_FOLDER) };
+}
+/** Main texts only: the paper's working folder, emptied into the download folder, is not left behind. */
+export function removeWorkFolder(layout) {
+    if (layout.fileDir !== layout.paperDir)
+        pruneEmpty(layout.paperDir);
 }
 /** When a diagnostic was made, local time: 20261109-153012. */
 function stampOf(date) {
@@ -144,13 +153,12 @@ export function updateRecordPaths(paths, replacements) {
 }
 /**
  * Finalize only files reported by this request, preserving unrelated files.
- * The paper's folder gets its PDF, its supplementary files, and, when there is
- * something to look at, a diagnostics folder whose files carry the paper's own
- * name: the backend's record or diagnostic packet with its screenshots, a PDF
- * left for review, the supplementary files' manifest. A paper that went fine
- * (saved, every supplementary file too) keeps them in ``recordsDir`` instead, its
- * run's folder: a diagnostics folder beside a good PDF read as a failure (user,
- * 2026-11-10).
+ * The main text goes to ``fileDir``, the supplementary files to the paper's
+ * folder; what there is to look at goes to the diagnostics folder under the
+ * paper's own name: the backend's record or diagnostic packet with its
+ * screenshots, a PDF left for review, the supplementary files' manifest. A
+ * paper that went fine (saved, every supplementary file too) keeps them in
+ * ``recordsDir`` instead (user, 2026-11-10).
  */
 export function organizeFiles(result, paperLayout, ownedDir, now = new Date(), recordsDir) {
     const fine = !!recordsDir && result.status === 'ok' && (result.supplements ?? []).every((file) => file.status === 'saved');
@@ -165,7 +173,7 @@ export function organizeFiles(result, paperLayout, ownedDir, now = new Date(), r
         toPlace.push({ source, what: `${stamp}_${what}`, then });
     };
     if (result.path && existsSync(result.path)) {
-        const target = join(layout.paperDir, `${layout.name}${result.format === 'jats-xml' ? '.xml' : '.pdf'}`);
+        const target = join(layout.fileDir, `${layout.name}${result.format === 'jats-xml' ? '.xml' : '.pdf'}`);
         const placed = placeFile(result.path, target, ownedDir);
         replacements.set(result.path, placed);
         result.path = placed;
@@ -238,9 +246,8 @@ export function organizeFiles(result, paperLayout, ownedDir, now = new Date(), r
     updateRecordPaths(moved, replacements);
     if (typeof result.trace?.file === 'string')
         result.trace.file = replacements.get(result.trace.file) || result.trace.file;
-    // Emptied run folders, the paper's diagnostics folder when the record went to
-    // the run, and an older backend's "diagnostics" beside the PDF.
-    for (const folder of [...runFolders, paperLayout.diagnosticsDir, join(layout.paperDir, 'diagnostics')]) {
+    // Emptied run folders and the backend's diagnostics folder in the paper's.
+    for (const folder of [...runFolders, paperLayout.workDiagnosticsDir]) {
         if (inside(folder, ownedDir))
             pruneEmpty(folder);
     }

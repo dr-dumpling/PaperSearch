@@ -1,5 +1,5 @@
 import { resolveDownloadPath } from "../../config/ConfigService.js";
-import { createOutputLayout, lookupOutputMetadata, organizeFiles } from "./outputLayout.js";
+import { createOutputLayout, lookupOutputMetadata, organizeFiles, removeWorkFolder } from "./outputLayout.js";
 import { prepareArxiv } from "./arxiv.js";
 import { createPreprintTier } from "./tiers/preprint.js";
 import type { Searchers } from "../../core/searchers.js";
@@ -121,14 +121,16 @@ export async function downloadWithFallback(
     searchers, context.doi ? "crossref" : context.source, context.doi || context.paperId);
   context.title ||= context.outputMetadata.title;
   context.titleLookedUp = true;
+  // Main texts only lie side by side; with supplementary files each paper has its folder (user, 2026-11-11).
+  const placement = { flat: options.content !== "both", diagnosticsDir: options.diagnosticsDir };
   const layout = createOutputLayout(savePath, context.doi || context.paperId,
-    { ...context.outputMetadata, title: context.title }, !!context.arxivOnly);
+    { ...context.outputMetadata, title: context.title }, !!context.arxivOnly, placement);
   const paper = {
     ...(context.title ? { title: context.title } : {}),
     ...(context.outputMetadata.journal ? { journal: context.outputMetadata.journal } : {}),
   };
   context.savePath = layout.paperDir;
-  context.diagnosticsDir = layout.diagnosticsDir;
+  context.diagnosticsDir = layout.workDiagnosticsDir;
 
   for (const tier of tiers) {
     const startedAt = Date.now();
@@ -155,7 +157,7 @@ export async function downloadWithFallback(
     result = await identityGate(result, context, verifyIdentity);
     try {
       const destination = result.version === "preprint"
-        ? createOutputLayout(savePath, `arxiv:${result.arxivId}`, context.arxivPaper || {}, true) : layout;
+        ? createOutputLayout(savePath, `arxiv:${result.arxivId}`, context.arxivPaper || {}, true, placement) : layout;
       organizeFiles(result, destination, context.savePath, undefined, options.recordsDir);
     } catch (error) {
       // Keep the retrieved file and report a concrete filing failure.
@@ -177,6 +179,7 @@ export async function downloadWithFallback(
     if (result.supplements?.length) supplements = result.supplements;
     if (result.status === "ok" && result.path) {
       discardReviews(reviewPaths, result.path);
+      removeWorkFolder(layout);
       return {
         status: "ok",
         ...paper,
@@ -193,6 +196,7 @@ export async function downloadWithFallback(
     if (["batch_stopped", "user_skipped"].includes(result.code || "")) break;
   }
 
+  removeWorkFolder(layout);
   return {
     status: "error",
     ...paper,

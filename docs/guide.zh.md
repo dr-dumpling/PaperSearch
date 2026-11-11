@@ -72,7 +72,7 @@ paper-search failures --format text
 
 ### 下载结果
 
-每次下载在下载目录里新建一个 `<年月日-时分秒>_PaperSearchDownload` 文件夹，这次的内容都在里面：`papers/` 放论文，每篇一个文件夹，正文按“期刊_年份_标题”命名，补充材料在该篇的 `supplements/` 里并保留原文件名。出过问题或需要核查的论文，文件夹里还有一个 `diagnostics`，放诊断记录和截图，文件名开头和 PDF 一样，查问题时用；里面可能带登录信息，不要发给别人。这个文件夹里的 `runs/` 放这次下载的运行记录。文件夹名末尾的短标识用来区分同名论文。缺少期刊或年份时写“未知期刊”“未知年份”。命令返回的 JSON 里写着每个文件的实际位置。
+每次下载在下载目录里新建一个 `<年月日-时分秒>_PaperSearchDownload` 文件夹，这次的论文都在里面：只下正文时，PDF 直接放在这个文件夹里；连补充材料一起下时，每篇一个文件夹，补充材料在该篇的 `supplements/` 里并保留原文件名。正文按“期刊_年份_标题”命名，同名的 PDF 自动加一段短编号，不会互相覆盖；文件夹名末尾的短标识用来区分同名论文。出过问题或需要核查的论文，诊断记录和截图不放在下载文件夹里，放在 PaperSearch 自己的运行记录里（`~/.local/share/paper-search-cli/runs/`，30 天后自动删除），查问题时用；里面可能带登录信息，不要发给别人。缺少期刊或年份时写“未知期刊”“未知年份”。命令返回的 JSON 里写着每个文件的实际位置。
 
 ## 检索来源
 
@@ -135,6 +135,7 @@ paper-search skills update
 | `paper-search carsi` | 学校订阅下载（CARSI）的安装、状态、更新、卸载 |
 | `paper-search setup` / `config` | 配置 key、Skill 和扩展 |
 | `paper-search settings` | 打开设置窗口：下载文件夹、等待和提醒、API key（需装学校订阅下载、有图形界面） |
+| `paper-search uninstall` | 卸载：先列出要删的内容（学校订阅下载和登录状态、运行记录、配置和 API key、各 AI 工具里的 Skill），确认后一次删完；下载的论文不动；`--dry-run` 只列出不删 |
 | `paper-search doctor` | 健康检查：配置、可用功能、Skill 和扩展的状态 |
 | `paper-search skills` | Skill 的状态、差异和更新 |
 | `paper-search smoke` | 离线或真实的自检 |
@@ -170,6 +171,7 @@ paper-search skills update
 | AI 读到的 Skill 是旧的 | `paper-search skills status --pretty`，再 `paper-search skills update`；新开一个 AI 会话 |
 | 先登录学校、或试一下能不能登录 | `paper-search carsi login --doi <学校订阅的一篇文章的 DOI>`：弹出下载用的浏览器，在学校登录页登录即可 |
 | 更新或卸载学校订阅下载 | `paper-search carsi update`；`paper-search carsi uninstall` |
+| 卸载 PaperSearch | `paper-search uninstall`，确认后再运行 `npm uninstall -g papersearch` |
 | Windows 的 PowerShell 拦住 `npm` | 改用 `npm.cmd`，或在命令提示符里运行 |
 | 想反馈下载失败 | 用 Issue 里的“下载失败”模板，写明版本、系统、网站和 DOI；`paper-search failures --export ./failure-report.zip` 可以导出失败记录，附上前先检查包里的 `summary.md` 和截图有没有个人信息 |
 | 怎么升级 | `npm install -g papersearch@latest`；升级后第一次运行时，装过的 Skill 会自动更新 |

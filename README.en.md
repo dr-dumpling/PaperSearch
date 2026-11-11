@@ -105,7 +105,7 @@ Once set up, mention the PaperSearch Skill and say what you want to search for, 
 <p align="center"><img src="assets/results.en.webp" width="840" alt="Results: the chat lists the 6 papers saved and how many supplementary files each has; the download folder holds one folder per paper, supplementary files in supplements/"></p>
 
 - Search results, snippets, journal metrics and citations come back in the conversation.
-- Each download gets its own `YYYYMMDD-HHmmss_PaperSearchDownload` folder inside your download folder, with one folder per paper and supplementary files in supplements/; you are told why any paper was not obtained.
+- Each download gets its own `YYYYMMDD-HHmmss_PaperSearchDownload` folder inside your download folder: main texts alone lie directly in it; with supplementary files each paper has a folder, its supplementary files in supplements/. You are told why any paper was not obtained.
 
 ## Optional setup
 
@@ -210,6 +210,8 @@ Settings are saved in `~/.config/paper-search-cli/config.json`, readable only by
 ## More documentation
 
 The [guide](docs/guide.en.md): [command examples](docs/guide.en.md#command-examples), [how it works](docs/guide.en.md#how-it-works), [search sources](docs/guide.en.md#search-sources), [Agent Skill](docs/guide.en.md#agent-skill), [all commands](docs/guide.en.md#all-commands), [troubleshooting](docs/guide.en.md#troubleshooting). `paper-search tools --pretty` lists every tool and its parameters in the terminal.
+
+The [changelog](CHANGELOG.md) (in Chinese) lists every version under the same seven aspects: setup, search and checks, open download, school subscription download, progress window, download results and documentation.
 
 ## Roadmap
 

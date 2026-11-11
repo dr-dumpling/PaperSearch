@@ -12,6 +12,9 @@ import { join } from 'node:path';
 process.env.NODE_ENV = 'test';
 // Run ledgers from tests never land in the user's data directory.
 process.env.PAPER_SEARCH_RUNLOG_DIR = mkdtempSync(join(tmpdir(), 'paper-search-runlog-'));
+// Nor downloads in the user's download folder: without it, tests that name no folder used the
+// one in the user's config (fixtures found in ~/Downloads, 2026-11-11). Tests of the default unset it.
+process.env.DEFAULT_DOWNLOAD_PATH = mkdtempSync(join(tmpdir(), 'paper-search-downloads-'));
 // CLI runs from tests never update the user's installed Skill; the sync's own tests turn it on.
 process.env.PAPER_SEARCH_SKILL_AUTO_UPDATE = 'false';
 // Version checks have their own injected transport tests; other tests stay offline.

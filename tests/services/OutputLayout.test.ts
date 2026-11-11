@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdi
 import { tmpdir } from 'node:os';
 import { join, dirname, basename, relative } from 'node:path';
 import { describe, it, expect } from '@jest/globals';
-import { DIAGNOSTICS_FOLDER, createOutputLayout, inPaperDir, organizeFiles, placeFile, safeComponent } from '../../src/capabilities/pdf-discovery/outputLayout.js';
+import { DIAGNOSTICS_FOLDER, createOutputLayout, organizeFiles, placeFile, removeWorkFolder, safeComponent } from '../../src/capabilities/pdf-discovery/outputLayout.js';
 import { downloadWithFallback } from '../../src/capabilities/pdf-discovery/OpenAccessFallbackService.js';
 import { downloadBatch } from '../../src/capabilities/pdf-discovery/batch.js';
 import { normalizeDownloadResult } from '../../src/capabilities/pdf-discovery/carsi/CarsiResultNormalizer.js';
@@ -34,6 +34,37 @@ describe('download output layout', () => {
     expect(createOutputLayout('/tmp', '1706.03762', metadata, true).name).toMatch(/^arXiv_2026_/);
   });
 
+  it("lays main texts only side by side, and puts diagnostics in the run's folder", () => {
+    // Main texts only: no folder per paper; diagnostics never in the download folder (user, 2026-11-11).
+    const dir = root();
+    const runDiagnostics = join(root(), 'runs', '20261111-120000-abc123', 'diagnostics');
+    const layout = createOutputLayout(dir, '10.1000/example', metadata, false, {flat: true, diagnosticsDir: runDiagnostics});
+    expect(layout.fileDir).toBe(dir);
+    expect(layout.workDiagnosticsDir).toBe(join(layout.paperDir, DIAGNOSTICS_FOLDER));
+    const main = put(join(layout.paperDir, 'doi.pdf'), 'PDF');
+    const shot = put(join(layout.workDiagnosticsDir, 'run', 'diagnostics', '10.1000_example', 'screenshot.png'), 'png');
+    const diagnostic = put(join(dirname(shot), 'diagnostic.json'), '{}');
+    const now = new Date(2026, 10, 11, 12, 0, 1);
+    const result = organizeFiles({status: 'error', path: main, trace: {diagnostic, state: 'login_timeout'}}, layout, layout.paperDir, now);
+    expect(result.path).toBe(join(dir, 'Nature_2026_A useful article.pdf'));
+    expect(dirname(result.trace.diagnostic as string)).toBe(runDiagnostics);
+    expect(readdirSync(runDiagnostics)).toHaveLength(2);
+    removeWorkFolder(layout);
+    expect(readdirSync(dir)).toEqual(['Nature_2026_A useful article.pdf']);
+    // Two papers whose names come out the same keep both their PDFs.
+    const other = createOutputLayout(dir, '10.1000/other', metadata, false, {flat: true});
+    const second = organizeFiles({path: put(join(other.paperDir, 'doi.pdf'), 'other PDF')}, other, other.paperDir);
+    removeWorkFolder(other);
+    expect(second.path).not.toBe(result.path);
+    expect(readFileSync(second.path!, 'utf8')).toBe('other PDF');
+    expect(readdirSync(dir)).toHaveLength(2);
+    // With supplementary files the folder stays: the main text is in it.
+    const kept = createOutputLayout(dir, '10.1000/kept', metadata);
+    organizeFiles({path: put(join(kept.paperDir, 'doi.pdf'), 'PDF')}, kept, kept.paperDir);
+    removeWorkFolder(kept);
+    expect(readdirSync(kept.paperDir)).toEqual(['Nature_2026_A useful article.pdf']);
+  });
+
   it('does not overwrite different existing bytes or remove a source outside this request', () => {
     const dir = root();
     const source = put(join(dir, 'source.pdf'), 'new revision');
@@ -51,7 +82,7 @@ describe('download output layout', () => {
     const main = put(join(layout.paperDir, 'doi.pdf'), 'PDF bytes');
     const extra = put(join(layout.paperDir, 'doi_supplements', 'Table S1.xlsx'), 'XLSX bytes');
     const manifest = put(join(dirname(extra), 'manifest.json'), JSON.stringify({files: [{file: extra}]}));
-    const record = put(join(layout.diagnosticsDir, 'a1b2c3', '10.1000_example.json'), JSON.stringify({ pdf_path: main, supplements: [{file: extra}], article_url: main }));
+    const record = put(join(layout.workDiagnosticsDir, 'a1b2c3', '10.1000_example.json'), JSON.stringify({ pdf_path: main, supplements: [{file: extra}], article_url: main }));
     const now = new Date(2026, 10, 9, 15, 30, 12);
     const result = organizeFiles({path: main, supplements: [{status: 'saved' as const, label: 'S1', file: extra}], trace: {record, file: main}}, layout, layout.paperDir, now);
     const base = join(layout.diagnosticsDir, 'Nature_2026_A useful article_20261109-153012');
@@ -61,7 +92,7 @@ describe('download output layout', () => {
     expect(existsSync(main)).toBe(false);
     expect(existsSync(manifest)).toBe(false);
     expect(result.trace!.record).toBe(`${base}_record.json`);
-    expect(existsSync(join(layout.diagnosticsDir, 'a1b2c3'))).toBe(false);
+    expect(existsSync(layout.workDiagnosticsDir)).toBe(false);
     const savedRecord = JSON.parse(readFileSync(result.trace!.record as string, 'utf8'));
     expect(savedRecord.pdf_path).toBe(result.path);
     expect(savedRecord.supplements[0].file).toBe(result.supplements![0].file);
@@ -85,8 +116,10 @@ describe('download output layout', () => {
     const batch = await downloadBatch(searchers, {items: [{doi: '10.1000/example'}], savePath: dir}, undefined, () => {}, stages);
     expect(batch.items[0].path).toBe(one.path);
     expect(readFileSync(one.path!, 'utf8')).toBe('same bytes');
-    expect(readdirSync(join(dir, 'runs')).length).toBeGreaterThan(0);  // the batch records, beside papers/
-    expect(existsSync(join(dir, 'diagnostics'))).toBe(false);
+    // Main texts only: the PDF lies in the download folder, nothing else there (user, 2026-11-11).
+    expect(one.path).toBe(join(dir, 'Nature_2026_A useful article.pdf'));
+    expect(readdirSync(dir)).toEqual(['Nature_2026_A useful article.pdf']);
+    expect(existsSync(join(batch.runLog!, 'run.json'))).toBe(true);  // the run's records in PaperSearch's own data
     let manifest = '';
     const backend = {downloadLegalDoi: async (r: any) => {
       const file = put(join(r.outputDir, 'supplements', 'S1.pdf'), 'supplement');
@@ -95,45 +128,48 @@ describe('download output layout', () => {
         supplements: [{status: 'saved', label: 'S1', file}]};
     }} as any;
     const extra = await downloadBatch(searchers, {items: [{doi: '10.1000/example'}], savePath: dir, content: 'supplements'}, backend, () => {});
-    expect(extra.items[0].supplements![0].file).toBe(join(dirname(one.path!), 'supplements', 'S1.pdf'));
+    // Supplementary files: the paper's own folder, in the download folder.
+    const paperDir = createOutputLayout(dir, '10.1000/example', metadata).paperDir;
+    expect(extra.items[0].supplements![0].file).toBe(join(paperDir, 'supplements', 'S1.pdf'));
     expect(extra.status).toBe('ok');
     // Every file saved: the record goes to the run's folder, none beside the paper.
-    expect(existsSync(join(dirname(one.path!), DIAGNOSTICS_FOLDER))).toBe(false);
-    const records = join(extra.runLog ? join(dir, 'runs', basename(extra.runLog)) : '', 'records');
+    expect(existsSync(join(paperDir, DIAGNOSTICS_FOLDER))).toBe(false);
+    const records = join(extra.runLog!, 'records');
     const moved = readdirSync(records).filter(f => f.endsWith('_supplements-manifest.json'));
     expect(moved).toHaveLength(1);
     expect(existsSync(manifest)).toBe(false);
     expect(JSON.parse(readFileSync(join(records, moved[0]), 'utf8')).files[0].file).toBe(extra.items[0].supplements![0].file);
-    expect(readdirSync(dirname(one.path!)).filter(f => /json|log/.test(f))).toEqual([]);
+    expect(readdirSync(dir).sort()).toEqual(['Nature_2026_A useful article.pdf', basename(paperDir)].sort());
+    expect(readdirSync(paperDir)).toEqual(['supplements']);
   });
 
-  it("keeps a fine paper's record in its run's folder, and beside the paper when something failed", () => {
+  it("keeps a fine paper's record in the run's records, the others' in its diagnostics", () => {
     // A diagnostics folder beside a good PDF read as a failure (user, 2026-11-10).
     const dir = root();
     const layout = createOutputLayout(dir, '10.1000/example', metadata);
     const now = new Date(2026, 10, 9, 15, 30, 12);
     const records = join(dir, 'runs', '20261109-153000-abc123', 'records');
     // Saved: the backend wrote its record into the paper's diagnostics folder.
-    const record = put(join(layout.diagnosticsDir, 'a1b2c3', '10.1000_example.json'), JSON.stringify({ status: 'success' }));
+    const record = put(join(layout.workDiagnosticsDir, 'a1b2c3', '10.1000_example.json'), JSON.stringify({ status: 'success' }));
     const main = put(join(layout.paperDir, 'doi.pdf'), 'PDF');
     const saved = organizeFiles({status: 'ok', path: main, trace: {record}}, layout, dir, now, records);
     expect(saved.trace.record).toBe(join(records, 'Nature_2026_A useful article_20261109-153012_record.json'));
     expect(JSON.parse(readFileSync(saved.trace.record as string, 'utf8')).status).toBe('success');
     expect(readdirSync(layout.paperDir)).toEqual(['Nature_2026_A useful article.pdf']);
-    // Saved, but a supplementary file was not; or not saved at all: beside the paper.
+    // Saved, but a supplementary file was not; or not saved at all: the diagnostics folder.
     for (const result of [{status: 'ok', supplements: [{status: 'failed' as const, label: 'S1', reason: 'http_404'}]},
                           {status: 'error'}]) {
-      const own = put(join(layout.diagnosticsDir, 'd4e5f6', '10.1000_example.json'), JSON.stringify(result));
+      const own = put(join(layout.workDiagnosticsDir, 'd4e5f6', '10.1000_example.json'), JSON.stringify(result));
       const kept = organizeFiles({...result, trace: {record: own}}, layout, dir, now, records);
       expect(dirname(kept.trace.record as string)).toBe(layout.diagnosticsDir);
     }
-    // Without a run's folder (run records off), as before: beside the paper.
-    const plain = put(join(layout.diagnosticsDir, 'g7h8i9', '10.1000_example.json'), '{}');
+    // Without a run's folder (run records off): the diagnostics folder too.
+    const plain = put(join(layout.workDiagnosticsDir, 'g7h8i9', '10.1000_example.json'), '{}');
     expect(dirname(organizeFiles({status: 'ok', trace: {record: plain}}, layout, dir, now).trace.record as string))
       .toBe(layout.diagnosticsDir);
   });
 
-  it("keeps each paper's diagnostics in its own folder, named as its PDF", () => {
+  it("keeps each paper's diagnostics in the diagnostics folder, named as its PDF", () => {
     const dir = root();
     const layout = createOutputLayout(dir, '10.1000/example', metadata);
     const now = new Date(2026, 10, 9, 15, 30, 12);
@@ -141,7 +177,7 @@ describe('download output layout', () => {
     organizeFiles({path: put(join(layout.paperDir, 'doi.pdf'), 'PDF')}, layout, layout.paperDir, now);
     expect(readdirSync(layout.paperDir)).toEqual(['Nature_2026_A useful article.pdf']);
     // The backend's packet for a failed attempt: <run>/diagnostics/<doi>/ with its screenshots.
-    const run = join(layout.diagnosticsDir, '6b9853af3159');
+    const run = join(layout.workDiagnosticsDir, '6b9853af3159');
     const folder = join(run, 'diagnostics', '10.1000_example');
     const shot = put(join(folder, 'screenshot.png'), 'png');
     const snapshot = put(join(folder, 'snapshot-1-article-access-checked.jpg'), 'jpg');
@@ -161,22 +197,22 @@ describe('download output layout', () => {
     expect(existsSync(run)).toBe(false);
     // A long download folder: the paper's name gives way, the paths stay within Windows' limit.
     const long = createOutputLayout(join(dir, 'x'.repeat(20)), '10.1000/long', {...metadata, title: 'A '.repeat(80)});
-    const deep = put(join(long.diagnosticsDir, 'run', 'diagnostics', '10.1000_long', 'diagnostic.json'), '{}');
+    const deep = put(join(long.workDiagnosticsDir, 'run', 'diagnostics', '10.1000_long', 'diagnostic.json'), '{}');
     const placed = organizeFiles({trace: {diagnostic: deep, state: 'browser_closed'}}, long, long.paperDir, now).trace.diagnostic as string;
     expect(placed).toMatch(/20261109-153012_browser_closed\.json$/);
     expect(placed.length).toBeLessThan(240);
-    // A deeper folder cuts the paper's name: the same cut for every file of the run.
-    const named = createOutputLayout(dir, '10.1000/tight', {...metadata, title: 'Word '.repeat(30)});
-    const tight = inPaperDir(named, join(dir, 'p'.repeat(Math.max(1, 160 - dir.length - 28))));
-    const run2 = join(tight.diagnosticsDir, 'run2', 'diagnostics', '10.1000_tight');
+    // A deeper diagnostics folder cuts the paper's name: the same cut for every file of the run.
+    const tight = createOutputLayout(dir, '10.1000/tight', {...metadata, title: 'Word '.repeat(30)}, false,
+      {diagnosticsDir: join(dir, 'p'.repeat(Math.max(1, 160 - dir.length - 28)))});
+    const run2 = join(tight.workDiagnosticsDir, 'run2', 'diagnostics', '10.1000_tight');
     put(join(run2, 'screenshot.png'), 'png');
     put(join(run2, 'snapshot-2-pdf-attempt-failed.jpg'), 'jpg');
-    organizeFiles({trace: {diagnostic: put(join(run2, 'diagnostic.json'), '{}'), state: 'login_timeout'}}, tight, dir, now);
+    organizeFiles({trace: {diagnostic: put(join(run2, 'diagnostic.json'), '{}'), state: 'login_timeout'}}, tight, tight.paperDir, now);
     const heads = readdirSync(tight.diagnosticsDir).map((name) => name.split('_20261109-153012_')[0]);
     expect(heads).toHaveLength(3);
     expect(new Set(heads).size).toBe(1);
     expect(heads[0].length).toBeGreaterThan(8);
-    expect(named.name.startsWith(heads[0])).toBe(true);
+    expect(tight.name.startsWith(heads[0])).toBe(true);
   });
 
   it('follows links: the backend reports the real path of a linked download folder (macOS /tmp)', () => {
@@ -184,12 +220,12 @@ describe('download output layout', () => {
     const link = join(root(), 'linked');
     symlinkSync(real, link, process.platform === 'win32' ? 'junction' : 'dir');
     const layout = createOutputLayout(link, '10.1000/example', metadata);
-    const run = join(realpathSync(real), relative(link, layout.diagnosticsDir), 'run1');
+    const run = join(realpathSync(real), relative(link, layout.workDiagnosticsDir), 'run1');
     const diagnostic = put(join(run, 'diagnostics', '10.1000_example', 'diagnostic.json'), '{}');
     put(join(run, 'diagnostics', '10.1000_example', 'screenshot.png'), 'png');
     const payload = {content: [{type: 'text', text: JSON.stringify({success: false, error_type: 'login_timeout',
       artifacts: {diagnostic, state: 'login_timeout'}})}]};
-    const outcome = normalizeDownloadResult(payload, '10.1000/example', layout.paperDir, layout.diagnosticsDir) as any;
+    const outcome = normalizeDownloadResult(payload, '10.1000/example', layout.paperDir, layout.workDiagnosticsDir) as any;
     expect(outcome.trace.diagnostic).toBe(diagnostic);  // Mac 2026-11-09: dropped, as outside /tmp/...
     const organized = organizeFiles({trace: outcome.trace}, layout, layout.paperDir, new Date(2026, 10, 9, 15, 30, 12));
     expect(basename(organized.trace.diagnostic as string)).toBe('Nature_2026_A useful article_20261109-153012_login_timeout.json');

@@ -27,6 +27,7 @@
 - `paper-search carsi update [--force] [--format text] [--pretty]`
 - `paper-search carsi login --doi <DOI> [--max-wait <seconds>] [--pretty]`
 - `paper-search carsi uninstall [--yes] [--remove-data] [--format text] [--pretty]`
+- `paper-search uninstall [--dry-run] [--yes] [--format text]`：卸载 PaperSearch 的数据、配置和各工具里的 Skill；用法见 `management-layer.md` 的“卸载”
 - `paper-search smoke --mock [--pretty]`
 - `paper-search smoke --live [--pretty]`
 - `paper-search skills status [--targets CSV] [--pretty]`
@@ -164,7 +165,7 @@ paper-search run download_with_fallback --json-args '{"source":"crossref","paper
 
 - `"mode"`：默认 `"two_phase"`，每篇先试开放渠道，没拿到的随即走机构下载（一次一篇），两路同时进行，浏览器和学校登录在开始后几秒就出现；进度窗口按整批计数（k / N），装了学校订阅下载时，5 篇以上的批量从开头就显示，并用一行显示开放下载（开放获取、出版社 API 等不用浏览器的渠道）和机构下载各下到多少篇；`"per_item"` 每篇走完整个漏斗；`"entitled_only"` 跳过开放渠道，每篇直接走机构下载（用于测试学校这条路）。
 - 不传 `savePath` 时存到 `DEFAULT_DOWNLOAD_PATH`；整批或每篇都可以带自己的 `savePath`，用户指定了别的文件夹时才传。
-- `"content"`：`"main"`（默认，只要正文）、`"supplements"`（只要本文的补充材料，不走正文的各层）、`"both"`。补充材料存在 `<savePath>/papers/<期刊_年份_标题_短标识>/supplements/`，有文件没下到时清单与浏览器诊断在该篇的 `diagnostics/`（都下到时在这次运行的 `runs/<runId>/records/`），结果的 `supplements` 列出每个文件的状态；只经机构下载后端获取，哪些出版社有规则见 `publisher-support.md`。
+- `"content"`：`"main"`（默认，只要正文）、`"supplements"`（只要本文的补充材料，不走正文的各层）、`"both"`。补充材料存在 `<savePath>/<期刊_年份_标题_短标识>/supplements/`（只下正文时正文直接放在 `<savePath>` 里），清单与浏览器诊断在结果 `runLog` 所指运行记录目录的 `diagnostics/`（都下到时在 `records/`），结果的 `supplements` 列出每个文件的状态；只经机构下载后端获取，哪些出版社有规则见 `publisher-support.md`。
 - 每次下载都会写一份本地运行记录，结果里的 `runLog` 是它的目录（`run.json`；`items.jsonl`，含每一层的耗时、代码，以及后端的页面事件和截图；`timeline.log`）。排查失败时读它，不要猜。结果列出每一篇和它的各次尝试。
 
 ```bash

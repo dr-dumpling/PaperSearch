@@ -61,9 +61,11 @@ export interface DownloadWithFallbackOptions {
     onStage?: (record: DownloadStageRecord) => void;
     /**
      * Where a download that went fine keeps the backend's record and screenshots: its
-     * run's folder. A paper that failed keeps them beside it (user, 2026-11-10).
+     * run's folder (user, 2026-11-10).
      */
     recordsDir?: string;
+    /** Where a paper that did not go fine keeps its diagnostics: the run's folder too (user, 2026-11-11). */
+    diagnosticsDir?: string;
     /** main (default) / supplements / both; see DownloadContent. */
     content?: DownloadContent;
 }

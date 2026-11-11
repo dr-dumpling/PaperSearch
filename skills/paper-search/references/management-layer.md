@@ -38,6 +38,16 @@ paper-search config list --pretty
 | `paper-search tools --pretty` | 列出 `paper-search run` 的工具名和参数结构 | 不确定工具名或参数时 |
 | `paper-search config list --pretty` | 显示脱敏后的配置状态 | 确认 key、email、开关是否已配置 |
 
+## 卸载
+
+用户要卸载 PaperSearch 时：
+
+1. 运行 `paper-search uninstall --dry-run --format text`，把要删和保留的内容告诉用户（学校订阅下载和登录状态、运行记录、配置和 API key、各 AI 工具里的 Skill；下载的论文保留）。
+2. 用户同意后运行 `paper-search uninstall --yes --format text`。有文件没删掉时，按输出提示请用户关掉进度窗口和下载用的 Chrome，再运行一次。
+3. 最后运行 `npm uninstall -g papersearch`（Windows PowerShell 用 `npm.cmd`）。
+
+只删学校订阅下载用 `paper-search carsi uninstall`（见 `carsi-setup.md`）。
+
 ## 健康检查（doctor）
 
 `paper-search doctor` 是主要的健康报告，包含脱敏后的配置、能力概况和各来源状态。

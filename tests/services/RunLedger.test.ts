@@ -1,10 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "@jest/globals";
 import {
   collapseEvents,
+  pruneOldRuns,
   resolveRunLogRoot,
+  RUN_KEEP_DAYS,
   RunLedger,
 } from "../../src/infrastructure/runlog/RunLedger.js";
 import { normalizeDownloadResult } from "../../src/capabilities/pdf-discovery/carsi/CarsiResultNormalizer.js";
@@ -20,6 +22,44 @@ describe("run ledger", () => {
     expect(resolveRunLogRoot({}, "/home/u")).toBe("/home/u/.local/share/paper-search-cli/runs");
     expect(resolveRunLogRoot({ PAPER_SEARCH_RUNLOG: "0", PAPER_SEARCH_RUNLOG_DIR: "/x" })).toBeNull();
     expect(RunLedger.open({ kind: "download", total: 1 }, { PAPER_SEARCH_RUNLOG: "0" })).toBeNull();
+  });
+
+  it("keeps its records and diagnostics in its own folder, nothing in the download folder", () => {
+    // The download folder holds only papers (user, 2026-11-11).
+    const root = mkdtempSync(join(tmpdir(), "ledger-"));
+    const downloads = join(root, "downloads");
+    mkdirSync(downloads);
+    const ledger = RunLedger.open({ kind: "download", total: 1, savePath: downloads }, { PAPER_SEARCH_RUNLOG_DIR: join(root, "runs") })!;
+    expect(ledger.records).toBe(join(ledger.dir, "records"));
+    expect(ledger.diagnostics).toBe(join(ledger.dir, "diagnostics"));
+    ledger.close();
+    expect(readdirSync(downloads)).toEqual([]);
+    expect(existsSync(join(ledger.dir, "run.json"))).toBe(true);
+  });
+
+  it(`removes run folders started more than ${RUN_KEEP_DAYS} days ago as a new run starts, and nothing else`, () => {
+    const root = mkdtempSync(join(tmpdir(), "ledger-"));
+    const now = new Date(2026, 10, 11, 12, 0, 0);
+    // Folder names in local time, days before ``now``: a clock change between them does not matter.
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const run = (days: number, id: string) => {
+      const at = new Date(now.getTime() - days * 86_400_000);
+      return `${at.getFullYear()}${pad(at.getMonth() + 1)}${pad(at.getDate())}-${pad(at.getHours())}${pad(at.getMinutes())}${pad(at.getSeconds())}-${id}`;
+    };
+    const [old, recent, today] = [run(RUN_KEEP_DAYS + 1, "aaaaaa"), run(RUN_KEEP_DAYS - 1, "bbbbbb"), run(0.04, "cccccc")];
+    for (const name of [old, recent, today, "notes", "20261001-000000"]) {
+      mkdirSync(join(root, name));
+      writeFileSync(join(root, name, "run.json"), "{}");
+    }
+    writeFileSync(join(root, "batch-folders.json"), "{}");
+    expect(pruneOldRuns(root, now)).toEqual([old]);
+    expect(readdirSync(root).sort()).toEqual(["20261001-000000", recent, today, "batch-folders.json", "notes"].sort());
+    // Opening a run does it, silently.
+    mkdirSync(join(root, run(60, "dddddd")));
+    const ledger = RunLedger.open({ kind: "download", total: 1 }, { PAPER_SEARCH_RUNLOG_DIR: root }, now)!;
+    expect(existsSync(join(root, run(60, "dddddd")))).toBe(false);
+    expect(existsSync(ledger.dir)).toBe(true);
+    expect(pruneOldRuns(join(root, "missing"), now)).toEqual([]);
   });
 
   it("records stages, the backend's collapsed events and screenshots, and the final counts", () => {

@@ -1,5 +1,5 @@
 import { resolveDownloadPath } from "../../config/ConfigService.js";
-import { createOutputLayout, lookupOutputMetadata, organizeFiles } from "./outputLayout.js";
+import { createOutputLayout, lookupOutputMetadata, organizeFiles, removeWorkFolder } from "./outputLayout.js";
 import { prepareArxiv } from "./arxiv.js";
 import { createPreprintTier } from "./tiers/preprint.js";
 import { TIMEOUTS } from "../../config/constants.js";
@@ -76,13 +76,15 @@ export async function downloadWithFallback(searchers, options, tiers = createDef
     context.outputMetadata = context.arxivOnly ? context.arxivPaper || {} : await lookupOutputMetadata(searchers, context.doi ? "crossref" : context.source, context.doi || context.paperId);
     context.title ||= context.outputMetadata.title;
     context.titleLookedUp = true;
-    const layout = createOutputLayout(savePath, context.doi || context.paperId, { ...context.outputMetadata, title: context.title }, !!context.arxivOnly);
+    // Main texts only lie side by side; with supplementary files each paper has its folder (user, 2026-11-11).
+    const placement = { flat: options.content !== "both", diagnosticsDir: options.diagnosticsDir };
+    const layout = createOutputLayout(savePath, context.doi || context.paperId, { ...context.outputMetadata, title: context.title }, !!context.arxivOnly, placement);
     const paper = {
         ...(context.title ? { title: context.title } : {}),
         ...(context.outputMetadata.journal ? { journal: context.outputMetadata.journal } : {}),
     };
     context.savePath = layout.paperDir;
-    context.diagnosticsDir = layout.diagnosticsDir;
+    context.diagnosticsDir = layout.workDiagnosticsDir;
     for (const tier of tiers) {
         const startedAt = Date.now();
         let result;
@@ -110,7 +112,7 @@ export async function downloadWithFallback(searchers, options, tiers = createDef
         result = await identityGate(result, context, verifyIdentity);
         try {
             const destination = result.version === "preprint"
-                ? createOutputLayout(savePath, `arxiv:${result.arxivId}`, context.arxivPaper || {}, true) : layout;
+                ? createOutputLayout(savePath, `arxiv:${result.arxivId}`, context.arxivPaper || {}, true, placement) : layout;
             organizeFiles(result, destination, context.savePath, undefined, options.recordsDir);
         }
         catch (error) {
@@ -134,6 +136,7 @@ export async function downloadWithFallback(searchers, options, tiers = createDef
             supplements = result.supplements;
         if (result.status === "ok" && result.path) {
             discardReviews(reviewPaths, result.path);
+            removeWorkFolder(layout);
             return {
                 status: "ok",
                 ...paper,
@@ -150,6 +153,7 @@ export async function downloadWithFallback(searchers, options, tiers = createDef
         if (["batch_stopped", "user_skipped"].includes(result.code || ""))
             break;
     }
+    removeWorkFolder(layout);
     return {
         status: "error",
         ...paper,

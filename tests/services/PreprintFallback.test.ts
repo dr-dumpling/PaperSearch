@@ -45,7 +45,7 @@ describe('published version before arXiv', () => {
   it('falls back only after formal failure and labels output and attempt', async () => {
     const {searchers, path} = setup();
     const out = await downloadWithFallback(searchers, {source: 'crossref', paperId: doi}, [stage('publisher_api'), stage('entitled_access'), createPreprintTier()]);
-    expect(out).toMatchObject({status: 'ok', path: expect.stringContaining('/papers/arXiv_'), version: 'preprint', arxivId: id, publishedDoi: doi});
+    expect(out).toMatchObject({status: 'ok', path: expect.stringMatching(/[\\/]arXiv_[^\\/]+\.pdf$/), version: 'preprint', arxivId: id, publishedDoi: doi});
     expect(out.attempts.map(a => a.stage)).toEqual(['publisher_api', 'entitled_access', 'preprint']);
     expect(out.attempts.at(-1)?.code).toBe('preprint_fallback');
   });

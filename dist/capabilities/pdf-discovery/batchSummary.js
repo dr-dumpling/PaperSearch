@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { sanitizeDoi } from "../../infrastructure/security/SecurityUtils.js";
 import { classifyFailureCode } from "../../infrastructure/runlog/failureClass.js";
 import { carsiShortReason } from "./carsi/index.js";
@@ -53,11 +52,6 @@ export async function reportBatchResults(result, backend, startedAt, folder) {
         // The progress window is optional; it never changes a download outcome.
     }
 }
-/** A batch's folder for the window's button: every paper of the batch, not the last one's folder. */
-export function batchFolder(savePath) {
-    const papers = join(savePath, "papers");
-    return existsSync(papers) ? papers : savePath;
-}
 /**
  * One download outside a batch, run as a batch of one so the progress window
  * ends with the same finished card (its reason when it failed). Reported only
@@ -82,7 +76,7 @@ export async function asWindowBatch(options, backend, download) {
         succeeded: ok ? 1 : 0,
         failed: ok ? 0 : 1,
         items: [{ ...result, index: 1, paperId: options.paperId, ...(options.doi ? { doi: options.doi } : {}) }],
-    }, backend, startedAt, result.path && !result.version ? dirname(result.path) : batchFolder(options.savePath));
+    }, backend, startedAt, result.path && !result.version ? dirname(result.path) : options.savePath);
     return result;
 }
 export function batchResults(result, startedAt, folder) {

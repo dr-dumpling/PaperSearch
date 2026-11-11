@@ -85,9 +85,9 @@ stdout 输出一份 JSON：成功与否、文件位置、每一层的尝试记�
 
 | 内容 | 位置 |
 |---|---|
-| 下载的论文 | 你指定的目录里每次下载新建的 `<年月日-时分秒>_PaperSearchDownload` 文件夹：`papers/`（每篇一个文件夹，正文和补充材料；出过问题的篇目另有 `diagnostics/`，放诊断记录和截图）和 `runs/`（运行记录副本） |
+| 下载的论文 | 你指定的目录里每次下载新建的 `<年月日-时分秒>_PaperSearchDownload` 文件夹：只下正文时 PDF 直接放在里面；带补充材料时每篇一个文件夹，正文和 `supplements/` 在其中 |
 | 配置和 API key | `~/.config/paper-search-cli/config.json`（权限 `0600`） |
-| 运行记录 | `~/.local/share/paper-search-cli/runs/` |
+| 运行记录 | `~/.local/share/paper-search-cli/runs/`：每次运行一个目录，含出过问题篇目的诊断记录和截图；保留 30 天 |
 | 机构下载的学校设置和登录状态 | `~/.local/share/paper-search-cli/carsi/` |
 
 都只在你的电脑上，不上传到任何地方。

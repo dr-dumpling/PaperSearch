@@ -110,7 +110,7 @@ describe("CARSI CLI integration", () => {
     expect(output.data).toEqual(
       expect.objectContaining({
         status: "ok",
-        path: expect.stringMatching(runFolder(outputDir, "[\\\\/]papers[\\\\/]")),
+        path: expect.stringMatching(runFolder(outputDir, "[\\\\/][^\\\\/]+\\.pdf$")),
         attempts: [
           expect.objectContaining({ stage: "primary", status: "skipped" }),
           expect.objectContaining({
@@ -151,7 +151,7 @@ describe("CARSI CLI integration", () => {
         tool: "carsi_download",
         arguments: {
           identifier: canonicalDoi,
-          output_dir: expect.stringMatching(runFolder(outputDir, "[\\\\/]papers[\\\\/]")),
+          output_dir: expect.stringMatching(runFolder(outputDir, "[\\\\/][^\\\\/]+$")),
           scihub_enabled: false,
           use_tor: false,
           bibtex: false,

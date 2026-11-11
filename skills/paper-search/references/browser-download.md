@@ -113,7 +113,7 @@ paper-search failures --run <运行ID> --doi <DOI> --export ./failure-report.zip
 - `download_with_fallback` / `download_batch` 的 `content`：`main`（默认，只要正文）、`supplements`（只要补充材料，不走正文的各层）、`both`（正文和补充材料）。
 - 补充材料只经学校订阅下载的浏览器取得：正文由开放渠道拿到时，`both` 会再请它单独取补充材料；它没装或没启用时，这一步记为 `skipped`，写明没有可用的后端。
 - 哪些出版社有补充材料规则见 `publisher-support.md`。完成检查但页面未列出附件时返回空 `supplements`，attempt 为 `skipped/no_supplements`；只取补充材料时整体 `status=ok`，表示检查完成，不表示保存了文件。没有发现规则（`supplements_not_supported`）、登录未完成（`login_required`）、验证未完成（`challenge_timeout`）、网站的人机验证页挡住了附件下载（`verification_page`，如 Figshare）、拿到网页而不是文件（`html_page`）与其他下载失败分别报告，只取补充材料时仍为 `error`，不影响已保存正文。
-- 文件存在 `<savePath>/papers/<期刊_年份_标题_短标识>/supplements/`，`…_supplements-manifest.json` 记录每个文件的状态（`saved`、`failed`、`skipped`）和原因，有文件没下到时在该篇的 `diagnostics/`，都下到时在这次运行的 `runs/<runId>/records/`；结果里的 `supplements` 给出实际文件路径。
+- 文件存在 `<savePath>/<期刊_年份_标题_短标识>/supplements/`；`…_supplements-manifest.json` 记录每个文件的状态（`saved`、`failed`、`skipped`）和原因，在结果 `runLog` 所指的运行记录目录里：有文件没下到时在 `diagnostics/`，都下到时在 `records/`；结果里的 `supplements` 给出实际文件路径。
 - 上限：每篇最多 50 个文件，每个不超过 200 MB，一篇总共 3 分钟；超出的记 `skipped`（原因 `file_limit`、`too_large`、`time_budget`）。`html_page` 表示链接打开的是网页而不是文件，`http_403` 一类是网站拒绝。
 - 只收本文的文件：别的文章的文件、本文的插图、参考文献里的链接都不收。Figshare 公开 article/collection 链接按原文 DOI 关联后解析文件；其他外部附件平台仍需适配。
 - 补充材料、利益冲突声明里也可能印着目标标题和 DOI；不要把补充材料 PDF 当正文交付，正文成功也不代表补充材料齐全。

@@ -96,7 +96,8 @@ describe("OpenAccessFallbackService", () => {
         [tier("unpaywall", unlabelled)],
       );
       expect(result.status).toBe("error");
-      expect(result.review).toEqual({ path: expect.stringMatching(/\/papers\/[^/]+\/diagnostics\/[^/]+_review\.pdf$/),
+      // No run's folder here: the download folder's diagnostics/, never beside the PDFs.
+      expect(result.review).toEqual({ path: expect.stringMatching(/\/diagnostics\/[^/]+_review\.pdf$/),
         reason: "pdf_identity_unverified" });
       expect(readFileSync(result.review!.path)).toEqual(readFileSync(unlabelled));
     });
@@ -162,7 +163,7 @@ describe("OpenAccessFallbackService", () => {
     expect(result.status).toBe("ok");
     expect(readFileSync(result.path!)).toEqual(readFileSync(paper));
     expect(scihubDownload).toHaveBeenCalledWith("10.1000/example", {
-      savePath: expect.stringContaining("/papers/"),
+      savePath: expect.stringMatching(/_[0-9a-f]{10}$/),
     });
     expect(result.attempts.map((attempt) => attempt.stage)).toEqual([
       "primary",
@@ -362,12 +363,12 @@ describe("OpenAccessFallbackService", () => {
 
       expect(downloadLegalDoi).toHaveBeenCalledWith({
         identifier: "10.1000/example",
-        outputDir: expect.stringContaining(`${tempDir}/papers/`),
-        diagnosticsDir: expect.stringMatching(new RegExp(`^${tempDir}/papers/[^/]+/diagnostics$`)),
+        outputDir: expect.stringMatching(new RegExp(`^${tempDir}/[^/]+_[0-9a-f]{10}$`)),
+        diagnosticsDir: expect.stringMatching(new RegExp(`^${tempDir}/[^/]+_[0-9a-f]{10}/diagnostics$`)),
       });
       expect(result).toEqual({
         status: "ok",
-        path: expect.stringContaining(`${tempDir}/papers/`),
+        path: expect.stringMatching(new RegExp(`^${tempDir}/[^/]+\\.pdf$`)),
         attempts: expect.arrayContaining([
           {
             stage: "entitled_access",
@@ -532,8 +533,8 @@ describe("OpenAccessFallbackService", () => {
 
     expect(downloadLegalDoi).toHaveBeenCalledWith({
       identifier: "not-a-doi",
-      outputDir: expect.stringContaining("/papers/"),
-      diagnosticsDir: expect.stringMatching(/\/papers\/[^/]+\/diagnostics$/),
+      outputDir: expect.stringMatching(/_[0-9a-f]{10}$/),
+      diagnosticsDir: expect.stringMatching(/_[0-9a-f]{10}\/diagnostics$/),
     });
     expect(result.attempts).toContainEqual({
       stage: "entitled_access",

@@ -34,6 +34,7 @@ import {
   getConfigValue,
   setUserConfigValue,
   isConfigTrue,
+  resolveDownloadPath,
   unsetUserConfigValue,
 } from "./management/config/index.js";
 import type { ConfigKey } from "./management/config/index.js";
@@ -78,6 +79,7 @@ import { TESTABLE_KEYS, probeKeyFor, testApiKey, type KeyTestResult } from "./co
 import { hasScreen } from "./management/carsi/runtime.js";
 import { fileURLToPath } from "node:url";
 import { resolveRunLogRoot } from "./infrastructure/runlog/RunLedger.js";
+import { NPM_UNINSTALL, renderUninstallPlan, runUninstall, uninstallPlan } from "./management/uninstall/index.js";
 import { runLiveSmoke } from "./management/smoke/index.js";
 
 dotenv.config();
@@ -149,6 +151,7 @@ Usage:
   paper-search carsi update [--force]
   paper-search carsi login --doi <DOI> [--max-wait <seconds>]
   paper-search carsi uninstall [--yes] [--remove-data]
+  paper-search uninstall [--dry-run] [--yes]
   paper-search smoke --mock|--live
   paper-search skills <status|update|diff> [--targets agents,codex]
   paper-search tools
@@ -570,6 +573,10 @@ async function run(parsed: ParsedCli): Promise<unknown> {
 
   if (command === "carsi") {
     return handleCarsiCommand(positionals, flags);
+  }
+
+  if (command === "uninstall") {
+    return handleUninstallCommand(flags);
   }
 
   if (command === "settings") {
@@ -1045,6 +1052,55 @@ async function testConfiguredKeys(key: string | undefined, flags: Record<string,
 /** What the settings window needs: the backend's data directory, this config, and this CLI for key tests. */
 function settingsWindowEnv(): Record<string, string> {
   return windowEnv({ dataDir: resolveDefaultCarsiProfileDir(), configFile: getConfigPath(), cli: paperSearchCommand() });
+}
+
+/**
+ * `paper-search uninstall [--dry-run] [--yes]` (user, 2026-11-11): PaperSearch's data (school
+ * subscription downloads with the school's login, run records), its config and every copy of
+ * the Skill, in one go once the user agrees; --dry-run only lists them. Downloaded papers stay;
+ * the npm package goes last, by the user.
+ */
+async function handleUninstallCommand(flags: Record<string, FlagValue>): Promise<unknown> {
+  let downloads: string | undefined;
+  try {
+    downloads = resolveDownloadPath();
+  } catch (error: any) {
+    if (error?.code !== "CONFIG_INVALID") throw error;  // a broken config file names no download folder
+  }
+  const plan = uninstallPlan(process.env, undefined, { downloads });
+  const text = flags.format === "text";
+  if (!plan.items.length) {
+    const message = `没有找到 PaperSearch 的数据、配置或 Skill。最后运行 ${NPM_UNINSTALL} 删除命令本身。`;
+    return text ? message : { ok: true, status: "nothing", ...plan, next: NPM_UNINSTALL };
+  }
+  const lines = renderUninstallPlan(plan);
+  if (flags.dryRun === true) {
+    return text ? lines.join("\n") : { ok: true, status: "planned", ...plan, next: NPM_UNINSTALL };
+  }
+  process.stderr.write(`${lines.join("\n")}\n`);
+  if (flags.yes !== true) {
+    const session = new PromptSession();
+    let answer = "";
+    try {
+      answer = await session.line("确认全部删除？删除后不能恢复。[y/N] ");
+    } finally {
+      session.close();
+    }
+    if (!/^y(?:es)?$/i.test(answer.trim())) {
+      return text ? "已取消，没有删除任何东西。" : { ok: false, status: "cancelled", ...plan, exitCode: 1 };
+    }
+  }
+  const result = runUninstall(plan);
+  const done = result.failed.length === 0;
+  const hint = done
+    ? `最后运行 ${NPM_UNINSTALL} 删除命令本身。`
+    : "有文件正被占用：关掉 PaperSearch 的进度窗口和下载用的 Chrome 窗口后，再运行一次 paper-search uninstall。";
+  if (text) {
+    return [done ? "已删除 PaperSearch 的数据、配置和 Skill。" : "没有全部删完。",
+      ...result.failed.map((item) => `  没删掉：${item.path}（${item.error}）`), hint].join("\n");
+  }
+  return { ok: done, status: done ? "uninstalled" : "partial", ...result, kept: plan.kept,
+    next: done ? NPM_UNINSTALL : "paper-search uninstall", hint, ...(done ? {} : { exitCode: 1 }) };
 }
 
 /** Install or inspect school subscription downloads (CARSI, ADR 0013). */
@@ -1551,10 +1607,11 @@ async function main() {
   let update: ReturnType<typeof beginUpdateNotification> | undefined;
 
   try {
-    if (configLoadError) throw configLoadError;
+    // Uninstalling works with a broken config file too: the file goes with the rest.
+    if (configLoadError && parsed.command !== "uninstall") throw configLoadError;
     maybePrintSetupHint(parsed);
     maybeAutoSyncSkill(parsed);
-    const exempt = parsed.flags.help || parsed.flags.version || ["help", "version", "config", "setup", "update"].includes(parsed.command);
+    const exempt = parsed.flags.help || parsed.flags.version || ["help", "version", "config", "setup", "update", "uninstall"].includes(parsed.command);
     update = beginUpdateNotification({ current: packageVersion(),
       packageRoot: fileURLToPath(new URL("..", import.meta.url)),
       enabled: !exempt && !process.env.CI && getConfigValue("PAPER_SEARCH_UPDATE_NOTIFY") !== "false",
@@ -1623,7 +1680,7 @@ function maybePrintSetupHint(parsed: ParsedCli): void {
   );
 }
 
-const SKILL_SYNC_EXEMPT = new Set(["skills", "setup", "help", "version", "update"]);
+const SKILL_SYNC_EXEMPT = new Set(["skills", "setup", "help", "version", "update", "uninstall"]);
 
 /**
  * The first run after an install or upgrade brings the Skill copies the user

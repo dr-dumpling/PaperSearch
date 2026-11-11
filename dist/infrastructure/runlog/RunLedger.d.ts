@@ -15,6 +15,10 @@ import type { DownloadStageRecord, DownloadWithFallbackResult } from "../../capa
  * download outcome.
  */
 export declare function resolveRunLogRoot(env?: Record<string, string | undefined>, home?: string): string | null;
+/** Run folders (records, diagnostics) are kept this long, then removed as a new run starts (user, 2026-11-11). */
+export declare const RUN_KEEP_DAYS = 30;
+/** Remove the run folders started more than RUN_KEEP_DAYS ago; only run folders, nothing else in ``root``. */
+export declare function pruneOldRuns(root: string, now?: Date): string[];
 export interface RunLedgerStart {
     kind: "download" | "download_batch";
     total: number;
@@ -50,10 +54,13 @@ export declare class RunLedger {
     phase(text: string): void;
     stage(item: RunItem, record: DownloadStageRecord): void;
     item(item: RunItem, result: DownloadWithFallbackResult): void;
-    /** The run's portable folder in the download folder: runs/<run id>. */
-    get packet(): string;
     /** Where the run's papers that went fine keep their backend records. */
     get records(): string;
+    /**
+     * Where the run's other papers keep their diagnostics: the run's folder, not the
+     * download folder, which holds only papers (user, 2026-11-11).
+     */
+    get diagnostics(): string;
     close(extra?: Record<string, unknown>): void;
     private writeRun;
     private line;
