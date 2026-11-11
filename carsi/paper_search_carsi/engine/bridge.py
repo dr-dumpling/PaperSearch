@@ -15,6 +15,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -58,6 +59,17 @@ _FAILURE_KINDS = {
     "generic_institution_entry_missing": ("generic_institution_entry_missing", "review_publisher_profiles"),
     **{code: (code, "review_browser") for code in _LOGIN_FAILURE_CODES},
 }
+
+
+def _move_into_place(src: Path, output_path: Path) -> None:
+    """Put a captured PDF at ``output_path``. The backend saves it in its run folder
+    first, which is in PaperSearch's own data (since 0.5.13) and can sit on another
+    drive than the download folder: a rename cannot cross drives (WinError 17, Windows
+    with D:\\Downloads, 2026-11-11), so the file is moved, copied when it must."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.exists():
+        output_path.unlink()
+    shutil.move(str(src), str(output_path))
 
 
 def _remember_blocked_journal(doi: str, identity: dict[str, Any]) -> None:
@@ -216,10 +228,7 @@ def _instsci_result_to_dict(result, doi: str, output_path: Path) -> dict[str, An
         src = Path(paper.pdf_path)
         if src.exists():
             if src != output_path:
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                if output_path.exists():
-                    output_path.unlink()
-                src.rename(output_path)
+                _move_into_place(src, output_path)
             return {
                 "success": True, "identifier": doi, "doi": doi,
                 "file": str(output_path),
@@ -457,10 +466,7 @@ def _try_session_broker(
             if pdf_path and Path(pdf_path).exists():
                 src = Path(pdf_path)
                 if src != output_path:
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                    if output_path.exists():
-                        output_path.unlink()
-                    src.rename(output_path)
+                    _move_into_place(src, output_path)
                 log.info(f"   [Institutional] Session broker download succeeded")
                 return {
                     "success": True, "identifier": doi, "doi": doi,
@@ -630,10 +636,7 @@ def _try_browser_batch_download(
         src = Path(result.pdf_path)
         if src.exists():
             if src != output_path:
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                if output_path.exists():
-                    output_path.unlink()
-                src.rename(output_path)
+                _move_into_place(src, output_path)
             result.pdf_path = str(output_path)
             _note_supplements(result, len(getattr(result, "events", [])))
             log.info(f"   [Institutional] Browser download succeeded: {result.size_bytes:,} bytes")

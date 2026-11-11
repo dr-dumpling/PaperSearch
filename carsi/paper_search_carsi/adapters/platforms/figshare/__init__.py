@@ -85,7 +85,8 @@ def _belongs(data: dict, doi: str, *, labelled: bool = False) -> bool:
 
 
 def supplement_links(page: Any, doi: str, *, clock=time.monotonic, pause=time.sleep) -> list[SupplementLink] | None:
-    """None means no Figshare route on this article; failures stay in the manifest."""
+    """None means no Figshare route on this article; failures stay in the manifest.
+    A resource not shown to be this article's is set aside (``set_aside``)."""
     data = page.evaluate(_PAGE_LINKS)
     if not isinstance(data, dict) or _doi(data.get("doi")) != _doi(doi):
         return None
@@ -190,5 +191,10 @@ def supplement_links(page: Any, doi: str, *, clock=time.monotonic, pause=time.sl
             raise
         except Exception as exc:
             reason = str(exc) if isinstance(exc, ValueError) and str(exc).startswith("figshare_") else "figshare_request_failed"
-            links.append(SupplementLink(root, "Figshare supplementary material", error=reason))
+            if reason == "figshare_article_mismatch":
+                # A dataset the article names (its data availability statement) is
+                # not its supplement unless one of them says so (JEM, 2026-11-11).
+                links.append(SupplementLink(root, "Figshare resource", set_aside=reason))
+            else:
+                links.append(SupplementLink(root, "Figshare supplementary material", error=reason))
     return list(dict.fromkeys(links))

@@ -143,7 +143,8 @@ class BatchProgressTests(unittest.TestCase):
 
     def test_the_open_access_lane_beside_a_running_download(self):
         """Open access checked while the school's lane downloads (2026-11-09): the running
-        paper keeps its stage, line and prompt; the counts and the lanes line follow."""
+        paper keeps its stage, line and prompt; the counts and the lanes line follow. The card
+        does not show the lanes line (the user, 2026-11-11: too much while downloading)."""
         from paper_search_carsi import progress_view
 
         self.assertTrue(pr.sync_batch("b7", 40, 3, 3, 0, current="10.1000/3", phase="开放获取：已查 5/40 篇，找到 3 篇",
@@ -160,8 +161,8 @@ class BatchProgressTests(unittest.TestCase):
             for key in ("current", "stage", "phase", "channel", "attention", "awaiting_next", "run_id"):
                 self.assertEqual(snap.get(key), before.get(key), key)
             shown = progress_view.view(snap, 0)
-            self.assertEqual((shown["lanes"], shown["actions"], shown["attention"]["short"]),
-                             ("开放下载 6 篇 · 机构下载 0 篇", True, "请登录学校"))
+            self.assertEqual((shown["actions"], shown["attention"]["short"]), (True, "请登录学校"))
+            self.assertNotIn("lanes", shown)
             pr.clear_attention("login")
             outcome["result"] = {"success": False}
         # Between the school's papers the lane's update shows as before, with its line.
@@ -172,7 +173,7 @@ class BatchProgressTests(unittest.TestCase):
                          ("10.1000/11", "开放获取", True, "开放下载 7 篇 · 机构下载 0 篇"))
         self.assertTrue(pr.sync_batch("b7", 40, 40, 38, 2, finished=True))
         self.assertEqual(pr.read_snapshot()[0]["lanes"], "")
-        self.assertEqual(progress_view.view(pr.read_snapshot()[0], 0)["lanes"], "")
+        self.assertNotIn("lanes", progress_view.view(pr.read_snapshot()[0], 0))
 
     def test_the_lane_never_writes_over_a_download_in_another_process(self):
         pr._atomic_write({"batch_id": "b8", "status": "running", "awaiting_next": False, "current": "10.1000/1",

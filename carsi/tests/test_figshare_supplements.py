@@ -59,13 +59,13 @@ def test_collection_pins_member_version_and_keeps_exact_link():
     {'id': 5, 'related_materials': [{'relation': 'IsSupplementTo', 'identifier': '10.1000/other'}], 'files': [FILE]},
 ])
 def test_collection_does_not_override_member_conflict(item):
-    assert supplement_links(page_for(item=item), DOI, pause=lambda _: None)[0].error == 'figshare_article_mismatch'
+    assert supplement_links(page_for(item=item), DOI, pause=lambda _: None)[0].set_aside == 'figshare_article_mismatch'
 
 
 def test_exact_association_required_and_reference_is_not_evidence():
     for detail in [{'id': 8675280}, {'id': 8675280, 'resource_doi': '10.1000/other'},
                    {'id': 8675280, 'related_materials': [{'relation': 'References', 'identifier': DOI}]}]:
-        assert supplement_links(page_for(detail=detail), DOI, pause=lambda _: None)[0].error == 'figshare_article_mismatch'
+        assert supplement_links(page_for(detail=detail), DOI, pause=lambda _: None)[0].set_aside == 'figshare_article_mismatch'
     detail = {'id': 8675280, 'related_materials': [{'relation': 'IsSupplementTo', 'identifier': DOI}]}
     assert not supplement_links(page_for(detail=detail), DOI, pause=lambda _: None)[0].error
 
@@ -80,7 +80,7 @@ def test_explicit_supplement_label_fills_missing_backlink_but_never_overrides_co
     ]:
         page = page_for(detail=detail)
         page.evaluate.return_value['labelled'] = [ROOT]
-        assert supplement_links(page, DOI, pause=lambda _: None)[0].error == 'figshare_article_mismatch'
+        assert supplement_links(page, DOI, pause=lambda _: None)[0].set_aside == 'figshare_article_mismatch'
 
 
 @pytest.mark.parametrize('file,error', [
@@ -185,7 +185,7 @@ def test_real_dom_explicit_supplement_label_can_supply_missing_backlink():
                 fake = page_for(detail={'id': 8675280})
                 proxy = SimpleNamespace(evaluate=page.evaluate, context=fake.context)
                 links = supplement_links(proxy, DOI, pause=lambda _: None)
-                assert len(links) == 1 and links[0].error == expected
+                assert len(links) == 1 and links[0].set_aside == expected and not links[0].error
         finally:
             browser.close()
 

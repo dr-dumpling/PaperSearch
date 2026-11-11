@@ -238,7 +238,7 @@ class PublisherBatchDownloader(
                         self._wait_for_page_text(page, result)
                         if self._challenge_shell(page) or self._is_challenge_page(page):
                             continue
-                        links = self._settled_supplement_links(page, doi)
+                        links = self._settled_supplement_links(page, doi, result)
                         if not (self._challenge_shell(page) or self._is_challenge_page(page)):
                             break
                     self._snapshot(page, result, "supplements page")
@@ -311,15 +311,25 @@ class PublisherBatchDownloader(
             except Exception:
                 pass
 
-    def _settled_supplement_links(self, page: Any, doi: str) -> Any:
+    def _settled_supplement_links(self, page: Any, doi: str, result: Any = None) -> Any:
         """The adapter's links once the page has stopped navigating (ScienceDirect
-        moves /pii/ to /abs/pii/ by script after the document has loaded)."""
+        moves /pii/ to /abs/pii/ by script after the document has loaded). A site
+        without a rule of its own gets the shared one (``page_supplements``); a
+        Figshare resource set aside is recorded on ``result``, not returned."""
         for attempt in range(3):
             try:
                 from ..adapters.platforms.figshare import supplement_links as external_links
+                from .page_supplements import listed_files
 
                 own = self.adapter.supplement_links(page, doi)
+                if own is None:
+                    own = listed_files(page, doi) or None
                 external = external_links(page, doi)
+                if result is not None:
+                    for link in external or ():
+                        if link.set_aside:
+                            self._event(result, "supplements_set_aside", f"{link.set_aside} {link.url}")
+                external = [link for link in external or () if not link.set_aside] or None
                 if own is None and external is None:
                     from ..adapters.platforms.silverchair import declares_no_supplements
 

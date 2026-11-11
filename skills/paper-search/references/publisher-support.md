@@ -6,7 +6,7 @@
 - 程序按 DOI 实际跳转到的网站判断属于哪一行。DOI 前缀只是线索，期刊换了出版社时前缀不变（例如 ARD 的 `10.1136` 文章现在在 Elsevier）。
 - 用户问“某本期刊能不能下”：先按这张表说明程序能不能走通，再说明学校订阅要以实际下载为准；不要凭这张表断定学校有或没有权限。
 
-符号：✓ 实测取得；✓OA 只实测过开放获取文章；○ 已有规则，尚无文件下载成功记录；— 没有补充材料规则（返回 `supplements_not_supported`，正文不受影响）。
+符号：✓ 实测取得；✓OA 只实测过开放获取文章；○ 已有规则，尚无文件下载成功记录；— 没有补充材料专门规则：按通用规则取文章页补充材料区块里地址带本文 DOI 的文件，取不到时返回 `supplements_not_supported`，正文不受影响。
 
 ## 有专门规则的出版社
 
@@ -48,7 +48,7 @@
 | Frontiers | frontiersin.org | `10.3389` | ✓OA | ✓ |
 | PLOS、Copernicus | 各自网站 | `10.1371`、`10.5194` | ✓ | ✓ |
 
-AIP、Optica、Royal Society 的补充材料在 Figshare 上，程序按文章页上的 Figshare 链接取文件。页面没有 Figshare 链接时：AIP 页面标明没有补充材料的，返回空清单；Optica 返回 `supplements_not_supported`，不说明这篇有没有附件。
+AIP、Optica、Royal Society 的补充材料在 Figshare 上，程序按文章页上的 Figshare 链接取文件。页面没有 Figshare 链接时：AIP 页面标明没有补充材料的，返回空清单；Optica 返回 `supplements_not_supported`，不说明这篇有没有附件。Figshare 上的资源既没有标明属于这篇、文章页上的链接也不是“补充材料”字样时（只在数据可用性声明里提到的数据集），不下载，也不算补充材料失败。
 
 ## 没有专门规则的网站
 

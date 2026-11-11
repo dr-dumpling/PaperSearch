@@ -16,6 +16,9 @@ class SupplementLink:
     label: str = ""
     # Discovery failures are recorded alongside downloaded files.
     error: str = ""
+    # Found on the page but not shown to be this article's (a dataset the page
+    # only names): recorded with this reason, neither fetched nor counted.
+    set_aside: str = ""
 
 
 class PublisherAdapter:

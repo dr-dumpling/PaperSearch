@@ -376,8 +376,6 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
         "title": str(state.get("title") or ""), "current": current,
         "run_id": str(state.get("run_id") or ""),
         "step": step, "steps": list(STEPS), "line": status_text(state, running) if running else "",
-        # What each lane got in a batch checking open access beside its downloads, on one line.
-        "lanes": str(state.get("lanes") or "") if running else "",
         "elapsed": elapsed, "attention": prompt, "notice": notice,
         "completion_detail": str(state.get("phase") or "")
             if not running and state.get("stage") == "supplements_checked" else "",
