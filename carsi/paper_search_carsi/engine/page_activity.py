@@ -1,5 +1,9 @@
 """Track idle owned pages without treating missing progress as a user action.
 
+A quiet interval is handed to the downloader (``on_idle``): it looks at the page on
+the browser thread and reminds the user (``remind``) only for a page it does not know
+with something to click on it (the user, 2026-11-11). Silence alone asks nothing.
+
 Main-document requests, navigation, a loaded document, a workflow step or
 received file bytes refresh the timer. An in-flight navigation gets only the
 existing page wait budget; polling and unrelated background traffic do not.
@@ -28,6 +32,11 @@ class PageActivity:
         self._lock = threading.RLock()
         self._doi = doi
         self._reported = False
+        self.key = f"page-unknown:{id(self)}:{doi}"
+        self._shown = False
+        # Called with the lock held once a quiet interval has passed, from any thread
+        # and without a browser call: it may only schedule work (``watchdog.run_soon``).
+        self.on_idle: Any = None
         self._transfers = 0
         self._automatic_until = 0.0
         self.closed = False
@@ -46,6 +55,9 @@ class PageActivity:
 
     def _clear(self) -> None:
         self._reported = False
+        if self._shown:
+            progress_reporter.clear_attention(self.key)
+            self._shown = False
 
     def automatic_for(self, seconds: float) -> None:
         """Defer idle diagnostics until the caller's existing automatic deadline.
@@ -64,7 +76,7 @@ class PageActivity:
         with self._lock:
             if self.closed:
                 return
-            if progress_reporter.has_attention(current=self._doi):
+            if progress_reporter.has_attention(current=self._doi, excluding=self.key):
                 # School login and other explicit requests have priority. Start
                 # a fresh quiet interval when they finish rather than duplicating them.
                 self._last_progress = self._clock()
@@ -79,6 +91,23 @@ class PageActivity:
                 logging.getLogger(__name__).info("page_idle: no observed progress for %.0f seconds",
                                                  self._clock() - self._last_progress)
                 self._reported = True
+                if self.on_idle is not None:
+                    self.on_idle()
+
+    def stalled(self) -> bool:
+        """Still quiet for the whole interval: the downloader checks again before reminding."""
+        with self._lock:
+            return (not self.closed and not self._transfers and self._clock() >= self._automatic_until
+                    and not self._navigation_loading() and self._clock() - self._last_progress >= self.after)
+
+    def remind(self, message: str) -> None:
+        """Ask the user to look at the page; the downloader calls it after inspecting the
+        page. Progress, another reminder for this paper or the article's end clears it."""
+        with self._lock:
+            if self.closed or self._shown:
+                return
+            progress_reporter.set_attention(self.key, message, current=self._doi, phase="需要你操作")
+            self._shown = True
 
     def _navigation_loading(self) -> bool:
         pending = self._navigations.get(id(self.page))

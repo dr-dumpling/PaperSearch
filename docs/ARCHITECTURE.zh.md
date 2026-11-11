@@ -13,7 +13,7 @@
 ## 两个程序
 
 ```text
-你 / AI 工具（Claude Code、Codex、Cursor……）
+你 / AI 工具（Claude Code、Codex、DeepSeek……）
    │  读随包 Skill，调用 paper-search 命令
    ▼
 paper-search（TypeScript，npm 包 papersearch）
@@ -30,13 +30,13 @@ paper-search-carsi（Python，可选，代码在 carsi/，用 paper-search carsi
 
 | 能力 | 入口 | 说明 |
 |---|---|---|
-| 检索与核验 | `paper-search search`、`run search_*`、`run get_paper_by_doi` | 20 多个来源并发检索，单个来源失败不影响整体；按 DOI、题名和作者去重 |
-| 引文扩展 | `run get_paper_citations`、`run get_paper_references` | 基于 Semantic Scholar 查施引文献和参考文献 |
+| 检索与核验 | `paper-search search`、`run search_*`、`run get_paper_by_doi` | 20 多个来源并发检索，单个来源失败不影响整体；按 DOI、题名和作者去重。核对 DOI 先查 Crossref，查不到才问其他来源，一次最多核对 100 个 |
+| 引文扩展 | `run get_paper_citations`、`run get_paper_references` | 施引文献经 OpenAlex，没有记录时用 Semantic Scholar；参考文献按 Crossref 里出版社登记的清单，保留原序号并标出缺号，没有时再用 OpenAlex、Semantic Scholar |
 | 期刊指标 | `paper-search journal-metrics` | 经 EasyScholar 查影响因子、JCR 和中科院分区等 |
 | 正文片段 | `run search_semantic_snippets` | 在 Semantic Scholar 的开放获取正文索引里找方法学写法和参数 |
 | 下载 | `paper-search download`、`run download_with_fallback`、`run download_batch` | 下面详细说明 |
 
-另有一组管理命令：`setup`、`config`、`doctor`、`skills`、`carsi`、`failures`、`smoke`、`tools`。它们负责安装、配置和诊断，不参与文献任务本身。
+另有一组管理命令：`setup`、`settings`、`config`、`status`、`doctor`、`diagnostics`、`skills`、`carsi`、`update`、`uninstall`、`failures`、`smoke`、`tools`。它们负责安装、配置、更新、卸载和诊断，不参与文献任务本身。随包 Skill 写明对应的 PaperSearch 版本，较旧的命令不会覆盖已装的较新 Skill。
 
 ## 一次下载怎么走
 
@@ -54,6 +54,7 @@ paper-search download <DOI>
   │     ├─ 专用浏览器打开文章页 → 出版社的机构登录 → 选 CARSI 和你的学校
   │     │    （自动选校，学校登录页由你输入账号）
   │     ├─ 遇到 Cloudflare/Turnstile 验证框 → 自动定位并点击 → 网站放行后继续
+  │     │    （reCAPTCHA、hCaptcha、滑块等其他验证交给你完成）
   │     ├─ 取正文 PDF；需要时在文章页找补充材料，只收这篇文章的文件
   │     └─ 结果和失败原因原路返回
   └─ 8 arXiv 预印本         前面都没拿到正式发表版时才用，并标明是预印本
@@ -64,7 +65,7 @@ paper-search download <DOI>
 stdout 输出一份 JSON：成功与否、文件位置、每一层的尝试记录
 ```
 
-批量下载（`download_batch`）默认分两轮：第一轮所有篇目只走开放渠道，第二轮只对还没拿到正文的篇目用机构下载；要补充材料时最后再取。进度窗口里可以跳过一篇或终止整个任务，已经保存的文件都会保留。
+批量下载（`download_batch`）默认两路同时进行：开放渠道逐篇往下查，没拿到正文的篇目立即交给机构下载，机构下载一次只下一篇；开放渠道拿到正文的篇目要补充材料时，最后再去文章页取。进度窗口里可以跳过一篇或终止整个任务，已经保存的文件都会保留。
 
 ## 机构下载这一侧
 
@@ -75,8 +76,8 @@ stdout 输出一份 JSON：成功与否、文件位置、每一层的尝试记�
   4. 单本期刊：只有它一家特殊时才单独写。
 - **机构入口**：CARSI 等联盟的登录流程，由维护者处理。
 - **浏览器**：默认用你电脑上的 Google Chrome（下载用单独的浏览器资料，不动日常用的 Chrome），macOS 上可改用 ego lite。登录状态保存在本机，下次下载直接复用。
-- **验证框自动交互**：在文章页和 PDF 获取过程中自动定位、点击 Cloudflare/Turnstile 验证框，网站放行后继续下载。每次验证等待最多尝试 3 次，两次至少间隔 3 秒；自动阶段结束后仍未放行时提示人工接管，沿用原等待时限。
-- **等待和限速**：停在学校登录页最多等 3 分钟，停在其他页面默认 1 分钟就结束这一篇，浏览器某一步卡死会被中断；每家出版社每小时最多下载的篇数可以设置。这些都能在进度窗口的齿轮里调整。
+- **验证框自动交互**：在文章页和 PDF 获取过程中自动定位、点击 Cloudflare/Turnstile 验证框，网站放行后继续下载。每次验证等待最多尝试 3 次，两次至少间隔 3 秒；自动阶段结束后仍未放行时提示人工接管，沿用原等待时限。reCAPTCHA、hCaptcha、DataDome、GeeTest、阿里云等其他验证程序只识别、不操作，直接请你完成；认不出的页面停住一段时间、页面上又有可点的控件时，也会提醒你去看一眼。
+- **等待和限速**：停在学校登录页最多等 3 分钟，停在其他页面默认 1 分钟就结束这一篇，浏览器某一步卡死会被中断；每家出版社每小时最多下载的篇数可以设置。这些都能在进度窗口的齿轮里调整。出版社的院校列表里没有你的学校时立即结束；同一批里这家出版社后面的文章仍会打开、能直接取得的 PDF 照常取得，只是不再等登录。
 - **失败分类**：没权限、需要你处理、暂不支持的网站、原因不明，每类都附依据（例如页面上的原话），不把“没登录”说成“没权限”。
 
 各出版社的支持情况见 [出版社支持表](../skills/paper-search/references/publisher-support.md)。

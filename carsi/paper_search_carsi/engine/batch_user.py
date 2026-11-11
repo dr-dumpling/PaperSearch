@@ -106,10 +106,67 @@ class UserRequestsMixin:
         activity = getattr(result, "_page_activity", None)
         owned = activity is None or activity.closed
         if owned:
+            from ..browser import watchdog
+
             result._page_activity = activity = PageActivity(result.doi, self.config)
+            watched = activity
+            watched.on_idle = lambda: watchdog.run_soon(lambda: self._remind_on_unknown_page(watched, result))
         if page is not None:
             activity.observe(page)
         return activity, owned
+
+    UNKNOWN_PAGE_NOTICE = "页面可能需要你处理，请查看浏览器窗口"
+    # Something to click on a short page that is not an article or a PDF: a prompt the
+    # program does not know (an unrecognised verification). The longest such page.
+    _UNKNOWN_PAGE_TEXT = 2000
+    _UNKNOWN_PAGE_CONTROL_JS = r"""(longest) => {
+        if (document.contentType === 'application/pdf'
+            || document.querySelector('meta[name="citation_doi"], meta[name="citation_title"]')) return '';
+        if ((document.body?.innerText || '').trim().length > longest) return '';
+        const shown = el => { const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+            return r.width >= 12 && r.height >= 12 && s.visibility !== 'hidden' && s.display !== 'none'; };
+        const control = [...document.querySelectorAll(
+            'input[type=checkbox], [role=checkbox], iframe, canvas, button, [role=button], input[type=submit]')]
+            .find(el => shown(el) && (el.tagName !== 'IFRAME' || el.getBoundingClientRect().height >= 30));
+        if (!control) return '';
+        const kind = control.getAttribute('role') || control.tagName.toLowerCase();
+        const label = (control.innerText || control.value || control.getAttribute('aria-label') || control.title || '').trim();
+        return (kind + (label ? ' "' + label.slice(0, 40) + '"' : '')).slice(0, 80);
+    }"""
+
+    def _remind_on_unknown_page(self, activity: PageActivity, result: DownloadResult) -> None:
+        """On the browser thread, after ``browser_stall_notify_after`` seconds without
+        progress: a page the program does not know, short and with something to click,
+        asks the user to look (an unrecognised verification; the user, 2026-11-11).
+        Recognised verification and the school's login remind the user themselves; an
+        article, a PDF or a long page asks nothing, and the program's own steps count as
+        progress (2026-11-06). A reminder is optional: a failed look never ends the article."""
+        from ..browser import watchdog
+
+        if activity.closed or not activity.stalled():
+            return
+        page = activity.page
+        if page is None or progress_reporter.has_attention(current=result.doi, excluding=activity.key):
+            return
+        try:
+            if page.is_closed() or self._is_challenge_page(page) or self._users_login_step(page):
+                return
+            url = str(getattr(page, "url", "") or "")
+            with watchdog.call_limit(5):
+                control = page.evaluate(self._UNKNOWN_PAGE_CONTROL_JS, self._UNKNOWN_PAGE_TEXT)
+        except watchdog.CallAbandoned:
+            return
+        except (watchdog.BrowserUnresponsive, UserMarkedNoEntitlement):
+            raise
+        except Exception as exc:
+            if exc is watchdog.interrupted:
+                raise  # the window's skip or stop: it ends the article, not this look
+            first = str(exc).splitlines()[0][:160] if str(exc) else ""
+            self._event(result, "unknown_page_check_error", f"{type(exc).__name__}: {first}")
+            return
+        if isinstance(control, str) and control:
+            self._event(result, "unknown_page_attention", f"{control} @ {url[:160]}")
+            activity.remind(self.UNKNOWN_PAGE_NOTICE)
 
     def _show_download_browser(self, page: Any, result: DownloadResult) -> None:
         """Focus the existing task page only after the user requests it."""

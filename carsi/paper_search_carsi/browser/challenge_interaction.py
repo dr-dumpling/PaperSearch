@@ -5,6 +5,7 @@ engine owns waiting and decides whether verification has actually ended.
 """
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable
 from typing import Any, Literal
@@ -100,12 +101,93 @@ def is_image_verification(page: Any) -> bool:
 
 
 def needs_manual_verification(page: Any) -> bool:
-    """A puzzle or reCAPTCHA on an already recognised verification page.
+    """A puzzle, reCAPTCHA or another provider's widget on an already recognised
+    verification page.
 
     Reading a checked box or a response token cannot prove that the enclosing
-    page's confirmation was submitted. Leave both actions to the user.
+    page's confirmation was submitted. Leave these actions to the user.
     """
-    return is_image_verification(page) or has_visible_recaptcha(page)
+    return (is_image_verification(page) or has_visible_recaptcha(page)
+            or bool(verification_widget(page, manual_only=True)))
+
+
+# Verification widgets the program never operates (the user, 2026-11-11): a page
+# showing one is a verification for the user. Frames by their address, read without
+# a browser call; elements by the providers' fixed names; AWS WAF, whose puzzle has
+# no fixed element, by its script. Turnstile is Cloudflare's own check, whose box the
+# program clicks (``click_checkbox``). Not a verification page: an article (citation
+# metadata), whose comment or newsletter form may carry a widget, and a long page,
+# where a widget is one form among others (a publisher's personal sign-in).
+_WIDGET_FRAMES: tuple[tuple[str, Callable[[str], bool]], ...] = (
+    ("reCAPTCHA", re.compile(r"^https://(?:www\.)?(?:google\.com|recaptcha\.net)/recaptcha/"
+                             r"(?:api2|enterprise)/(?:anchor|bframe)").search),
+    ("hCaptcha", re.compile(r"^https://(?:[a-z0-9-]+\.)*hcaptcha\.com/captcha/").search),
+    ("DataDome", re.compile(r"^https://(?:[a-z0-9-]+\.)*captcha-delivery\.com/").search),
+    ("Arkose", re.compile(r"^https://(?:[a-z0-9-]+\.)*(?:arkoselabs\.com|funcaptcha\.com)/").search),
+    ("Tencent", re.compile(r"^https://(?:turing\.captcha\.qcloud\.com|t\.captcha\.qq\.com|"
+                           r"ssl\.captcha\.qq\.com)/").search),
+    ("Turnstile", lambda url: is_turnstile_frame(url)),
+)
+_WIDGET_ELEMENTS = (
+    ("GeeTest", ".geetest_holder, .geetest_panel, .geetest_box, .geetest_captcha"),
+    ("Aliyun", "[id^='aliyunCaptcha-'], #nc_1_wrapper"),
+    ("Tencent", "#tcaptcha_iframe, #tcaptcha_transform"),
+    ("PerimeterX", "#px-captcha"),
+)
+# Longer than this, the page is more than a verification interstitial.
+_WIDGET_PAGE_TEXT = 2500
+_WIDGET_PAGE_JS = r"""([groups, longest]) => {
+    if (document.querySelector('meta[name="citation_doi"], meta[name="citation_title"]')) return '#page';
+    if ((document.body?.innerText || '').trim().length > longest) return '#page';
+    const shown = el => { const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+    for (const [name, selector] of groups)
+        if ([...document.querySelectorAll(selector)].some(shown)) return name;
+    if ([...document.scripts].some(s => /^https:\/\/[^/]*\.captcha\.awswaf\.com\//.test(s.src || ''))) return 'AWS WAF';
+    return '';
+}"""
+
+
+def verification_widget(page: Any, *, manual_only: bool = False) -> str:
+    """The provider of a visible verification widget making up ``page``, or "".
+    ``manual_only``: leave out Turnstile, which the program may click itself."""
+    from .driver import Error
+    from .watchdog import CallAbandoned, call_limit
+
+    try:
+        with call_limit(READ_LIMIT_SEC):
+            found = page.evaluate(_WIDGET_PAGE_JS, [[list(group) for group in _WIDGET_ELEMENTS], _WIDGET_PAGE_TEXT])
+    except CallAbandoned:
+        return ""
+    except Error as exc:
+        if any(text in str(exc).lower() for text in _NAVIGATED):
+            return ""  # the page went on: the next check reads the new one
+        raise
+    found = found if isinstance(found, str) else ""
+    if found == "#page":
+        return ""
+    if found:
+        return found
+    frames = getattr(page, "frames", ())
+    frames = frames if isinstance(frames, (list, tuple)) else ()
+    for name, matches in _WIDGET_FRAMES:
+        if manual_only and name == "Turnstile":
+            continue
+        for frame in frames:
+            url = str(getattr(frame, "url", "") or "")
+            # reCAPTCHA v3's badge is a frame too, on ordinary pages.
+            if not matches(url) or "size=invisible" in url:
+                continue
+            try:
+                with call_limit(READ_LIMIT_SEC):
+                    if frame.frame_element().is_visible() is True:
+                        return name
+            except CallAbandoned:
+                continue
+            except Error as exc:
+                if not any(text in str(exc).lower() for text in _NAVIGATED):
+                    raise
+    return ""
 
 
 def has_visible_recaptcha(page: Any) -> bool:

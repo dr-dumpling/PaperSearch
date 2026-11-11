@@ -425,6 +425,10 @@ class UserWaitMixin:
         if activity is not None:
             activity.automatic_for(automatic_end - now)
         if challenge_interaction.needs_manual_verification(page):
+            widget = challenge_interaction.verification_widget(page, manual_only=True)
+            if widget and not attempt.get("widget"):
+                attempt["widget"] = widget  # whose widget the user is asked to complete
+                self._event(result, "challenge_observation", f"manual widget: {widget}")
             return False
         if ((attempt["attempts"] >= 3 and now >= attempt["retry_at"])
                 or (attempt.get("unavailable") and now >= attempt["handoff_at"])):
@@ -607,4 +611,12 @@ class UserWaitMixin:
         title = self._title(page)
         return (challenges.has_challenge_text(title, self._body_text(page, 1_200))
                 or (challenges.continues_manual_challenge(title)
-                    and challenge_interaction.is_image_verification(page)))
+                    and challenge_interaction.is_image_verification(page))
+                or self._verification_widget_page(page))
+
+    def _verification_widget_page(self, page: Any) -> bool:
+        """Another provider's verification widget makes up the page (reCAPTCHA, hCaptcha,
+        sliders; ``challenge_interaction.verification_widget``). Not on the school's own
+        sign-in, where a captcha is part of the login the user does."""
+        host = (urlparse(str(getattr(page, "url", "") or "")).hostname or "").lower()
+        return not self._is_idp_host(host) and bool(challenge_interaction.verification_widget(page))
