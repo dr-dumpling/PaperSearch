@@ -482,6 +482,9 @@ def _paper(raw: Any) -> dict[str, Any] | None:
         path = raw.get("path")
         if isinstance(path, str) and 0 < len(path) <= 4096 and os.path.isabs(path):
             paper["path"] = path
+        if raw.get("supplement_reason"):  # saved, but not every supplementary file
+            paper.update(supplement_cls=raw.get("supplement_cls") if raw.get("supplement_cls") in FAILURE_CLASSES
+                         else "unexplained", supplement_reason=_display_text(raw.get("supplement_reason")))
     elif paper["state"] == "failed":
         paper.update(cls=raw.get("cls") if raw.get("cls") in FAILURE_CLASSES else "unexplained",
                      reason=_display_text(raw.get("reason")))
@@ -496,10 +499,11 @@ def sync_papers(batch_id: str, folder: str, papers: Any) -> bool:
     (``PAPER_STATES``). Another batch starts a new list. Wire shape of a paper:
     ``index``, ``doi``, ``title``, ``journal``, ``state``; a saved one adds ``via``
     (开放下载 or 机构下载), ``detail`` (the open source when not open access: 出版社 API,
-    Sci-Hub, 预印本) and ``path`` (the PDF, absolute); a failed one ``cls`` (one of
-    FAILURE_CLASSES) and ``reason``. ``folder`` is the batch's download folder: the
-    window opens a PDF only from inside it. Kept apart from the progress file, which
-    the downloading process rewrites every moment."""
+    Sci-Hub, 预印本), ``path`` (the PDF, absolute, wherever the paper was sent) and,
+    missing supplementary files, ``supplement_cls`` and ``supplement_reason``; a failed
+    one ``cls`` (one of FAILURE_CLASSES) and ``reason``. ``folder`` is the batch's
+    download folder. Kept apart from the progress file, which the downloading process
+    rewrites every moment."""
     if not isinstance(batch_id, str) or not 0 < len(batch_id) <= 128 or not isinstance(papers, list):
         return False
     with _PAPERS_LOCK:

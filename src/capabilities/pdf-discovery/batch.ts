@@ -773,6 +773,9 @@ async function downloadTwoPhase(
         else supplementsFailed += 1;
       }
       record(offset);
+      // The window's 失败 list shows a missing supplementary file as it happens (user, 2026-11-11).
+      settle(offset);
+      await sendPapers();
       if (stoppedByUser(items[offset])) {
         for (const rest of open.slice(step + 1)) {
           items[rest].supplements = [{ status: "skipped", label: "", reason: "batch_stopped" }];

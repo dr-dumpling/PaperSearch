@@ -222,7 +222,8 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
 
     ``ok``: by the way each came (开放下载, its sources in brackets; 机构下载), a paper
     opening its PDF by ``index``; ``failed``: by reason as on the finished card, a paper
-    opening its article page; ``left``: the paper being downloaded, those waiting for the
+    opening its article page, then the saved papers missing supplementary files, by reason
+    (``supplement`` groups; ``count`` the failed papers only, ``supplement_count`` these); ``left``: the paper being downloaded, those waiting for the
     institutional download and those open access has not checked yet. Each list has its
     ``count`` and groups, the first one open. Empty for another batch's papers."""
     if not isinstance(listed, dict) or not state or listed.get("batch_id") != state.get("batch_id"):
@@ -263,6 +264,11 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
     failed = _reason_groups([{**p, "note": ""} for p in papers if p.get("state") == "failed"], 0)
     for item in failed:
         item.update(label=item["reason"])
+    # As on the finished card, while the batch runs too (user, 2026-11-11).
+    short = _reason_groups([{**p, "cls": p["supplement_cls"], "reason": p["supplement_reason"], "note": ""}
+                            for p in papers if p.get("state") == "ok" and p.get("supplement_reason")], 0)
+    for item in short:
+        item.update(label=item["reason"], supplement=True)
 
     waiting: dict[str, list[dict[str, Any]]] = {key: [] for key, _ in LEFT_GROUPS}
     for paper in papers:
@@ -272,7 +278,9 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
         way = "机构下载" if paper["state"] == "school" else OPEN_DOWNLOAD
         waiting["now" if now else paper["state"]].append(row(paper, paper.get("journal"), way if now else ""))
     left = [group(label, waiting[key]) for key, label in LEFT_GROUPS if waiting[key]]
-    return {"ok": first_open(saved), "failed": first_open(failed), "left": first_open(left)}
+    missing = first_open(failed + short)
+    missing.update(count=sum(item["count"] for item in failed), supplement_count=sum(item["count"] for item in short))
+    return {"ok": first_open(saved), "failed": missing, "left": first_open(left)}
 
 
 def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:

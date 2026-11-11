@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 import { readFileSync } from "fs";
 import { CONFIG_KEYS } from "../../src/config/ConfigService.js";
-import { API_KEY_SIGNUP_URLS, SETTINGS_WINDOW_KEYS, apiKeyHint } from "../../src/config/apiKeySignup.js";
+import { API_KEY_SIGNUP_URLS, CONTACT_EMAIL_URLS, SETTINGS_WINDOW_KEYS, apiKeyHint } from "../../src/config/apiKeySignup.js";
 import { SETTINGS_WINDOW_UNAVAILABLE, openSettingsWindow, settingsWindowEnv } from "../../src/management/carsi/settingsWindow.js";
 
 // The window's list of keys lives with the backend that draws it.
@@ -11,13 +11,14 @@ const catalog = JSON.parse(readFileSync("carsi/paper_search_carsi/assets/api_key
 const services = catalog.groups.flatMap((group) => group.services);
 
 describe("the settings window's API keys", () => {
-  it("are the CLI's keys, each once, with the CLI's sign-up page", () => {
+  it("are the CLI's keys and contact emails, each once, with the CLI's sign-up or about page", () => {
     const keys = services.flatMap((service) => service.keys.map((k) => k.key));
     expect(new Set(keys).size).toBe(keys.length);
     expect(new Set(keys)).toEqual(new Set(SETTINGS_WINDOW_KEYS));
     for (const key of keys) expect(CONFIG_KEYS).toContain(key);
     for (const service of services) {
-      expect(service.url).toBe(API_KEY_SIGNUP_URLS[service.keys[0].key as keyof typeof API_KEY_SIGNUP_URLS]);
+      const key = service.keys[0].key as keyof typeof API_KEY_SIGNUP_URLS;
+      expect(service.url).toBe(API_KEY_SIGNUP_URLS[key] ?? CONTACT_EMAIL_URLS[key]);
     }
   });
 
@@ -27,6 +28,8 @@ describe("the settings window's API keys", () => {
       + "with school subscription downloads installed, `paper-search settings EASYSCHOLAR_KEY` opens a window for it instead.");
     expect(apiKeyHint("ELSEVIER_INSTTOKEN")).toBe("Run `paper-search setup ELSEVIER_INSTTOKEN` in your own terminal.");
     expect(apiKeyHint("NCBI_EMAIL")).toBe("Run `paper-search setup NCBI_EMAIL` in your own terminal.");
+    expect(apiKeyHint("PAPER_SEARCH_UNPAYWALL_EMAIL")).toBe("Run `paper-search setup PAPER_SEARCH_UNPAYWALL_EMAIL` in your own terminal; "
+      + "with school subscription downloads installed, `paper-search settings PAPER_SEARCH_UNPAYWALL_EMAIL` opens a window for it instead.");
   });
 });
 

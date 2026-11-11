@@ -71,6 +71,8 @@ class InstitutionMixin:
     def _select_institution(self, page: Any, result: DownloadResult) -> bool:
         if getattr(self, "_manual_school", False):
             return False  # the user reported a wrong school: they choose it in the window
+        if self.adapter.leave_email_step(page, result):
+            return True  # an email field takes no school name (Elsevier ID, 2026-11-11)
         if self.config.get("publisher_institution_federation") == "carsi":
             if self._has_publisher_institution_session(page):
                 # The publisher already shows a signed-in school: nothing to choose

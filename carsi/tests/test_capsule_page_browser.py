@@ -564,7 +564,7 @@ class CapsulePageTests(unittest.TestCase):
 
     def test_the_counts_open_their_lists_of_papers(self):
         """成功, 失败 and 剩余 open the batch's papers: a saved one shows its PDF in its folder,
-        a failed one opens its article page; no line under the title, each group opened on its
+        a failed or waiting one opens its article page (waiting: 2026-11-11); no line under the title, each group opened on its
         own, the whole list scrolling within half the screen (user, 2026-11-10)."""
         import time
         from patchright.sync_api import sync_playwright
@@ -651,13 +651,161 @@ class CapsulePageTests(unittest.TestCase):
                     self.assertEqual(page.locator('.grp .row .reason').all_inner_texts(),
                                      ['正在下载', '排队等机构下载', '开放下载还没查'])
                     self.assertEqual(page.locator('.paper-list li').all_inner_texts(), ['Paper 5\nDigestion · 机构下载'])
-                    self.assertEqual(page.locator('.paper-list button').count(), 0)  # nothing to open yet
+                    page.locator('[data-act=list_group][data-group="2"]').click()  # a paper open download has not checked yet
+                    page.wait_for_function("!root.classList.contains('animating')")
+                    page.locator('.paper-list [data-act=open_article]').last.click()
+                    page.wait_for_function("openedArticles.length === 2")
+                    self.assertEqual(page.evaluate('openedArticles'), ['10.1000/4', '10.1000/8'])
                     # Without the batch's papers the counts stay plain numbers.
                     page.evaluate("async s => { panel = ''; testState = s; await tick(); }", {**state, 'lists': False})
                     page.wait_for_function("!root.classList.contains('animating')")
                     self.assertEqual(page.locator('.stats [data-act=papers]').count(), 0)
                 finally:
                     browser.close()
+
+    def test_the_failed_list_also_shows_saved_papers_missing_supplementary_files(self):
+        """While the batch runs, 失败 lists the papers without their main text, then those
+        saved without every supplementary file under their own heading (user, 2026-11-11)."""
+        import time
+        from patchright.sync_api import sync_playwright
+        from paper_search_carsi.progress_view import paper_lists, view
+        raw = dict(status='running', batch_id='b-supp', run_id='r-supp', current='10.1000/9', title='Being fetched',
+                   publisher='Elsevier', journal='Obesity', total=5, done=4, success=3, failed=1, stage='fetching_pdf',
+                   content='both')
+        def paper(index, state, **fields):
+            return {'index': index, 'doi': f'10.1000/{index}', 'title': f'Paper {index}', 'journal': 'Nature',
+                    'state': state, **fields}
+        listed = {'batch_id': 'b-supp', 'folder': '/papers', 'papers': {str(p['index']): p for p in (
+            paper(1, 'failed', cls='user_or_external', reason='出版社页面出错'),
+            paper(2, 'ok', via='机构下载', supplement_cls='user_or_external', supplement_reason='网站人机验证拦截'),
+            paper(3, 'ok', via='机构下载', supplement_cls='user_or_external', supplement_reason='网站人机验证拦截'),
+            paper(4, 'ok', via='机构下载'), paper(5, 'school'))}}
+        lists = paper_lists(listed, raw)
+        state = {**view(raw, time.time()), 'lists': True}
+        for english in (False, True):
+            with self.subTest(english=english), sync_playwright() as p:
+                browser, page = self.drag_page(p, 'darwin', english=english)
+                try:
+                    page.evaluate("""({state, lists}) => { Object.assign(pywebview.api, {paper_lists: async () => lists});
+                        testState = state; open = true; }""", {'state': {**state, **({'lang': 'en'} if english else {})},
+                                                              'lists': lists})
+                    page.evaluate("() => tick()")
+                    page.wait_for_function("!root.classList.contains('animating')")
+                    page.locator('[data-act=papers][data-list=failed]').click()
+                    page.wait_for_function("panel === 'papers' && papersList && !root.classList.contains('animating')")
+                    if english:
+                        page.locator('[data-act=list_group]').last.click()
+                        page.wait_for_function("!root.classList.contains('animating')")
+                        self.assertIsNone(page.evaluate(r"""() => [root.innerText, ...[...root.querySelectorAll('[title], [aria-label]')]
+                            .flatMap(e => [e.title, e.getAttribute('aria-label') || ''])].join('\n').match(/[一-鿿]+/g)"""))
+                        continue
+                    self.assertEqual(page.locator('.head .title').inner_text(), '失败 1 篇')
+                    # The heading sits between the failed papers and the saved ones missing files.
+                    order = page.evaluate("""() => [...root.querySelectorAll('.papers-scroll > *')].map(e =>
+                        e.classList.contains('list-sub') ? 'heading' : e.querySelector('.reason').textContent)""")
+                    self.assertEqual(order, ['出版社页面出错', 'heading', '网站人机验证拦截'])
+                    self.assertEqual(page.locator('.list-sub').inner_text().split('\n'), ['附录未下全 2 篇', '正文已保存'])
+                    page.locator('[data-act=list_group][data-group="1"]').click()
+                    page.wait_for_function("!root.classList.contains('animating')")
+                    page.locator('.grp').nth(1).locator('[data-act=open_article]').first.click()
+                    page.wait_for_function("openedArticles.length === 1")
+                    self.assertEqual(page.evaluate('openedArticles'), ['10.1000/2'])
+                finally:
+                    browser.close()
+
+    def test_a_contact_email_says_what_it_is_for_and_is_tested_like_a_key(self):
+        from patchright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'darwin')
+            try:
+                page.evaluate("""() => { window.signups = [];
+                    const email = {id:'unpaywall', name:'Unpaywall', use:'下载时找免费全文', url:'https://unpaywall.org/products/api',
+                        note:'填你常用的邮箱就行，不用注册', signup_label:'说明', guide:'', guide_label:'', set:false, masked:'',
+                        keys:[{key:'PAPER_SEARCH_UNPAYWALL_EMAIL', label:'email', kind:'email', set:false, masked:''}]};
+                    const key = {id:'easyscholar', name:'EasyScholar', use:'', url:'https://example.org/e', signup_label:'', guide:'',
+                        guide_label:'', set:false, masked:'', keys:[{key:'EASYSCHOLAR_KEY', label:'API key', kind:'key', set:false, masked:''}]};
+                    Object.assign(pywebview.api, {
+                        api_keys: async () => ({ok:true, filled:0, total:2, groups:[{title:'查期刊、搜正文、找免费全文（推荐配置）', services:[key, email]}]}),
+                        api_key_values: async () => ({ok:true, values:{}}),
+                        open_signup: async (id, guide) => { signups.push([id, !!guide]); return {ok:true}; },
+                        test_api_key: async (id, values) => ({status: 'valid', message: '可以用：Unpaywall 接受这个邮箱'})});
+                }""")
+                page.mouse.move(50, 25)
+                page.wait_for_function('open')
+                page.locator('[data-act=settings]').click()
+                page.locator('[data-page=keys]').click()
+                page.locator('[data-service=unpaywall]').click()
+                email = page.get_by_label('Unpaywall email')
+                self.assertEqual((email.get_attribute('placeholder'), email.get_attribute('type')), ('填你常用的邮箱', 'text'))
+                self.assertEqual(page.locator('.key-note').inner_text(), '填你常用的邮箱就行，不用注册')
+                self.assertEqual(page.locator('[data-act=signup]').inner_text(), '说明')
+                self.assertEqual(page.locator('[data-act=reveal]').count(), 0)  # an email is not hidden
+                email.fill('me@lab.example.org')
+                page.locator('[data-act=test_key]').click()
+                page.wait_for_function("document.querySelector('#key-error').textContent === '可以用：Unpaywall 接受这个邮箱'")
+                page.locator('[data-act=signup]').click()
+                page.wait_for_function("signups.length === 1")
+                self.assertEqual(page.evaluate('signups'), [['unpaywall', False]])
+                page.locator('[data-act=cancel_key]').click()
+                page.locator('[data-service=easyscholar]').click()
+                self.assertEqual(page.get_by_label('EasyScholar API key').get_attribute('placeholder'), '粘贴 key')
+                self.assertEqual(page.locator('[data-act=signup]').inner_text(), '去申请')
+                self.assertEqual(page.locator('[data-act=test_key]').count(), 1)
+                self.assertEqual(page.locator('[data-act=reveal]').count(), 1)
+                self.assertEqual(page.locator('.key-note').count(), 0)
+            finally:
+                browser.close()
+
+    def test_the_api_key_list_scrolls_within_half_the_screen_and_keeps_its_place(self):
+        """Twelve services no longer stretch the window: the list scrolls under its title,
+        an opened one's editor comes into view and the list stays put (user, 2026-11-11)."""
+        from patchright.sync_api import sync_playwright
+        from paper_search_carsi import api_keys
+        listing = {'ok': True, 'filled': 0, 'total': 12, 'groups': [
+            {'title': g['title'], 'services': [{**s, 'guide': s.get('guide', ''), 'guide_label': s.get('guide_label', ''),
+             'signup_label': s.get('signup_label', ''), 'set': False, 'masked': '',
+             'keys': [{**k, 'kind': k.get('kind', 'key'), 'set': False, 'masked': ''} for k in s['keys']]}
+             for s in g['services']]} for g in api_keys.groups()]}
+        last = listing['groups'][-1]['services'][-1]['id']
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'darwin')
+            try:
+                page.evaluate("""listing => Object.assign(pywebview.api, {api_keys: async () => listing,
+                    api_key_values: async () => ({ok: true, values: {}})})""", listing)
+                page.mouse.move(50, 25)
+                page.wait_for_function('open')
+                page.locator('[data-act=settings]').click()
+                page.locator('[data-page=keys]').click()
+                page.wait_for_function("settingsPage === 'keys' && !root.classList.contains('animating')")
+                box = page.evaluate("""() => { const s = root.querySelector('.keys-scroll');
+                    return {most: parseFloat(s.style.maxHeight), height: s.clientHeight, inner: s.scrollHeight,
+                            half: Math.max(240, Math.round(screen.availHeight / 2) - 64),
+                            title: root.querySelector('.head .title').getBoundingClientRect().top}; }""")
+                self.assertEqual(box['most'], box['half'])
+                self.assertLessEqual(box['height'], box['half'])
+                self.assertGreater(box['inner'], box['height'])
+                self.assertEqual(page.locator('.keys-scroll [data-act=edit_key]').count(), 12)
+                # The last one, opened from the bottom of the list: its editor in view, the title in place.
+                page.evaluate("() => { const s = root.querySelector('.keys-scroll'); s.scrollTop = s.scrollHeight; }")
+                page.locator(f'[data-service={last}]').click()
+                page.wait_for_function("!root.classList.contains('animating') && document.querySelector('.key-edit')")
+                seen = page.evaluate("""() => { const s = root.querySelector('.keys-scroll').getBoundingClientRect();
+                    const e = root.querySelector('.key-actions').getBoundingClientRect();
+                    return {inside: e.top >= s.top - 1 && e.bottom <= s.bottom + 1, top: root.querySelector('.keys-scroll').scrollTop,
+                            title: root.querySelector('.head .title').getBoundingClientRect().top}; }""")
+                self.assertTrue(seen['inside'])
+                self.assertGreater(seen['top'], 0)
+                self.assertEqual(seen['title'], box['title'])
+                page.locator('[data-act=cancel_key]').click()
+                page.wait_for_function("!document.querySelector('.key-edit')")
+                self.assertGreater(page.evaluate("root.querySelector('.keys-scroll').scrollTop"), 0)
+                # Another page starts at its top.
+                page.locator('[data-act=back]').click()
+                page.locator('[data-page=keys]').click()
+                page.wait_for_function("settingsPage === 'keys' && !root.classList.contains('animating')")
+                self.assertEqual(page.evaluate("root.querySelector('.keys-scroll').scrollTop"), 0)
+            finally:
+                browser.close()
 
     def test_the_notification_switch_checks_the_system_and_sends_a_test(self):
         """Under the switch: a test notification, and what to change when the system keeps
@@ -842,7 +990,7 @@ class CapsulePageTests(unittest.TestCase):
                 'failures': [{'cls': 'no_access', 'reason': '学校没有订阅', 'journal': 'Spine', 'title': 'Other', 'doi': '10.1000/y'}],
                 'supplement_failures': [{'cls': 'unsupported', 'reason': '网站暂不支持附录', 'title': 'Third', 'doi': '10.1000/z'}]}}, now),
         }
-        listing = {'ok': True, 'filled': 0, 'total': 10, 'groups': [
+        listing = {'ok': True, 'filled': 0, 'total': 12, 'groups': [
             {'title': g['title'], 'services': [{**s, 'guide': s.get('guide', ''), 'guide_label': s.get('guide_label', ''), 'set': False,
              'masked': '', 'keys': [{**k, 'set': False, 'masked': ''} for k in s['keys']]} for s in g['services']]} for g in api_keys.groups()]}
         # Every text and label on the window, less the language switch's own "中文".
@@ -873,6 +1021,10 @@ class CapsulePageTests(unittest.TestCase):
                         if step != 'home':
                             page.evaluate("async p => { settingsPage = 'home'; await act('settings_page', {dataset: {page: p}}); }", step)
                         if step == 'keys':
+                            page.locator('[data-service=unpaywall]').click()  # an email's field and link
+                            page.wait_for_function("!root.classList.contains('animating')")
+                            self.assertIsNone(page.evaluate(leftover))
+                            page.locator('[data-act=cancel_key]').click()
                             page.locator('[data-service=elsevier]').click()
                             page.locator('[data-act=test_key]').click()
                             page.wait_for_function("document.querySelector('#key-error').textContent.includes('Rejected')")

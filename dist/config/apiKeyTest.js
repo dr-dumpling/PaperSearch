@@ -60,6 +60,21 @@ const PROBES = {
         url: "https://api.openalex.org/works",
         params: { "per-page": "1", select: "id", api_key: v.OPENALEX_API_KEY },
     }),
+    // Contact emails, nothing to sign up for (2026-11-11). Unpaywall answers 422 to an address it does not
+    // take (test@example.com, not an email); Crossref names its polite pool in x-api-pool once it takes the mailto.
+    PAPER_SEARCH_UNPAYWALL_EMAIL: (v) => ({
+        url: "https://api.unpaywall.org/v2/10.1038/nature12373",
+        params: { email: v.PAPER_SEARCH_UNPAYWALL_EMAIL },
+        judge: (status) => (status === 422 ? "invalid" : undefined),
+        messages: { valid: "可以用：Unpaywall 接受这个邮箱", invalid: "被拒绝：Unpaywall 不接受这个邮箱，请填你自己常用的邮箱" },
+    }),
+    CROSSREF_MAILTO: (v) => ({
+        url: "https://api.crossref.org/works",
+        params: { rows: "0", mailto: v.CROSSREF_MAILTO },
+        judge: (status, _data, headers) => (status === 200
+            ? (/polite/i.test(String(headers["x-api-pool"] ?? "")) ? "valid" : "invalid") : undefined),
+        messages: { valid: "可以用：已走 Crossref 优先通道", invalid: "Crossref 没有认这个邮箱，仍走普通通道" },
+    }),
 };
 /** The key whose probe tests `key`: the institution token is tested with its API key. */
 export function probeKeyFor(key) {
@@ -84,10 +99,12 @@ export async function testApiKey(key, values, get = httpGet) {
     if (!values[probeKey]?.trim())
         return { key: probeKey, status: "missing", message: MESSAGES.missing };
     const probe = PROBES[probeKey](values);
+    const words = { ...MESSAGES, ...probe.messages };
     let status;
     let data;
+    let headers;
     try {
-        ({ status, data } = await get(probe.url, {
+        ({ status, data, headers } = await get(probe.url, {
             params: probe.params,
             headers: { "User-Agent": USER_AGENT, ...probe.headers },
             timeout: 15_000,
@@ -95,15 +112,16 @@ export async function testApiKey(key, values, get = httpGet) {
         }));
     }
     catch (error) {
-        return { key: probeKey, status: "unreachable", message: `${MESSAGES.unreachable}（${error?.code || error?.message || "network"}）` };
+        return { key: probeKey, status: "unreachable", message: `${words.unreachable}（${error?.code || error?.message || "network"}）` };
     }
-    const verdict = probe.judge?.(status, data)
+    const verdict = probe.judge?.(status, data, { ...headers })
         ?? (status >= 200 && status < 300 ? "valid"
             : status === 401 || status === 403 ? "invalid"
                 : status === 429 ? "limited" : "unreachable");
     // The service's own words when it gives some (EasyScholar answers 200 with a message), else the status code.
     const said = [data?.msg, data?.error].find((text) => typeof text === "string" && text.length <= 80);
-    const detail = verdict === "valid" ? "" : `（${said || `HTTP ${status}`}）`;
-    return { key: probeKey, status: verdict, message: MESSAGES[verdict] + detail };
+    // A refusal that came as a plain 200 (Crossref's public pool) has no code worth showing.
+    const detail = verdict === "valid" || (!said && status === 200) ? "" : `（${said || `HTTP ${status}`}）`;
+    return { key: probeKey, status: verdict, message: words[verdict] + detail };
 }
 //# sourceMappingURL=apiKeyTest.js.map

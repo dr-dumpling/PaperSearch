@@ -90,8 +90,6 @@ After "Start setup", your AI first asks whether you want school subscription dow
 
 Once set up, mention the PaperSearch Skill and say what you want to search for, for example:
 
-<p align="center"><img src="assets/ask-with-skill.png" width="645" alt="Mentioning the PaperSearch Skill in the message box: the request ends with a Paper Search tag"></p>
-
 | To do | You can say |
 |---|---|
 | Search papers | `/paper-search` Find randomized trials of SGLT2 inhibitors in heart failure since 2020, and verify the DOIs |
@@ -171,16 +169,17 @@ paper-search carsi status --format text   # check that it is ready
 
 ### 2. API keys
 
-Keys fall into four groups by what they are for. Get the key you need and enter it any of the ways in [Quick start step 3](#3-add-api-keys-when-you-need-them).
+Keys fall into four groups by what they are for. Get the key you need (an email needs no sign-up) and enter it any of the ways in [Quick start step 3](#3-add-api-keys-when-you-need-them).
 
-#### Journal metrics and full-text snippets (recommended)
+#### Journal metrics, full-text snippets and free full texts (recommended)
 
 | Feature | Key | Where to get it |
 |---|---|---|
 | Look up impact factors and quartiles | `EASYSCHOLAR_KEY` | [EasyScholar](https://www.easyscholar.cc/) ([guide](https://docs.qq.com/aio/DTUxwZ3hUckVtZVJN), in Chinese) |
 | Search full-text snippets | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api) ([guide](https://docs.qq.com/aio/DTW9RdFVHc2hJUmpx), in Chinese) |
+| Find free full texts when downloading | `PAPER_SEARCH_UNPAYWALL_EMAIL` | No sign-up ([Unpaywall: about](https://unpaywall.org/products/api)) |
 
-#### Subscribed full texts through publisher APIs (optional)
+#### Subscribed full texts (optional)
 
 | Publisher | Key | Where to get it |
 |---|---|---|
@@ -196,16 +195,17 @@ Keys fall into four groups by what they are for. Get the key you need and enter 
 | ScienceDirect, Scopus | `ELSEVIER_API_KEY` (the same key as above) | [Elsevier](https://dev.elsevier.com/apikey/manage) |
 | Springer | `SPRINGER_API_KEY` (the same key as above) | [Springer Nature](https://dev.springernature.com/) |
 
-#### Higher limits, steadier access (optional)
+#### Faster, steadier search (optional)
 
 | Source | Key | Where to get it |
 |---|---|---|
+| Crossref (search papers, check that DOIs are real) | `CROSSREF_MAILTO` | No sign-up ([about](https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/)) |
 | PubMed | `PUBMED_API_KEY` | [NCBI](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/) |
+| OpenAlex (all citing papers past 10,000) | `OPENALEX_API_KEY` | [OpenAlex](https://openalex.org/settings/api) |
 | CORE | `CORE_API_KEY` | [CORE](https://core.ac.uk/services/api) |
 | OpenAIRE | `OPENAIRE_API_KEY` | [OpenAIRE](https://develop.openaire.eu/) |
-| OpenAlex (all citing papers past 10,000) | `OPENALEX_API_KEY` | [OpenAlex](https://openalex.org/settings/api) |
 
-Settings are saved in `~/.config/paper-search-cli/config.json`, readable only by you. The download folder, contact emails, proxy, automatic updates and other settings are in [Guide · Other settings](docs/guide.en.md#other-settings).
+Settings are saved in `~/.config/paper-search-cli/config.json`, readable only by you. The download folder, proxy, automatic updates and other settings are in [Guide · Other settings](docs/guide.en.md#other-settings).
 
 ## More documentation
 

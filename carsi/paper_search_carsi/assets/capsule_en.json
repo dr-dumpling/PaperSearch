@@ -195,10 +195,7 @@
   "每家出版社每小时最多": "Per publisher per hour",
   "秒": "s",
   "篇": "papers",
-  "查期刊、搜正文（推荐配置）": "Journals & snippets (recommended)",
-  "出版社接口（非必须）": "Publisher APIs (optional)",
   "增加检索来源（非必须）": "More sources (optional)",
-  "提高限额（非必须）": "Higher limits (optional)",
   "查影响因子和分区": "Impact factor & rank",
   "搜正文片段": "Full-text snippets",
   "下载全文，检索 ScienceDirect、Scopus": "Full text; search ScienceDirect, Scopus",
@@ -248,7 +245,6 @@
   "没有论文": "No papers",
   "正在读取…": "Loading…",
   "打开失败：没有这篇的 PDF": "Couldn't open: no PDF saved",
-  "打开失败：PDF 不在这批的下载文件夹里": "Couldn't open: PDF outside the batch folder",
   "打开失败：文件已被移走或删除": "Couldn't open: file moved or deleted",
   "打开所在文件夹": "Show in folder",
   "已打开所在文件夹": "Shown in its folder",
@@ -270,7 +266,21 @@
   "测试通知没有发出：这台电脑不发系统通知": "Test not sent: no system notifications here",
   "✓ 已发出，右上角应弹出一条通知": "✓ Sent; see the top right",
   "✓ 已发出，右下角应弹出一条通知": "✓ Sent; see the bottom right",
-  "改好后再点一次“测试”": "Then press Test again"
+  "改好后再点一次“测试”": "Then press Test again",
+  "说明": "About",
+  "邮箱格式不对": "Not an email address",
+  "请先填写邮箱；要删除请点“清除”": "Enter an email first; Clear removes it",
+  "填你常用的邮箱": "Your usual email",
+  "可以用：Unpaywall 接受这个邮箱": "Works: Unpaywall takes it",
+  "被拒绝：Unpaywall 不接受这个邮箱，请填你自己常用的邮箱": "Rejected by Unpaywall: use your own email",
+  "可以用：已走 Crossref 优先通道": "Works: Crossref polite pool",
+  "Crossref 没有认这个邮箱，仍走普通通道": "Crossref didn't take it: public pool",
+  "查期刊、搜正文、找免费全文（推荐配置）": "Journals, snippets, free texts (recommended)",
+  "下载订阅全文（非必须）": "Subscribed texts (optional)",
+  "检索更快、更稳定（非必须）": "Faster, steady search (optional)",
+  "下载时找免费全文": "Finds free full texts",
+  "检索论文、核对 DOI 是否真实": "Search papers; check DOIs are real",
+  "填你常用的邮箱就行，不用注册": "Your usual email will do; no sign-up"
  },
  "patterns": [
   [
@@ -432,6 +442,10 @@
   [
    "^被拒绝：key 不对，或已失效（(.+)）$",
    "Rejected: wrong or expired key ($1)"
+  ],
+  [
+   "^被拒绝：Unpaywall 不接受这个邮箱，请填你自己常用的邮箱（(.+)）$",
+   "Rejected by Unpaywall: use your own email ($1)"
   ],
   [
    "^服务器限流，稍后再试；key 本身可能没问题（(.+)）$",

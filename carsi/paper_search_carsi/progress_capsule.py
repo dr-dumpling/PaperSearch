@@ -303,21 +303,15 @@ class Api:
         return progress_view.paper_lists(read_papers(), read_state())
 
     def show_paper(self, index: int) -> str:
-        """A saved PDF of the running or finished batch, shown in its folder; only inside the batch's folder."""
+        """A saved PDF of the running or finished batch, shown in its folder: the path the batch
+        recorded for it, wherever the paper was sent (folders of their own by topic, user 2026-11-11)."""
         listed, state = read_papers() or {}, read_state() or {}
         key = str(index) if isinstance(index, int) and not isinstance(index, bool) else ""
         paper = (listed.get("papers") or {}).get(key) if listed.get("batch_id") == state.get("batch_id") else None
         path = str((paper or {}).get("path") or "") if (paper or {}).get("state") == "ok" else ""
-        folder = str(listed.get("folder") or "")
-        if not path or not folder:
+        real = os.path.realpath(path) if path else ""
+        if not real.lower().endswith(".pdf"):
             return "打开失败：没有这篇的 PDF"
-        real, base = os.path.realpath(path), os.path.realpath(folder)
-        try:
-            inside = os.path.commonpath([real, base]) == base
-        except ValueError:  # another drive (Windows)
-            inside = False
-        if not inside or not real.lower().endswith(".pdf"):
-            return "打开失败：PDF 不在这批的下载文件夹里"
         if not progress_view.reveal_file(real):
             return "打开失败：文件已被移走或删除"
         return "已打开所在文件夹"

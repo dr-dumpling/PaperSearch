@@ -24,6 +24,17 @@ export function apiKeySignupUrl(key: string): string | undefined {
   return API_KEY_SIGNUP_URLS[key as ConfigKey];
 }
 
+/**
+ * Contact emails some services ask for, with the page saying what they are for (nothing to sign up for).
+ * Without Unpaywall's, the Unpaywall step of open downloads is skipped; Crossref's (also OpenAlex's and
+ * ACM's, and PubMed Central's without NCBI_EMAIL) gets their steadier lane. The settings window shows
+ * both (user, 2026-11-11).
+ */
+export const CONTACT_EMAIL_URLS: Readonly<Partial<Record<ConfigKey, string>>> = {
+  PAPER_SEARCH_UNPAYWALL_EMAIL: "https://unpaywall.org/products/api",
+  CROSSREF_MAILTO: "https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/",
+};
+
 /** The command that enters `key` with hidden input, kept out of shell history. */
 export function apiKeySetupCommand(key: string): string {
   return `paper-search setup ${key}`;
@@ -31,11 +42,14 @@ export function apiKeySetupCommand(key: string): string {
 
 /**
  * Keys the settings window (`paper-search settings`, part of school subscription
- * downloads) can enter: every key above. Its list is
+ * downloads) can enter: every key and email above. Its list is
  * carsi/paper_search_carsi/assets/api_keys.json; a test keeps the two equal.
  * (Elsevier's institution token, which only institutions get, stays in the terminal.)
  */
-export const SETTINGS_WINDOW_KEYS: ReadonlySet<string> = new Set(Object.keys(API_KEY_SIGNUP_URLS));
+export const SETTINGS_WINDOW_KEYS: ReadonlySet<string> = new Set([
+  ...Object.keys(API_KEY_SIGNUP_URLS),
+  ...Object.keys(CONTACT_EMAIL_URLS),
+]);
 
 /**
  * One sentence: where to get `key` and how to enter it. The terminal works

@@ -1,7 +1,7 @@
 {
   "groups": [
     {
-      "title": "查期刊、搜正文（推荐配置）",
+      "title": "查期刊、搜正文、找免费全文（推荐配置）",
       "services": [
         {
           "id": "easyscholar",
@@ -30,11 +30,26 @@
               "label": "API key"
             }
           ]
+        },
+        {
+          "id": "unpaywall",
+          "name": "Unpaywall",
+          "use": "下载时找免费全文",
+          "note": "填你常用的邮箱就行，不用注册",
+          "url": "https://unpaywall.org/products/api",
+          "signup_label": "说明",
+          "keys": [
+            {
+              "key": "PAPER_SEARCH_UNPAYWALL_EMAIL",
+              "label": "email",
+              "kind": "email"
+            }
+          ]
         }
       ]
     },
     {
-      "title": "出版社接口（非必须）",
+      "title": "下载订阅全文（非必须）",
       "services": [
         {
           "id": "elsevier",
@@ -92,8 +107,23 @@
       ]
     },
     {
-      "title": "提高限额（非必须）",
+      "title": "检索更快、更稳定（非必须）",
       "services": [
+        {
+          "id": "crossref",
+          "name": "Crossref",
+          "use": "检索论文、核对 DOI 是否真实",
+          "note": "填你常用的邮箱就行，不用注册",
+          "url": "https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/",
+          "signup_label": "说明",
+          "keys": [
+            {
+              "key": "CROSSREF_MAILTO",
+              "label": "email",
+              "kind": "email"
+            }
+          ]
+        },
         {
           "id": "pubmed",
           "name": "PubMed",
@@ -102,6 +132,18 @@
           "keys": [
             {
               "key": "PUBMED_API_KEY",
+              "label": "API key"
+            }
+          ]
+        },
+        {
+          "id": "openalex",
+          "name": "OpenAlex",
+          "use": "查引文的限额更高，被引过万也能列全",
+          "url": "https://openalex.org/settings/api",
+          "keys": [
+            {
+              "key": "OPENALEX_API_KEY",
               "label": "API key"
             }
           ]
@@ -126,18 +168,6 @@
           "keys": [
             {
               "key": "OPENAIRE_API_KEY",
-              "label": "API key"
-            }
-          ]
-        },
-        {
-          "id": "openalex",
-          "name": "OpenAlex",
-          "use": "查引文的限额更高，被引过万也能列全",
-          "url": "https://openalex.org/settings/api",
-          "keys": [
-            {
-              "key": "OPENALEX_API_KEY",
               "label": "API key"
             }
           ]

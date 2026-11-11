@@ -21,6 +21,7 @@ from . import cli_config
 CATALOG = Path(__file__).resolve().parent / "assets" / "api_keys.json"
 MAX_LENGTH = 512
 _PRINTABLE = re.compile(r"^[\x21-\x7e]+$")  # visible ASCII: no spaces, line breaks or full-width characters
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def groups() -> list[dict[str, Any]]:
@@ -48,10 +49,12 @@ def _status(service: dict[str, Any], config: dict) -> dict[str, Any]:
     keys = []
     for key in service["keys"]:
         value = str(config.get(key["key"]) or "").strip()
-        keys.append({"key": key["key"], "label": key["label"], "set": bool(value), "masked": mask(value) if value else ""})
+        keys.append({"key": key["key"], "label": key["label"], "kind": key.get("kind", "key"),
+                     "set": bool(value), "masked": mask(value) if value else ""})
     primary = keys[0]
     return {"id": service["id"], "name": service["name"], "use": service.get("use", ""), "url": service["url"],
             "guide": service.get("guide", ""), "guide_label": service.get("guide_label", ""),
+            "signup_label": service.get("signup_label", ""), "note": service.get("note", ""),
             "keys": keys, "set": primary["set"], "masked": primary["masked"]}
 
 
@@ -63,9 +66,11 @@ def listing() -> dict[str, Any]:
     return {"groups": shown, "filled": sum(1 for s in every if s["set"]), "total": len(every)}
 
 
-def check(value: str) -> tuple[str, str]:
-    """A pasted value, trimmed, or why it cannot be a key."""
+def check(value: str, kind: str = "key") -> tuple[str, str]:
+    """A pasted value, trimmed, or why it cannot be a key (an email for an email field)."""
     value = str(value or "").strip()
+    if kind == "email":
+        return (value, "") if not value or (len(value) <= 254 and _EMAIL.match(value)) else ("", "邮箱格式不对")
     if len(value) > MAX_LENGTH:
         return "", "太长了，请确认粘贴的是 key"
     if value and not _PRINTABLE.match(value):
@@ -91,11 +96,11 @@ def save(service_id: str, values: dict[str, str]) -> None:
     service = _service(service_id)
     changes: dict[str, str | None] = {}
     for key in service["keys"]:
-        value, problem = check((values or {}).get(key["key"], ""))
+        value, problem = check((values or {}).get(key["key"], ""), key.get("kind", "key"))
         if problem:
             raise ValueError(problem)
         if not value:
-            raise ValueError("请先粘贴 key；要删除请点“清除”")
+            raise ValueError("请先填写邮箱；要删除请点“清除”" if key.get("kind") == "email" else "请先粘贴 key；要删除请点“清除”")
         changes[key["key"]] = value
     cli_config.update(changes)
 

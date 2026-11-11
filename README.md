@@ -90,8 +90,6 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 
 配置好后，引用 PaperSearch 的 Skill，说出你需要搜索的内容，比如：
 
-<p align="center"><img src="assets/ask-with-skill.png" width="645" alt="在输入框里引用 PaperSearch 的 Skill：要做的事后面带着 Paper Search 标签"></p>
-
 | 想做什么 | 可以这样说 |
 |---|---|
 | 检索论文 | `/paper-search` 找 2020 年以来 SGLT2 抑制剂治疗心力衰竭的随机对照试验，核对 DOI |
@@ -171,16 +169,17 @@ paper-search carsi status --format text   # 查看是否装好
 
 ### 2. API key
 
-按用途分四类，需要哪类就申请对应的 key，再用[快速开始第 3 步](#3-按需填-api-key)里的任一方式填入。
+按用途分四类，需要哪类就申请对应的 key（邮箱直接填，不用申请），再用[快速开始第 3 步](#3-按需填-api-key)里的任一方式填入。
 
-#### 查期刊、搜正文（推荐配置）
+#### 查期刊、搜正文、找免费全文（推荐配置）
 
 | 功能 | 要填的 key | 去哪里申请 |
 |---|---|---|
 | 查影响因子和分区 | `EASYSCHOLAR_KEY` | [EasyScholar](https://www.easyscholar.cc/)（[申请教程](https://docs.qq.com/aio/DTUxwZ3hUckVtZVJN)） |
 | 搜正文片段 | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api)（[申请教程](https://docs.qq.com/aio/DTW9RdFVHc2hJUmpx)） |
+| 下载时找免费全文 | `PAPER_SEARCH_UNPAYWALL_EMAIL` | 不用申请（[Unpaywall 说明](https://unpaywall.org/products/api)） |
 
-#### 下载订阅全文（出版社接口，非必须）
+#### 下载订阅全文（非必须）
 
 | 出版社 | 要填的 key | 去哪里申请 |
 |---|---|---|
@@ -196,16 +195,17 @@ paper-search carsi status --format text   # 查看是否装好
 | ScienceDirect、Scopus | `ELSEVIER_API_KEY`（和上面同一个） | [Elsevier](https://dev.elsevier.com/apikey/manage) |
 | Springer | `SPRINGER_API_KEY`（和上面同一个） | [Springer Nature](https://dev.springernature.com/) |
 
-#### 提高限额、更稳定（非必须）
+#### 检索更快、更稳定（非必须）
 
 | 来源 | 要填的 key | 去哪里申请 |
 |---|---|---|
+| Crossref（检索论文、核对 DOI 是否真实） | `CROSSREF_MAILTO` | 不用申请（[说明](https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/)） |
 | PubMed | `PUBMED_API_KEY` | [NCBI](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/) |
+| OpenAlex（被引超过 1 万篇时列全） | `OPENALEX_API_KEY` | [OpenAlex](https://openalex.org/settings/api) |
 | CORE | `CORE_API_KEY` | [CORE](https://core.ac.uk/services/api) |
 | OpenAIRE | `OPENAIRE_API_KEY` | [OpenAIRE](https://develop.openaire.eu/) |
-| OpenAlex（被引超过 1 万篇时列全） | `OPENALEX_API_KEY` | [OpenAlex](https://openalex.org/settings/api) |
 
-配置保存在 `~/.config/paper-search-cli/config.json`，只有你自己能读。下载文件夹、联系邮箱、代理和自动更新等其他设置，见 [使用说明 · 其他设置](docs/guide.zh.md#其他设置)。
+配置保存在 `~/.config/paper-search-cli/config.json`，只有你自己能读。下载文件夹、代理和自动更新等其他设置，见 [使用说明 · 其他设置](docs/guide.zh.md#其他设置)。
 
 ## 更多文档
 

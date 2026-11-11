@@ -1,6 +1,6 @@
 import { resolveDownloadPath, runDownloadFolder } from "../../config/ConfigService.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, parse, resolve, sep } from "node:path";
 import type { Searchers } from "../../core/searchers.js";
 import { resolvePlatformId } from "../../registry/platformMetadata.js";
 import {
@@ -59,6 +59,31 @@ export function downloadRunFolder(savePath?: string, batchId?: string, now: Date
   mkdirSync(root, { recursive: true });
   writeFileSync(file, `${JSON.stringify(known, null, 2)}\n`);
   return folder;
+}
+
+/**
+ * Where a batch's own files go (its run records, the window's folder): this run's folder, or, when every paper
+ * has a folder of its own (the user's grouping by topic, 2026-11-11), the folder they all sit in. Such papers
+ * are saved where they were told; no run folder holds only the run records.
+ */
+export function batchSaveFolder(options: DownloadBatchOptions, now: Date = new Date()): string {
+  const own = options.items.map((item) => item.savePath?.trim() ?? "");
+  if (own.length && own.every(Boolean)) {
+    const common = commonFolder(own.map((path) => resolve(resolveDownloadPath(path))));
+    if (common) return common;
+  }
+  return downloadRunFolder(options.savePath, undefined, now);
+}
+
+/** The deepest folder holding every (absolute) path, below the drive or file-system root (none on another drive). */
+function commonFolder(paths: string[]): string | undefined {
+  const fold = (path: string) => (sep === "\\" ? path.toLowerCase() : path);
+  const within = (path: string, folder: string) =>
+    fold(path) === fold(folder) || fold(path).startsWith(fold(folder.endsWith(sep) ? folder : folder + sep));
+  for (let folder = paths[0]; ; folder = dirname(folder)) {
+    if (parse(folder).root === folder) return undefined;
+    if (paths.every((path) => within(path, folder))) return folder;
+  }
 }
 
 /** One download recorded as its own run in the local run ledger. */
@@ -151,7 +176,7 @@ export async function handleDownloadBatch(
   searchers: Searchers,
   carsiBackend?: CarsiBackend,
 ) {
-  const result = await downloadBatch(searchers, { ...args, savePath: downloadRunFolder(args.savePath) }, carsiBackend);
+  const result = await downloadBatch(searchers, { ...args, savePath: batchSaveFolder(args) }, carsiBackend);
   return jsonTextResponse(
     `Download batch ${result.status}: ${result.succeeded}/${result.total} succeeded.\n\n${JSON.stringify(result, null, 2)}`,
   );

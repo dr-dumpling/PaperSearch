@@ -2,7 +2,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "@jest/globals";
-import { asWindowBatch, batchResults } from "../../src/capabilities/pdf-discovery/batchSummary.js";
+import { asWindowBatch, batchPaper, batchResults } from "../../src/capabilities/pdf-discovery/batchSummary.js";
 import type { DownloadBatchItemResult, DownloadBatchResult } from "../../src/capabilities/pdf-discovery/batch.js";
 import type { CarsiBackend, CarsiBatchUpdate } from "../../src/capabilities/pdf-discovery/carsi/types.js";
 import type { DownloadBatchPosition } from "../../src/capabilities/pdf-discovery/types.js";
@@ -106,5 +106,15 @@ describe("main text and supplementary files apart", () => {
   it("lists none when only the main text was asked for", () => {
     const summary = batchResults(batch([item(1, { supplements: [{ label: "x", status: "failed", reason: "html_page" }] })], "main"), 0, "/out");
     expect(summary.supplement_failures).toEqual([]);
+  });
+
+  it("tells the window's 失败 list while the batch runs, in the finished card's words", () => {
+    const missing = item(1, { supplements: [{ label: "SM.pdf", status: "failed", reason: "verification_page" }] });
+    const request = { doi: "10.1000/1" } as Parameters<typeof batchPaper>[0];
+    expect(batchPaper(request, missing, undefined, "both")).toMatchObject({
+      state: "ok", path: "/out/1.pdf", supplement_cls: "user_or_external", supplement_reason: "网站人机验证拦截" });
+    expect(batchPaper(request, missing, undefined, "main")).not.toHaveProperty("supplement_reason");
+    expect(batchPaper(request, item(1, { supplements: [{ label: "S1.pdf", status: "saved" }] }), undefined, "both"))
+      .not.toHaveProperty("supplement_reason");
   });
 });

@@ -108,11 +108,10 @@ export function batchResults(result, startedAt, folder) {
         if (item.status === "ok") {
             if (item.attempts.some((attempt) => attempt.code === "no_supplements"))
                 summary.no_supplements += 1;
-            const shortfall = result.content === "both" ? supplementShortfall(item) : undefined;
-            if (shortfall) {
+            const missing = supplementsMissing(item, result.content);
+            if (missing) {
                 summary.supplement_failures.push({
-                    cls: classifyFailureCode(shortfall),
-                    reason: carsiShortReason(shortfall, "附录没下载成功"),
+                    ...missing,
                     ...(item.title ? { title: item.title } : {}),
                     ...(item.journal ? { journal: item.journal } : {}),
                     ...(item.doi ? { doi: item.doi } : {}),
@@ -151,7 +150,17 @@ export function batchPaper(request, item, waiting, content) {
     if (item.status !== "ok")
         return { ...paper, state: "failed", ...failure(item, content) };
     const [via, detail] = sourceLabel(item);
-    return { ...paper, state: "ok", via, ...(detail ? { detail } : {}), ...(item.path ? { path: item.path } : {}) };
+    // The window's 失败 list also shows a saved paper still missing supplementary files (user, 2026-11-11).
+    const missing = supplementsMissing(item, content);
+    return {
+        ...paper, state: "ok", via, ...(detail ? { detail } : {}), ...(item.path ? { path: item.path } : {}),
+        ...(missing ? { supplement_cls: missing.cls, supplement_reason: missing.reason } : {}),
+    };
+}
+/** Supplementary files a saved paper is missing (content "both"): the class and the reason in a few words. */
+function supplementsMissing(item, content) {
+    const shortfall = content === "both" ? supplementShortfall(item) : undefined;
+    return shortfall ? { cls: classifyFailureCode(shortfall), reason: carsiShortReason(shortfall, "附录没下载成功") } : undefined;
 }
 /** The way a main text came (and, for the open one, its source when not open access). */
 function sourceLabel(item) {

@@ -60,8 +60,11 @@ export interface CarsiBatchPaper {
   via?: string;
   /** Saved by 开放下载 from elsewhere than open access: 出版社 API, Sci-Hub, 预印本. */
   detail?: string;
-  /** Saved: the PDF (absolute); the window opens it only from inside the batch's folder. */
+  /** Saved: the PDF (absolute), shown in its folder from the window's list. */
   path?: string;
+  /** Saved without every supplementary file (content "both"): the first missing file's class and reason. */
+  supplement_cls?: FailureClass;
+  supplement_reason?: string;
   cls?: FailureClass;
   /** Failed: a few words, e.g. 学校没有订阅. */
   reason?: string;

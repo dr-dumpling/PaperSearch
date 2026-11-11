@@ -19,6 +19,7 @@ import re
 from typing import Any
 from urllib.parse import quote, urlparse
 
+from ...browser.driver import is_driver_error
 from ...engine.router import elsevier_journal_article, extract_elsevier_pii
 from ..base import PublisherAdapter, SupplementLink, register
 from . import journal_site, sciencedirect
@@ -67,6 +68,20 @@ def supplement_links_from_rows(rows: Any, page_url: str, doi: str) -> list[Suppl
 # In CARSI mode only the generic chooser is used (never a remembered school's
 # InstitutionLogin shortcut); otherwise a remembered entry must name the
 # configured school.
+# Elsevier ID's "Enter your organizational email" (Windows, 2026-11-11): the same
+# #bdd-email field as "Find your organization", but for an email only; its
+# "Access via another organization" leads back to the search by name.
+_EMAIL_STEP_JS = """() => {
+  const shown = (el) => !!el && el.getClientRects().length > 0;
+  const field = document.querySelector("#bdd-email");
+  const label = (document.querySelector("#emaillabel") || {}).textContent || "";
+  const other = document.querySelector("#bdd-elsSecondaryBtn");
+  if (!shown(field) || !/e-?mail/i.test(label) || /name/i.test(label) || !shown(other)
+      || !/another organi[sz]ation/i.test(other.textContent || "")) return false;
+  other.click();
+  return true;
+}"""
+
 _ENTRY_JS = """
                 ({manualSelection, institutionQuery}) => {
                   const visible = (el) => {
@@ -234,6 +249,19 @@ class ElsevierAdapter(PublisherAdapter):
             if not names or any(label.startswith(name) or name.startswith(label) for name in names):
                 return True
         return False
+
+    def leave_email_step(self, page: Any, result: Any) -> bool:
+        if not self.is_institution_chooser(str(getattr(page, "url", "") or "")):
+            return False
+        try:
+            clicked = page.evaluate(_EMAIL_STEP_JS) is True
+        except Exception as exc:
+            if not is_driver_error(exc):
+                raise
+            return False  # the page moved on while it was read
+        if clicked:
+            self.d._event(result, "elsevier_email_step_left", "Access via another organization")
+        return clicked
 
     def is_redirect_page(self, url: str) -> bool:
         # doi.org -> linkinghub "Redirecting" -> ScienceDirect, the journal's site or

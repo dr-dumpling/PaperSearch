@@ -6,11 +6,18 @@ import type { ConfigKey } from "./ConfigService.js";
  */
 export declare const API_KEY_SIGNUP_URLS: Readonly<Partial<Record<ConfigKey, string>>>;
 export declare function apiKeySignupUrl(key: string): string | undefined;
+/**
+ * Contact emails some services ask for, with the page saying what they are for (nothing to sign up for).
+ * Without Unpaywall's, the Unpaywall step of open downloads is skipped; Crossref's (also OpenAlex's and
+ * ACM's, and PubMed Central's without NCBI_EMAIL) gets their steadier lane. The settings window shows
+ * both (user, 2026-11-11).
+ */
+export declare const CONTACT_EMAIL_URLS: Readonly<Partial<Record<ConfigKey, string>>>;
 /** The command that enters `key` with hidden input, kept out of shell history. */
 export declare function apiKeySetupCommand(key: string): string;
 /**
  * Keys the settings window (`paper-search settings`, part of school subscription
- * downloads) can enter: every key above. Its list is
+ * downloads) can enter: every key and email above. Its list is
  * carsi/paper_search_carsi/assets/api_keys.json; a test keeps the two equal.
  * (Elsevier's institution token, which only institutions get, stays in the terminal.)
  */

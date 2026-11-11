@@ -11,6 +11,7 @@ export declare const TESTABLE_KEYS: readonly string[];
 export type HttpGet = (url: string, config: Record<string, unknown>) => Promise<{
     status: number;
     data: unknown;
+    headers?: Record<string, unknown>;
 }>;
 /** Test one key (with its companions, e.g. the institution token) against its service. */
 export declare function testApiKey(key: string, values: Values, get?: HttpGet): Promise<KeyTestResult>;

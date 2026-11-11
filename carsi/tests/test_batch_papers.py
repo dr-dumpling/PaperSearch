@@ -1,6 +1,6 @@
 """The lists behind the window's 成功, 失败 and 剩余: each paper of a batch as the
 caller sends it (papers.json), grouped for the window, and its PDF shown in its
-folder, only from inside the batch's folder (user, 2026-11-10)."""
+folder (user, 2026-11-10), wherever the batch put it (2026-11-11)."""
 import json
 import os
 import tempfile
@@ -35,6 +35,18 @@ class SyncPapersTests(unittest.TestCase):
         self.assertEqual((listed["batch_id"], listed["folder"]), ("b1", "/papers"))
         self.assertEqual({k: p["state"] for k, p in listed["papers"].items()}, {"1": "ok", "2": "school", "3": "open"})
         self.assertEqual(listed["papers"]["1"]["path"], "/papers/1/Paper 1.pdf")
+
+    def test_a_saved_paper_missing_supplementary_files_says_why(self):
+        pr.sync_papers("b1", "/papers", [paper(1, "ok", via="机构下载")])
+        pr.sync_papers("b1", "/papers", [paper(1, "ok", via="机构下载", supplement_cls="no_access",
+                                               supplement_reason="附录<b>要</b>单独订阅")])
+        pr.sync_papers("b1", "/papers", [paper(2, "ok", supplement_cls="bogus", supplement_reason="附录没下载成功")])
+        listed = self.listed()["papers"]
+        self.assertEqual((listed["1"]["supplement_cls"], listed["1"]["supplement_reason"]), ("no_access", "附录要单独订阅"))
+        self.assertEqual(listed["2"]["supplement_cls"], "unexplained")
+        pr.sync_papers("b1", "/papers", [paper(3, "failed", cls="no_access", reason="本校没有订阅",
+                                               supplement_cls="no_access", supplement_reason="x")])
+        self.assertNotIn("supplement_reason", self.listed()["papers"]["3"])
 
     def test_a_late_report_never_takes_a_paper_back(self):
         pr.sync_papers("b1", "/papers", [paper(1, "failed", cls="no_access", reason="本校没有订阅")])
@@ -101,6 +113,23 @@ class PaperListsTests(unittest.TestCase):
                          [("no_access", "本校没有订阅", 2, True), ("user_or_external", "等学校登录到时限", 1, False)])
         self.assertEqual([p["doi"] for p in failed["groups"][0]["papers"]], ["10.1000/1", ""])
 
+    def test_saved_papers_missing_supplementary_files_follow_the_failed_ones(self):
+        lists = self.lists(paper(1, "failed", cls="no_access", reason="本校没有订阅"),
+                           paper(2, "ok", supplement_cls="unsupported", supplement_reason="附录在外部网站"),
+                           paper(3, "ok", supplement_cls="unsupported", supplement_reason="附录在外部网站"),
+                           paper(4, "ok", supplement_cls="no_access", supplement_reason="附录要单独订阅"),
+                           paper(5, "ok"))
+        failed = lists["failed"]
+        self.assertEqual((failed["count"], failed["supplement_count"]), (1, 3))
+        self.assertEqual([(g["label"], g["count"], g.get("supplement", False), g["open"]) for g in failed["groups"]],
+                         [("本校没有订阅", 1, False, True), ("附录在外部网站", 2, True, False),
+                          ("附录要单独订阅", 1, True, False)])
+        self.assertEqual([p["doi"] for p in failed["groups"][1]["papers"]], ["10.1000/2", "10.1000/3"])
+        self.assertEqual(lists["ok"]["count"], 4)  # their main text is still saved
+        # Nothing failed yet: the shortfalls alone, the first one open.
+        only = self.lists(paper(2, "ok", supplement_cls="unsupported", supplement_reason="附录在外部网站"))["failed"]
+        self.assertEqual((only["count"], only["supplement_count"], only["groups"][0]["open"]), (0, 1, True))
+
     def test_the_rest_by_lane_with_the_paper_being_downloaded_first(self):
         lists = self.lists(paper(4, "open"), paper(5, "school", journal="Digestion"), paper(6, "school"), paper(7, "open"),
                            paper(8, "ok"))
@@ -164,16 +193,20 @@ class OpenPaperTests(unittest.TestCase):
                 self.assertEqual(shown.call_args.args[0], command)
         self.assertFalse(pv.reveal_file(str(self.folder / "gone.pdf")))
 
-    def test_nothing_outside_the_batchs_folder_or_not_a_saved_pdf_opens(self):
-        link = self.folder / "papers" / "link.pdf"
-        link.symlink_to(self.outside)
+    def test_a_pdf_the_batch_put_in_a_folder_of_its_own_opens(self):
+        # Papers sent to folders by topic in one batch (Windows, 2026-11-11).
+        for path in (self.outside, self.folder / ".." / "other.pdf"):
+            with self.subTest(path=str(path)), self.listed(paper(1, "ok", path=str(path))), \
+                    patch("subprocess.Popen") as shown:
+                self.assertEqual(self.api.show_paper(1), "已打开所在文件夹")
+                self.assertIn(str(self.root), str(shown.call_args))
+
+    def test_only_a_saved_pdf_of_this_batch_opens(self):
         text = self.folder / "papers" / "1" / "notes.txt"
         text.write_text("x")
         cases = [
-            (paper(1, "ok", path=str(self.outside)), 1, "打开失败：PDF 不在这批的下载文件夹里"),
-            (paper(1, "ok", path=str(self.folder / ".." / "other.pdf")), 1, "打开失败：PDF 不在这批的下载文件夹里"),
-            (paper(1, "ok", path=str(link)), 1, "打开失败：PDF 不在这批的下载文件夹里"),
-            (paper(1, "ok", path=str(text)), 1, "打开失败：PDF 不在这批的下载文件夹里"),
+            (paper(1, "ok", path=str(text)), 1, "打开失败：没有这篇的 PDF"),
+            (paper(1, "ok"), 1, "打开失败：没有这篇的 PDF"),
             (paper(1, "ok", path=str(self.folder / "papers" / "1" / "gone.pdf")), 1, "打开失败：文件已被移走或删除"),
             (paper(1, "failed", path=str(self.pdf)), 1, "打开失败：没有这篇的 PDF"),
             (paper(1, "ok", path=str(self.pdf)), 2, "打开失败：没有这篇的 PDF"),

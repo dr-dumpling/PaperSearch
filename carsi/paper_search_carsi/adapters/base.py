@@ -231,6 +231,11 @@ class PublisherAdapter:
         school is chosen (``choose_institution``) and nothing else is clicked."""
         return False
 
+    def leave_email_step(self, page: Any, result: Any) -> bool:
+        """The publisher's sign-in asks for the user's work email, not the school:
+        go back to its school search before anything is typed; True when clicked."""
+        return False
+
     def prepare_institution_choice(self, page: Any, result: Any) -> bool | None:
         """In the CARSI school choice, after the federation form and the school
         assistance, before the SeamlessAccess and publisher choosers: the

@@ -30,8 +30,12 @@ class ApiKeyTests(unittest.TestCase):
 
     def test_the_list_shows_whether_each_key_is_set_and_only_its_last_four_characters(self):
         listing = api_keys.listing()
-        self.assertEqual((listing["filled"], listing["total"]), (1, 10))
-        self.assertEqual([g["title"] for g in listing["groups"]], ["查期刊、搜正文（推荐配置）", "出版社接口（非必须）", "增加检索来源（非必须）", "提高限额（非必须）"])
+        self.assertEqual((listing["filled"], listing["total"]), (1, 12))
+        # What to fill first in one group at the top, the rest by what they are for (user, 2026-11-11).
+        self.assertEqual([g["title"] for g in listing["groups"]], ["查期刊、搜正文、找免费全文（推荐配置）", "下载订阅全文（非必须）",
+                                                                 "增加检索来源（非必须）", "检索更快、更稳定（非必须）"])
+        self.assertEqual([s["id"] for s in listing["groups"][0]["services"]], ["easyscholar", "semantic_scholar", "unpaywall"])
+        self.assertEqual(listing["groups"][-1]["services"][0]["id"], "crossref")
         pubmed = self.service(listing, "pubmed")
         self.assertEqual((pubmed["set"], pubmed["masked"]), (True, "••••efgh"))
         self.assertNotIn("abcd1234efgh", json.dumps(listing, ensure_ascii=False))
@@ -42,6 +46,26 @@ class ApiKeyTests(unittest.TestCase):
         self.assertEqual(self.service(listing, "easyscholar")["guide"], "https://docs.qq.com/aio/DTUxwZ3hUckVtZVJN")
         every = [s for g in listing["groups"] for s in g["services"]]
         self.assertEqual([s["id"] for s in every if not s["use"]], [])  # each says what it is for
+
+    def test_a_contact_email_is_entered_like_a_key_and_checked_as_an_email(self):
+        # Unpaywall is skipped without one; Crossref's makes its searches steadier (user, 2026-11-11).
+        listing = api_keys.listing()
+        for service, key in (("unpaywall", "PAPER_SEARCH_UNPAYWALL_EMAIL"), ("crossref", "CROSSREF_MAILTO")):
+            found = self.service(listing, service)
+            self.assertEqual(([k["key"] for k in found["keys"]], found["keys"][0]["kind"], found["signup_label"]),
+                             ([key], "email", "说明"))
+        self.assertEqual(self.service(listing, "easyscholar")["keys"][0]["kind"], "key")
+        self.assertEqual(self.service(listing, "easyscholar")["signup_label"], "")
+        for service in ("unpaywall", "crossref"):  # says what the email is for, and that no sign-up is needed
+            self.assertIn("不用注册", self.service(listing, service)["note"])
+        self.assertEqual(self.service(listing, "easyscholar")["note"], "")
+        api_keys.save("unpaywall", {"PAPER_SEARCH_UNPAYWALL_EMAIL": " me@lab.example.org "})
+        self.assertEqual(self.saved()["PAPER_SEARCH_UNPAYWALL_EMAIL"], "me@lab.example.org")
+        for value, problem in (("not-an-email", "邮箱格式不对"), ("me @lab.org", "邮箱格式不对"), ("", "请先填写邮箱")):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, problem):
+                api_keys.save("crossref", {"CROSSREF_MAILTO": value})
+        self.assertNotIn("CROSSREF_MAILTO", self.saved())
+        self.assertEqual(api_keys.find("PAPER_SEARCH_UNPAYWALL_EMAIL")["id"], "unpaywall")
 
     def test_saving_trims_the_key_and_keeps_every_other_setting(self):
         api_keys.save("elsevier", {"ELSEVIER_API_KEY": f"  {SECRET}\n"})

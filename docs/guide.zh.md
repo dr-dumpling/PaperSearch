@@ -149,7 +149,7 @@ paper-search skills update
 | 设置项 | 作用 | 默认 |
 |---|---|---|
 | `DEFAULT_DOWNLOAD_PATH` | 下载的论文默认存放的文件夹 | 命令当前目录下的 `./downloads`；也可以在进度胶囊的设置里改 |
-| `UNPAYWALL_EMAIL`、`CROSSREF_MAILTO` | Unpaywall 按 DOI 找开放获取 PDF、Crossref 优先通道要用的联系邮箱 | `paper-search setup` 留空时自动生成 |
+| `UNPAYWALL_EMAIL`、`CROSSREF_MAILTO` | Unpaywall 按 DOI 找开放获取 PDF、Crossref 优先通道要用的联系邮箱 | `paper-search setup` 留空时自动生成；也可以在设置窗口填 |
 | `GOOGLE_SCHOLAR_PROXY_URL` | Google Scholar 的出口代理；直连反复被拦时，用有授权的代理 | 不设置 |
 | `PAPER_SEARCH_SKILL_AUTO_UPDATE` | 设为 `false` 时，升级后不再自动更新已安装的 Skill | 开启 |
 | `PAPER_SEARCH_CARSI_AUTO_UPDATE` | 设为 `false` 时，升级后不再自动更新学校订阅下载扩展，改为自己运行 `paper-search carsi update` | 开启 |

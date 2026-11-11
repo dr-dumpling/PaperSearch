@@ -35,9 +35,13 @@ class WileyInstitutionTests(unittest.TestCase):
         from patchright.sync_api import sync_playwright
         cls.driver = sync_playwright().start()
         cls.addClassCleanup(cls.driver.stop)
+        # Chrome upgrades http navigations to public hosts to https (HTTPS-Upgrades
+        # and the default-on balanced HTTPS-First mode); off, so the plain-http
+        # Wiley fixture page actually loads over http.
         cls.browser = cls.driver.chromium.launch(
             channel="chrome", headless=True,
-            args=["--disable-background-networking", "--host-resolver-rules=MAP * ~NOTFOUND"],
+            args=["--disable-background-networking", "--host-resolver-rules=MAP * ~NOTFOUND",
+                  "--disable-features=HttpsUpgrades,HttpsFirstBalancedMode"],
         )
         cls.addClassCleanup(cls.browser.close)
 
@@ -60,8 +64,11 @@ class WileyInstitutionTests(unittest.TestCase):
             return value
 
         module("config", load_config=Mock(side_effect=AssertionError("config forbidden")),
-               parse_proxy_pool=lambda *a, **k: [])
-        module("progress_reporter", update=Mock(), report_stage=Mock(), set_attention=Mock(), clear_attention=Mock())
+               parse_proxy_pool=lambda *a, **k: [],
+               DEFAULT_CONFIG={"browser_stall_notify_after": 30, "browser_page_wait_timeout": 60})
+        module("progress_reporter", update=Mock(), report_stage=Mock(), read_state=Mock(return_value={}),
+               has_attention=Mock(return_value=False), set_attention=Mock(),
+               update_attention_deadline=Mock(), clear_attention=Mock())
         extractor = module("extractors.pdf_extractor", extract_from_bytes=Mock())
         module("extractors", pdf_extractor=extractor)
         self.batch = importlib.import_module(PACKAGE + ".engine.batch")

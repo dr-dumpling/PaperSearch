@@ -166,6 +166,7 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .key-row .btn { pointer-events: none; }
 .key-edit { background: var(--hover); border-radius: 8px; padding: 8px 10px; margin: 0 0 6px; }
 .settings .key-edit input { width: 100%; text-align: left; background: var(--bg); }
+.key-note { font-size: 11px; line-height: 1.5; color: var(--dim); margin-bottom: 8px; }
 .key-edit .err { text-align: left; margin: 6px 0 0; }
 .key-edit .err:empty { display: none; }
 .key-edit .err.ok { color: var(--ok); }
@@ -202,6 +203,7 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .sec { margin-top: 14px; }
 .sec-h { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: var(--dim); margin-bottom: 4px; }
 .sec-h b { color: var(--fg); font-weight: 600; font-size: 13px; }
+.list-sub { margin-top: 10px; }
 .saved-line { font-size: 12px; color: var(--dim); line-height: 1.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .grp { border-top: 0.5px solid var(--line); padding: 8px 0; }
 .grp:last-child { border-bottom: 0.5px solid var(--line); }
@@ -216,7 +218,7 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .paper-list.scroll { -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent); mask-image: linear-gradient(to bottom, #000 80%, transparent); }
 .paper-list li { font-size: 12px; padding: 3px 0; }
 /* A list page scrolls as one, up to half the screen; its groups open in full inside it. */
-.papers-scroll { overflow-y: auto; overscroll-behavior: contain; }
+.papers-scroll, .keys-scroll { overflow-y: auto; overscroll-behavior: contain; }
 .papers-scroll .paper-list { max-height: none; overflow: visible; }
 .paper-list .t, .paper-list .w { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .paper-list .w, .paper-list .more { color: var(--faint); }
@@ -522,11 +524,12 @@ function listRow(g, i) {
   return html + '<ul class="paper-list">'
     + g.papers.map((p) => {
       const lines = '<div class="t">' + esc(p.title) + "</div>" + (p.where ? '<div class="w">' + esc(p.where) + "</div>" : "");
-      // A saved paper shows its PDF in its folder; a failed one opens its article page, to fetch it by hand.
+      // A saved paper shows its PDF in its folder; a failed one opens its article page, to fetch it by hand,
+      // and so does one still waiting (user, 2026-11-11).
       if (papersKind === "ok") {
         return '<li><button type="button" class="open-article" data-act="show_paper" data-index="' + p.index + '" title="打开所在文件夹">' + lines + "</button></li>";
       }
-      if (papersKind === "failed" && p.doi) {
+      if ((papersKind === "failed" || papersKind === "left") && p.doi) {
         return '<li><button type="button" class="open-article" data-act="open_article" data-doi="' + esc(p.doi)
           + '" title="在浏览器打开这篇文章">' + lines + "</button></li>";
       }
@@ -535,6 +538,9 @@ function listRow(g, i) {
     + (g.more ? '<li class="more">另有 ' + g.more + " 篇未列出</li>" : "") + "</ul></div>";
 }
 
+// A long list scrolls within half the screen at most, its title staying in place above it (user, 2026-11-10).
+function listMaxHeight() { return Math.max(240, Math.round((screen.availHeight || 900) / 2) - 64); }
+
 function papersCard() {
   const list = shownList();
   const note = flash.text && Date.now() < flash.until ? flash.text : "";
@@ -542,10 +548,11 @@ function papersCard() {
     + '<div class="drag capsule-drag-region"><div class="text"><div class="title">' + LIST_TITLES[papersKind] + " " + list.count + " 篇</div></div></div></div>";
   if (note) html += '<div class="line">' + esc(note) + "</div>";
   if (!list.groups.length) html += '<div class="line">' + (papersList ? "没有论文" : "正在读取…") + "</div>";
-  // Half the screen at most, the title staying in place above it (user, 2026-11-10).
-  const most = Math.max(240, Math.round((screen.availHeight || 900) / 2) - 64);
-  return html + '<div class="sec papers-scroll" style="max-height:' + most + 'px">'
-    + list.groups.map((g, i) => listRow(g, i)).join("") + "</div></div>";
+  // Saved papers missing supplementary files follow the failed ones, as on the finished card (user, 2026-11-11).
+  const heading = (g, i) => g.supplement && !(list.groups[i - 1] || {}).supplement
+    ? '<div class="sec-h list-sub"><b>附录未下全 ' + (list.supplement_count || 0) + " 篇</b><span>正文已保存</span></div>" : "";
+  return html + '<div class="sec papers-scroll" style="max-height:' + listMaxHeight() + 'px">'
+    + list.groups.map((g, i) => heading(g, i) + listRow(g, i)).join("") + "</div></div>";
 }
 
 function idleCard() {
@@ -642,16 +649,19 @@ function keyRow(s) {
     + (s.set ? '<span class="key-set">' + esc(s.masked) + "</span>" : '<span class="dim" style="font-size:12px">未填</span>')
     + '</div><div class="key-edit">';
   // A saved key is in its field, hidden until the eye shows it.
+  // A contact email: what it is for above its field, and the field in plain text (user, 2026-11-11).
+  const emails = s.keys.every((k) => k.kind === "email");
+  if (s.note) html += '<div class="key-note">' + esc(s.note) + "</div>";
   for (const k of s.keys) {
-    html += '<input id="key-' + esc(k.key) + '" data-key="' + esc(k.key) + '" type="' + (revealed ? "text" : "password")
+    html += '<input id="key-' + esc(k.key) + '" data-key="' + esc(k.key) + '" type="' + (revealed || k.kind === "email" ? "text" : "password")
       + '" value="' + esc(editValues[k.key] || "") + '" autocomplete="off" spellcheck="false" aria-label="' + esc(s.name + " " + k.label)
-      + '" placeholder="粘贴 key">';
+      + '" placeholder="' + (k.kind === "email" ? "填你常用的邮箱" : "粘贴 key") + '">';
   }
   return html + '<div class="key-links">'
-    + '<button class="btn link" data-act="signup" data-service="' + esc(s.id) + '">去申请' + icon("external") + "</button>"
+    + '<button class="btn link" data-act="signup" data-service="' + esc(s.id) + '">' + esc(s.signup_label || "去申请") + icon("external") + "</button>"
     + (s.guide ? '<button class="btn link" data-act="guide" data-service="' + esc(s.id) + '">' + esc(s.guide_label || "教程") + icon("external") + "</button>" : "")
     + '<span class="grow"></span>'
-    + '<button class="iconbtn" data-act="reveal" aria-label="显示 key" aria-pressed="' + revealed + '">' + icon("eye") + "</button></div>"
+    + (emails ? "" : '<button class="iconbtn" data-act="reveal" aria-label="显示 key" aria-pressed="' + revealed + '">' + icon("eye") + "</button>") + "</div>"
     + '<div class="err" id="key-error" role="status"></div><div class="key-actions">'
     + '<button class="btn" data-act="test_key" data-service="' + esc(s.id) + '">测试</button><span class="grow"></span>'
     + (s.set ? '<button class="btn danger" data-act="clear_key" data-service="' + esc(s.id) + '">清除</button>' : "")
@@ -662,10 +672,10 @@ function keyRow(s) {
 function settingsKeys() {
   let html = settingsHead("API key");
   if (!apiKeys || !apiKeys.ok) return html + '<div class="err" style="text-align:left">' + esc((apiKeys && apiKeys.error) || "读取配置失败") + "</div>";
-  for (const group of apiKeys.groups) {
-    html += '<div class="key-group">' + esc(group.title) + "</div>" + group.services.map(keyRow).join("");
-  }
-  return html;
+  // Twelve services and an opened one's editor: a list of their own (user, 2026-11-11).
+  return html + '<div class="keys-scroll" style="max-height:' + listMaxHeight() + 'px">'
+    + apiKeys.groups.map((group) => '<div class="key-group">' + esc(group.title) + "</div>" + group.services.map(keyRow).join("")).join("")
+    + "</div>";
 }
 
 function settingsCard() {
@@ -770,7 +780,7 @@ function keyError(text, tone) {
   if (line) { line.textContent = tr(text); line.className = "err" + (tone ? " " + tone : ""); }
 }
 
-let lastCls = "", hovering = false, closing = false, dragging = false, endingDrag = false;
+let lastCls = "", lastPlace = "", hovering = false, closing = false, dragging = false, endingDrag = false;
 let dragReady = Promise.resolve();
 let attentionPointer = null;
 let renderedAttention = null;
@@ -808,8 +818,14 @@ function render(force) {
   root.style.width = ""; root.style.height = "";
   root.style.removeProperty("--content-max-height");
   if (!unchanged) {
+    // A scrolled list keeps its place while its page is redrawn (a key opened or saved, a group opened).
+    const place = panel + ":" + (panel === "settings" ? settingsPage : papersKind);
+    const scrolled = place === lastPlace ? root.querySelector(".papers-scroll, .keys-scroll")?.scrollTop || 0 : 0;
+    lastPlace = place;
     root.className = cls + " capsule-drag-region" + (cls !== lastCls ? " fade" : "");
     root.innerHTML = '<div class="surface">' + html + "</div>";
+    const list = root.querySelector(".papers-scroll, .keys-scroll");
+    if (list) list.scrollTop = scrolled;
     localize(root);
     if (attention) updateAttentionCountdown();
     renderedAttention = attention ? V : null;
@@ -949,7 +965,8 @@ async function act(action, target) {
     case "edit_key":
       editValues = await savedValues(target.dataset.service);
       editing = target.dataset.service; confirmClear = ""; revealed = false; render(true);
-      return root.querySelector(".key-edit input")?.focus();
+      root.querySelector(".key-edit")?.scrollIntoView({ block: "nearest" });
+      return root.querySelector(".key-edit input")?.focus({ preventScroll: true });
     case "cancel_key": editing = ""; editValues = {}; confirmClear = ""; return render(true);
     case "reveal":
       revealed = !revealed;
@@ -1037,7 +1054,7 @@ async function act(action, target) {
 }
 
 // A paper list scrolls; pressing in it must not drag the window.
-const interactive = (target) => target.closest('button, input, select, textarea, a, [contenteditable="true"], [role="button"], .paper-list, .papers-scroll');
+const interactive = (target) => target.closest('button, input, select, textarea, a, [contenteditable="true"], [role="button"], .paper-list, .papers-scroll, .keys-scroll');
 root.addEventListener("pointerdown", (event) => {
   if (event.button === 0 && api().activate_on_input) inputActivation = api().activate_on_input();
   if (event.button === 0 && event.target.closest(".attention-target")) {
