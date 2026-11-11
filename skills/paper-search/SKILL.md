@@ -4,7 +4,7 @@ description: |
   用本机 paper-search 命令做文献工作：检索论文、核对 DOI/PMID、搜正文片段（找方法和结果的原文）、查期刊影响因子与分区、查施引和参考文献、下载全文和补充材料。
   用户要找文献、查期刊、下载论文，或说“请开始配置”时使用；英文请求（literature search、journal metrics、paper download、start setup）同样适用。
 metadata:
-  version: "0.5.12"
+  version: "0.5.13"
 ---
 
 # 文献检索与下载（paper-search）

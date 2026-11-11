@@ -37,6 +37,7 @@ pdf_captured saved_pending_verification route_failed access_ready
 """.split())
 _EVENTS = frozenset("""
 aps_institution_entry_missing article_access_ready article_open browser_closed login_only_done
+carsi_school_list_unconfirmed
 auth_wall_after_article_load auth_wall_after_pdf_attempt browser_capture_detach_error
 browser_capture_disable_error browser_pdf_response_captured browser_pdf_response_error
 browser_response_continue_error browser_response_discard_error challenge_manual_wait

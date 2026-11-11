@@ -281,6 +281,15 @@ class LoginMixin:
         if self._institution_pdf_entitlement_missing(page):
             return False
         result.state = "sso_required"
+        if manual_selection:
+            from .. import login_routes
+            earlier = login_routes.missing_since(getattr(self.profile, "name", ""), login_routes.school_key(self.config))
+            if earlier:
+                # An earlier article of this publisher found no route for the school:
+                # nothing to wait for here (Science, BMJ; the user, 2026-11-11).
+                result.reason = "institution_federation_unavailable"
+                self._event(result, result.reason, f"no route for the school at this publisher earlier ({earlier})")
+                return False
         self._event(result, "sso_start", page.url)
         self._dismiss_cookie_banners(page, result)
         sites_opened = sum(e["state"] == "login_page_opened" for e in result.events)
@@ -353,6 +362,10 @@ class LoginMixin:
                 if time.time() >= deadline:
                     break
                 time.sleep(1)  # each pass checks the page again: a step done goes on within a second
+                if manual_selection and self.institution_query and not getattr(result, "_institution_not_listed", False):
+                    # A CARSI school list without the school ends the wait whatever this pass
+                    # would do next (Science, 2026-11-11: the list stood a whole page wait).
+                    self._check_carsi_school_links(page, result, str(getattr(page, "url", "") or ""))
                 if getattr(result, "_institution_not_listed", False):
                     # The publisher's institution search has no entry for the school.
                     result.reason = "institution_federation_unavailable"

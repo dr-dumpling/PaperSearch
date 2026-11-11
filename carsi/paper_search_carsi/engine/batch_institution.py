@@ -370,13 +370,16 @@ class InstitutionMixin:
                 return
             heading = page.get_by_role("heading", level=1, name=self._CARSI_OPTION).first
             if heading.is_visible() is not True or self._is_challenge_page(page):
+                self._school_list_unconfirmed(result, url, "no CARSI heading, or a verification page")
                 return
             rows = listing.locator(":scope > li")
             entries = page.evaluate(self._ENTRIES_JS, self._FEDERATION_SCHOOL_LIST + " > li > a[href]")
-            if (not entries or len(entries) != rows.count()
-                    or listing.evaluate("""el => !!el.closest('[aria-busy=true]') ||
-                        !!el.closest('section')?.querySelector('input:not([type=hidden]), [aria-busy=true], [rel=next]')""",
-                                        timeout=800)):
+            busy = listing.evaluate("""el => el.closest('[aria-busy=true]') ? 'busy' :
+                (el.closest('section')?.querySelector('input:not([type=hidden]), [aria-busy=true], [rel=next]')?.outerHTML || '').slice(0, 120)""",
+                                    timeout=800)
+            if not entries or len(entries) != rows.count() or busy:
+                self._school_list_unconfirmed(
+                    result, url, f"{len(entries or [])} links, {rows.count()} rows" + (f", {busy}" if busy else ""))
                 return
             # Even a partial name match is enough to leave the choice open for the user.
             entity_id = self._entity_id()
@@ -390,6 +393,13 @@ class InstitutionMixin:
             if not _is_browser_error(exc):
                 raise
             self._event(result, "institution_step_interrupted", type(exc).__name__)
+
+    def _school_list_unconfirmed(self, result: DownloadResult, url: str, why: str) -> None:
+        """Why a shown CARSI school list could not settle the school's absence, once per page:
+        the school was left to choose by hand and the wait ran out (Science, 2026-11-11)."""
+        if not any(e["state"] == "carsi_school_list_unconfirmed" and str(e.get("detail", "")).endswith(f"@ {url}")
+                   for e in result.events):
+            self._event(result, "carsi_school_list_unconfirmed", f"{why} @ {url}")
 
     def _close_blank_overlay(self, page: Any, result: DownloadResult) -> None:
         try:

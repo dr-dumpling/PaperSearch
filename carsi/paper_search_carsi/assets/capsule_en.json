@@ -274,7 +274,7 @@
   "被拒绝：Unpaywall 不接受这个邮箱，请填你自己常用的邮箱": "Rejected by Unpaywall: use your own email",
   "可以用：已走 Crossref 优先通道": "Works: Crossref polite pool",
   "Crossref 没有认这个邮箱，仍走普通通道": "Crossref didn't take it: public pool",
-  "查期刊、搜正文、找免费全文（推荐配置）": "Journals, snippets, free texts (recommended)",
+  "推荐配置": "Recommended",
   "下载订阅全文（非必须）": "Subscribed texts (optional)",
   "检索更快、更稳定（非必须）": "Faster, steady search (optional)",
   "下载时找免费全文": "Finds free full texts",

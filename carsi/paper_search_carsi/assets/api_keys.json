@@ -1,7 +1,7 @@
 {
   "groups": [
     {
-      "title": "查期刊、搜正文、找免费全文（推荐配置）",
+      "title": "推荐配置",
       "services": [
         {
           "id": "easyscholar",
@@ -41,6 +41,21 @@
           "keys": [
             {
               "key": "PAPER_SEARCH_UNPAYWALL_EMAIL",
+              "label": "email",
+              "kind": "email"
+            }
+          ]
+        },
+        {
+          "id": "crossref",
+          "name": "Crossref",
+          "use": "检索论文、核对 DOI 是否真实",
+          "note": "填你常用的邮箱就行，不用注册",
+          "url": "https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/",
+          "signup_label": "说明",
+          "keys": [
+            {
+              "key": "CROSSREF_MAILTO",
               "label": "email",
               "kind": "email"
             }
@@ -109,21 +124,6 @@
     {
       "title": "检索更快、更稳定（非必须）",
       "services": [
-        {
-          "id": "crossref",
-          "name": "Crossref",
-          "use": "检索论文、核对 DOI 是否真实",
-          "note": "填你常用的邮箱就行，不用注册",
-          "url": "https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/",
-          "signup_label": "说明",
-          "keys": [
-            {
-              "key": "CROSSREF_MAILTO",
-              "label": "email",
-              "kind": "email"
-            }
-          ]
-        },
         {
           "id": "pubmed",
           "name": "PubMed",

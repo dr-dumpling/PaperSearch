@@ -32,10 +32,10 @@ class ApiKeyTests(unittest.TestCase):
         listing = api_keys.listing()
         self.assertEqual((listing["filled"], listing["total"]), (1, 12))
         # What to fill first in one group at the top, the rest by what they are for (user, 2026-11-11).
-        self.assertEqual([g["title"] for g in listing["groups"]], ["查期刊、搜正文、找免费全文（推荐配置）", "下载订阅全文（非必须）",
+        self.assertEqual([g["title"] for g in listing["groups"]], ["推荐配置", "下载订阅全文（非必须）",
                                                                  "增加检索来源（非必须）", "检索更快、更稳定（非必须）"])
-        self.assertEqual([s["id"] for s in listing["groups"][0]["services"]], ["easyscholar", "semantic_scholar", "unpaywall"])
-        self.assertEqual(listing["groups"][-1]["services"][0]["id"], "crossref")
+        self.assertEqual([s["id"] for s in listing["groups"][0]["services"]], ["easyscholar", "semantic_scholar", "unpaywall", "crossref"])
+        self.assertEqual(listing["groups"][-1]["services"][0]["id"], "pubmed")
         pubmed = self.service(listing, "pubmed")
         self.assertEqual((pubmed["set"], pubmed["masked"]), (True, "••••efgh"))
         self.assertNotIn("abcd1234efgh", json.dumps(listing, ensure_ascii=False))

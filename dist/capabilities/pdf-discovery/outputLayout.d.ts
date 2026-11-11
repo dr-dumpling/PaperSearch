@@ -6,14 +6,16 @@ export type OutputMetadata = Partial<Pick<Paper, 'title' | 'journal' | 'year' | 
  * folder; a paper with supplementary files saved has a folder of its own there, its main text
  * in it. A paper is downloaded in its own folder either way (``paperDir``), the backend writing
  * its packet into ``workDiagnosticsDir``; the diagnostics then go to the run's folder in
- * PaperSearch's own data, kept 30 days, never beside the papers (``diagnosticsDir``).
+ * PaperSearch's own data, kept 30 days, never beside the papers (``diagnosticsDir``). With a
+ * run's folder the packet is written there from the start: no diagnostics folder shows in the
+ * download folder while a paper downloads either (user, 2026-11-11).
  */
 export interface OutputLayout {
     /** The paper's own folder: where it is downloaded, and with supplementary files saved where it stays. */
     paperDir: string;
     /** Where its main text ends up without supplementary files: the download folder (flat) or ``paperDir``. */
     fileDir: string;
-    /** Where the backend writes its diagnostic packet while downloading, inside ``paperDir``. */
+    /** Where the backend writes its diagnostic packet while downloading: beside the run's diagnostics, inside ``paperDir`` only without them. */
     workDiagnosticsDir: string;
     /** Where the diagnostics end up. */
     diagnosticsDir: string;
@@ -34,6 +36,7 @@ export interface OutputPlacement {
  */
 export declare const DIAGNOSTICS_FOLDER = "diagnostics";
 export declare function safeComponent(value: string, limit: number): string;
+/** The journal, year and title a download is named with; ``{}`` when no source answers in time. */
 export declare function lookupOutputMetadata(searchers: Searchers, source: string, id: string): Promise<OutputMetadata>;
 export declare function createOutputLayout(root: string, identity: string, metadata: OutputMetadata, preprint?: boolean, placement?: OutputPlacement): OutputLayout;
 /** The layout with another folder for the paper (an existing download's, its supplementary files beside its main text). */

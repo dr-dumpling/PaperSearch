@@ -73,6 +73,13 @@ def _remember_blocked_journal(doi: str, identity: dict[str, Any]) -> None:
     blocked_journals.remember(doi, identity)
 
 
+def _remember_missing_route(publisher: str, config: dict[str, Any], doi: str) -> None:
+    """The publisher has no login route for the configured school (``login_routes``)."""
+    from .. import login_routes
+
+    login_routes.remember(publisher, login_routes.school_key(config), doi)
+
+
 def _failure_reason_code(result: Any) -> str:
     """The reason a failed browser result is reported under (a key of ``_FAILURE_KINDS``)."""
     # Denial must be the terminal state, not a stale reason left on a
@@ -361,6 +368,8 @@ def _try_builtin_institutional(
                   "action": primary["action"], "source_failures": failures}
         if primary["error_type"] == "access_blocked":
             _remember_blocked_journal(doi, identity)
+        if primary["error_type"] == "institution_federation_unavailable" and manual_carsi:
+            _remember_missing_route(publisher_name, config, doi)
         if "reason_code" in primary:
             result["reason_code"] = primary["reason_code"]
         artifacts = primary.get("artifacts") or next(

@@ -19,7 +19,36 @@ export function safeComponent(value, limit) {
         text = Array.from(text).slice(0, -1).join('');
     return text.replace(/[. ]+$/g, '') || 'unknown';
 }
+/**
+ * Where a DOI's journal and year are asked next when Crossref gives none: rate-limited
+ * or queued past the lookup's time, a paper was named 未知期刊_未知年份 (Windows, 2026-11-11).
+ */
+const DOI_FALLBACKS = ['openalex', 'pubmed'];
+/** A DOI's journal and year once found: the open lane's lookup also names its institutional download. */
+const foundByDoi = new Map();
+/** The journal, year and title a download is named with; ``{}`` when no source answers in time. */
 export async function lookupOutputMetadata(searchers, source, id) {
+    const doi = source === 'crossref' ? id.trim().toLowerCase() : '';
+    const known = doi ? foundByDoi.get(doi) : undefined;
+    if (known)
+        return known;
+    let found = await lookupOnce(searchers, source, id);
+    for (const other of doi && !found.journal ? DOI_FALLBACKS : []) {
+        const more = await lookupOnce(searchers, other, id);
+        if (!more.journal)
+            continue;
+        // What the first source did give (a title) stays.
+        found = { ...more, ...Object.fromEntries(Object.entries(found).filter(([, value]) => value !== undefined && value !== '')) };
+        break;
+    }
+    if (doi && found.journal) {
+        if (foundByDoi.size >= 1_000)
+            foundByDoi.clear();
+        foundByDoi.set(doi, found);
+    }
+    return found;
+}
+async function lookupOnce(searchers, source, id) {
     const searcher = searchers[source];
     if (!searcher?.getPaperByDoi)
         return {};
@@ -47,18 +76,38 @@ export function createOutputLayout(root, identity, metadata, preprint = false, p
     const paperDir = join(base, `${name}_${key}`);
     return {
         name, paperDir, fileDir: placement.flat ? base : paperDir,
-        workDiagnosticsDir: join(paperDir, DIAGNOSTICS_FOLDER),
+        workDiagnosticsDir: placement.diagnosticsDir ? join(placement.diagnosticsDir, `work-${key}`) : join(paperDir, DIAGNOSTICS_FOLDER),
         diagnosticsDir: placement.diagnosticsDir || join(base, DIAGNOSTICS_FOLDER),
         metadata: { ...metadata, identity, ...(preprint ? { journal: 'arXiv' } : {}) },
     };
 }
 /** The layout with another folder for the paper (an existing download's, its supplementary files beside its main text). */
 export function inPaperDir(layout, paperDir) {
-    return { ...layout, paperDir, fileDir: paperDir, workDiagnosticsDir: join(paperDir, DIAGNOSTICS_FOLDER) };
+    const inside = layout.workDiagnosticsDir === join(layout.paperDir, DIAGNOSTICS_FOLDER);
+    return { ...layout, paperDir, fileDir: paperDir, workDiagnosticsDir: inside ? join(paperDir, DIAGNOSTICS_FOLDER) : layout.workDiagnosticsDir };
 }
 /** The paper's working folder is not left behind once nothing is in it (its main text lies in the download folder). */
 export function removeWorkFolder(layout) {
+    pruneWork(layout);
     pruneEmpty(layout.paperDir);
+}
+/**
+ * The backend's working diagnostics folder once nothing is left in it; in the run's
+ * folder, the run's diagnostics folder too when it holds nothing else (a paper that
+ * went fine leaves none).
+ */
+function pruneWork(layout) {
+    pruneEmpty(layout.workDiagnosticsDir);
+    if (existsSync(layout.workDiagnosticsDir) || isInside(layout.workDiagnosticsDir, layout.paperDir))
+        return;
+    try {
+        rmdirSync(dirname(layout.workDiagnosticsDir));
+    }
+    catch (error) {
+        // It still holds a diagnostic (or is gone already): it stays as it is.
+        if (!['ENOTEMPTY', 'EEXIST', 'ENOENT'].includes(error.code ?? ''))
+            throw error;
+    }
 }
 /** A saved supplementary file came with this result: the paper keeps a folder of its own. */
 export function savedSupplements(result) {
@@ -182,6 +231,10 @@ export function organizeFiles(result, paperLayout, ownedDir, now = new Date(), r
     const replacements = new Map();
     const stamp = stampOf(now);
     const inside = isInside;
+    // The backend's working diagnostics folder is this request's own too, wherever it is.
+    const workDir = paperLayout.workDiagnosticsDir;
+    const owned = (path) => inside(path, ownedDir) || resolve(path) === resolve(workDir) || inside(path, workDir);
+    const ownerOf = (path) => (inside(path, workDir) ? workDir : ownedDir);
     // The files for the diagnostics folder are gathered first and placed together,
     // so that those of one run share one cut of the paper's name.
     const toPlace = [];
@@ -233,7 +286,7 @@ export function organizeFiles(result, paperLayout, ownedDir, now = new Date(), r
     const state = typeof result.trace?.state === 'string' && /^[a-z0-9_]{1,64}$/.test(result.trace.state) ? result.trace.state : 'failed';
     for (const key of ['diagnostic', 'record']) {
         const path = result.trace?.[key];
-        if (typeof path !== 'string' || !existsSync(path) || !inside(path, ownedDir))
+        if (typeof path !== 'string' || !existsSync(path) || !owned(path))
             continue;
         // <run>/<doi>.json, or <run>/diagnostics/<doi>/diagnostic.json
         runFolders.add(key === 'diagnostic' ? dirname(dirname(dirname(path))) : dirname(path));
@@ -242,7 +295,7 @@ export function organizeFiles(result, paperLayout, ownedDir, now = new Date(), r
         toDiagnostics(path, own, (placed) => { moved.push(placed); result.trace[key] = placed; });
         // Screenshots and page structures: beside the diagnostic, or in the record's own folder.
         const pictures = key === 'diagnostic' ? dirname(path) : join(dirname(path), 'diagnostics', basename(path, '.json'));
-        if (existsSync(pictures) && statSync(pictures).isDirectory() && inside(pictures, ownedDir)) {
+        if (existsSync(pictures) && statSync(pictures).isDirectory() && owned(pictures)) {
             for (const entry of readdirSync(pictures)) {
                 const file = join(pictures, entry);
                 if (statSync(file).isFile() && !gathered(file))
@@ -251,7 +304,7 @@ export function organizeFiles(result, paperLayout, ownedDir, now = new Date(), r
         }
     }
     for (const manifest of manifests) {
-        if (existsSync(manifest) && inside(manifest, ownedDir) && !gathered(manifest)) {
+        if (existsSync(manifest) && owned(manifest) && !gathered(manifest)) {
             toDiagnostics(manifest, 'supplements-manifest.json', (placed) => moved.push(placed));
         }
     }
@@ -259,7 +312,7 @@ export function organizeFiles(result, paperLayout, ownedDir, now = new Date(), r
     // supplements-only visit's page snapshots, 0.5.11 on Windows) goes with the rest:
     // nothing diagnostic stays beside the papers.
     const sweep = (dir) => {
-        if (!existsSync(dir) || !statSync(dir).isDirectory() || !inside(dir, ownedDir))
+        if (!existsSync(dir) || !statSync(dir).isDirectory() || !owned(dir))
             return;
         for (const entry of readdirSync(dir)) {
             const file = join(dir, entry);
@@ -272,18 +325,19 @@ export function organizeFiles(result, paperLayout, ownedDir, now = new Date(), r
     sweep(paperLayout.workDiagnosticsDir);
     const room = Math.min(...toPlace.map(({ what }) => diagnosticEnd(layout, what).room));
     for (const { source, what, then } of toPlace) {
-        const placed = placeFile(source, join(layout.diagnosticsDir, diagnosticName(layout, what, room)), ownedDir);
+        const placed = placeFile(source, join(layout.diagnosticsDir, diagnosticName(layout, what, room)), ownerOf(source));
         replacements.set(source, placed);
         then?.(placed);
     }
     updateRecordPaths(moved, replacements);
     if (typeof result.trace?.file === 'string')
         result.trace.file = replacements.get(result.trace.file) || result.trace.file;
-    // Emptied run folders and the backend's diagnostics folder in the paper's.
-    for (const folder of [...runFolders, paperLayout.workDiagnosticsDir]) {
-        if (inside(folder, ownedDir))
+    // Emptied run folders and the backend's working diagnostics folder.
+    for (const folder of runFolders) {
+        if (owned(folder))
             pruneEmpty(folder);
     }
+    pruneWork(paperLayout);
     return result;
 }
 //# sourceMappingURL=outputLayout.js.map

@@ -26,3 +26,15 @@ def test_a_patchright_navigation_error_is_recognised_too():
     page = Mock()
     page.evaluate.side_effect = errors.Error("Execution context was destroyed, most likely because of a navigation")
     assert challenge_interaction.is_image_verification(page) is False
+
+
+def test_a_read_still_waiting_after_its_limit_is_not_an_image_puzzle():
+    # BMJ on Windows, 2026-11-11: after the checkbox one read waited 48 s for the next page.
+    from paper_search_carsi.browser import watchdog
+    page = Mock()
+    page.evaluate.side_effect = watchdog.CallAbandoned("Page.evaluate")
+    assert challenge_interaction.is_image_verification(page) is False
+    frame = Mock(url="https://www.google.com/recaptcha/api2/anchor")
+    frame.frame_element.return_value.is_visible.side_effect = watchdog.CallAbandoned("ElementHandle.is_visible")
+    page.frames = [frame]
+    assert challenge_interaction.has_visible_recaptcha(page) is False

@@ -72,15 +72,25 @@ _NAVIGATED = ("frame was detached", "frame has been detached", "element is not a
               "execution context was destroyed")
 
 
+# The longest one read of a verification page may take. After its checkbox the page
+# can hang between two documents: one read waited 48 s and the article's page budget
+# ran out before the page it led to opened (BMJ on Windows, 2026-11-11).
+READ_LIMIT_SEC = 5
+
+
 def is_image_verification(page: Any) -> bool:
     """Image puzzles expose controls but may have no readable instructions."""
     from .driver import Error
+    from .watchdog import CallAbandoned, call_limit
 
     try:
-        return page.evaluate("""() => document.title.trim().toLowerCase() === 'human verification'
-            && !document.querySelector('meta[name="citation_doi"]')
-            && [...document.querySelectorAll('button, [role="button"], canvas, iframe')].some(el =>
-                el.getClientRects().length > 0)""") is True
+        with call_limit(READ_LIMIT_SEC):
+            return page.evaluate("""() => document.title.trim().toLowerCase() === 'human verification'
+                && !document.querySelector('meta[name="citation_doi"]')
+                && [...document.querySelectorAll('button, [role="button"], canvas, iframe')].some(el =>
+                    el.getClientRects().length > 0)""") is True
+    except CallAbandoned:
+        return False  # between two documents: the next check reads the one that opens
     except Error as exc:
         # A passed verification navigates while it is being read (Wiley and
         # ScienceDirect on Chrome, 2026-11-07): no puzzle on a page that is gone.
@@ -101,6 +111,7 @@ def needs_manual_verification(page: Any) -> bool:
 def has_visible_recaptcha(page: Any) -> bool:
     """Detect a reCAPTCHA prompt that remains after the outer page changes."""
     from .driver import Error
+    from .watchdog import CallAbandoned, call_limit
 
     for frame in page.frames:
         parsed = urlsplit(str(frame.url or ""))
@@ -109,8 +120,11 @@ def has_visible_recaptcha(page: Any) -> bool:
                 or not parsed.path.startswith(("/recaptcha/api2/", "/recaptcha/enterprise/"))):
             continue
         try:
-            if frame.frame_element().is_visible():
-                return True
+            with call_limit(READ_LIMIT_SEC):
+                if frame.frame_element().is_visible():
+                    return True
+        except CallAbandoned:
+            continue  # the frame is going away with its page (``READ_LIMIT_SEC``)
         except Error as exc:
             if not any(text in str(exc).lower() for text in (
                     "frame was detached", "frame has been detached", "element is not attached",

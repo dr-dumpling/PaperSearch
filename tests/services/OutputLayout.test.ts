@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdi
 import { tmpdir } from 'node:os';
 import { join, dirname, basename, relative } from 'node:path';
 import { describe, it, expect } from '@jest/globals';
-import { DIAGNOSTICS_FOLDER, createOutputLayout, organizeFiles, placeFile, removeWorkFolder, safeComponent } from '../../src/capabilities/pdf-discovery/outputLayout.js';
+import { DIAGNOSTICS_FOLDER, createOutputLayout, lookupOutputMetadata, organizeFiles, placeFile, removeWorkFolder, safeComponent } from '../../src/capabilities/pdf-discovery/outputLayout.js';
 import { downloadWithFallback } from '../../src/capabilities/pdf-discovery/OpenAccessFallbackService.js';
 import { downloadBatch, downloadSupplementsOnly } from '../../src/capabilities/pdf-discovery/batch.js';
 import { normalizeDownloadResult } from '../../src/capabilities/pdf-discovery/carsi/CarsiResultNormalizer.js';
@@ -34,16 +34,37 @@ describe('download output layout', () => {
     expect(createOutputLayout('/tmp', '1706.03762', metadata, true).name).toMatch(/^arXiv_2026_/);
   });
 
+  it('names a paper from OpenAlex or PubMed when Crossref gives no journal, and keeps what it found', async () => {
+    // Crossref rate-limited past the lookup's time: 未知期刊_未知年份 (Windows, 2026-11-11).
+    const asked: string[] = [];
+    const searchers = {
+      crossref: {getPaperByDoi: async () => { asked.push('crossref'); return null; }},
+      openalex: {getPaperByDoi: async () => { asked.push('openalex'); return {journal: 'Nature Reviews Rheumatology', year: 2026, title: 'Emerging therapies'}; }},
+      pubmed: {getPaperByDoi: async () => { asked.push('pubmed'); return null; }},
+    } as any;
+    const found = await lookupOutputMetadata(searchers, 'crossref', '10.1038/s41584-026-01441-y');
+    expect(found).toMatchObject({journal: 'Nature Reviews Rheumatology', year: 2026});
+    expect(asked).toEqual(['crossref', 'openalex']);
+    expect(createOutputLayout('/tmp/output', '10.1038/s41584-026-01441-y', found).name)
+      .toBe('Nature Reviews Rheumatology_2026_Emerging therapies');
+    // The institutional download of the same paper reuses it.
+    expect(await lookupOutputMetadata(searchers, 'crossref', '10.1038/S41584-026-01441-Y')).toBe(found);
+    expect(asked).toHaveLength(2);
+  });
+
   it("lays main texts only side by side, and puts diagnostics in the run's folder", () => {
     // Main texts only: no folder per paper; diagnostics never in the download folder (user, 2026-11-11).
     const dir = root();
     const runDiagnostics = join(root(), 'runs', '20261111-120000-abc123', 'diagnostics');
     const layout = createOutputLayout(dir, '10.1000/example', metadata, false, {flat: true, diagnosticsDir: runDiagnostics});
     expect(layout.fileDir).toBe(dir);
-    expect(layout.workDiagnosticsDir).toBe(join(layout.paperDir, DIAGNOSTICS_FOLDER));
+    // The backend writes its packet in the run's folder from the start: nothing diagnostic
+    // shows in the download folder while the paper downloads (Windows, user 2026-11-11).
+    expect(dirname(layout.workDiagnosticsDir)).toBe(runDiagnostics);
     const main = put(join(layout.paperDir, 'doi.pdf'), 'PDF');
     const shot = put(join(layout.workDiagnosticsDir, 'run', 'diagnostics', '10.1000_example', 'screenshot.png'), 'png');
     const diagnostic = put(join(dirname(shot), 'diagnostic.json'), '{}');
+    expect(readdirSync(layout.paperDir)).toEqual(['doi.pdf']);
     const now = new Date(2026, 10, 11, 12, 0, 1);
     const result = organizeFiles({status: 'error', path: main, trace: {diagnostic, state: 'login_timeout'}}, layout, layout.paperDir, now);
     expect(result.path).toBe(join(dir, 'Nature_2026_A useful article.pdf'));
@@ -208,6 +229,10 @@ describe('download output layout', () => {
     expect(JSON.parse(readFileSync(join(records, moved[0]), 'utf8')).files[0].file).toBe(extra.items[0].supplements![0].file);
     expect(readdirSync(dir).sort()).toEqual(['Nature_2026_A useful article.pdf', basename(paperDir)].sort());
     expect(readdirSync(paperDir)).toEqual(['supplements']);
+    // The backend wrote into the run's diagnostics; its working folder is gone afterwards.
+    expect(manifest.startsWith(join(extra.runLog!, 'diagnostics'))).toBe(true);
+    const runDiagnostics = join(extra.runLog!, 'diagnostics');
+    expect(existsSync(runDiagnostics) ? readdirSync(runDiagnostics).filter((name) => name.startsWith('work-')) : []).toEqual([]);
   });
 
   it("keeps a fine paper's record in the run's records, the others' in its diagnostics", () => {

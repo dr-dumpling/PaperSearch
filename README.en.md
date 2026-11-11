@@ -171,13 +171,14 @@ paper-search carsi status --format text   # check that it is ready
 
 Keys fall into four groups by what they are for. Get the key you need (an email needs no sign-up) and enter it any of the ways in [Quick start step 3](#3-add-api-keys-when-you-need-them).
 
-#### Journal metrics, full-text snippets and free full texts (recommended)
+#### Recommended
 
 | Feature | Key | Where to get it |
 |---|---|---|
 | Look up impact factors and quartiles | `EASYSCHOLAR_KEY` | [EasyScholar](https://www.easyscholar.cc/) ([guide](https://docs.qq.com/aio/DTUxwZ3hUckVtZVJN), in Chinese) |
 | Search full-text snippets | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api) ([guide](https://docs.qq.com/aio/DTW9RdFVHc2hJUmpx), in Chinese) |
 | Find free full texts when downloading | `PAPER_SEARCH_UNPAYWALL_EMAIL` | No sign-up ([Unpaywall: about](https://unpaywall.org/products/api)) |
+| Search papers, check that DOIs are real | `CROSSREF_MAILTO` | No sign-up ([Crossref: about](https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/)) |
 
 #### Subscribed full texts (optional)
 
@@ -199,7 +200,6 @@ Keys fall into four groups by what they are for. Get the key you need (an email 
 
 | Source | Key | Where to get it |
 |---|---|---|
-| Crossref (search papers, check that DOIs are real) | `CROSSREF_MAILTO` | No sign-up ([about](https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/)) |
 | PubMed | `PUBMED_API_KEY` | [NCBI](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/) |
 | OpenAlex (all citing papers past 10,000) | `OPENALEX_API_KEY` | [OpenAlex](https://openalex.org/settings/api) |
 | CORE | `CORE_API_KEY` | [CORE](https://core.ac.uk/services/api) |
