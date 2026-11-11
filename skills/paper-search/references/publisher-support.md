@@ -35,7 +35,7 @@
 | RSC | pubs.rsc.org | `10.1039` | ✓OA | ✓ |
 | IEEE | ieeexplore.ieee.org | `10.1109` | ✓ | ✓ |
 | Thieme | thieme-connect.com / .de | `10.1055` | ✓ | ✓ |
-| BMJ | bmj.com 及各子刊网站 | `10.1136` | ○ | — |
+| BMJ | bmj.com 及各子刊网站 | `10.1136` | ✓ | ✓ |
 | AIP Publishing | pubs.aip.org | `10.1063` | ✓OA | ✓ |
 | Royal Society | royalsocietypublishing.org | `10.1098` | ✓OA | ✓ |
 | APS（Physical Review） | journals.aps.org | `10.1103` | ✓OA | ✓ |

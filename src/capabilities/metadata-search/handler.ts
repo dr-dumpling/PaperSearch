@@ -110,97 +110,132 @@ export async function handleSearchPapers(args: any, searchers: Searchers) {
   return jsonTextResponse(`Found ${results.length} papers.\n\n${JSON.stringify(results, null, 2)}`);
 }
 
-export async function handleGetPaperByDoi(args: { doi: string; platform: string }, searchers: Searchers) {
-  const { doi, platform } = args;
-  const results: Record<string, any>[] = [];
-  const sourceResults: Record<string, number> = {};
-  const errors: Record<string, string> = {};
-  const failedSources: string[] = [];
-  const doiLookupSources = getDoiLookupSources();
+/** At most this many DOIs are looked up at the same time; each source keeps its own rate limit. */
+const DOI_LOOKUP_CONCURRENCY = 5;
 
-  if (platform === 'all') {
-    const selected = doiLookupSources.filter(source => source in searchers);
-    const settled = await Promise.allSettled(
-      selected.map(async source => {
-        const searcher = (searchers as any)[source] as PaperSource;
-        const paper = await withTimeout(
-          searcher.getPaperByDoi(doi),
-          TIMEOUTS.SOURCE_TASK,
-          `${source} DOI lookup timed out after ${TIMEOUTS.SOURCE_TASK}ms`
-        );
-        return { source, paper };
-      })
-    );
+interface DoiLookup {
+  doi: string;
+  papers: Record<string, any>[];
+  sourcesUsed: string[];
+  sourceResults: Record<string, number>;
+  errors: Record<string, string>;
+  failedSources: string[];
+  /** Sources that answered (a paper, or none), errors aside: a DOI no source answered for was not checked. */
+  answered: number;
+}
 
-    for (let i = 0; i < settled.length; i += 1) {
-      const source = selected[i];
-      const result = settled[i];
-
-      if (result.status === 'rejected') {
-        sourceResults[source] = 0;
-        errors[source] = result.reason?.message || String(result.reason);
-        failedSources.push(source);
-        logDebug(`Error getting paper by DOI from ${source}:`, result.reason);
-        continue;
-      }
-
-      const paper = result.value.paper;
-      if (!paper) {
-        sourceResults[source] = 0;
-        continue;
-      }
-
-      if (!paperMatchesDoi(paper, doi)) {
-        sourceResults[source] = 0;
-        errors[source] = `Returned DOI ${paper.doi || '(missing)'} did not match requested DOI ${doi}`;
-        failedSources.push(source);
-        continue;
-      }
-
-      sourceResults[source] = 1;
-      results.push(PaperFactory.toDict(paper));
+/** Ask ``sources`` for ``doi`` at the same time; the matching papers, in the order of ``sources``. */
+async function lookupFrom(sources: string[], doi: string, searchers: Searchers, lookup: DoiLookup): Promise<Paper[]> {
+  const settled = await Promise.allSettled(sources.map(source => withTimeout(
+    ((searchers as any)[source] as PaperSource).getPaperByDoi(doi),
+    TIMEOUTS.SOURCE_TASK,
+    `${source} DOI lookup timed out after ${TIMEOUTS.SOURCE_TASK}ms`
+  )));
+  const found: Paper[] = [];
+  settled.forEach((result, i) => {
+    const source = sources[i];
+    lookup.sourcesUsed.push(source);
+    lookup.sourceResults[source] = 0;
+    if (result.status === 'rejected') {
+      lookup.errors[source] = result.reason?.message || String(result.reason);
+      lookup.failedSources.push(source);
+      logDebug(`Error getting paper by DOI from ${source}:`, result.reason);
+      return;
     }
+    lookup.answered += 1;
+    const paper = result.value;
+    if (!paper) return;
+    if (!paperMatchesDoi(paper, doi)) {
+      lookup.errors[source] = `Returned DOI ${paper.doi || '(missing)'} did not match requested DOI ${doi}`;
+      lookup.failedSources.push(source);
+      return;
+    }
+    lookup.sourceResults[source] = 1;
+    found.push(paper);
+  });
+  return found;
+}
+
+/**
+ * One DOI. ``auto`` (the default): Crossref, where DOIs are registered, then the
+ * other sources only when it does not know the DOI, the first match kept; waiting
+ * on all of them made each DOI take as long as the slowest (Windows 2026-11-11:
+ * about 7 s a DOI, Europe PMC alone 2-13 s). ``all``: every source, each copy kept.
+ */
+async function lookupDoi(doi: string, platform: string, searchers: Searchers): Promise<DoiLookup> {
+  const lookup: DoiLookup = { doi, papers: [], sourcesUsed: [], sourceResults: {}, errors: {}, failedSources: [], answered: 0 };
+  const available = getDoiLookupSources().filter(source => source in searchers);
+  let found: Paper[];
+  if (platform === 'all') {
+    found = await lookupFrom(available, doi, searchers, lookup);
+  } else if (platform === 'auto') {
+    found = await lookupFrom(available.filter(source => source === 'crossref'), doi, searchers, lookup);
+    if (!found.length) found = await lookupFrom(available.filter(source => source !== 'crossref'), doi, searchers, lookup);
+    found = found.slice(0, 1);
   } else {
-    const searcher = (searchers as any)[resolvePlatformId(platform)];
-    if (!searcher) {
+    const source = resolvePlatformId(platform);
+    if (!(searchers as any)[source]) {
       throw new Error(`Unsupported platform: ${platform}`);
     }
-    const paper = await searcher.getPaperByDoi(doi);
-    if (paper) {
-      results.push(PaperFactory.toDict(paper));
-    }
+    found = await lookupFrom([source], doi, searchers, lookup);
   }
+  lookup.papers = found.map(paper => PaperFactory.toDict(paper));
+  return lookup;
+}
 
-  if (results.length === 0) {
-    if (platform === 'all') {
-      const result = {
-        doi,
-        sources_requested: 'all',
-        sources_used: doiLookupSources.filter(source => source in searchers),
-        source_results: sourceResults,
-        errors,
-        failed_sources: failedSources,
-        warnings: failedSources.map(source => `${source}: ${errors[source]}`),
-        total: 0,
-        papers: []
-      };
-      return jsonTextResponse(`No paper found with DOI: ${doi}\n\n${JSON.stringify(result, null, 2)}`);
+async function inPool<T, R>(items: T[], limit: number, work: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const at = next++;
+      out[at] = await work(items[at]);
     }
-    return jsonTextResponse(`No paper found with DOI: ${doi}`);
+  }));
+  return out;
+}
+
+/**
+ * ``get_paper_by_doi``: one DOI (``doi``) or many (``dois``) in one call. The answer
+ * has one shape whatever the platform (user, 2026-11-11): every paper in ``papers``;
+ * ``not_found`` for DOIs the sources answered for without the paper, ``lookup_failed``
+ * for DOIs no source could answer for; ``warnings`` for sources that failed. One DOI
+ * also gets its ``doi`` and per-source ``source_results``, ``errors``, ``failed_sources``.
+ */
+export async function handleGetPaperByDoi(args: { doi?: string; dois?: string[]; platform?: string }, searchers: Searchers) {
+  const platform = args.platform || 'auto';
+  const seen = new Set<string>();
+  const dois = [...(args.dois || []), ...(args.doi ? [args.doi] : [])]
+    .map(doi => doi.trim())
+    .filter(doi => doi && !seen.has(normalizeDoi(doi)) && seen.add(normalizeDoi(doi)));
+  if (!dois.length) {
+    throw new Error('Give a DOI in doi, or several in dois.');
   }
-  if (platform === 'all') {
-    const result = {
-      doi,
-      sources_requested: 'all',
-      sources_used: doiLookupSources.filter(source => source in searchers),
-      source_results: sourceResults,
-      errors,
-      failed_sources: failedSources,
-      warnings: failedSources.map(source => `${source}: ${errors[source]}`),
-      total: results.length,
-      papers: results
-    };
-    return jsonTextResponse(`Found ${results.length} paper(s) with DOI ${doi} across ${result.sources_used.length} source(s).\n\n${JSON.stringify(result, null, 2)}`);
-  }
-  return jsonTextResponse(`Found ${results.length} paper(s) with DOI ${doi}:\n\n${JSON.stringify(results, null, 2)}`);
+  const lookups = await inPool(dois, DOI_LOOKUP_CONCURRENCY, doi => lookupDoi(doi, platform, searchers));
+  const papers = lookups.flatMap(lookup => lookup.papers);
+  const missing = lookups.filter(lookup => !lookup.papers.length);
+  const notFound = missing.filter(lookup => lookup.answered > 0).map(lookup => lookup.doi);
+  const lookupFailed = missing.filter(lookup => lookup.answered === 0).map(lookup => lookup.doi);
+  const found = dois.length - missing.length;
+  const one = lookups.length === 1 ? lookups[0] : undefined;
+  const data = {
+    ...(one ? { doi: one.doi } : {}),
+    sources_requested: platform,
+    requested: dois.length,
+    found,
+    not_found: notFound,
+    lookup_failed: lookupFailed,
+    total: papers.length,
+    papers,
+    sources_used: [...new Set(lookups.flatMap(lookup => lookup.sourcesUsed))],
+    ...(one ? { source_results: one.sourceResults, errors: one.errors, failed_sources: one.failedSources } : {}),
+    warnings: lookups.flatMap(lookup => lookup.failedSources.map(source =>
+      `${one ? '' : `${lookup.doi} `}${source}: ${lookup.errors[source]}`)),
+  };
+  // The first line holds no DOI: the CLI reads the JSON from the first bracket on.
+  const summary = `DOI lookup: ${found} of ${dois.length} found`
+    + (lookupFailed.length ? `, ${lookupFailed.length} could not be checked` : '')
+    + (platform === 'all' ? `; ${papers.length} record(s) from ${data.sources_used.length} source(s)` : '')
+    + '.';
+  return jsonTextResponse(`${summary}\n\n${JSON.stringify(data, null, 2)}`);
 }

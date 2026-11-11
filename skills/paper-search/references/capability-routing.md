@@ -137,9 +137,17 @@ PDF 来源分组：
 
 ```bash
 paper-search run search_pubmed --arg query="37654321[PMID]" --arg maxResults=1 --pretty
-paper-search run get_paper_by_doi --arg doi="10.xxxx/xxxxx" --pretty
+paper-search run get_paper_by_doi --arg dois="10.xxxx/aaaaa,10.xxxx/bbbbb,10.xxxx/ccccc" --pretty
 paper-search run search_crossref --arg query="full paper title" --arg maxResults=3 --pretty
 ```
+
+核对多个 DOI 时用 `dois` 一次传入（逗号分隔，最多 100 个），不要逐个调用；只有一个时也可以用 `--arg doi=...`。结果的结构固定：
+- `data.papers`：找到的论文，每个 DOI 一条，按传入顺序；
+- `data.not_found`：各来源都查过、没有这篇的 DOI，可能写错或不存在；
+- `data.lookup_failed`：所有来源都出错、没能核对的 DOI，稍后重试，不要当成不存在；
+- `data.warnings`：出错的来源。
+
+默认先查 Crossref，它没有的 DOI 才问其他来源；要看每个来源各自的记录时加 `--arg platform=all`。`paper-search search` 返回的 `data` 本身就是论文列表。
 
 PMID 要由 PubMed 确认；DOI 由 DOI 查询或 Crossref、OpenAlex、Semantic Scholar 的结果确认。同一篇论文的 PMID、DOI、题名、第一作者和年份应一致，不一致时标为可疑。
 

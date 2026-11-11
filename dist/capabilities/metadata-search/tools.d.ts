@@ -78,13 +78,21 @@ export declare const GET_PAPER_BY_DOI_TOOL: {
                 type: string;
                 description: string;
             };
+            dois: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                maxItems: number;
+                description: string;
+            };
             platform: {
                 type: string;
                 enum: string[];
                 description: string;
             };
         };
-        required: string[];
+        required: never[];
     };
 };
 export declare const METADATA_SEARCH_TOOLS: ({
@@ -166,13 +174,21 @@ export declare const METADATA_SEARCH_TOOLS: ({
                 type: string;
                 description: string;
             };
+            dois: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                maxItems: number;
+                description: string;
+            };
             platform: {
                 type: string;
                 enum: string[];
                 description: string;
             };
         };
-        required: string[];
+        required: never[];
     };
 })[];
 //# sourceMappingURL=tools.d.ts.map

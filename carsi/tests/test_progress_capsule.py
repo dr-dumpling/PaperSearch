@@ -170,11 +170,11 @@ class ViewTests(unittest.TestCase):
         results = {"content": "both", "main": 7, "supplements": 4, "no_supplements": 0, "sources": [],
                    "failures": [item("学校没有订阅", "no_access", "Spine")],
                    "supplement_failures": [item("网站人机验证拦截", "user_or_external", "APL")] * 2
-                                          + [item("网站暂不支持附录", "unsupported", "SIAM J")]}
+                                          + [item("网站暂不支持自动下载附录", "unsupported", "SIAM J")]}
         summary = pv.view(running(status="done", results=results), NOW)["summary"]
         self.assertTrue(summary["groups"][0]["open"])  # one main-text failure: open as before
         self.assertEqual([(g["reason"], g["count"], g["open"]) for g in summary["supplement_groups"]],
-                         [("网站人机验证拦截", 2, False), ("网站暂不支持附录", 1, False)])
+                         [("网站人机验证拦截", 2, False), ("网站暂不支持自动下载附录", 1, False)])
         self.assertEqual(summary["supplement_missing"], 3)
         main_only = results | {"content": "main", "supplement_failures": []}
         summary = pv.view(running(status="done", results=main_only), NOW)["summary"]

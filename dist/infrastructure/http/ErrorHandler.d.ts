@@ -74,7 +74,9 @@ export declare class ErrorHandler {
      */
     private sanitizeUrl;
     /**
-     * Log error with consistent format
+     * Log error with consistent format: development only. The error itself goes on to
+     * the caller, which reports it (a source's errors and warnings); printed on stderr as
+     * well it stopped scripts that treat stderr as failure (Windows PowerShell, 2026-11-11).
      */
     private logError;
     /**

@@ -2,16 +2,16 @@ import type { Searchers } from '../../core/searchers.js';
 import type { Paper } from '../../models/Paper.js';
 export type OutputMetadata = Partial<Pick<Paper, 'title' | 'journal' | 'year' | 'publishedDate'>>;
 /**
- * Where one paper's files go (user, 2026-11-11): main texts only lie side by side in the
- * download folder; with supplementary files each paper has a folder of its own there. A paper
- * is downloaded in its own folder either way (``paperDir``), the backend writing its packet into
- * ``workDiagnosticsDir``; the diagnostics then go to the run's folder in PaperSearch's own data,
- * kept 30 days, never beside the papers (``diagnosticsDir``).
+ * Where one paper's files go (user, 2026-11-11): main texts lie side by side in the download
+ * folder; a paper with supplementary files saved has a folder of its own there, its main text
+ * in it. A paper is downloaded in its own folder either way (``paperDir``), the backend writing
+ * its packet into ``workDiagnosticsDir``; the diagnostics then go to the run's folder in
+ * PaperSearch's own data, kept 30 days, never beside the papers (``diagnosticsDir``).
  */
 export interface OutputLayout {
-    /** The paper's own folder: where it is downloaded, and with supplementary files where it stays. */
+    /** The paper's own folder: where it is downloaded, and with supplementary files saved where it stays. */
     paperDir: string;
-    /** Where its main text ends up: the download folder itself (main texts only) or ``paperDir``. */
+    /** Where its main text ends up without supplementary files: the download folder (flat) or ``paperDir``. */
     fileDir: string;
     /** Where the backend writes its diagnostic packet while downloading, inside ``paperDir``. */
     workDiagnosticsDir: string;
@@ -23,7 +23,7 @@ export interface OutputLayout {
     };
 }
 export interface OutputPlacement {
-    /** Main texts only: the main text lies in the download folder, not in a folder of its own. */
+    /** The main text lies in the download folder unless supplementary files were saved with it. */
     flat?: boolean;
     /** The run's diagnostics folder (RunLedger.diagnostics); else the download folder's diagnostics/. */
     diagnosticsDir?: string;
@@ -38,8 +38,19 @@ export declare function lookupOutputMetadata(searchers: Searchers, source: strin
 export declare function createOutputLayout(root: string, identity: string, metadata: OutputMetadata, preprint?: boolean, placement?: OutputPlacement): OutputLayout;
 /** The layout with another folder for the paper (an existing download's, its supplementary files beside its main text). */
 export declare function inPaperDir(layout: OutputLayout, paperDir: string): OutputLayout;
-/** Main texts only: the paper's working folder, emptied into the download folder, is not left behind. */
+/** The paper's working folder is not left behind once nothing is in it (its main text lies in the download folder). */
 export declare function removeWorkFolder(layout: OutputLayout): void;
+/** A saved supplementary file came with this result: the paper keeps a folder of its own. */
+export declare function savedSupplements(result: {
+    supplements?: import('./types.js').SupplementFile[];
+}): boolean;
+/**
+ * Move a main text that lies in the download folder into the paper's own folder, once
+ * supplementary files were saved for it later (an open-access main text, its files
+ * fetched from the article page after it). The moved file's path; the same one when
+ * it is already in a folder of its own.
+ */
+export declare function moveIntoPaperDir(mainPath: string, layout: OutputLayout): string;
 /**
  * A path with its links followed where it exists: the backend reports real paths
  * (macOS: /private/tmp), the caller may have named the same folder through a link (/tmp).

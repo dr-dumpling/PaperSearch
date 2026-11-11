@@ -60,7 +60,11 @@ export const SearchPapersSchema = z
 });
 export const GetPaperByDoiSchema = z
     .object({
-    doi: z.coerce.string().min(1),
+    doi: z.coerce.string().min(1).optional(),
+    // Several DOIs in one call: a list, or one string with commas, semicolons or spaces between them.
+    dois: z
+        .preprocess(value => (typeof value === 'string' ? value.split(/[\s,;]+/).filter(Boolean) : value), z.array(z.coerce.string().min(1)).min(1).max(100))
+        .optional(),
     platform: z
         .enum([
         'arxiv',
@@ -72,10 +76,12 @@ export const GetPaperByDoiSchema = z
         'pmc',
         'europepmc',
         'core',
-        'all'
+        'all',
+        'auto'
     ])
         .optional()
-        .default('all')
+        .default('auto')
 })
-    .strip();
+    .strip()
+    .refine(args => !!args.doi || !!args.dois?.length, { message: 'Give a DOI in doi, or several in dois.' });
 //# sourceMappingURL=schemas.js.map

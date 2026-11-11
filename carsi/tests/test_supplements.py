@@ -322,6 +322,29 @@ class ElsevierLinksTests(unittest.TestCase):
 
 
 class SpringerLinksTests(unittest.TestCase):
+    def test_bmj_files_come_from_the_full_texts_supplementary_material(self):
+        # BJSM and BMJ Open pages (Windows, 2026-11-11): HighWire's DC1 files of this article only.
+        from paper_search_carsi.adapters.bmj import supplement_links_from_page
+        page = "https://bmjopen.bmj.com/content/16/4/e116911"
+        own = "https://bmjopen.bmj.com/content/bmjopen/16/4/e116911/DC1/embed/inline-supplementary-material-1.pdf"
+        rows = [
+            {"href": own + "?download=true", "label": "Supplementary data", "supplement": True},
+            {"href": own, "label": "", "supplement": False},
+            {"href": "https://bmjopen.bmj.com/content/bmjopen/15/2/e090001/DC1/embed/inline-supplementary-material-1.pdf",
+             "label": "another article", "supplement": False},
+            {"href": "https://evil.example/content/bmjopen/16/4/e116911/DC1/embed/x.pdf", "label": "", "supplement": True},
+            {"href": "http://dx.doi.org/10.2337/dc22-1710", "label": "reference", "supplement": False},
+        ]
+        self.assertEqual(supplement_links_from_page({"fullText": True, "rows": rows}, page),
+                         [SupplementLink(own, "Supplementary data")])
+        self.assertEqual(supplement_links_from_page({"fullText": True, "rows": rows}, page + ".full")[0].url, own)
+        # A full text without files: checked, none; no full text shown: nothing can be said.
+        self.assertEqual(supplement_links_from_page({"fullText": True, "rows": rows[4:]}, page), [])
+        self.assertIsNone(supplement_links_from_page({"fullText": False, "rows": rows}, page))
+        # Not on an article's own path: only links inside its supplementary-material block.
+        self.assertEqual([l.url for l in supplement_links_from_page({"fullText": True, "rows": rows}, "https://bmjopen.bmj.com/lookup/doi/x")],
+                         [own])
+
     def test_only_this_articles_electronic_supplementary_material(self):
         from paper_search_carsi.adapters.springer import supplement_links_from_rows
         doi = "10.1038/s41467-026-78958-z"

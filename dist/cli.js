@@ -231,6 +231,7 @@ function parseArgFlags(value) {
         const stringKeys = new Set([
             "paperId",
             "doi",
+            "dois",
             "doiOrUrl",
             "source",
             "title",
@@ -1054,6 +1055,7 @@ function skillReport() {
         return {
             autoUpdate,
             locations: skillLocations({ sourceRoot: PACKAGE_SKILL_ROOT }),
+            version: packageVersion(),
         };
     }
     catch (error) {
@@ -1061,6 +1063,7 @@ function skillReport() {
             autoUpdate,
             locations: [],
             error: error?.message || String(error),
+            version: packageVersion(),
         };
     }
 }

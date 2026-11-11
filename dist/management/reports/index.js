@@ -1,3 +1,4 @@
+import { isNewerVersion } from "../skills/autoSync.js";
 export function renderDoctorTextReport(report) {
     const lines = [
         "PaperSearch Doctor",
@@ -98,16 +99,21 @@ function renderSkillLines(skills) {
         lines.push("  还没有给 AI 工具安装：运行 paper-search setup，或 paper-search skills update --targets <工具>（claude、codex、cursor 等）");
     }
     for (const location of skills.locations) {
-        lines.push(`  ${location.path}（${location.targets.join("、")}）：${skillLocationState(location)}`);
+        lines.push(`  ${location.path}（${location.targets.join("、")}）：${skillLocationState(location, skills.version)}`);
     }
     lines.push(skills.autoUpdate
-        ? "  自动更新：开启，升级后第一次运行 paper-search 时同步已安装的 Skill（关闭：paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false）"
-        : "  自动更新：已关闭，升级后运行 paper-search skills update --targets <目标> 同步");
+        // Named as the Skill's: read under "please update", "自动更新" seemed to say PaperSearch updates itself (user, 2026-11-11).
+        ? "  Skill 跟随命令行更新：升级命令行后第一次运行 paper-search 时，自动把这里的 Skill 换成同一版本（关闭：paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false）"
+        : "  Skill 跟随命令行更新：已关闭，升级命令行后运行 paper-search skills update 手动同步");
     return lines;
 }
-function skillLocationState(location) {
+function skillLocationState(location, version) {
     if (location.status === "error")
         return `出错：${location.error}`;
+    // Never "run skills update" for a newer copy: that would put the older Skill back.
+    if (isNewerVersion(location.version, version)) {
+        return `PaperSearch 有新版本 ${location.version}，本机版本为 ${version}，请运行 npm install -g papersearch@latest 更新`;
+    }
     if (location.status === "stale") {
         const files = location.staleFiles.length + location.missingFiles.length;
         return `不是最新（${files} 个文件要更新），运行 paper-search skills update --targets ${location.targets[0]}`;

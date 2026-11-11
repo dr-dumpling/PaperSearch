@@ -4,7 +4,7 @@ import { join, dirname, basename, relative } from 'node:path';
 import { describe, it, expect } from '@jest/globals';
 import { DIAGNOSTICS_FOLDER, createOutputLayout, organizeFiles, placeFile, removeWorkFolder, safeComponent } from '../../src/capabilities/pdf-discovery/outputLayout.js';
 import { downloadWithFallback } from '../../src/capabilities/pdf-discovery/OpenAccessFallbackService.js';
-import { downloadBatch } from '../../src/capabilities/pdf-discovery/batch.js';
+import { downloadBatch, downloadSupplementsOnly } from '../../src/capabilities/pdf-discovery/batch.js';
 import { normalizeDownloadResult } from '../../src/capabilities/pdf-discovery/carsi/CarsiResultNormalizer.js';
 import { createCarsiDownloadArguments, selectCarsiBatchSupport } from '../../src/capabilities/pdf-discovery/carsi/CarsiReadiness.js';
 
@@ -63,6 +63,73 @@ describe('download output layout', () => {
     organizeFiles({path: put(join(kept.paperDir, 'doi.pdf'), 'PDF')}, kept, kept.paperDir);
     removeWorkFolder(kept);
     expect(readdirSync(kept.paperDir)).toEqual(['Nature_2026_A useful article.pdf']);
+  });
+
+  it("gives a paper a folder only once a supplementary file is saved", async () => {
+    // A folder per paper only for papers with supplementary files (user, 2026-11-11).
+    const dir = root();
+    const runs = root();
+    const flat = (doi: string) => createOutputLayout(dir, doi, metadata, false, {flat: true, diagnosticsDir: join(runs, 'diagnostics')});
+    // Main text and files in one answer (school download): saved files, so a folder.
+    const both = flat('10.1000/both');
+    const withFiles = organizeFiles({status: 'ok', path: put(join(both.paperDir, 'doi.pdf'), 'PDF'),
+      supplements: [{status: 'saved' as const, label: 'S1', file: put(join(both.paperDir, 'S1.xlsx'), 'x')}]}, both, both.paperDir);
+    expect(dirname(withFiles.path!)).toBe(both.paperDir);
+    // Files listed but none saved: the main text lies in the download folder, no folder left.
+    const none = flat('10.1000/none');
+    const without = organizeFiles({status: 'ok', path: put(join(none.paperDir, 'doi.pdf'), 'PDF B'),
+      supplements: [{status: 'failed' as const, label: 'S1', reason: 'http_404'}]}, none, none.paperDir);
+    removeWorkFolder(none);
+    expect(dirname(without.path!)).toBe(dir);
+    expect(existsSync(none.paperDir)).toBe(false);
+
+    // An open-access main text, its files fetched afterwards: it moves into the folder beside them.
+    const searchers = {crossref: {getPaperByDoi: async () => metadata}} as any;
+    const main = put(join(dir, 'Nature_2026_A useful article.pdf'), 'open PDF');
+    const backend = (supplements: (outputDir: string) => any[]) => ({downloadLegalDoi: async (r: any) => ({
+      kind: 'attempt_error', identifier: r.identifier, code: 'supplements_only', message: '', supplements: supplements(r.outputDir)})}) as any;
+    const fetched = await downloadSupplementsOnly({source: 'crossref', paperId: '10.1000/open', doi: '10.1000/open', savePath: dir},
+      backend((out) => [{status: 'saved', label: 'S1', file: put(join(out, 'supplements', 'S1.pdf'), 's')}]), searchers, main);
+    const folder = createOutputLayout(dir, '10.1000/open', metadata).paperDir;
+    expect(fetched.path).toBe(join(folder, 'Nature_2026_A useful article.pdf'));
+    expect(readFileSync(fetched.path!, 'utf8')).toBe('open PDF');
+    expect(existsSync(main)).toBe(false);
+    // None found: the main text stays where it is, and no empty folder is made.
+    const other = put(join(dir, 'Other.pdf'), 'other PDF');
+    const empty = await downloadSupplementsOnly({source: 'crossref', paperId: '10.1000/empty', doi: '10.1000/empty', savePath: dir},
+      backend(() => []), searchers, other);
+    expect(empty.path).toBeUndefined();
+    expect(existsSync(other)).toBe(true);
+    expect(existsSync(createOutputLayout(dir, '10.1000/empty', metadata).paperDir)).toBe(false);
+  });
+
+  it("takes a site without a supplementary-file rule as no fault: no diagnostics, nothing left behind", async () => {
+    // BMJ before its rule (Windows, 2026-11-11): reported as a failure, with a diagnostics
+    // folder, and the page snapshots left in the download folder.
+    const dir = root();
+    const records = join(root(), 'records');
+    const searchers = {crossref: {getPaperByDoi: async () => metadata}} as any;
+    const backend = {downloadLegalDoi: async (r: any) => {
+      const shot = put(join(r.diagnosticsDir, 'run1', 'diagnostics', '10.1136_x', 'snapshot-1-supplements-page.html'), '<p>page</p>');
+      const manifest = put(join(r.diagnosticsDir, 'run1', 'supplements', 'manifest.json'),
+        JSON.stringify({snapshots: [{why: 'supplements page', html: shot}]}));
+      return {kind: 'attempt_error', identifier: r.identifier, code: 'supplements_only', message: '', trace: {record: manifest},
+        supplements: [{status: 'skipped', label: '', reason: 'supplements_not_supported'}]};
+    }} as any;
+    const stages: any[] = [];
+    const result = await downloadSupplementsOnly({source: 'crossref', paperId: '10.1136/x', doi: '10.1136/x', savePath: dir,
+      recordsDir: records, diagnosticsDir: join(dirname(records), 'diagnostics'), onStage: (s: any) => stages.push(s)}, backend, searchers);
+    expect(result.status).toBe('ok');
+    expect(result.attempts[0]).toMatchObject({stage: 'supplements', status: 'skipped', code: 'supplements_not_supported'});
+    expect(stages[0].code).toBe('supplements_not_supported');
+    // Nothing in the download folder; the manifest and the page snapshot with the run's records.
+    expect(readdirSync(dir)).toEqual([]);
+    expect(existsSync(join(dirname(records), 'diagnostics'))).toBe(false);
+    const kept = readdirSync(records).sort();
+    expect(kept).toHaveLength(2);
+    const manifest = kept.find((name) => name.endsWith('_supplements-manifest.json'))!;
+    const html = kept.find((name) => name.endsWith('_snapshot-1-supplements-page.html'))!;
+    expect(JSON.parse(readFileSync(join(records, manifest), 'utf8')).snapshots[0].html).toBe(join(records, html));
   });
 
   it('does not overwrite different existing bytes or remove a source outside this request', () => {

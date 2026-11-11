@@ -11,9 +11,17 @@ export declare function handleSearchPapers(args: any, searchers: Searchers): Pro
         text: string;
     }[];
 }>;
+/**
+ * ``get_paper_by_doi``: one DOI (``doi``) or many (``dois``) in one call. The answer
+ * has one shape whatever the platform (user, 2026-11-11): every paper in ``papers``;
+ * ``not_found`` for DOIs the sources answered for without the paper, ``lookup_failed``
+ * for DOIs no source could answer for; ``warnings`` for sources that failed. One DOI
+ * also gets its ``doi`` and per-source ``source_results``, ``errors``, ``failed_sources``.
+ */
 export declare function handleGetPaperByDoi(args: {
-    doi: string;
-    platform: string;
+    doi?: string;
+    dois?: string[];
+    platform?: string;
 }, searchers: Searchers): Promise<{
     content: {
         type: "text";

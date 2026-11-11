@@ -318,6 +318,7 @@ function parseArgFlags(value: FlagValue | undefined): Record<string, unknown> {
     const stringKeys = new Set([
       "paperId",
       "doi",
+      "dois",
       "doiOrUrl",
       "source",
       "title",
@@ -1292,6 +1293,7 @@ function skillReport(): {
   autoUpdate: boolean;
   locations: SkillLocation[];
   error?: string;
+  version: string;
 } {
   const autoUpdate =
     getConfigValue("PAPER_SEARCH_SKILL_AUTO_UPDATE") !== "false";
@@ -1299,12 +1301,14 @@ function skillReport(): {
     return {
       autoUpdate,
       locations: skillLocations({ sourceRoot: PACKAGE_SKILL_ROOT }),
+      version: packageVersion(),
     };
   } catch (error: any) {
     return {
       autoUpdate,
       locations: [],
       error: error?.message || String(error),
+      version: packageVersion(),
     };
   }
 }

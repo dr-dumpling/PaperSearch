@@ -335,6 +335,68 @@ describe("handleToolCall", () => {
     });
   });
 
+  describe("get_paper_by_doi", () => {
+    // Waiting on all nine sources made each DOI take as long as the slowest (Windows 2026-11-11).
+    const paperFor = (doi: string, source: string) =>
+      PaperFactory.create({ paperId: doi, title: `Paper ${doi}`, doi, source });
+    const sources = (known: Record<string, string[]>, calls: string[] = [], failing: string[] = []) =>
+      Object.fromEntries(["crossref", "openalex", "unpaywall", "pubmed", "europepmc"].map((source) => [source, {
+        getPaperByDoi: async (doi: string) => {
+          calls.push(`${source} ${doi}`);
+          if (failing.includes(source)) throw new Error(`${source} unreachable`);
+          return (known[source] || []).includes(doi) ? paperFor(doi, source) : null;
+        },
+      }])) as any;
+
+    it("asks Crossref alone when it knows the DOI", async () => {
+      const calls: string[] = [];
+      const response = await handleToolCall("get_paper_by_doi", { doi: "10.1000/a" },
+        sources({ crossref: ["10.1000/a"], openalex: ["10.1000/a"] }, calls));
+      expect(calls).toEqual(["crossref 10.1000/a"]);
+      expect(response.content[0].text.split("\n")[0]).toBe("DOI lookup: 1 of 1 found.");
+      const data = responseData(response);
+      expect(data).toMatchObject({ doi: "10.1000/a", sources_requested: "auto", requested: 1, found: 1,
+        not_found: [], lookup_failed: [], total: 1, sources_used: ["crossref"] });
+      expect(data.papers.map((paper: any) => paper.source)).toEqual(["crossref"]);
+    });
+
+    it("asks the other sources only for a DOI Crossref does not know, and keeps the first match", async () => {
+      const calls: string[] = [];
+      const data = responseData(await handleToolCall("get_paper_by_doi", { doi: "10.5281/zenodo.1" },
+        sources({ openalex: ["10.5281/zenodo.1"], unpaywall: ["10.5281/zenodo.1"] }, calls)));
+      expect(calls[0]).toBe("crossref 10.5281/zenodo.1");
+      expect(calls).toHaveLength(5);
+      expect(data.papers.map((paper: any) => paper.source)).toEqual(["openalex"]);
+      expect(data.source_results).toMatchObject({ crossref: 0, openalex: 1, unpaywall: 1 });
+    });
+
+    it("looks up several DOIs in one call, in the order given, telling not found from not checked", async () => {
+      const response = await handleToolCall("get_paper_by_doi",
+        { dois: "10.1000/a, 10.1000/b;10.1000/missing 10.1000/A", platform: "auto" },
+        sources({ crossref: ["10.1000/a", "10.1000/b"] }));
+      const data = responseData(response);
+      expect(data).toMatchObject({ requested: 3, found: 2, not_found: ["10.1000/missing"], lookup_failed: [], total: 2 });
+      expect(data.papers.map((paper: any) => paper.doi)).toEqual(["10.1000/a", "10.1000/b"]);
+      expect(data).not.toHaveProperty("doi");
+      // No source could answer: not checked, rather than not found.
+      const down = responseData(await handleToolCall("get_paper_by_doi", { dois: ["10.1000/a", "10.1000/b"] },
+        sources({}, [], ["crossref", "openalex", "unpaywall", "pubmed", "europepmc"])));
+      expect(down).toMatchObject({ found: 0, not_found: [], lookup_failed: ["10.1000/a", "10.1000/b"] });
+      expect(down.warnings).toContain("10.1000/a crossref: crossref unreachable");
+    });
+
+    it("answers in the same shape for one source, a failing source included", async () => {
+      const data = responseData(await handleToolCall("get_paper_by_doi", { doi: "10.1000/a", platform: "openalex" },
+        sources({ openalex: ["10.1000/a"] })));
+      expect(data).toMatchObject({ sources_requested: "openalex", found: 1, sources_used: ["openalex"] });
+      expect(data.papers[0].source).toBe("openalex");
+      const failed = responseData(await handleToolCall("get_paper_by_doi", { doi: "10.1000/a", platform: "pubmed" },
+        sources({}, [], ["pubmed"])));
+      expect(failed).toMatchObject({ found: 0, lookup_failed: ["10.1000/a"], failed_sources: ["pubmed"] });
+      await expect(handleToolCall("get_paper_by_doi", { platform: "crossref" }, sources({}))).rejects.toThrow();
+    });
+  });
+
   describe("get_paper_by_doi all", () => {
     it("keeps DOI all-source lookup order derived from registry without adding unsupported sources", async () => {
       const calls: string[] = [];

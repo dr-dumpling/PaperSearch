@@ -493,14 +493,14 @@ class CapsulePageTests(unittest.TestCase):
                           results={'content': 'both', 'main': 7, 'supplements': 4, 'sources': [['机构订阅', 7]],
                                    'failures': [item('学校没有订阅', 'no_access', 'No access')],
                                    'supplement_failures': [item('网站人机验证拦截', 'user_or_external', 'Blocked file'),
-                                                           item('网站暂不支持附录', 'unsupported', 'No rule')]}), now)
+                                                           item('网站暂不支持自动下载附录', 'unsupported', 'No rule')]}), now)
         with sync_playwright() as p:
             browser, page = self.drag_page(p, 'darwin')
             try:
                 page.evaluate("async state => { testState = state; open = true; await tick(); }", state)
                 page.wait_for_function("!root.classList.contains('animating')")
                 text = page.locator('#root').inner_text()
-                for expected in ('正文未下到 5 篇', '附录未下全 2 篇', '正文已保存', '网站人机验证拦截', '网站暂不支持附录'):
+                for expected in ('正文未下到 5 篇', '附录未下全 2 篇', '正文已保存', '网站人机验证拦截', '网站暂不支持自动下载附录'):
                     self.assertIn(expected, text)
                 self.assertNotIn('未完成', text)
                 self.assertEqual(page.locator('.grp').count(), 3)
@@ -988,7 +988,7 @@ class CapsulePageTests(unittest.TestCase):
             'done': view({**running, 'status': 'done', 'done': 3, 'failed': 1, 'results': {
                 'content': 'both', 'main': 2, 'supplements': 1, 'sources': [['机构订阅', 2]],
                 'failures': [{'cls': 'no_access', 'reason': '学校没有订阅', 'journal': 'Spine', 'title': 'Other', 'doi': '10.1000/y'}],
-                'supplement_failures': [{'cls': 'unsupported', 'reason': '网站暂不支持附录', 'title': 'Third', 'doi': '10.1000/z'}]}}, now),
+                'supplement_failures': [{'cls': 'unsupported', 'reason': '网站暂不支持自动下载附录', 'title': 'Third', 'doi': '10.1000/z'}]}}, now),
         }
         listing = {'ok': True, 'filled': 0, 'total': 12, 'groups': [
             {'title': g['title'], 'services': [{**s, 'guide': s.get('guide', ''), 'guide_label': s.get('guide_label', ''), 'set': False,

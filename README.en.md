@@ -105,7 +105,7 @@ Once set up, mention the PaperSearch Skill and say what you want to search for, 
 <p align="center"><img src="assets/results.en.webp" width="840" alt="Results: the chat lists the 6 papers saved and how many supplementary files each has; the download folder holds one folder per paper, supplementary files in supplements/"></p>
 
 - Search results, snippets, journal metrics and citations come back in the conversation.
-- Each download gets its own `YYYYMMDD-HHmmss_PaperSearchDownload` folder inside your download folder: main texts alone lie directly in it; with supplementary files each paper has a folder, its supplementary files in supplements/. You are told why any paper was not obtained.
+- Each download gets its own `YYYYMMDD-HHmmss_PaperSearchDownload` folder inside your download folder: PDFs lie directly in it; a paper whose supplementary files were saved gets a folder of its own, its files in supplements/. You are told why any paper was not obtained.
 
 ## Optional setup
 

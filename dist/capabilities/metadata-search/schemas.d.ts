@@ -70,14 +70,25 @@ export declare const SearchPapersSchema: z.ZodEffects<z.ZodObject<{
     platform?: string | undefined;
     sources?: string | undefined;
 }>;
-export declare const GetPaperByDoiSchema: z.ZodObject<{
-    doi: z.ZodString;
-    platform: z.ZodDefault<z.ZodOptional<z.ZodEnum<["arxiv", "webofscience", "pubmed", "crossref", "openalex", "unpaywall", "pmc", "europepmc", "core", "all"]>>>;
+export declare const GetPaperByDoiSchema: z.ZodEffects<z.ZodObject<{
+    doi: z.ZodOptional<z.ZodString>;
+    dois: z.ZodOptional<z.ZodEffects<z.ZodArray<z.ZodString, "many">, string[], unknown>>;
+    platform: z.ZodDefault<z.ZodOptional<z.ZodEnum<["arxiv", "webofscience", "pubmed", "crossref", "openalex", "unpaywall", "pmc", "europepmc", "core", "all", "auto"]>>>;
 }, "strip", z.ZodTypeAny, {
-    doi: string;
-    platform: "arxiv" | "webofscience" | "pubmed" | "core" | "crossref" | "openalex" | "unpaywall" | "pmc" | "europepmc" | "all";
+    platform: "arxiv" | "webofscience" | "pubmed" | "core" | "crossref" | "openalex" | "unpaywall" | "pmc" | "europepmc" | "all" | "auto";
+    doi?: string | undefined;
+    dois?: string[] | undefined;
 }, {
-    doi: string;
-    platform?: "arxiv" | "webofscience" | "pubmed" | "core" | "crossref" | "openalex" | "unpaywall" | "pmc" | "europepmc" | "all" | undefined;
+    doi?: string | undefined;
+    platform?: "arxiv" | "webofscience" | "pubmed" | "core" | "crossref" | "openalex" | "unpaywall" | "pmc" | "europepmc" | "all" | "auto" | undefined;
+    dois?: unknown;
+}>, {
+    platform: "arxiv" | "webofscience" | "pubmed" | "core" | "crossref" | "openalex" | "unpaywall" | "pmc" | "europepmc" | "all" | "auto";
+    doi?: string | undefined;
+    dois?: string[] | undefined;
+}, {
+    doi?: string | undefined;
+    platform?: "arxiv" | "webofscience" | "pubmed" | "core" | "crossref" | "openalex" | "unpaywall" | "pmc" | "europepmc" | "all" | "auto" | undefined;
+    dois?: unknown;
 }>;
 //# sourceMappingURL=schemas.d.ts.map

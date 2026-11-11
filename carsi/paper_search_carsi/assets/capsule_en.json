@@ -175,7 +175,6 @@
   "等学校登录超时": "School login timed out",
   "网站人机验证拦截": "Blocked by bot check",
   "网站拦截了当前网络": "Site blocked network",
-  "网站暂不支持附录": "Supp. not supported here",
   "认证入口未注册": "Login entry unregistered",
   "需要学校登录": "School login needed",
   "页面处理超时": "Page timed out",
@@ -280,7 +279,8 @@
   "检索更快、更稳定（非必须）": "Faster, steady search (optional)",
   "下载时找免费全文": "Finds free full texts",
   "检索论文、核对 DOI 是否真实": "Search papers; check DOIs are real",
-  "填你常用的邮箱就行，不用注册": "Your usual email will do; no sign-up"
+  "填你常用的邮箱就行，不用注册": "Your usual email will do; no sign-up",
+  "网站暂不支持自动下载附录": "No supp. rule; get by hand"
  },
  "patterns": [
   [

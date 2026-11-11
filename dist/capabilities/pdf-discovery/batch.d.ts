@@ -68,10 +68,13 @@ export declare function downloadBatchItem(searchers: Searchers, options: Downloa
 }, tiers: DownloadTier[], backend?: CarsiBackend): Promise<DownloadWithFallbackResult>;
 /**
  * Supplementary files only: the entitled-access backend visits the article
- * page for them. An empty completed check is also ok; it is not a failed download. Reported to the run
- * ledger through ``request.onStage`` as the "supplements" stage.
+ * page for them. An empty completed check is also ok; it is not a failed download,
+ * nor is a site without a supplementary-file rule (user, 2026-11-11). Reported to
+ * the run ledger through ``request.onStage`` as the "supplements" stage.
+ * ``mainPath``: the paper's main text, saved before; once a file is saved it moves
+ * into the paper's folder beside them (the returned ``path``).
  */
-export declare function downloadSupplementsOnly(request: DownloadWithFallbackOptions, backend: CarsiBackend | undefined, searchers?: Searchers, paperDir?: string): Promise<DownloadWithFallbackResult>;
+export declare function downloadSupplementsOnly(request: DownloadWithFallbackOptions, backend: CarsiBackend | undefined, searchers?: Searchers, mainPath?: string): Promise<DownloadWithFallbackResult>;
 /** Download a list serially; one batch id ties it to one progress window. */
 export declare function downloadBatch(searchers: Searchers, options: DownloadBatchOptions, backend?: CarsiBackend, log?: (line: string) => void, createTiers?: (backend?: CarsiBackend) => DownloadTier[], pause?: (ms: number) => Promise<void>): Promise<DownloadBatchResult>;
 //# sourceMappingURL=batch.d.ts.map

@@ -105,7 +105,7 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 <p align="center"><img src="assets/results.webp" width="840" alt="拿到结果：对话里列出下好的 6 篇和各自的补充材料数量；带补充材料时下载文件夹里每篇一个文件夹，补充材料在 supplements/ 里"></p>
 
 - 检索、正文片段、期刊指标和引文，直接在对话里列给你。
-- 每次下载在下载文件夹里新建一个 `年月日-时分秒_PaperSearchDownload` 文件夹：只下正文时 PDF 直接放在里面，带补充材料时每篇一个文件夹，补充材料在 supplements/ 里；没拿到的篇目告诉你原因。
+- 每次下载在下载文件夹里新建一个 `年月日-时分秒_PaperSearchDownload` 文件夹：PDF 直接放在里面，取到了补充材料的论文才单独一个文件夹，补充材料在 supplements/ 里；没拿到的篇目告诉你原因。
 
 ## 可选配置
 

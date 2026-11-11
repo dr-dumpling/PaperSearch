@@ -1,6 +1,6 @@
 import { resolveDownloadPath } from "../../config/ConfigService.js";
 import { dirname } from "node:path";
-import { createOutputLayout, inPaperDir, isInside, lookupOutputMetadata, organizeFiles } from "./outputLayout.js";
+import { createOutputLayout, inPaperDir, isInside, lookupOutputMetadata, moveIntoPaperDir, organizeFiles, removeWorkFolder } from "./outputLayout.js";
 import { randomUUID } from "node:crypto";
 import { RunLedger } from "../../infrastructure/runlog/RunLedger.js";
 import { classifyFailureCode, FAILURE_CLASS_NAMES, } from "../../infrastructure/runlog/failureClass.js";
@@ -65,17 +65,21 @@ function itemOptions(item, options) {
 }
 /**
  * Supplementary files only: the entitled-access backend visits the article
- * page for them. An empty completed check is also ok; it is not a failed download. Reported to the run
- * ledger through ``request.onStage`` as the "supplements" stage.
+ * page for them. An empty completed check is also ok; it is not a failed download,
+ * nor is a site without a supplementary-file rule (user, 2026-11-11). Reported to
+ * the run ledger through ``request.onStage`` as the "supplements" stage.
+ * ``mainPath``: the paper's main text, saved before; once a file is saved it moves
+ * into the paper's folder beside them (the returned ``path``).
  */
-export async function downloadSupplementsOnly(request, backend, searchers, paperDir) {
+export async function downloadSupplementsOnly(request, backend, searchers, mainPath) {
     request = { ...request, savePath: resolveDownloadPath(request.savePath) };
     const startedAt = Date.now();
     const metadata = searchers ? await lookupOutputMetadata(searchers, request.doi ? "crossref" : request.source, request.doi || request.paperId) : {};
     let layout = createOutputLayout(request.savePath, request.doi || request.paperId, { ...metadata, title: request.title || metadata.title }, false, { diagnosticsDir: request.diagnosticsDir });
-    // The main text's folder: its supplementary files go beside it.
-    if (paperDir && isInside(paperDir, request.savePath))
-        layout = inPaperDir(layout, paperDir);
+    // A main text already in a folder of its own (an earlier download): its files go beside it.
+    const mainDir = mainPath ? dirname(mainPath) : "";
+    if (mainDir && isInside(mainDir, request.savePath))
+        layout = inPaperDir(layout, mainDir);
     let trace;
     const files = await fetchSupplementsOnly(backend, {
         identifier: request.doi || request.paperId,
@@ -84,32 +88,45 @@ export async function downloadSupplementsOnly(request, backend, searchers, paper
         ...(request.batch ? { batch: request.batch } : {}),
         ...(request.shortUserWait ? { userWait: "short" } : {}),
     }, value => { trace = value; });
+    const saved = files?.filter((f) => f.status === "saved").length ?? 0;
+    const noneListed = files?.length === 0;
+    // No rule for the site's supplementary files: not known whether there are any, and no fault to diagnose.
+    const unsupported = !!files?.length && files.every((file) => file.reason === "supplements_not_supported");
     let filingFailed = false;
+    let movedMain;
     try {
-        const status = files?.every((file) => file.status === "saved") ? "ok" : "error";
+        const status = files?.every((file) => file.status === "saved") || unsupported ? "ok" : "error";
         if (files)
             organizeFiles({ supplements: files, trace, status }, layout, layout.paperDir, undefined, request.recordsDir);
+        if (saved && mainPath) {
+            const moved = moveIntoPaperDir(mainPath, layout);
+            if (moved !== mainPath)
+                movedMain = moved;
+        }
+        removeWorkFolder(layout);
     }
     catch {
         filingFailed = true;
     } // Preserve saved files and report filing separately below.
-    const saved = files?.filter((f) => f.status === "saved").length ?? 0;
-    const noneListed = files?.length === 0;
     const attempt = files === undefined
         ? { stage: "supplements", status: "skipped", message: "No entitled-access backend for supplementary files." }
         : noneListed
             ? { stage: "supplements", status: "skipped", code: "no_supplements",
                 message: "Article page checked; no supplementary files were listed." }
-            : {
-                stage: "supplements",
-                status: saved ? "ok" : "error",
-                message: `${saved}/${files.length} supplementary files saved.`,
-                ...(saved ? {} : { code: "supplements_failed" }),
-            };
+            : unsupported
+                ? { stage: "supplements", status: "skipped", code: "supplements_not_supported",
+                    message: "No supplementary-file rule for this site yet; get them from the article page by hand." }
+                : {
+                    stage: "supplements",
+                    status: saved ? "ok" : "error",
+                    message: `${saved}/${files.length} supplementary files saved.`,
+                    ...(saved ? {} : { code: "supplements_failed" }),
+                };
     request.onStage?.({ ...attempt, ...(trace ? { trace } : {}), startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt });
     const title = request.title || metadata.title;
     return {
-        status: saved || noneListed ? "ok" : "error",
+        status: saved || noneListed || unsupported ? "ok" : "error",
+        ...(movedMain ? { path: movedMain } : {}),
         ...(title ? { title } : {}),
         ...(metadata.journal ? { journal: metadata.journal } : {}),
         attempts: [attempt, ...(filingFailed ? [{ stage: "output_layout", status: "error",
@@ -121,9 +138,11 @@ export async function downloadSupplementsOnly(request, backend, searchers, paper
 async function supplementsForOpenItem(result, request, backend, searchers) {
     if (request.content !== "both" || result.status !== "ok" || result.supplements)
         return;
-    const extra = await downloadSupplementsOnly({ ...request, ...(result.publishedDoi ? { doi: result.publishedDoi } : {}) }, backend, searchers, result.path && !result.version ? dirname(result.path) : undefined);
+    const extra = await downloadSupplementsOnly({ ...request, ...(result.publishedDoi ? { doi: result.publishedDoi } : {}) }, backend, searchers, result.path && !result.version ? result.path : undefined);
     if (extra.supplements)
         result.supplements = extra.supplements;
+    if (extra.path)
+        result.path = extra.path; // moved into its folder beside the files
     return extra;
 }
 const AWAY_NOTICE = "[批量] 这一篇等你登录或验证已到时限；后面的篇目遇到登录或验证只等 60 秒，你在登录页开始输入就照常等";

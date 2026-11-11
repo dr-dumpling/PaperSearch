@@ -58,21 +58,27 @@ export const SEARCH_PAPERS_TOOL = {
 
 export const GET_PAPER_BY_DOI_TOOL = {
   name: 'get_paper_by_doi',
-  description: 'Retrieve paper information using DOI from available platforms',
+  description: 'Look up papers by DOI to check they exist and read their metadata. One DOI (doi) or up to 100 in one call (dois). The result lists every paper in data.papers, the DOIs not found in data.not_found and those no source could answer for in data.lookup_failed.',
   inputSchema: {
     type: 'object',
     properties: {
       doi: {
         type: 'string',
-        description: 'DOI (Digital Object Identifier)'
+        description: 'One DOI (Digital Object Identifier)'
+      },
+      dois: {
+        type: 'array',
+        items: { type: 'string' },
+        maxItems: 100,
+        description: 'Several DOIs, looked up in one call (also a single string with commas, semicolons or spaces between them)'
       },
       platform: {
         type: 'string',
-        enum: ['webofscience', 'pubmed', 'crossref', 'openalex', 'unpaywall', 'pmc', 'europepmc', 'core', 'all'],
-        description: 'Platform to search'
+        enum: ['auto', 'crossref', 'openalex', 'pubmed', 'pmc', 'europepmc', 'unpaywall', 'core', 'webofscience', 'all'],
+        description: 'auto (default): Crossref first, the other sources only for a DOI Crossref does not know; all: every source, each record kept; or one source'
       }
     },
-    required: ['doi']
+    required: []
   }
 };
 

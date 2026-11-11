@@ -20,10 +20,12 @@ interface DoctorReportInput {
         enabled: boolean;
         notes: string[];
     };
+    /** ``version``: this command's, which a newer Skill copy is told apart from. */
     skills?: {
         autoUpdate: boolean;
         locations: SkillLocation[];
         error?: string;
+        version?: string;
     };
 }
 export declare function renderDoctorTextReport(report: DoctorReportInput): string;

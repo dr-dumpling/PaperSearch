@@ -76,8 +76,8 @@ export async function downloadWithFallback(searchers, options, tiers = createDef
     context.outputMetadata = context.arxivOnly ? context.arxivPaper || {} : await lookupOutputMetadata(searchers, context.doi ? "crossref" : context.source, context.doi || context.paperId);
     context.title ||= context.outputMetadata.title;
     context.titleLookedUp = true;
-    // Main texts only lie side by side; with supplementary files each paper has its folder (user, 2026-11-11).
-    const placement = { flat: options.content !== "both", diagnosticsDir: options.diagnosticsDir };
+    // The main text lies in the download folder; with supplementary files saved, in the paper's folder (user, 2026-11-11).
+    const placement = { flat: true, diagnosticsDir: options.diagnosticsDir };
     const layout = createOutputLayout(savePath, context.doi || context.paperId, { ...context.outputMetadata, title: context.title }, !!context.arxivOnly, placement);
     const paper = {
         ...(context.title ? { title: context.title } : {}),

@@ -3,7 +3,7 @@
  * Tests for unified error handling, retry logic, and error classification
  */
 
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { ErrorHandler, ApiError, HTTP_ERROR_CODES } from '../../src/infrastructure/http/ErrorHandler.js';
 
 describe('ErrorHandler', () => {
@@ -196,6 +196,25 @@ describe('ErrorHandler', () => {
       };
 
       expect(() => errorHandler.handleHttpError(mockError, 'search')).toThrow(ApiError);
+    });
+
+    it('leaves stderr alone: the caller reports the error (Windows PowerShell scripts stopped on it, 2026-11-11)', () => {
+      const ci = process.env.CI;
+      delete process.env.CI;
+      // Its own mock: tests/setup.ts already made console.error a shared jest.fn, and spyOn
+      // would return that one, with the calls earlier tests made under CI=true.
+      const original = console.error;
+      const printed = jest.fn();
+      console.error = printed as typeof console.error;
+      try {
+        const mockError = { response: { status: 503, data: {} }, config: { url: 'https://api.example.com/x', method: 'get' } };
+        expect(() => errorHandler.handleHttpError(mockError, 'getPaperByDoi')).toThrow(ApiError);
+        expect(() => errorHandler.handleError(new Error('socket hang up'), 'getPaperByDoi')).toThrow();
+        expect(printed).not.toHaveBeenCalled();
+      } finally {
+        console.error = original;
+        if (ci !== undefined) process.env.CI = ci;
+      }
     });
 
     it('should distinguish insufficient API product permissions from invalid keys', () => {

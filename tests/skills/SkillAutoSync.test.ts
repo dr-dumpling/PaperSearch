@@ -12,7 +12,7 @@ import {
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
-import { autoSyncSkill, skillLocations } from '../../src/management/skills/index.js';
+import { autoSyncSkill, isNewerVersion, skillLocations, skillVersion } from '../../src/management/skills/index.js';
 
 describe('Skill auto-sync after an upgrade', () => {
   let temp: string;
@@ -67,6 +67,44 @@ describe('Skill auto-sync after an upgrade', () => {
     expect(existsSync(join(home, '.codex', 'skills', 'paper-search'))).toBe(false);
 
     expect(sync()).toEqual({ action: 'unchanged' });
+  });
+
+  it('never puts its own Skill back over a newer one, and says once a day to update the command', () => {
+    // A Skill from GitHub, the command older: 0.5.6 replaced a 0.5.11 Skill (Mac, 2026-11-11).
+    const versioned = (version: string, body: string) => `---\nname: paper-search\ndescription: x\nmetadata:\n  version: "${version}"\n---\n${body}\n`;
+    mkdirSync(installed(), { recursive: true });
+    writeFileSync(installed('SKILL.md'), versioned('0.5.11', 'newer skill'));
+    writeFileSync(join(source, 'SKILL.md'), versioned('0.5.6', 'older skill'));
+    const at = (hours: number) => new Date(2026, 10, 11, 15, 0, 0).getTime() + hours * 3600_000;
+    const run = (hours: number) => autoSyncSkill({ skillsRoot: home, sourceRoot: source, dataRoot: data, version: '0.5.6', now: new Date(at(hours)) });
+
+    const first = run(0);
+    expect(first.action).toBe('up_to_date');
+    expect(first.notice).toBe('paper-search：PaperSearch 有新版本 0.5.11，本机版本为 0.5.6，请运行 npm install -g papersearch@latest 更新。');
+    expect(readFileSync(installed('SKILL.md'), 'utf8')).toContain('newer skill');
+    expect(readdirSync(data)).not.toContain('skill-backups');
+    // Later the same day: quiet; a day on: told again.
+    expect(run(5)).toEqual({ action: 'unchanged' });
+    expect(run(24).notice).toContain('本机版本为 0.5.6');
+    // The command updated: the copies are its own version or older, synced as before, no reminder.
+    writeFileSync(join(source, 'SKILL.md'), versioned('0.5.12', 'updated skill'));
+    const updated = autoSyncSkill({ skillsRoot: home, sourceRoot: source, dataRoot: data, version: '0.5.12', now: new Date(at(25)) });
+    expect(updated.action).toBe('updated');
+    expect(updated.notice).not.toContain('有新版本');
+    expect(readFileSync(installed('SKILL.md'), 'utf8')).toContain('updated skill');
+  });
+
+  it('reads the version a Skill names, and compares versions', () => {
+    mkdirSync(installed(), { recursive: true });
+    writeFileSync(installed('SKILL.md'), '---\r\nname: paper-search\r\nmetadata:\r\n  short-description: x\r\n  version: 0.5.12\r\n---\r\nbody\r\n');
+    expect(skillVersion(installed())).toBe('0.5.12');
+    writeFileSync(installed('SKILL.md'), '---\nname: paper-search\ndescription: |\n  version: 9.9.9\n---\nmetadata:\n  version: 9.9.9\n');
+    expect(skillVersion(installed())).toBeUndefined();  // only metadata.version in the front matter counts
+    expect(skillVersion(join(home, 'nowhere'))).toBeUndefined();
+    expect(isNewerVersion('0.5.11', '0.5.6')).toBe(true);
+    expect(isNewerVersion('0.10.0', '0.9.9')).toBe(true);
+    expect(isNewerVersion('0.5.6', '0.5.6')).toBe(false);
+    expect(isNewerVersion(undefined, '0.5.6')).toBe(false);
   });
 
   it('only records the version when the copies are already current', () => {
@@ -169,7 +207,7 @@ describe('the CLI syncs the installed Skill on its first run after an upgrade', 
     expect(readFileSync(join(dir, 'SKILL.md'), 'utf8')).toBe('an old Skill\n');
 
     const doctor = runCli(['doctor', '--format', 'text'], 'false');
-    expect(doctor.stdout).toContain('自动更新：已关闭');
+    expect(doctor.stdout).toContain('Skill 跟随命令行更新：已关闭');
     expect(doctor.stdout).toContain('不是最新');
   });
 });

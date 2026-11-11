@@ -122,9 +122,9 @@ export async function handleDownloadWithFallback(args, searchers, carsiBackend) 
             : await downloadWithFallback(searchers, options, tiers);
         if (options.content === "both" && outcome.status === "ok" && !outcome.supplements) {
             // The main text came from an open stage: supplementary files only.
-            const extra = await downloadSupplementsOnly({ ...options, ...(outcome.publishedDoi ? { doi: outcome.publishedDoi } : {}) }, carsiBackend, searchers, outcome.path && !outcome.version ? dirname(outcome.path) : undefined);
+            const extra = await downloadSupplementsOnly({ ...options, ...(outcome.publishedDoi ? { doi: outcome.publishedDoi } : {}) }, carsiBackend, searchers, outcome.path && !outcome.version ? outcome.path : undefined);
             if (extra.supplements)
-                return { ...outcome, supplements: extra.supplements };
+                return { ...outcome, supplements: extra.supplements, ...(extra.path ? { path: extra.path } : {}) };
         }
         return outcome;
     };

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { describe, expect, it } from "@jest/globals";
 import { TOOLS } from "../../src/core/tools.js";
+import { skillVersion } from "../../src/management/skills/index.js";
 
 const SKILL_ROOT = join(process.cwd(), "skills", "paper-search");
 
@@ -109,11 +110,18 @@ describe("paper-search bundled skill contract", () => {
     expect(readSkillFile("references/setup.md")).toContain("“只装了 Skill 时”征得同意装好");
   });
 
+  it("names the PaperSearch version it goes with, the package's own", () => {
+    // An older command no longer puts its Skill back over a newer one (user, 2026-11-11).
+    const pkg = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { version: string };
+    expect(skillVersion(join(process.cwd(), "skills", "paper-search"))).toBe(pkg.version);
+    expect(readSkillFile("SKILL.md")).toContain("`paper-search --version` 比本 Skill 开头 `metadata.version` 写的版本旧时");
+  });
+
   it("keeps what the AI shows and says short", () => {
     // DeepSeek, 2026-11-10: a 500-character description listed in the skill picker, replies of 1,000+
     // characters with tables of paths and versions, and the PowerShell execution policy changed unasked.
     const skill = readSkillFile("SKILL.md");
-    const description = skill.split("---")[1].split("description:")[1];
+    const description = skill.split("---")[1].split("description:")[1].split("metadata:")[0];
     expect(description.replace(/\s/g, "").length).toBeLessThan(220);
     expect(description).toContain("请开始配置");
     expect(skill).toContain("## 回复用户");

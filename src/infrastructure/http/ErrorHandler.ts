@@ -4,7 +4,7 @@
  */
 
 import { sanitizeRequest, maskSensitiveData } from '../security/SecurityUtils.js';
-import { logError as loggerError, logDebug } from '../../utils/Logger.js';
+import { logDebug } from '../../utils/Logger.js';
 
 /**
  * API Error codes and their meanings
@@ -223,10 +223,12 @@ export class ErrorHandler {
   }
 
   /**
-   * Log error with consistent format
+   * Log error with consistent format: development only. The error itself goes on to
+   * the caller, which reports it (a source's errors and warnings); printed on stderr as
+   * well it stopped scripts that treat stderr as failure (Windows PowerShell, 2026-11-11).
    */
   private logError(details: Record<string, any>): void {
-    loggerError(`[${this.platform}] Error:`, {
+    logDebug(`[${this.platform}] Error:`, {
       timestamp: new Date().toISOString(),
       ...details
     });

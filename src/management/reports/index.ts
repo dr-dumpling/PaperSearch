@@ -1,5 +1,6 @@
 import type { CapabilityProfile } from "../capability-profile/index.js";
 import type { SkillDiffResult, SkillLocation } from "../skills/index.js";
+import { isNewerVersion } from "../skills/autoSync.js";
 
 interface DoctorReportInput {
   config: {
@@ -16,7 +17,8 @@ interface DoctorReportInput {
   capabilityProfile: CapabilityProfile;
   platformStatus: any;
   carsi?: { installed: boolean; complete: boolean; enabled: boolean; notes: string[] };
-  skills?: { autoUpdate: boolean; locations: SkillLocation[]; error?: string };
+  /** ``version``: this command's, which a newer Skill copy is told apart from. */
+  skills?: { autoUpdate: boolean; locations: SkillLocation[]; error?: string; version?: string };
 }
 
 export function renderDoctorTextReport(report: DoctorReportInput): string {
@@ -154,19 +156,24 @@ function renderSkillLines(
   }
   for (const location of skills.locations) {
     lines.push(
-      `  ${location.path}（${location.targets.join("、")}）：${skillLocationState(location)}`,
+      `  ${location.path}（${location.targets.join("、")}）：${skillLocationState(location, skills.version)}`,
     );
   }
   lines.push(
     skills.autoUpdate
-      ? "  自动更新：开启，升级后第一次运行 paper-search 时同步已安装的 Skill（关闭：paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false）"
-      : "  自动更新：已关闭，升级后运行 paper-search skills update --targets <目标> 同步",
+      // Named as the Skill's: read under "please update", "自动更新" seemed to say PaperSearch updates itself (user, 2026-11-11).
+      ? "  Skill 跟随命令行更新：升级命令行后第一次运行 paper-search 时，自动把这里的 Skill 换成同一版本（关闭：paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false）"
+      : "  Skill 跟随命令行更新：已关闭，升级命令行后运行 paper-search skills update 手动同步",
   );
   return lines;
 }
 
-function skillLocationState(location: SkillLocation): string {
+function skillLocationState(location: SkillLocation, version?: string): string {
   if (location.status === "error") return `出错：${location.error}`;
+  // Never "run skills update" for a newer copy: that would put the older Skill back.
+  if (isNewerVersion(location.version, version)) {
+    return `PaperSearch 有新版本 ${location.version}，本机版本为 ${version}，请运行 npm install -g papersearch@latest 更新`;
+  }
   if (location.status === "stale") {
     const files = location.staleFiles.length + location.missingFiles.length;
     return `不是最新（${files} 个文件要更新），运行 paper-search skills update --targets ${location.targets[0]}`;

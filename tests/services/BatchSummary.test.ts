@@ -97,7 +97,7 @@ describe("main text and supplementary files apart", () => {
     ]), 0, "/out");
     expect(summary.supplement_failures).toEqual([
       { cls: "user_or_external", reason: "网站人机验证拦截", title: "Paper 1", journal: "APL", doi: "10.1000/1" },
-      { cls: "unsupported", reason: "网站暂不支持附录", title: "Paper 2", journal: "APL", doi: "10.1000/2" },
+      { cls: "unsupported", reason: "网站暂不支持自动下载附录", title: "Paper 2", journal: "APL", doi: "10.1000/2" },
     ]);
     expect(summary.failures).toEqual([expect.objectContaining({ reason: "等学校登录超时", title: "Paper 5" })]);
     expect(summary.supplements).toBe(2);

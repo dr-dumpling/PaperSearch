@@ -138,8 +138,8 @@ const EXPECTED_SCHEMA_SUMMARY: Record<
     properties: ["query", "maxResults", "yearLow", "yearHigh", "author"],
   },
   get_paper_by_doi: {
-    required: ["doi"],
-    properties: ["doi", "platform"],
+    required: [],
+    properties: ["doi", "dois", "platform"],
   },
   search_scihub: {
     required: ["doiOrUrl"],
