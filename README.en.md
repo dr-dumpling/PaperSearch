@@ -128,9 +128,10 @@ Feature comparison:
 
 ### 1. School subscription downloads
 
-Papers the open channels cannot get can come through your school's subscriptions: the program signs in to the publishers through the academic identity federation your school belongs to, with your school account. At setup you only name your school (in Chinese, English or its own language); the program finds out which federation it belongs to.
+Papers the open channels cannot get can come through your school's subscriptions: the program signs in to the publishers through the academic identity federation your school belongs to, with your school account. At setup you only name your school, and you can then sign in and download non-OA papers.
 
-The academic identity federations of different countries are interconnected through [eduGAIN](https://edugain.org/), which is how publishers accept school accounts from many countries; many schools in no national federation use the [OpenAthens](https://www.openathens.net/) institutional sign-in service, and the program signs in through it too.
+1. Through the federations interconnected via [eduGAIN](https://edugain.org/), such as CARSI in China, HKAF in Hong Kong and SGAF in Singapore;
+2. Schools in no national federation that have [OpenAthens](https://www.openathens.net/) access can sign in through it as well.
 
 **Supported academic identity federations** (first stage: Asia)
 
@@ -144,10 +145,8 @@ The academic identity federations of different countries are interconnected thro
 | Malaysia | SIFULAN | SIFULAN Malaysian Access Federation |
 | Schools in no national federation (most universities in Southeast Asia and others) | OpenAthens | OpenAthens institutional sign-in |
 
-- What each federation supports and which schools have been tested: [federation support table](skills/paper-search/references/federation-support.md) (Chinese).
+- What each federation supports: [federation support table](skills/paper-search/references/federation-support.md) (Chinese).
 - Planned: the US (InCommon), the UK (UK federation), Australia (AAF) and the federations of European countries, then the other countries in eduGAIN; see the [roadmap](docs/ROADMAP.zh.md) (Chinese).
-- A school in no federation and not on OpenAthens (reached only from the campus network, a VPN or a library proxy) cannot be used yet.
-- Whether a given paper comes through still depends on your school's subscriptions and on whether the publisher lets your school sign in with school accounts; when it does not, the program says so.
 
 - **Your school account is enough**: no keys to apply for; publisher API keys only cover Elsevier and Springer.
 - **Deep publisher adaptation**: the general download flow is deeply optimized, and more than 30 publishers have dedicated rules, one by one: where the institutional login is and how to fetch the PDF and supplementary files follow each publisher as it really is, so downloads are more accurate and fewer papers are missed. The main publishers:
