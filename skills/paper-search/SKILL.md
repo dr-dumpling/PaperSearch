@@ -4,7 +4,7 @@ description: |
   用本机 paper-search 命令做文献工作：检索论文、核对 DOI/PMID、搜正文片段（找方法和结果的原文）、查期刊影响因子与分区、查施引和参考文献、下载全文和补充材料。
   用户要找文献、查期刊、下载论文，或说“请开始配置”时使用；英文请求（literature search、journal metrics、paper download、start setup）同样适用。
 metadata:
-  version: "0.6.0"
+  version: "0.6.1"
 ---
 
 # 文献检索与下载（paper-search）
@@ -42,7 +42,7 @@ metadata:
      ├─ ① 开放下载（默认就有）
      │    primary → direct_pdf_url → repositories → unpaywall → publisher_api
      ├─ ② Sci-Hub 兜底（默认开启，useSciHub=false 关闭）
-     ├─ ③ 机构下载（学校订阅下载，电脑上经用户同意后安装；paper-search carsi install）
+     ├─ ③ 机构下载（学校订阅下载，电脑上经用户同意后安装；paper-search school install）
      │    entitled_access：浏览器打开出版社网站 → 程序选学校所属的联盟和学校
      │    → 用户登录学校，后端尝试简单验证、必要时提示人工接管 → 程序取 PDF
      │    补充材料只走这一步：正文已由 ①② 拿到时，content=both 也会单独来这里取
@@ -51,7 +51,7 @@ metadata:
      ├─ 每一步拿到文件都核对身份（首页的 DOI、题名）；通过就保存，后面的步骤不再试
      └─ 都没拿到 → paper-search failures --format text，按四类失败向用户说明
 
-管理命令：doctor（体检）、setup / config（配置 key）、skills（同步 Skill）、carsi（学校订阅下载的安装、状态、更新、卸载）
+管理命令：doctor（体检）、setup / config（配置 key）、skills（同步 Skill）、school（学校订阅下载的安装、状态、更新、卸载）
 ```
 
 ## 读哪个参考文件
@@ -63,7 +63,7 @@ metadata:
 | 在检索、施引扩展、期刊指标、PDF 获取、正文片段检索之间选路由；开放下载的各个渠道；核验论文身份 | `references/capability-routing.md` |
 | 核对命令、`paper-search run` 的工具名、参数和输出格式 | `references/cli-contract.md` |
 | 检索类命令出错（命令缺失、缺 key、限流、0 结果、Scholar 验证页） | `references/troubleshooting.md` |
-| 机构下载：安装或检查扩展、配置学校、选择浏览器（Google Chrome / ego） | `references/carsi-setup.md` |
+| 机构下载：安装或检查扩展、配置学校、选择浏览器（Google Chrome / ego） | `references/school-setup.md` |
 | 机构下载：登录与验证、批量、进度窗口、失败分类、补充材料、确认下载成功 | `references/browser-download.md` |
 | 机构下载：某家出版社、某本期刊能不能下正文和补充材料，没有学校登录路线时怎么办 | `references/publisher-support.md` |
 | 机构下载：某所学校、某个国家或地区能不能用（支持哪些学术身份联盟） | `references/federation-support.md` |
@@ -100,7 +100,7 @@ paper-search doctor --pretty
 
 `paper-search update check --format text` 检查 npm 稳定新版。日常命令的更新提示在 stderr，不能当作文献任务失败；可告知用户建议，未经用户授权不执行升级。`paper-search config set PAPER_SEARCH_UPDATE_NOTIFY false` 关闭自动检查与提醒，详见 `references/management-layer.md`。
 
-本 Skill 有五个文献功能；`doctor`、`smoke`、`config`、`skills`、`carsi`、`failures` 是管理和诊断命令。
+本 Skill 有五个文献功能；`doctor`、`smoke`、`config`、`skills`、`school`、`failures` 是管理和诊断命令。
 
 | 用户意图 | 能力名 | 首选入口 | 关键边界 |
 |---|---|---|---|
@@ -114,27 +114,27 @@ paper-search doctor --pretty
 
 ## 两种下载方式
 
-装好 `paper-search` 就能用开放下载。机构下载（学校订阅下载）要用户同意后才装：按 `references/setup.md` 问过、用户同意后，运行 `paper-search carsi install --yes --skip-school`；本机没有 Google Chrome 时先装 Chrome（问的时候一并说明）。装完会弹出设置窗口的 API key 页，请用户在窗口里填 key、改下载文件夹（见 `references/carsi-setup.md`）。没有图形界面的服务器不装、不问。
+装好 `paper-search` 就能用开放下载。机构下载（学校订阅下载）要用户同意后才装：按 `references/setup.md` 问过、用户同意后，运行 `paper-search school install --yes --skip-school`；本机没有 Google Chrome 时先装 Chrome（问的时候一并说明）。装完会弹出设置窗口的 API key 页，请用户在窗口里填 key、改下载文件夹（见 `references/school-setup.md`）。没有图形界面的服务器不装、不问。
 
 两种情况不装、不提，用户自己要求时才装：
-- 用户说过不要：`paper-search config get PAPER_SEARCH_CARSI_DECLINED` 为 `true`。用户说不要时，运行 `paper-search config set PAPER_SEARCH_CARSI_DECLINED true` 记下来。
+- 用户说过不要：`paper-search config get PAPER_SEARCH_SCHOOL_DECLINED` 为 `true`。用户说不要时，运行 `paper-search config set PAPER_SEARCH_SCHOOL_DECLINED true` 记下来。
 - 这台机器没有图形界面（Linux 上没有 `DISPLAY`、`WAYLAND_DISPLAY`）：学校登录要在看得见的浏览器里完成，装不了。
 
 | | 开放下载 | 机构下载（学校订阅下载） |
 |---|---|---|
-| 能不能直接用 | 装好 `paper-search` 就能用 | 电脑上经用户同意后安装（`paper-search carsi install`），需要 Google Chrome；服务器上不装 |
+| 能不能直接用 | 装好 `paper-search` 就能用 | 电脑上经用户同意后安装（`paper-search school install`），需要 Google Chrome；服务器上不装 |
 | 能拿到什么 | 开放获取的正文 | 用户学校订阅的正文；有规则的出版社还能取补充材料 |
-| 怎么拿 | 程序直接下载，通常几秒，不用登录：来源自带的下载、元数据里的 PDF 地址、PMC、Unpaywall、出版社接口（用户自己的 key）；最后是默认开启的 Sci-Hub 兜底（它不是开放获取，`useSciHub=false` 关闭） | 打开浏览器，经 CARSI 登录学校，在出版社网站取 PDF；账号密码由用户输入，后端尝试简单验证，必要时提示人工接管 |
+| 怎么拿 | 程序直接下载，通常几秒，不用登录：来源自带的下载、元数据里的 PDF 地址、PMC、Unpaywall、出版社接口（用户自己的 key）；最后是默认开启的 Sci-Hub 兜底（它不是开放获取，`useSciHub=false` 关闭） | 打开浏览器，经学校所属的学术身份联盟或 OpenAthens 登录学校，在出版社网站取 PDF；账号密码由用户输入，后端尝试简单验证，必要时提示人工接管 |
 | 补充材料 | 不提供 | 有规则的出版社可以取，见 `references/publisher-support.md` |
 | 结果里怎么看 | `attempts[]` 里成功的一步是 `primary`、`direct_pdf_url`、`repositories`、`unpaywall`、`publisher_api` 或 `scihub` | 成功的一步是 `entitled_access` |
-| 参考文件 | `references/capability-routing.md` 的“PDF 获取” | `references/carsi-setup.md`、`references/browser-download.md`、`references/publisher-support.md`、`references/federation-support.md` |
+| 参考文件 | `references/capability-routing.md` 的“PDF 获取” | `references/school-setup.md`、`references/browser-download.md`、`references/publisher-support.md`、`references/federation-support.md` |
 
 两种方式用同一个下载命令，不需要分开调用：先试开放下载；拿不到时，机构下载已启用才继续用学校权限，它固定是最后一步。
 
 - 交付时告诉用户文件来自哪种方式：开放下载、Sci-Hub，还是机构下载。
-- 开放下载没拿到、机构下载又没装时：告诉用户开放渠道没有找到这篇。不主动提安装时（见上），只说出版社 API key 这一种办法；否则说如果学校订阅了它，有两种办法：安装学校订阅下载（CARSI，本机要先装 Google Chrome）；或者在校园网里配出版社 API key，只对 Elsevier（DOI 以 10.1016 开头）和 Springer（10.1007）的论文有效，申请网址和配置命令见下载结果里 `publisher_api` 那一步的提示。安装前先征得用户同意，不擅自安装。
-- 用机构下载前，先运行 `paper-search carsi status --format text` 确认扩展可用：显示已安装并启用，或者“PaperSearch 配置”一行显示已启用并给出后端路径。后一种是用户自己维护的后端（例如开发版），第一行写“未安装”是正常的，直接使用，不要再安装或改路径；`paper-search doctor` 里 `entitled_access` 为 `available` 也说明后端能用。
-- 扩展自己的命令 `paper-search-carsi` 安装后通常不在 PATH 上：`command -v paper-search-carsi` 找不到时，用 `carsi status` 输出里“PaperSearch 配置”一行“后端”后面的完整路径调用，例如 `<后端路径> issues`、`<后端路径> progress --json`。
+- 开放下载没拿到、机构下载又没装时：告诉用户开放渠道没有找到这篇。不主动提安装时（见上），只说出版社 API key 这一种办法；否则说如果学校订阅了它，有两种办法：安装学校订阅下载（本机要先装 Google Chrome）；或者在校园网里配出版社 API key，只对 Elsevier（DOI 以 10.1016 开头）和 Springer（10.1007）的论文有效，申请网址和配置命令见下载结果里 `publisher_api` 那一步的提示。安装前先征得用户同意，不擅自安装。
+- 用机构下载前，先运行 `paper-search school status --format text` 确认扩展可用：显示已安装并启用，或者“PaperSearch 配置”一行显示已启用并给出后端路径。后一种是用户自己维护的后端（例如开发版），第一行写“未安装”是正常的，直接使用，不要再安装或改路径；`paper-search doctor` 里 `entitled_access` 为 `available` 也说明后端能用。
+- 扩展自己的命令 `paper-search-school` 安装后通常不在 PATH 上：`command -v paper-search-school` 找不到时，用 `school status` 输出里“PaperSearch 配置”一行“后端”后面的完整路径调用，例如 `<后端路径> issues`、`<后端路径> progress --json`。
 
 ## 默认工作流
 
@@ -151,7 +151,7 @@ paper-search doctor --pretty
 - 正文加补充材料（`content` 为 `both`）；
 - 只要补充材料（`content` 为 `supplements`，正文已有时用）。
 
-问的时候顺带说明：补充材料只有部分出版社支持，见 `references/publisher-support.md`。用户已经说明的不再问。机构下载没启用时只走开放下载、只下正文；用户要补充材料时，告诉用户补充材料要靠学校订阅下载（`references/carsi-setup.md`）；用户说过不装时只说明这一点，不劝装。
+问的时候顺带说明：补充材料只有部分出版社支持，见 `references/publisher-support.md`。用户已经说明的不再问。机构下载没启用时只走开放下载、只下正文；用户要补充材料时，告诉用户补充材料要靠学校订阅下载（`references/school-setup.md`）；用户说过不装时只说明这一点，不劝装。
 
 几十到几百篇用一次 `download_batch`，不要自己循环调用单篇下载。下载结束后运行 `paper-search failures --format text`，按失败类别向用户说明。需要向维护者报告时用 `paper-search failures --export ./failure-report.zip` 导出副本，先核对包内公开检查清单；详见 `references/browser-download.md`。不自动上传或提交 issue。
 
@@ -161,7 +161,7 @@ paper-search doctor --pretty
 - 同一篇论文的 PMID、DOI、题名、第一作者和年份应一致；不一致时标为可疑。
 - 学校登录、二次验证及复杂验证码由用户在下载浏览器里完成；后端每次验证等待最多尝试点击可识别的 Turnstile 复选框 3 次，仍需人工时再提示用户。账号密码由用户自己在登录页输入，不要询问用户的账号密码。
 - 测试下载时用 `paper-search download` 或 `paper-search run download_batch`，保持默认的等待时间和数据目录。
-- 用户想先登录学校、或想试试能不能登录时，运行 `paper-search carsi login --doi <学校订阅的一篇文章的 DOI>`（见 `references/carsi-setup.md`）：只有回复 `success: true` 才算登录成功。下载浏览器和它的资料目录由程序管理；不要翻源码另找登录办法。
+- 用户想先登录学校、或想试试能不能登录时，运行 `paper-search school login --doi <学校订阅的一篇文章的 DOI>`（见 `references/school-setup.md`）：只有回复 `success: true` 才算登录成功。下载浏览器和它的资料目录由程序管理；不要翻源码另找登录办法。
 - 下载结果以命令的最终返回和实际保存的文件为准；每个文件都要核对身份（首页的 DOI 和题名）才算成功，交付时给出实际文件路径。
 - “没有权限”必须有依据，原因不明的不说成没有权限。
 - 出版社支持表说明的是程序能不能走通这类网站，不代表用户学校订阅了某本期刊。

@@ -17,7 +17,7 @@ import type {
   DownloadWithFallbackOptions,
   DownloadWithFallbackResult,
 } from "./types.js";
-import type { CarsiBackend } from "./carsi/index.js";
+import type { SchoolBackend } from "./school/index.js";
 import { createDirectPdfUrlTier } from "./tiers/directPdfUrl.js";
 import { createEntitledAccessTier } from "./tiers/entitledAccess.js";
 import { createPrimaryTier } from "./tiers/primary.js";
@@ -37,7 +37,7 @@ export type {
 } from "./types.js";
 
 export function createDefaultDownloadTiers(
-  carsiBackend?: CarsiBackend,
+  schoolBackend?: SchoolBackend,
 ): DownloadTier[] {
   return [
     createPrimaryTier(),
@@ -46,7 +46,7 @@ export function createDefaultDownloadTiers(
     createUnpaywallTier(),
     createPublisherApiTier(),
     createSciHubTier(),
-    createEntitledAccessTier(carsiBackend),
+    createEntitledAccessTier(schoolBackend),
     createPreprintTier(),
   ];
 }

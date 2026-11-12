@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { setUserConfigValue } from "../../src/config/ConfigService.js";
 import { buildCapabilityProfile } from "../../src/management/capability-profile/index.js";
-import type { EntitledAccessReadiness } from "../../src/management/capability-profile/carsiReadiness.js";
+import type { EntitledAccessReadiness } from "../../src/management/capability-profile/schoolReadiness.js";
 
 const CONFIG_ENV_KEYS = [
   "PAPER_SEARCH_CONFIG_FILE",
@@ -15,7 +15,7 @@ const CONFIG_ENV_KEYS = [
   "SPRINGER_OPENACCESS_API_KEY",
   "WOS_API_KEY",
   "IEEE_API_KEY",
-  "PAPER_SEARCH_CARSI_ENABLED",
+  "PAPER_SEARCH_SCHOOL_ENABLED",
   "WILEY_TDM_TOKEN"
 ];
 
@@ -76,7 +76,7 @@ describe("capabilityProfile", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("reports independent capabilities and marks an uninjected CARSI snapshot as not evaluated", () => {
+  it("reports independent capabilities and marks an uninjected school backend snapshot as not evaluated", () => {
     const profile = buildCapabilityProfile();
     const byId = Object.fromEntries(
       profile.entries.map((entry) => [entry.id, entry]),
@@ -157,7 +157,7 @@ describe("capabilityProfile", () => {
         },
       }),
     );
-    expect(byId.entitled_access.reason).toMatch(/CARSI/i);
+    expect(byId.entitled_access.reason).toMatch(/school/i);
     expect(byId.entitled_access.requiredKeys ?? []).toEqual([]);
 
     for (const entry of profile.entries) {
@@ -174,10 +174,10 @@ describe("capabilityProfile", () => {
     setUserConfigValue("SPRINGER_API_KEY", "springer-key");
 
     const profile = buildCapabilityProfile({
-      carsiReadiness: {
+      schoolReadiness: {
         state: "disabled",
         code: "integration_disabled",
-        message: "CARSI integration is disabled.",
+        message: "School backend integration is disabled.",
         missing: [],
       },
     });
@@ -229,7 +229,7 @@ describe("capabilityProfile", () => {
       readiness: {
         state: "disabled",
         code: "integration_disabled",
-        message: "CARSI integration is disabled.",
+        message: "School backend integration is disabled.",
         missing: [],
       },
       status: "unavailable",
@@ -240,18 +240,18 @@ describe("capabilityProfile", () => {
       readiness: {
         state: "absent",
         code: "executable_missing",
-        message: "CARSI executable was not found.",
-        missing: ["carsi"],
+        message: "School backend executable was not found.",
+        missing: ["school"],
       },
       status: "unavailable",
       configured: [],
-      missing: ["carsi"],
+      missing: ["school"],
     },
     {
       readiness: {
         state: "incompatible",
         code: "contract_mismatch",
-        message: "CARSI MCP contract is incompatible.",
+        message: "School backend MCP contract is incompatible.",
         missing: [],
       },
       status: "unavailable",
@@ -262,18 +262,18 @@ describe("capabilityProfile", () => {
       readiness: {
         state: "available",
         code: "compatible",
-        message: "CARSI MCP contract is compatible.",
+        message: "School backend MCP contract is compatible.",
         missing: [],
       },
       status: "available",
-      configured: ["carsi"],
+      configured: ["school"],
       missing: [],
     }
   ])(
-    "maps CARSI $readiness.state readiness without changing PDF discovery availability",
+    "maps the school backend $readiness.state readiness without changing PDF discovery availability",
     (scenario) => {
       const profile = buildCapabilityProfile({
-        carsiReadiness: scenario.readiness,
+        schoolReadiness: scenario.readiness,
       });
       const byId = Object.fromEntries(
         profile.entries.map((entry) => [entry.id, entry]),

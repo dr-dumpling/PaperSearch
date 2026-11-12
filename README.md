@@ -72,7 +72,7 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 
 ### 2. 配置时装上学校订阅下载
 
-说了“请开始配置”后，AI 会先问你要不要装[学校订阅下载](#1-学校订阅下载)：用学校账号下载非 OA 文章的全文和补充材料，需要 Chrome（没有的话一起装），下载约 0.5 GB。你同意后它才安装，装完问你的学校并设好，然后弹出设置窗口。
+说了“请开始配置”后，AI 会先问你要不要装[学校订阅下载](#1-学校订阅下载)：用学校账号下载非 OA 文章的全文和补充材料，需要 Chrome（没有的话一起装）。你同意后它才安装，装完问你的学校并设好，然后弹出设置窗口。
 
 - 不要的话说一声就跳过，之后不再提；检索和 OA 文章下载照常能用。
 - 没有图形界面的服务器上不问、不装。
@@ -161,29 +161,29 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 安装：
 
 ```bash
-paper-search carsi install                # 安装时选择你的学校
-paper-search carsi status --format text   # 查看是否装好
+paper-search school install                # 安装时选择你的学校
+paper-search school status --format text   # 查看是否装好
 ```
 
 **进度胶囊**
 
-<p align="center"><img src="assets/carsi-capsule.webp" width="840" alt="进度胶囊：下载时缩成小胶囊，悬停查看每篇进度，最小化到程序坞照常下载，点一下就回来"></p>
+<p align="center"><img src="assets/school-capsule.webp" width="840" alt="进度胶囊：下载时缩成小胶囊，悬停查看每篇进度，最小化到程序坞照常下载，点一下就回来"></p>
 
 **自动过验证**
 
-<p align="center"><img src="assets/carsi-verify.webp" width="840" alt="自动过验证：被人机验证页拦住时，验证自动通过，不用你动手"></p>
+<p align="center"><img src="assets/school-verify.webp" width="840" alt="自动过验证：被人机验证页拦住时，验证自动通过，不用你动手"></p>
 
 **自动登录学校**
 
-<p align="center"><img src="assets/carsi-signin.webp" width="840" alt="自动登录学校：自动点机构登录、填好学校，转到学校登录页"></p>
+<p align="center"><img src="assets/school-signin.webp" width="840" alt="自动登录学校：自动点机构登录、填好学校，转到学校登录页"></p>
 
 **需要你时提醒**
 
-<p align="center"><img src="assets/carsi-attention.webp" width="840" alt="需要你时提醒：要登录学校时胶囊变黄，点它切到浏览器，也能跳过这一篇"></p>
+<p align="center"><img src="assets/school-attention.webp" width="840" alt="需要你时提醒：要登录学校时胶囊变黄，点它切到浏览器，也能跳过这一篇"></p>
 
 **结束清单**
 
-<p align="center"><img src="assets/carsi-finish.webp" width="840" alt="结束清单：跳过不想等的论文；下完列出结果，没下到的写明原因，点题名在自己的浏览器里打开"></p>
+<p align="center"><img src="assets/school-finish.webp" width="840" alt="结束清单：跳过不想等的论文；下完列出结果，没下到的写明原因，点题名在自己的浏览器里打开"></p>
 
 ### 2. API key
 
@@ -241,14 +241,14 @@ paper-search carsi status --format text   # 查看是否装好
 4. **全球学校登录**：亚洲的学术身份联盟已支持；接下来是美国、英国、澳大利亚和欧洲各国联盟，之后覆盖 eduGAIN 里的所有国家；有条件的话再接入 WebVPN、EZProxy 等访问方式。
 5. **检索论文、搜正文片段再优化**：参考同类工具的做法，进一步提升检索论文和搜正文片段的效果。
 
-完整计划见 [路线图](docs/ROADMAP.zh.md)，原理和代码结构见 [架构说明](docs/ARCHITECTURE.zh.md)。还想要什么功能，欢迎提 [Issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) 和 PR；下载失败或想支持某家出版社，请用对应的 Issue 模板，想自己加出版社规则见 [carsi/CONTRIBUTING.md](carsi/CONTRIBUTING.md)。
+完整计划见 [路线图](docs/ROADMAP.zh.md)，原理和代码结构见 [架构说明](docs/ARCHITECTURE.zh.md)。还想要什么功能，欢迎提 [Issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) 和 PR；下载失败或想支持某家出版社，请用对应的 Issue 模板，想自己加出版社规则见 [school/CONTRIBUTING.md](school/CONTRIBUTING.md)。
 
 ## 致谢
 
 - 感谢 [LINUX DO 社区](https://linux.do/)：命令 + Skill 的路线和工作流改进来自社区交流与开源分享。
 - [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp)：本项目参考了它的思路，并改成独立的命令行工具。
 - [Dianel555/paper-search-mcp-nodejs](https://github.com/Dianel555/paper-search-mcp-nodejs)（MIT）：命令行版最初由它的 Node.js 实现改编而来。
-- [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf)（MIT）：机构下载后端（`carsi/`）借鉴了它的架构（CARSI 等联盟登录、出版社网站抓取、会话复用、PDF 捕获）。
+- [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf)（MIT）：机构下载后端（`school/`）借鉴了它的架构（CARSI 等联盟登录、出版社网站抓取、会话复用、PDF 捕获）。
 
 ## License
 

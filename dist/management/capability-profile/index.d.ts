@@ -1,4 +1,4 @@
-import type { EntitledAccessReadiness } from "./carsiReadiness.js";
+import type { EntitledAccessReadiness } from "./schoolReadiness.js";
 export type CapabilityStatus = "available" | "degraded" | "unavailable";
 export interface CapabilityEntry {
     id: "metadata_search" | "citation_expansion" | "body_snippet_search" | "journal_metrics" | "pdf_discovery" | "entitled_access";
@@ -27,7 +27,7 @@ export interface CapabilityProfile {
     summary: Record<string, CapabilityStatus>;
 }
 export interface CapabilityProfileOptions {
-    carsiReadiness?: EntitledAccessReadiness;
+    schoolReadiness?: EntitledAccessReadiness;
 }
 export declare function buildCapabilityProfile(options?: CapabilityProfileOptions): CapabilityProfile;
 //# sourceMappingURL=index.d.ts.map

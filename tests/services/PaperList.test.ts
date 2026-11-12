@@ -1,13 +1,13 @@
 import { describe, it, expect, jest, afterEach } from '@jest/globals';
 import { PaperList, PAPERS_RETRY_MS } from '../../src/capabilities/pdf-discovery/batchPapers.js';
-import type { CarsiBatchPapers } from '../../src/capabilities/pdf-discovery/carsi/index.js';
+import type { SchoolBatchPapers } from '../../src/capabilities/pdf-discovery/school/index.js';
 
 const waiting = (doi: string) => ({ doi, title: doi, journal: '', state: 'school' as const });
 
 /** A backend that takes the lists only while ``up`` (the batch's backend process is there). */
 function backend() {
   const state = { up: false, calls: 0, sent: [] as Array<Array<[number, string]>> };
-  const reportBatchPapers = async (update: CarsiBatchPapers) => {
+  const reportBatchPapers = async (update: SchoolBatchPapers) => {
     state.calls += 1;
     if (!state.up) return false;
     state.sent.push(update.papers.map((paper) => [paper.index, paper.state]));

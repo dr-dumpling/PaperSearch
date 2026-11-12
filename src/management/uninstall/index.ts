@@ -34,6 +34,9 @@ export interface UninstallResult {
 }
 
 const DATA_PARTS: Array<[string, string]> = [
+  ["school-runtime", "学校订阅下载程序"],
+  ["school", "学校设置和登录状态"],
+  // Their names before 0.6.1, while not yet taken over.
   ["carsi-runtime", "学校订阅下载程序"],
   ["carsi", "学校设置和登录状态"],
   ["runs", "运行记录"],
@@ -49,7 +52,7 @@ export function uninstallPlan(
   const items: UninstallItem[] = [];
   const dataRoot = paperSearchDataRoot(env, home);
   if (existsSync(dataRoot)) {
-    const parts = DATA_PARTS.filter(([name]) => existsSync(join(dataRoot, name))).map(([, label]) => label);
+    const parts = [...new Set(DATA_PARTS.filter(([name]) => existsSync(join(dataRoot, name))).map(([, label]) => label))];
     items.push({ label: `数据（${[...parts, "其他记录"].join("、")}）`, path: dataRoot, kind: "folder", bytes: bytesOf(dataRoot) });
   }
   const runs = resolveRunLogRoot(env, home);

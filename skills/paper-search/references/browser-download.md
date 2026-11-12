@@ -1,21 +1,21 @@
 # 机构下载：用学校权限下载 PDF
 
-机构下载（学校订阅下载）在电脑上经用户同意后安装；只用开放下载时不需要读这一篇。本篇适用于目标论文已确认、需要学校订阅，或用户报告登录后没反应、不断跳转、PDF 已打开却没保存。安装、学校、浏览器的设置见 `carsi-setup.md`。
+机构下载（学校订阅下载）在电脑上经用户同意后安装；只用开放下载时不需要读这一篇。本篇适用于目标论文已确认、需要学校订阅，或用户报告登录后没反应、不断跳转、PDF 已打开却没保存。安装、学校、浏览器的设置见 `school-setup.md`。
 
 ## 调用前
 
 - 核验目标 DOI 和标题；不要用虚构 DOI 做下载探测。
 - 目标出版社能不能走通、能不能取补充材料，先看 `publisher-support.md`；表里没有的网站按通用规则尝试。
 - 用户没说要不要补充材料时，开始前问一次：只要正文（`main`）、正文加补充材料（`both`）、只要补充材料（`supplements`）；批量也只问一次。
-- `paper-search carsi status --format text` 确认扩展已安装并启用，或“PaperSearch 配置”一行已启用并给出后端路径（用户自己维护的后端，第一行显示“未安装”是正常的）；都没有时按 `carsi-setup.md` 处理。本文的 `paper-search-carsi` 命令不在 PATH 上时，用这里“后端”后面的完整路径调用。
-- 开始前运行 `paper-search-carsi issues`，看有没有之前没处理的问题报告；看完用 `issues resolve <ID> --note "结论"` 记下结论。
+- `paper-search school status --format text` 确认扩展已安装并启用，或“PaperSearch 配置”一行已启用并给出后端路径（用户自己维护的后端，第一行显示“未安装”是正常的）；都没有时按 `school-setup.md` 处理。本文的 `paper-search-school` 命令不在 PATH 上时，用这里“后端”后面的完整路径调用。
+- 开始前运行 `paper-search-school issues`，看有没有之前没处理的问题报告；看完用 `issues resolve <ID> --note "结论"` 记下结论。
 
 ## 一次调用，等待明确结果
 
 单篇用 `paper-search download` 或 `paper-search run download_with_fallback`，多篇用一次 `paper-search run download_batch`，参数见 `cli-contract.md`。下载顺序固定为 `primary → direct_pdf_url → repositories → unpaywall → publisher_api → scihub → entitled_access → preprint`。机构下载失败后才尝试 DOI 明确关联的 arXiv 预印本。
 
 - 只用开放来源和学校权限（不用 Sci-Hub）：`download_with_fallback` / `download_batch` 设 `useSciHub=false`。只有明确只测学校权限这一步时，`download_batch` 才设 `"mode":"entitled_only"`；它会跳过可用的公开副本，普通下载保留默认 `two_phase`。
-- 测试下载也走上面的命令，保持默认的等待时间和数据目录。先登录学校或测试登录用 `paper-search carsi login --doi <DOI>`（见 `carsi-setup.md`）。
+- 测试下载也走上面的命令，保持默认的等待时间和数据目录。先登录学校或测试登录用 `paper-search school login --doi <DOI>`（见 `school-setup.md`）。
 - 同一个数据目录同时只跑一个下载。命令没结束时，不因窗口看似停住而重新下载或登录。
 - 机构下载一次一篇，开放渠道同时查后面的篇目。遇到学校登录或验证时停在这一篇；出现人工处理提示后，提醒用户到下载浏览器操作。等待时限：停在学校登录页（以及没配置学校、要用户自己选学校的页面）最多 3 分钟（后端配置 `browser_login_timeout`，秒）；停在其他页面（人机验证、出版社页面、选机构页、取 PDF 时等待处理）连续超过 1 分钟就结束这一篇（`browser_page_wait_timeout`）。两项都能在进度窗口右上角的设置（齿轮）里改，从下一篇起生效。学校统一认证登录一次后，其余篇目通常自动通过。一篇等满时限后（日志写“这一篇等你登录或验证已到时限”），后面每篇只等 60 秒；用户在登录框输入时照常等。
 - 每个出版社每小时最多打开 100 篇（后端配置 `publisher_hourly_limit`，0 为不限）。到上限时批量等到可以继续再下这一篇（日志写明时间）；单篇返回 `rate_limited`，稍后再试。
@@ -40,11 +40,11 @@
 - 当前源码（未发布修复）：`browser_operation_timeout` 表示自动页面操作耗尽共享预算，不是无权限，也不是等待用户登录。不要因此反复登录；先检查是否误用了 `entitled_only`。附件阶段终止同样停止后续篇目，保留已保存的正文。
 - 展开后写明正在下哪部分和哪一步：正文有五段步骤条（打开文章、权限、取 PDF、核对、附录），附录显示“附录 2/5”。
 - 右上角齿轮（设置）：手动输入学校登录页、其他页面的最长等待（秒）、页面持续无进展的提醒时间（默认 30 秒）和每家出版社每小时最多下载篇数，保存后用于后续篇目；“系统通知”开关点击即保存，可随时开启或关闭；关闭后胶囊仍变色呼吸，点击提醒仍可唤回浏览器。
-- “跳过”：只结束当前这一篇。“⋯”里的“本刊无权限”“出版社无权限”：结束这一篇并记住，以后自动跳过；查看或撤销用 `paper-search-carsi entitlements`（`list` / `clear <key>`）。点击后 1–2 秒内生效。
+- “跳过”：只结束当前这一篇。“⋯”里的“本刊无权限”“出版社无权限”：结束这一篇并记住，以后自动跳过；查看或撤销用 `paper-search-school entitlements`（`list` / `clear <key>`）。点击后 1–2 秒内生效。
 - “⋯”里的“报告问题”：用户选择看到的问题后，后端截下页面并处理（读取已打开的 PDF、回到文章、刷新、停止自动选校），窗口显示处理结果。
-- 发起机构下载时同时监听用户的报告（与下载相同的 `CARSI_DATA_DIR`）：
-  - 能后台运行命令并在结束时收到通知：后台运行 `paper-search-carsi issues watch --since <开始下载的时间戳>`，用户报告后它返回报告 JSON（网址、标题、正文片段、截图路径、处理结果）并退出。
-  - 只能逐条执行命令：下载期间定时运行 `paper-search-carsi issues watch --since <时间戳> --timeout 30`；没有新报告时返回 `{"timeout": true}`（退出码 3）。
+- 发起机构下载时同时监听用户的报告（与下载相同的 `SCHOOL_DATA_DIR`）：
+  - 能后台运行命令并在结束时收到通知：后台运行 `paper-search-school issues watch --since <开始下载的时间戳>`，用户报告后它返回报告 JSON（网址、标题、正文片段、截图路径、处理结果）并退出。
+  - 只能逐条执行命令：下载期间定时运行 `paper-search-school issues watch --since <时间戳> --timeout 30`；没有新报告时返回 `{"timeout": true}`（退出码 3）。
   - 收到报告立即看截图（不能读图时看网址、标题、正文片段），告诉用户页面停在哪里、是什么问题、现在可以怎么做。继续监听时把返回的 `reported_ts` 作为下一次的 `--since`。
 
 ## 实时状态和浏览器画面
@@ -52,8 +52,8 @@
 读取与进度窗口相同的状态，不启动窗口、浏览器或新下载：
 
 ```bash
-CARSI_DATA_DIR="<数据目录>" paper-search-carsi progress --json
-CARSI_DATA_DIR="<数据目录>" paper-search-carsi progress --json --watch \
+SCHOOL_DATA_DIR="<数据目录>" paper-search-school progress --json
+SCHOOL_DATA_DIR="<数据目录>" paper-search-school progress --json --watch \
   --run-id "<本次 run_id>" --identifier "<目标 DOI>" --timeout 30
 ```
 
@@ -72,7 +72,7 @@ CARSI_DATA_DIR="<数据目录>" paper-search-carsi progress --json --watch \
 看下载浏览器的最新截图（只读）：
 
 ```bash
-CARSI_DATA_DIR="<数据目录>" paper-search-carsi preview --run-id "<本次 run_id>" --doi "<目标 DOI>"
+SCHOOL_DATA_DIR="<数据目录>" paper-search-school preview --run-id "<本次 run_id>" --doi "<目标 DOI>"
 ```
 
 返回截图路径的 JSON。截图可能是几秒前的画面，判断当前状态以进度为准；选校、登录、验证仍在实际下载窗口完成。

@@ -381,7 +381,7 @@ describe("OpenAccessFallbackService", () => {
         ["scihub", "entitled_access"],
       );
       expect(scihubDownload).toHaveBeenCalledTimes(1);
-      // The CARSI route label must not leak; the publisher_api stage name itself is public.
+      // The school route label must not leak; the publisher_api stage name itself is public.
       expect(
         JSON.stringify(
           result.attempts.filter(

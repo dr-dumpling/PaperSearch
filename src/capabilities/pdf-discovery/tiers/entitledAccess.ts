@@ -8,10 +8,10 @@ import type {
   DownloadTierResult,
 } from "../DownloadTier.js";
 import {
-  carsiAttemptDetails,
-  type CarsiBackend,
-  type CarsiDownloadRequest,
-} from "../carsi/index.js";
+  schoolAttemptDetails,
+  type SchoolBackend,
+  type SchoolDownloadRequest,
+} from "../school/index.js";
 import type { SupplementFile } from "../types.js";
 
 const BACKEND_UNAVAILABLE_MESSAGE = "Entitled access backend unavailable.";
@@ -29,7 +29,7 @@ function recordPdfUrl(record: unknown): string | undefined {
 const ATTEMPT_FAILED_MESSAGE = "Entitled access download attempt failed.";
 
 export function createEntitledAccessTier(
-  backend?: CarsiBackend,
+  backend?: SchoolBackend,
 ): DownloadTier {
   return {
     id: "entitled_access",
@@ -40,7 +40,7 @@ export function createEntitledAccessTier(
 
 async function tryEntitledAccess(
   context: DownloadTierContext,
-  backend?: CarsiBackend,
+  backend?: SchoolBackend,
 ): Promise<DownloadTierResult> {
   if (!context.useEntitledAccess) {
     return {
@@ -81,7 +81,7 @@ async function tryEntitledAccess(
       }
       return {
         status: "error",
-        ...carsiAttemptDetails(outcome.code, outcome.trace),
+        ...schoolAttemptDetails(outcome.code, outcome.trace),
         ...(outcome.retryAfterSec ? { retryAfterSec: outcome.retryAfterSec } : {}),
         ...(outcome.trace ? { trace: { ...outcome.trace } } : {}),
         ...supplements,
@@ -134,8 +134,8 @@ async function tryEntitledAccess(
  * stage. Undefined when no backend can do it.
  */
 export async function fetchSupplementsOnly(
-  backend: CarsiBackend | undefined,
-  request: Omit<CarsiDownloadRequest, "supplements">,
+  backend: SchoolBackend | undefined,
+  request: Omit<SchoolDownloadRequest, "supplements">,
   onTrace?: (trace: Record<string, unknown>) => void,
 ): Promise<SupplementFile[] | undefined> {
   if (!backend) return undefined;
@@ -145,7 +145,7 @@ export async function fetchSupplementsOnly(
     if (outcome.trace) onTrace?.({ ...outcome.trace });
     if (outcome.kind === "attempt_error" && (!outcome.supplements ||
         (outcome.supplements.length === 0 && outcome.code !== "supplements_only"))) {
-      const { code } = carsiAttemptDetails(outcome.code);
+      const { code } = schoolAttemptDetails(outcome.code);
       return [{ label: "", status: code === "batch_stopped" || code === "user_skipped" ? "skipped" : "failed", reason: code }];
     }
     return outcome.supplements ?? [{ label: "", status: "failed", reason: "supplements_not_reported" }];

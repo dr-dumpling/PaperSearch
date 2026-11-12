@@ -398,7 +398,7 @@ describe("tools contract", () => {
     expect(schema.properties).not.toHaveProperty("useInstitutionalAccess");
     expect(schema.properties).not.toHaveProperty("institutionalProvider");
     expect(schema.properties).not.toHaveProperty("authorizedBackend");
-    expect(schema.properties).not.toHaveProperty("carsi");
+    expect(schema.properties).not.toHaveProperty("school");
   });
 
   it("exposes only a request-level entitled-access opt-out on download_paper", () => {
@@ -410,7 +410,7 @@ describe("tools contract", () => {
       }),
     );
     expect(schema.properties).not.toHaveProperty("authorizedBackend");
-    expect(schema.properties).not.toHaveProperty("carsi");
+    expect(schema.properties).not.toHaveProperty("school");
   });
 
   it("does not expose the removed Wiley TDM search shim", () => {

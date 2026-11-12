@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { isValidPdfFile } from "../../../infrastructure/pdf/PdfDownload.js";
 import { verifyPdfIdentity } from "../../../infrastructure/pdf/PdfIdentity.js";
 import { identityRejection } from "../identity.js";
-import { carsiAttemptDetails, } from "../carsi/index.js";
+import { schoolAttemptDetails, } from "../school/index.js";
 const BACKEND_UNAVAILABLE_MESSAGE = "Entitled access backend unavailable.";
 /** The URL the backend took the PDF from, from its run record: evidence for a scan without text. */
 function recordPdfUrl(record) {
@@ -59,7 +59,7 @@ async function tryEntitledAccess(context, backend) {
             }
             return {
                 status: "error",
-                ...carsiAttemptDetails(outcome.code, outcome.trace),
+                ...schoolAttemptDetails(outcome.code, outcome.trace),
                 ...(outcome.retryAfterSec ? { retryAfterSec: outcome.retryAfterSec } : {}),
                 ...(outcome.trace ? { trace: { ...outcome.trace } } : {}),
                 ...supplements,
@@ -115,7 +115,7 @@ export async function fetchSupplementsOnly(backend, request, onTrace) {
             onTrace?.({ ...outcome.trace });
         if (outcome.kind === "attempt_error" && (!outcome.supplements ||
             (outcome.supplements.length === 0 && outcome.code !== "supplements_only"))) {
-            const { code } = carsiAttemptDetails(outcome.code);
+            const { code } = schoolAttemptDetails(outcome.code);
             return [{ label: "", status: code === "batch_stopped" || code === "user_skipped" ? "skipped" : "failed", reason: code }];
         }
         return outcome.supplements ?? [{ label: "", status: "failed", reason: "supplements_not_reported" }];

@@ -5,8 +5,8 @@ import { describe, it, expect } from '@jest/globals';
 import { DIAGNOSTICS_FOLDER, createOutputLayout, lookupOutputMetadata, organizeFiles, placeFile, removeWorkFolder, safeComponent } from '../../src/capabilities/pdf-discovery/outputLayout.js';
 import { downloadWithFallback } from '../../src/capabilities/pdf-discovery/OpenAccessFallbackService.js';
 import { downloadBatch, downloadSupplementsOnly } from '../../src/capabilities/pdf-discovery/batch.js';
-import { normalizeDownloadResult } from '../../src/capabilities/pdf-discovery/carsi/CarsiResultNormalizer.js';
-import { createCarsiDownloadArguments, selectCarsiBatchSupport } from '../../src/capabilities/pdf-discovery/carsi/CarsiReadiness.js';
+import { normalizeDownloadResult } from '../../src/capabilities/pdf-discovery/school/SchoolResultNormalizer.js';
+import { createSchoolDownloadArguments, selectSchoolBatchSupport } from '../../src/capabilities/pdf-discovery/school/SchoolReadiness.js';
 
 const metadata = { journal: 'Nature', year: 2026, title: 'A useful article' };
 const root = () => mkdtempSync(join(tmpdir(), 'output-layout-'));
@@ -331,11 +331,11 @@ describe('download output layout', () => {
     expect(outcome).toMatchObject({trace: {record: '/diagnostics/a/record.json'}});
     expect((outcome as any).trace.diagnostic).toBeUndefined();
     expect((normalizeDownloadResult(payload, '10.1000/example', '/papers/a') as any).trace).toBeUndefined();
-    const args = createCarsiDownloadArguments('10.1000/example', '/papers/a', 'legal_only', undefined, undefined, undefined, '/diagnostics/a');
+    const args = createSchoolDownloadArguments('10.1000/example', '/papers/a', 'legal_only', undefined, undefined, undefined, '/diagnostics/a');
     const properties = Object.fromEntries(Object.entries(args).map(([k, v]) => [k, {type: typeof v}]));
-    const tools = [{name: 'carsi_download', inputSchema: {type: 'object', properties}}];
-    expect(selectCarsiBatchSupport(tools, 'legal_only').diagnosticsDirField).toBe(true);
+    const tools = [{name: 'school_download', inputSchema: {type: 'object', properties}}];
+    expect(selectSchoolBatchSupport(tools, 'legal_only').diagnosticsDirField).toBe(true);
     delete properties.diagnostics_dir;
-    expect(selectCarsiBatchSupport(tools, 'legal_only').diagnosticsDirField).toBe(false);
+    expect(selectSchoolBatchSupport(tools, 'legal_only').diagnosticsDirField).toBe(false);
   });
 });

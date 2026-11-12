@@ -14,7 +14,7 @@ interface DoctorReportInput {
     };
     capabilityProfile: CapabilityProfile;
     platformStatus: any;
-    carsi?: {
+    school?: {
         installed: boolean;
         complete: boolean;
         enabled: boolean;

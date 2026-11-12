@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "@jest/globals";
 import { downloadBatch } from "../../src/capabilities/pdf-discovery/batch.js";
 import type { DownloadTier } from "../../src/capabilities/pdf-discovery/DownloadTier.js";
-import { normalizeDownloadResult } from "../../src/capabilities/pdf-discovery/carsi/CarsiResultNormalizer.js";
-import { selectCarsiBatchSupport } from "../../src/capabilities/pdf-discovery/carsi/CarsiReadiness.js";
-import type { CarsiBackend, CarsiBatchUpdate, CarsiDownloadRequest } from "../../src/capabilities/pdf-discovery/carsi/index.js";
+import { normalizeDownloadResult } from "../../src/capabilities/pdf-discovery/school/SchoolResultNormalizer.js";
+import { selectSchoolBatchSupport } from "../../src/capabilities/pdf-discovery/school/SchoolReadiness.js";
+import type { SchoolBackend, SchoolBatchUpdate, SchoolDownloadRequest } from "../../src/capabilities/pdf-discovery/school/index.js";
 import { fetchSupplementsOnly } from "../../src/capabilities/pdf-discovery/tiers/entitledAccess.js";
-import { decodeCarsiProgress } from "../../src/capabilities/pdf-discovery/carsi/CarsiProgress.js";
+import { decodeSchoolProgress } from "../../src/capabilities/pdf-discovery/school/SchoolProgress.js";
 
 const toolResult = (payload: unknown) => ({ content: [{ type: "text", text: JSON.stringify(payload) }] });
 
@@ -17,10 +17,10 @@ describe("supplementary files", () => {
     ["supplements", "two_phase"], ["both", "two_phase"], ["both", "per_item"],
   ] as Array<["supplements" | "both", "two_phase" | "per_item"]>)("%s / %s keeps a serial attachment batch and finishes only after its last visit", async (content, mode) => {
     const root = mkdtempSync(join(tmpdir(), "supplement-progress-"));
-    const requests: CarsiDownloadRequest[] = [];
-    const updates: CarsiBatchUpdate[] = [];
+    const requests: SchoolDownloadRequest[] = [];
+    const updates: SchoolBatchUpdate[] = [];
     const sequence: string[] = [];
-    const backend: CarsiBackend = {
+    const backend: SchoolBackend = {
       probe: async () => ({ state: "available", code: "ready", message: "", missing: [] }),
       downloadLegalDoi: async (request) => {
         requests.push(request);
@@ -63,7 +63,7 @@ describe("supplementary files", () => {
   });
 
   it("reports a completed attachment check without claiming a PDF was saved", () => {
-    expect(decodeCarsiProgress({ message: "carsi.stage:supplements_checked" }, "10.1000/example")).toEqual({
+    expect(decodeSchoolProgress({ message: "school.stage:supplements_checked" }, "10.1000/example")).toEqual({
       identifier: "10.1000/example", stage: "supplements_checked",
       message: "补充材料检查已完成，正在整理文件结果。",
     });
@@ -72,7 +72,7 @@ describe("supplementary files", () => {
     const outcome = normalizeDownloadResult(toolResult({
       success: false, error_type: "supplements_only", supplements: [],
     }), "10.3389/fbioe.2022.905869", "/out");
-    const backend: CarsiBackend = {
+    const backend: SchoolBackend = {
       probe: async () => ({ state: "available", code: "ok", message: "", missing: [] }),
       downloadLegalDoi: async () => outcome,
     };
@@ -95,7 +95,7 @@ describe("supplementary files", () => {
       { success: true, file: "/out/main.pdf" },
     ]) {
       const outcome = normalizeDownloadResult(toolResult(payload), "10.1000/unknown", "/out");
-      const backend: CarsiBackend = {
+      const backend: SchoolBackend = {
         probe: async () => ({ state: "available", code: "ok", message: "", missing: [] }),
         downloadLegalDoi: async () => outcome,
       };
@@ -137,14 +137,14 @@ describe("supplementary files", () => {
       use_tor: { type: "boolean" }, use_vpnsci: { type: "boolean" }, bibtex: { type: "boolean" },
       strategy: { type: "string", enum: ["legal_only", "institutional_only"] },
     };
-    const tool = (props: Record<string, unknown>) => [{ name: "carsi_download", inputSchema: { type: "object", properties: props } }];
-    expect(selectCarsiBatchSupport(tool({ ...base, supplements: { type: "string", enum: ["with", "only"] } }), "legal_only").supplementsField).toBe(true);
-    expect(selectCarsiBatchSupport(tool(base), "legal_only").supplementsField).toBe(false);
+    const tool = (props: Record<string, unknown>) => [{ name: "school_download", inputSchema: { type: "object", properties: props } }];
+    expect(selectSchoolBatchSupport(tool({ ...base, supplements: { type: "string", enum: ["with", "only"] } }), "legal_only").supplementsField).toBe(true);
+    expect(selectSchoolBatchSupport(tool(base), "legal_only").supplementsField).toBe(false);
   });
 
   it("two_phase: entitled items ask for supplements, open items get a supplements-only visit", async () => {
-    const requests: CarsiDownloadRequest[] = [];
-    const backend: CarsiBackend = {
+    const requests: SchoolDownloadRequest[] = [];
+    const backend: SchoolBackend = {
       probe: async () => ({ state: "available", code: "ok", message: "", missing: [] }),
       downloadLegalDoi: async (request) => {
         requests.push(request);
@@ -181,7 +181,7 @@ describe("supplementary files", () => {
     for (const mode of ["two_phase", "per_item"] as const) {
       for (const content of ["both", "supplements"] as const) {
         const visited: string[] = [];
-        const backend: CarsiBackend = {
+        const backend: SchoolBackend = {
           probe: async () => ({ state: "available", code: "ready", message: "", missing: [] }),
           downloadLegalDoi: async (request) => {
             visited.push(request.identifier);
@@ -227,7 +227,7 @@ describe("supplementary files", () => {
   });
 
   it("does nothing extra when supplements are not requested", async () => {
-    const backend = { probe: async () => ({ state: "available", code: "", message: "", missing: [] }), downloadLegalDoi: async () => { throw new Error("must not be called"); } } as unknown as CarsiBackend;
+    const backend = { probe: async () => ({ state: "available", code: "", message: "", missing: [] }), downloadLegalDoi: async () => { throw new Error("must not be called"); } } as unknown as SchoolBackend;
     const tiers = (): DownloadTier[] => [{ id: "oa", stage: "unpaywall", run: async () => ({ status: "ok", verified: true, path: "/tmp/oa.pdf", message: "ok" }) }];
     const result = await downloadBatch({} as never, { items: [{ doi: "10.1000/oa" }] }, backend, () => {}, tiers);
     expect(result.items[0].supplements).toBeUndefined();
@@ -235,7 +235,7 @@ describe("supplementary files", () => {
 });
 
 describe("content switch", () => {
-  const backendWith = (requests: CarsiDownloadRequest[]): CarsiBackend => ({
+  const backendWith = (requests: SchoolDownloadRequest[]): SchoolBackend => ({
     probe: async () => ({ state: "available", code: "ok", message: "", missing: [] }),
     downloadLegalDoi: async (request) => {
       requests.push(request);
@@ -246,7 +246,7 @@ describe("content switch", () => {
   });
 
   it("supplements: an empty completed check is not counted as a failure", async () => {
-    const requests: CarsiDownloadRequest[] = [];
+    const requests: SchoolDownloadRequest[] = [];
     const tiers = (): DownloadTier[] => [{ id: "oa", stage: "unpaywall", run: async () => { throw new Error("main text must not be fetched"); } }];
     const result = await downloadBatch(
       {} as never,
@@ -263,7 +263,7 @@ describe("content switch", () => {
   });
 
   it("main (default): supplementary files are never requested", async () => {
-    const requests: CarsiDownloadRequest[] = [];
+    const requests: SchoolDownloadRequest[] = [];
     const tiers = (): DownloadTier[] => [
       { id: "oa", stage: "unpaywall", run: async () => ({ status: "skipped", message: "no" }) },
       { id: "entitled_access", stage: "entitled_access", run: async (c) => { expect(c.withSupplements).toBeUndefined(); return { status: "ok", verified: true, path: "/tmp/e.pdf", message: "ok" }; } },

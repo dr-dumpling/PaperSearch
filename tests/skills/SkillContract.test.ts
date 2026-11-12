@@ -15,7 +15,7 @@ const REFERENCE_FILES = [
   "references/management-layer.md",
   "references/capability-routing.md",
   "references/browser-download.md",
-  "references/carsi-setup.md",
+  "references/school-setup.md",
   "references/troubleshooting.md",
   "references/publisher-support.md",
 ];
@@ -47,7 +47,7 @@ describe("paper-search bundled skill contract", () => {
     for (const text of [setup, readSkillFile("references/management-layer.md")]) {
       expect(text).not.toMatch(/发给你|直接发给 Agent|key 是直接发给/);
     }
-    expect(setup).toContain("paper-search setup --skip-carsi");
+    expect(setup).toContain("paper-search setup --skip-school");
     expect(skill).toContain("Sci-Hub");
   });
 
@@ -161,7 +161,7 @@ describe("paper-search bundled skill contract", () => {
     expect(skill).not.toContain("友好入口：");
   });
 
-  it("documents the optional CARSI backend as the current stable entitled-access boundary", () => {
+  it("documents the optional school backend as the current stable entitled-access boundary", () => {
     const bundledText = [
       readSkillFile("SKILL.md"),
       ...REFERENCE_FILES.map((file) => readSkillFile(file)),
@@ -177,8 +177,8 @@ describe("paper-search bundled skill contract", () => {
       "webvpn.dat",
       "WILEY_TDM_TOKEN",
       "search_wiley",
-      "paper-search carsi download",
-      "carsiProvider",
+      "paper-search school download",
+      "schoolProvider",
       "authorizedPdfProvider",
     ];
 
@@ -186,10 +186,10 @@ describe("paper-search bundled skill contract", () => {
       expect(bundledText).not.toContain(phrase);
     }
 
-    expect(bundledText).toContain("机构下载后端（CARSI）是唯一可选的授权下载后端");
-    expect(bundledText).toContain("PAPER_SEARCH_CARSI_ENABLED");
+    expect(bundledText).toContain("机构下载后端（学校订阅下载）是唯一可选的授权下载后端");
+    expect(bundledText).toContain("PAPER_SEARCH_SCHOOL_ENABLED");
     // Signing in first goes through the download's own steps (2026-11-09); the programme manages the browser.
-    expect(bundledText).toContain("paper-search carsi login --doi");
+    expect(bundledText).toContain("paper-search school login --doi");
     expect(bundledText).toContain("下载浏览器和它的资料目录由程序管理");
     expect(bundledText).toContain("不要翻源码另找登录办法");
     expect(bundledText).toContain("useEntitledAccess");
@@ -233,7 +233,7 @@ describe("paper-search bundled skill contract", () => {
     expect(skill).toContain("## 两种下载方式");
     expect(skill).toContain("## 整体逻辑");
     expect(skill).toContain("装好 `paper-search` 就能用开放下载");
-    expect(skill).toContain("paper-search carsi install --yes --skip-school");
+    expect(skill).toContain("paper-search school install --yes --skip-school");
     expect(readSkillFile("references/setup.md")).toContain("问一次要不要装");
     expect(skill).not.toContain("不用先问");
     expect(skill).toMatch(/\|\s*\|\s*开放下载\s*\|\s*机构下载（学校订阅下载）\s*\|/);

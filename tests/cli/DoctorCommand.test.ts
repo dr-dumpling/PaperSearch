@@ -5,7 +5,7 @@ import { tmpdir } from "os";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 
 /** A temporary home: the CLI never writes the user's data or config directories
- * (doctor created ~/.local/share/paper-search-cli/carsi, 2026-11-02). */
+ * (doctor created ~/.local/share/paper-search-cli/school, 2026-11-02). */
 function isolatedHome(dir: string): NodeJS.ProcessEnv {
   return { HOME: dir, XDG_DATA_HOME: join(dir, "data"), XDG_CONFIG_HOME: join(dir, "config") };
 }
@@ -39,7 +39,7 @@ describe("doctor command", () => {
           PAPER_SEARCH_HIDE_SETUP_HINT: "1",
           EASYSCHOLAR_KEY: "easy-secret",
           ELSEVIER_API_KEY: "elsevier-secret",
-          PAPER_SEARCH_CARSI_ENABLED: "false",
+          PAPER_SEARCH_SCHOOL_ENABLED: "false",
           WILEY_TDM_TOKEN: "legacy-token-must-be-ignored",
         },
         encoding: "utf8",
@@ -93,7 +93,7 @@ describe("doctor command", () => {
           state: "disabled",
           code: "integration_disabled",
         },
-        reason: expect.stringMatching(/CARSI/i),
+        reason: expect.stringMatching(/school/i),
       }),
     );
     expect(output.platformStatus.ok).toBe(true);
@@ -119,7 +119,7 @@ describe("doctor command", () => {
           PAPER_SEARCH_HIDE_SETUP_HINT: "1",
           EASYSCHOLAR_KEY: "easy-secret",
           ELSEVIER_API_KEY: "elsevier-secret",
-          PAPER_SEARCH_CARSI_ENABLED: "false",
+          PAPER_SEARCH_SCHOOL_ENABLED: "false",
         },
         encoding: "utf8",
       },
@@ -134,7 +134,7 @@ describe("doctor command", () => {
     expect(result.stdout).toContain(
       "Readiness: disabled (integration_disabled)",
     );
-    expect(result.stdout).toMatch(/CARSI/i);
+    expect(result.stdout).toMatch(/school/i);
     expect(result.stdout).not.toContain("easy-secret");
     expect(result.stdout).not.toContain("elsevier-secret");
   });
@@ -184,7 +184,7 @@ describe("doctor command", () => {
           PAPER_SEARCH_HIDE_SETUP_HINT: "1",
           EASYSCHOLAR_KEY: "",
           SEMANTIC_SCHOLAR_API_KEY: "",
-          PAPER_SEARCH_CARSI_ENABLED: "false",
+          PAPER_SEARCH_SCHOOL_ENABLED: "false",
         },
         encoding: "utf8",
       },
@@ -199,7 +199,7 @@ describe("doctor command", () => {
     );
   });
 
-  it("reports enabled CARSI as absent without failing doctor when the executable is missing", () => {
+  it("reports enabled school backend as absent without failing doctor when the executable is missing", () => {
     const emptyPath = join(tempDir, "empty-path");
     const result = spawnSync(
       process.execPath,
@@ -217,7 +217,7 @@ describe("doctor command", () => {
           PATH: emptyPath,
           PAPER_SEARCH_CONFIG_FILE: join(tempDir, "config.json"),
           PAPER_SEARCH_HIDE_SETUP_HINT: "1",
-          PAPER_SEARCH_CARSI_ENABLED: "true",
+          PAPER_SEARCH_SCHOOL_ENABLED: "true",
         },
         encoding: "utf8",
       },
@@ -233,7 +233,7 @@ describe("doctor command", () => {
     ).toEqual(
       expect.objectContaining({
         status: "unavailable",
-        missing: ["carsi"],
+        missing: ["school"],
         readiness: {
           state: "absent",
           code: "executable_missing",

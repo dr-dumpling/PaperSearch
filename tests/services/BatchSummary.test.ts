@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "@jest/globals";
 import { asWindowBatch, batchPaper, batchResults } from "../../src/capabilities/pdf-discovery/batchSummary.js";
 import type { DownloadBatchItemResult, DownloadBatchResult } from "../../src/capabilities/pdf-discovery/batch.js";
-import type { CarsiBackend, CarsiBatchUpdate } from "../../src/capabilities/pdf-discovery/carsi/types.js";
+import type { SchoolBackend, SchoolBatchUpdate } from "../../src/capabilities/pdf-discovery/school/types.js";
 import type { DownloadBatchPosition } from "../../src/capabilities/pdf-discovery/types.js";
 
-function fakeBackend(updates: CarsiBatchUpdate[]): CarsiBackend {
+function fakeBackend(updates: SchoolBatchUpdate[]): SchoolBackend {
   return {
     probe: async () => ({ state: "available", code: "ready", message: "", missing: [] }),
     downloadLegalDoi: async () => {
@@ -30,7 +30,7 @@ describe("a lone download as a batch of one", () => {
   afterEach(() => roots.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 
   it("ends the window with its reason once it reached the backend", async () => {
-    const updates: CarsiBatchUpdate[] = [];
+    const updates: SchoolBatchUpdate[] = [];
     const seen: Array<DownloadBatchPosition | undefined> = [];
     const savePath = root();
     await asWindowBatch({ source: "crossref", paperId: "10.1000/x", doi: "10.1000/x", savePath }, fakeBackend(updates),
@@ -50,7 +50,7 @@ describe("a lone download as a batch of one", () => {
   });
 
   it("points a saved paper's folder button at its own folder", async () => {
-    const updates: CarsiBatchUpdate[] = [];
+    const updates: SchoolBatchUpdate[] = [];
     const savePath = root();
     const paperDir = join(savePath, "Spine_2026_A Paper_abc");
     await asWindowBatch({ source: "crossref", paperId: "10.1000/x", doi: "10.1000/x", savePath }, fakeBackend(updates),
@@ -60,7 +60,7 @@ describe("a lone download as a batch of one", () => {
   });
 
   it("opens no window for a copy that never reached the backend", async () => {
-    const updates: CarsiBatchUpdate[] = [];
+    const updates: SchoolBatchUpdate[] = [];
     await asWindowBatch({ source: "crossref", paperId: "10.1000/x", doi: "10.1000/x", savePath: root() }, fakeBackend(updates),
       async () => ({ status: "ok", path: "/tmp/x.pdf", attempts: [
         { stage: "unpaywall", status: "ok", message: "" },

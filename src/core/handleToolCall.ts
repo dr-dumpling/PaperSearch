@@ -1,6 +1,6 @@
 import { runDownloadFolder } from "../config/ConfigService.js";
 import type { Searchers } from "./searchers.js";
-import type { CarsiBackend } from "../capabilities/pdf-discovery/carsi/index.js";
+import type { SchoolBackend } from "../capabilities/pdf-discovery/school/index.js";
 import type { ToolName } from "./schemas.js";
 import { parseToolArgs } from "./schemas.js";
 import { PaperFactory, type Paper } from "../models/Paper.js";
@@ -38,7 +38,7 @@ function jsonTextResponse(text: string) {
 }
 
 export interface ToolCallDependencies {
-  carsiBackend?: CarsiBackend;
+  schoolBackend?: SchoolBackend;
 }
 
 type ToolHandler = (
@@ -216,11 +216,11 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
   },
 
   download_paper: async (args, searchers, dependencies) =>
-    handleDownloadPaper(args, searchers, dependencies.carsiBackend),
+    handleDownloadPaper(args, searchers, dependencies.schoolBackend),
   download_with_fallback: async (args, searchers, dependencies) =>
-    handleDownloadWithFallback(args, searchers, dependencies.carsiBackend),
+    handleDownloadWithFallback(args, searchers, dependencies.schoolBackend),
   download_batch: async (args, searchers, dependencies) =>
-    handleDownloadBatch(args, searchers, dependencies.carsiBackend),
+    handleDownloadBatch(args, searchers, dependencies.schoolBackend),
   query_journal_metrics: async (args) => handleJournalMetrics(args),
 
   search_google_scholar: async (args, searchers) => {

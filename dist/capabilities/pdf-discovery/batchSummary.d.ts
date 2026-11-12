@@ -1,4 +1,4 @@
-import type { CarsiBackend, CarsiBatchPaper, CarsiBatchResults } from "./carsi/index.js";
+import type { SchoolBackend, SchoolBatchPaper, SchoolBatchResults } from "./school/index.js";
 import type { DownloadBatchItemResult, DownloadBatchResult } from "./batch.js";
 import type { DownloadWithFallbackOptions, DownloadWithFallbackResult } from "./types.js";
 /**
@@ -13,7 +13,7 @@ export declare function supplementShortfall(item: DownloadBatchItemResult): stri
  * stage (open, institutional, supplementary files); the window is optional,
  * so this never changes the batch result.
  */
-export declare function reportBatchResults(result: DownloadBatchResult, backend: CarsiBackend | undefined, startedAt: number, folder: string): Promise<void>;
+export declare function reportBatchResults(result: DownloadBatchResult, backend: SchoolBackend | undefined, startedAt: number, folder: string): Promise<void>;
 /**
  * One download outside a batch, run as a batch of one so the progress window
  * ends with the same finished card (its reason when it failed). Reported only
@@ -21,11 +21,11 @@ export declare function reportBatchResults(result: DownloadBatchResult, backend:
  */
 export declare function asWindowBatch(options: DownloadWithFallbackOptions & {
     savePath: string;
-}, backend: CarsiBackend | undefined, download: (options: DownloadWithFallbackOptions) => Promise<DownloadWithFallbackResult>): Promise<DownloadWithFallbackResult>;
-export declare function batchResults(result: DownloadBatchResult, startedAt: number, folder: string): CarsiBatchResults;
+}, backend: SchoolBackend | undefined, download: (options: DownloadWithFallbackOptions) => Promise<DownloadWithFallbackResult>): Promise<DownloadWithFallbackResult>;
+export declare function batchResults(result: DownloadBatchResult, startedAt: number, folder: string): SchoolBatchResults;
 /**
  * A paper for the window's lists (成功, 失败, 剩余): waiting in a lane, or its
  * result as the finished card tells it (the way it came, or why it failed).
  */
-export declare function batchPaper(request: DownloadWithFallbackOptions, item: DownloadBatchItemResult | undefined, waiting: "open" | "school" | undefined, content: DownloadBatchResult["content"]): Omit<CarsiBatchPaper, "index">;
+export declare function batchPaper(request: DownloadWithFallbackOptions, item: DownloadBatchItemResult | undefined, waiting: "open" | "school" | undefined, content: DownloadBatchResult["content"]): Omit<SchoolBatchPaper, "index">;
 //# sourceMappingURL=batchSummary.d.ts.map

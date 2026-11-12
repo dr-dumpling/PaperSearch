@@ -1,0 +1,45 @@
+[project]
+name = "paper-search-school"
+version = "0.1.0"
+description = "Institutional (publisher-authorized) PDF and supplementary-file download backend for PaperSearch"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+# Ranges below the next major version; the browser driver is pinned (ADR 0013, 0016).
+dependencies = [
+    "requests>=2.31,<3",
+    "requests[socks]>=2.31,<3",
+    "urllib3>=2.7.0,<3",
+    "beautifulsoup4>=4.12,<5",
+    "mcp>=1.12,<3.0",
+    # Reading PDFs (pdf_text.py): PDFium, Chrome's PDF engine; BSD/Apache, about 10 MB.
+    "pypdfium2>=4.30,<6",
+    # The progress capsule (progress_capsule.py): the system web engine through pywebview.
+    "pywebview>=6.2,<7",
+    # Drives the user's installed Google Chrome, and ego over remote debugging:
+    # Playwright with Chromium's automation traces removed (ADR 0016).
+    "patchright==1.64.4",
+]
+
+[project.optional-dependencies]
+# ego backend: one shared remote-debugging connection (browser/ego_relay.py).
+ego = ["websockets>=13,<18"]
+# PyMuPDF only builds the tests' sample PDFs; the backend reads PDFs with pypdfium2.
+dev = ["pytest>=8.0", "pymupdf>=1.24,<2"]
+
+[project.scripts]
+paper-search-school = "paper_search_school.cli:main"
+
+[build-system]
+requires = ["setuptools>=77.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["paper_search_school*"]
+
+[tool.setuptools.package-data]
+paper_search_school = ["publishers/builtin/*.json", "federations/builtin/*.json", "publishers/schema.json", "data/*.json", "assets/*.png", "assets/*.html", "assets/*.json", "assets/papersearch-notifier"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

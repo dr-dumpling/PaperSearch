@@ -10,8 +10,8 @@ import {
   jest,
 } from "@jest/globals";
 import { createEntitledAccessTier } from "../../src/capabilities/pdf-discovery/tiers/entitledAccess.js";
-import type { CarsiBackend } from "../../src/capabilities/pdf-discovery/carsi/index.js";
-import { normalizeDownloadResult } from "../../src/capabilities/pdf-discovery/carsi/CarsiResultNormalizer.js";
+import type { SchoolBackend } from "../../src/capabilities/pdf-discovery/school/index.js";
+import { normalizeDownloadResult } from "../../src/capabilities/pdf-discovery/school/SchoolResultNormalizer.js";
 import type { DownloadTierContext } from "../../src/capabilities/pdf-discovery/DownloadTier.js";
 import { textPdf } from "../fixtures/textPdf.js";
 
@@ -39,7 +39,7 @@ describe("Entitled PDF acceptance", () => {
   it("preserves a verified PDF and propagates a stop received during backend cleanup", async () => {
     const path = join(directory, "paper.pdf");
     writeFileSync(path, textPdf([["Nutrition and health", "doi:10.1000/target"]]));
-    const backend: CarsiBackend = { probe: async () => ({ state: "available", code: "ready", message: "", missing: [] }), downloadLegalDoi: async () => ({
+    const backend: SchoolBackend = { probe: async () => ({ state: "available", code: "ready", message: "", missing: [] }), downloadLegalDoi: async () => ({
       kind: "success", identifier: context.paperId, path, trace: { state: "batch_stopped" },
     }) };
     const result = await createEntitledAccessTier(backend).run(context);
@@ -70,7 +70,7 @@ describe("Entitled PDF acceptance", () => {
           identifier: context.paperId,
           path,
         })),
-      } as unknown as CarsiBackend;
+      } as unknown as SchoolBackend;
       const result = await createEntitledAccessTier(backend).run(context);
       expect(result).toMatchObject({
         status: "error",
@@ -102,7 +102,7 @@ describe("Entitled PDF acceptance", () => {
         code,
         message: "cookie=private https://example.org/?token=private",
       })),
-    } as unknown as CarsiBackend;
+    } as unknown as SchoolBackend;
     const result = await createEntitledAccessTier(backend).run(context);
     expect(result).toMatchObject({ status: "error", code });
     expect(JSON.stringify(result)).not.toMatch(/cookie|token|private|https/);
@@ -135,7 +135,7 @@ describe("Entitled PDF acceptance", () => {
             context.paperId,
           ),
         ),
-      } as unknown as CarsiBackend;
+      } as unknown as SchoolBackend;
       const result = await createEntitledAccessTier(backend).run(context);
       expect(result).toMatchObject({ status: "error", code });
       expect(result.message).toContain(message);
@@ -160,7 +160,7 @@ describe("Entitled PDF acceptance", () => {
       downloadLegalDoi: jest.fn(async () =>
         normalizeDownloadResult({ content: [{ type: "text", text: JSON.stringify(payload) }] }, context.paperId),
       ),
-    } as unknown as CarsiBackend;
+    } as unknown as SchoolBackend;
     const result = await createEntitledAccessTier(backend).run(context);
     expect(result).toMatchObject({ status: "error", code: "idp_no_return_to_publisher" });
     expect(result.message).toContain(shown);
@@ -191,7 +191,7 @@ describe("Entitled PDF acceptance", () => {
             context.paperId,
           ),
         ),
-      } as unknown as CarsiBackend;
+      } as unknown as SchoolBackend;
       expect(await createEntitledAccessTier(backend).run(context)).toMatchObject({
         status: "error",
         code: "download_failed",

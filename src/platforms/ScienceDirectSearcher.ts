@@ -399,7 +399,7 @@ export class ScienceDirectSearcher extends PaperSource {
     options: DownloadOptions = {},
   ): Promise<string> {
     throw new Error(
-      "ScienceDirect itself does not perform authorized PDF downloads; the optional CARSI tier is handled by the unified download funnel.",
+      "ScienceDirect itself does not perform authorized PDF downloads; the optional school subscription tier is handled by the unified download funnel.",
     );
   }
 

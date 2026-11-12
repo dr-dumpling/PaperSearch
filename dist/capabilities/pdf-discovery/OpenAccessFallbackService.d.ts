@@ -2,10 +2,10 @@ import type { Searchers } from "../../core/searchers.js";
 import { type PdfIdentityStatus } from "../../infrastructure/pdf/PdfIdentity.js";
 import type { DownloadTier } from "./DownloadTier.js";
 import type { DownloadWithFallbackOptions, DownloadWithFallbackResult } from "./types.js";
-import type { CarsiBackend } from "./carsi/index.js";
+import type { SchoolBackend } from "./school/index.js";
 export type { DownloadTier, DownloadTierContext, DownloadTierResult, } from "./DownloadTier.js";
 export type { DownloadWithFallbackOptions, DownloadWithFallbackResult, } from "./types.js";
-export declare function createDefaultDownloadTiers(carsiBackend?: CarsiBackend): DownloadTier[];
+export declare function createDefaultDownloadTiers(schoolBackend?: SchoolBackend): DownloadTier[];
 export declare function insertDownloadTierBefore(tiers: DownloadTier[], beforeStage: string, tier: DownloadTier): DownloadTier[];
 export interface DownloadFallbackLimits {
     /** Wall-clock cap per non-entitled stage (entitled access has its own). */

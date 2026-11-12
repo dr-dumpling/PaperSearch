@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import { sanitizeDoi } from "../../infrastructure/security/SecurityUtils.js";
 import { classifyFailureCode } from "../../infrastructure/runlog/failureClass.js";
-import { carsiShortReason } from "./carsi/index.js";
+import { schoolShortReason } from "./school/index.js";
 /**
  * Where a saved main text came from, as the finished window names it: the two
  * ways of downloading (the guide's 开放下载 and 机构下载, the batch's two lanes),
@@ -154,7 +154,7 @@ export function batchPaper(request, item, waiting, content) {
 /** Supplementary files a saved paper is missing (content "both"): the class and the reason in a few words. */
 function supplementsMissing(item, content) {
     const shortfall = content === "both" ? supplementShortfall(item) : undefined;
-    return shortfall ? { cls: classifyFailureCode(shortfall), reason: carsiShortReason(shortfall, "附录没下载成功") } : undefined;
+    return shortfall ? { cls: classifyFailureCode(shortfall), reason: schoolShortReason(shortfall, "附录没下载成功") } : undefined;
 }
 /** The way a main text came (and, for the open one, its source when not open access). */
 function sourceLabel(item) {
@@ -169,11 +169,11 @@ function sourceLabel(item) {
 function failure(item, content) {
     if (content === "supplements") {
         const code = item.supplements?.find((file) => file.status !== "saved" && file.reason)?.reason;
-        return { cls: classifyFailureCode(code), reason: carsiShortReason(code, "附录没下载成功") };
+        return { cls: classifyFailureCode(code), reason: schoolShortReason(code, "附录没下载成功") };
     }
     const entitled = [...item.attempts].reverse().find((attempt) => attempt.stage === "entitled_access");
     if (entitled && (entitled.status === "error" || entitled.code === "batch_stopped")) {
-        return { cls: classifyFailureCode(entitled.code), reason: carsiShortReason(entitled.code) };
+        return { cls: classifyFailureCode(entitled.code), reason: schoolShortReason(entitled.code) };
     }
     // Institutional access never ran for this item.
     return item.doi && sanitizeDoi(item.doi).valid

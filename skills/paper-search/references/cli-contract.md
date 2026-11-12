@@ -22,11 +22,11 @@
 - `paper-search doctor [--validate] [--format text] [--pretty]`
 - `paper-search failures [--run ID|--since YYYY-MM-DD|--runs N] [--doi DOI] [--export file.zip] [--all] [--format text] [--pretty]`
 - `paper-search update check [--format text] [--pretty]`（只检查，不安装）
-- `paper-search carsi install [--browser chrome|ego] [--yes] [--force] [--skip-school] [--format text]`
-- `paper-search carsi status [--format text] [--pretty]`
-- `paper-search carsi update [--force] [--format text] [--pretty]`
-- `paper-search carsi login --doi <DOI> [--max-wait <seconds>] [--pretty]`
-- `paper-search carsi uninstall [--yes] [--remove-data] [--format text] [--pretty]`
+- `paper-search school install [--browser chrome|ego] [--yes] [--force] [--skip-school] [--format text]`
+- `paper-search school status [--format text] [--pretty]`
+- `paper-search school update [--force] [--format text] [--pretty]`
+- `paper-search school login --doi <DOI> [--max-wait <seconds>] [--pretty]`
+- `paper-search school uninstall [--yes] [--remove-data] [--format text] [--pretty]`
 - `paper-search uninstall [--dry-run] [--yes] [--format text]`：卸载 PaperSearch 的数据、配置和各工具里的 Skill；用法见 `management-layer.md` 的“卸载”
 - `paper-search smoke --mock [--pretty]`
 - `paper-search smoke --live [--pretty]`
@@ -50,7 +50,7 @@
 - `paper-search config delete KEY [--pretty]` 和 `paper-search config remove KEY [--pretty]` 是 `unset` 的别名。
 - `paper-search config import-env [file] [--pretty]`
 
-机构下载后端自己的命令 `paper-search-carsi`（`issues`、`progress`、`preview`、`entitlements`、`setup`、`config`）见 `browser-download.md` 和 `carsi-setup.md`；它通常不在 PATH 上，用 `paper-search carsi status --format text` 显示的后端完整路径调用。
+机构下载后端自己的命令 `paper-search-school`（`issues`、`progress`、`preview`、`entitlements`、`setup`、`config`）见 `browser-download.md` 和 `school-setup.md`；它通常不在 PATH 上，用 `paper-search school status --format text` 显示的后端完整路径调用。
 
 ## 可直接调用的工具
 
@@ -97,7 +97,7 @@
 
 - 默认输出 JSON，供 agent 和脚本读取。
 - `--pretty` 把 JSON 排版输出。
-- `--format text` 用于顶层的 `doctor`、`failures`、`carsi` 和 `skills diff`，在用户明确需要可读报告时使用。
+- `--format text` 用于顶层的 `doctor`、`failures`、`school` 和 `skills diff`，在用户明确需要可读报告时使用。
 - `--include-text` 在支持的命令里把工具的原始返回文字保留在 JSON 里。
 - 做判断时解析 JSON；只有用户需要可读报告时才用文本格式。
 
@@ -136,7 +136,7 @@ paper-search run get_paper_references --arg doi="10.1038/nature12373" --pretty
 
 固定顺序是 `primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access -> preprint`。Sci-Hub 成功就不再调用机构下载后端；Sci-Hub 失败或被跳过时进入可选的机构下载。`publisher_api` 在 Sci-Hub 之前，用用户自己的 `ELSEVIER_API_KEY` / `SPRINGER_API_KEY`；Springer 的结果是 JATS XML，这时顶层结果带 `format: "jats-xml"`。
 
-机构下载后端（CARSI）是唯一可选的授权下载后端，默认关闭，只有 `PAPER_SEARCH_CARSI_ENABLED` 恰好是 `true` 时启用。两个下载工具都有 `useEntitledAccess`，默认 `true`；传 `false` 关掉这一层，传 `true` 不能绕过全局关闭。
+机构下载后端（学校订阅下载）是唯一可选的授权下载后端，默认关闭，只有 `PAPER_SEARCH_SCHOOL_ENABLED` 恰好是 `true` 时启用。两个下载工具都有 `useEntitledAccess`，默认 `true`；传 `false` 关掉这一层，传 `true` 不能绕过全局关闭。
 
 ```json
 { "useEntitledAccess": false }
@@ -152,10 +152,10 @@ Sci-Hub 兜底默认开启。用 `download_with_fallback` 时，跳过这一层�
 
 ```bash
 # 安装并启用学校订阅下载（安装前会询问）：
-paper-search carsi install
+paper-search school install
 # 或者指定别处安装的后端：
-paper-search config set PAPER_SEARCH_CARSI_EXECUTABLE /absolute/path/to/paper-search-carsi
-paper-search config set PAPER_SEARCH_CARSI_ENABLED true
+paper-search config set PAPER_SEARCH_SCHOOL_EXECUTABLE /absolute/path/to/paper-search-school
+paper-search config set PAPER_SEARCH_SCHOOL_ENABLED true
 paper-search doctor --pretty
 paper-search download "<DOI>" --platform crossref
 paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"<DOI>","doi":"<DOI>","title":"<paper title>","useSciHub":false,"useEntitledAccess":true}'
@@ -174,11 +174,11 @@ paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>","title":
 
 必须由外部循环逐篇调用 `download_with_fallback` 时，传 `"batch":{"id":"<同一个 id>","index":k,"total":N,"done":…,"succeeded":…,"failed":…}`，可以得到同样的进度窗口。
 
-命令行参数用短横线写法（kebab-case），JSON 参数用工具定义的驼峰写法（camelCase）。`--platform` / `source` 选的是论文元数据来源，不是后端。`useSciHub`、`doi`、`title` 只在 `download_with_fallback` 上有，`download_paper` 和它的简写 `download` 没有。后端路径是可选配置，既不启用机构下载后端，也不改变它的配置；PaperSearch 用 `run` 启动配置的后端（`PAPER_SEARCH_CARSI_EXECUTABLE`），用户不需要每次下载前自己启动服务。
+命令行参数用短横线写法（kebab-case），JSON 参数用工具定义的驼峰写法（camelCase）。`--platform` / `source` 选的是论文元数据来源，不是后端。`useSciHub`、`doi`、`title` 只在 `download_with_fallback` 上有，`download_paper` 和它的简写 `download` 没有。后端路径是可选配置，既不启用机构下载后端，也不改变它的配置；PaperSearch 用 `run` 启动配置的后端（`PAPER_SEARCH_SCHOOL_EXECUTABLE`），用户不需要每次下载前自己启动服务。
 
 支持的进度通知绑定到当前请求，以固定的文字写到 stderr；stdout 默认只有最终的 JSON，不是逐行进度流。不发通知的旧后端不提供推测的阶段。已保存的 PDF 仍要核对身份；带 `review.path` 的错误不是成功的下载。手动登录、绑定请求的截图预览和补充材料的边界见 `browser-download.md`。
 
-机构下载后端只用 `paper-search carsi install` / `status` / `update` / `uninstall` 安装、查看、更新和卸载；不要编造别的安装命令、账号登录流程或后端选择方式。后端自带 MCP stdio 服务，PaperSearch 不需要另装 MCP、全局 MCP 配置、常驻进程或端口。
+机构下载后端只用 `paper-search school install` / `status` / `update` / `uninstall` 安装、查看、更新和卸载；不要编造别的安装命令、账号登录流程或后端选择方式。后端自带 MCP stdio 服务，PaperSearch 不需要另装 MCP、全局 MCP 配置、常驻进程或端口。
 
 命令里别处用到的出版社、数据库 key 不能当作本机的授权 PDF 后端：`ELSEVIER_API_KEY` 和 `SPRINGER_API_KEY` 另外用于 `publisher_api` 层（直接经 HTTPS 调全文接口，权限跟随用户的网络或 key），经浏览器的机构访问只由可选的机构下载后端负责。机构下载适配固定 `strategy=legal_only`（后端声明支持时用 `institutional_only`）、`scihub_enabled=false`、`use_tor=false`，但 `legal_only` 不能证明结果来自学校授权。除机构下载后端外，没有浏览器、WebVPN 或 EZProxy 兜底。
 
@@ -196,7 +196,7 @@ paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>","title":
 ```bash
 paper-search setup
 paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
-paper-search config set PAPER_SEARCH_CARSI_ENABLED true
+paper-search config set PAPER_SEARCH_SCHOOL_ENABLED true
 paper-search config set SEMANTIC_SCHOLAR_API_KEY your_key
 paper-search setup EASYSCHOLAR_KEY
 paper-search settings EASYSCHOLAR_KEY
@@ -206,9 +206,9 @@ paper-search doctor --pretty
 
 `doctor` 和 `config` 的输出会把已配置的密钥脱敏。
 
-`PAPER_SEARCH_CARSI_ENABLED` 是不保密的严格开关：只有字符串 `true` 启用；`TRUE`、`1`、`yes` 或前后带空格的写法都算关闭。
+`PAPER_SEARCH_SCHOOL_ENABLED` 是不保密的严格开关：只有字符串 `true` 启用；`TRUE`、`1`、`yes` 或前后带空格的写法都算关闭。
 
-用户的学校用 `paper-search-carsi setup --institution "<学校>"` 配置，数据目录要和下载用的相同，见 `carsi-setup.md`。学校只写用户自己告诉你的那一所；`doctor=available` 不能说成学校会话有效或对某篇有权限的证明。
+用户的学校用 `paper-search-school setup --institution "<学校>"` 配置，数据目录要和下载用的相同，见 `school-setup.md`。学校只写用户自己告诉你的那一所；`doctor=available` 不能说成学校会话有效或对某篇有权限的证明。
 
 ### arXiv
 

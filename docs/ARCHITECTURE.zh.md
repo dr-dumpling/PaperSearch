@@ -20,7 +20,7 @@ paper-search（TypeScript，npm 包 papersearch）
    检索、引文、期刊指标、正文片段、下载编排、PDF 核对、运行记录、安装和诊断
    │  需要学校订阅时，作为子进程启动（MCP，标准输入输出）
    ▼
-paper-search-carsi（Python，可选，代码在 carsi/，用 paper-search carsi install 安装）
+paper-search-school（Python，可选，代码在 school/，用 paper-search school install 安装）
    专用浏览器、经学校所属的学术身份联盟或 OpenAthens 登录学校、出版社网站规则、取 PDF 和补充材料、进度窗口
 ```
 
@@ -36,7 +36,7 @@ paper-search-carsi（Python，可选，代码在 carsi/，用 paper-search carsi
 | 正文片段 | `run search_semantic_snippets` | 在 Semantic Scholar 的开放获取正文索引里找方法学写法和参数 |
 | 下载 | `paper-search download`、`run download_with_fallback`、`run download_batch` | 下面详细说明 |
 
-另有一组管理命令：`setup`、`settings`、`config`、`status`、`doctor`、`diagnostics`、`skills`、`carsi`、`update`、`uninstall`、`failures`、`smoke`、`tools`。它们负责安装、配置、更新、卸载和诊断，不参与文献任务本身。随包 Skill 写明对应的 PaperSearch 版本，较旧的命令不会覆盖已装的较新 Skill。
+另有一组管理命令：`setup`、`settings`、`config`、`status`、`doctor`、`diagnostics`、`skills`、`school`、`update`、`uninstall`、`failures`、`smoke`、`tools`。它们负责安装、配置、更新、卸载和诊断，不参与文献任务本身。随包 Skill 写明对应的 PaperSearch 版本，较旧的命令不会覆盖已装的较新 Skill。
 
 ## 一次下载怎么走
 
@@ -49,7 +49,7 @@ paper-search download <DOI>
   ├─ 4 Unpaywall            试遍所有开放获取位置
   ├─ 5 出版社接口           用你自己的 Elsevier / Springer key
   ├─ 6 Sci-Hub              默认开启，可按请求关闭
-  ├─ 7 机构下载             装了扩展才有：启动 paper-search-carsi
+  ├─ 7 机构下载             装了扩展才有：启动 paper-search-school
   │     ├─ 按 DOI 实际跳转到的网站选出版社规则；没有专门规则的网站用通用规则
   │     ├─ 专用浏览器打开文章页 → 出版社的机构登录 → 选你学校所属的联盟和学校
   │     │    （自动选校，学校登录页由你输入账号）
@@ -89,7 +89,7 @@ stdout 输出一份 JSON：成功与否、文件位置、每一层的尝试记�
 | 下载的论文 | 你指定的目录里每次下载新建的 `<年月日-时分秒>_PaperSearchDownload` 文件夹：PDF 直接放在里面；取到了补充材料的论文单独一个文件夹，正文和 `supplements/` 在其中 |
 | 配置和 API key | `~/.config/paper-search-cli/config.json`（权限 `0600`） |
 | 运行记录 | `~/.local/share/paper-search-cli/runs/`：每次运行一个目录，含出过问题篇目的诊断记录和截图；保留 30 天 |
-| 机构下载的学校设置和登录状态 | `~/.local/share/paper-search-cli/carsi/` |
+| 机构下载的学校设置和登录状态 | `~/.local/share/paper-search-cli/school/` |
 
 都只在你的电脑上，不上传到任何地方。
 
@@ -105,7 +105,7 @@ src/
 ├── infrastructure/     HTTP、缓存、限流、PDF 下载与核对、运行记录
 ├── management/         setup、doctor、skills、carsi 安装等管理功能
 └── config/、models/    配置和统一的论文数据模型
-carsi/paper_search_carsi/
+school/paper_search_school/
 ├── server.py           对 paper-search 提供的工具接口
 ├── engine/             一篇论文的完整下载流程、等待、补充材料
 ├── browser/            浏览器启动、登录状态保存、验证识别与点击、卡死保护
@@ -115,13 +115,13 @@ carsi/paper_search_carsi/
 ├── progress_capsule.py 进度胶囊（页面在 assets/capsule.html）
 └── capsule_window.py   胶囊在 Mac/Windows 上的窗口：位置、屏幕、拖动
 skills/paper-search/    随包 Skill 和参考文件
-tests/、carsi/tests/    两侧的自动化测试
+tests/、school/tests/    两侧的自动化测试
 ```
 
 ## 怎么扩展
 
 - **加一个检索来源**：在 `src/platforms/` 新增一个 Searcher（继承 `PaperSource`），在 `src/registry/` 的登记表里登记名称、别名、所需配置和能力，再补测试。
-- **加一家出版社**：按 [carsi/CONTRIBUTING.md](../carsi/CONTRIBUTING.md) 新增出版社配置，必要时写适配器；验证框识别与自动点击复用通用浏览器模块，学校从配置读取。
+- **加一家出版社**：按 [school/CONTRIBUTING.md](../school/CONTRIBUTING.md) 新增出版社配置，必要时写适配器；验证框识别与自动点击复用通用浏览器模块，学校从配置读取。
 - **加一条下载渠道**：实现一个下载层（`DownloadTier`），插到下载顺序里的合适位置；它拿到的文件同样要过身份核对。
 
 ## 稳定接口

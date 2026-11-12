@@ -110,9 +110,9 @@ const TOOL_HANDLERS = {
         });
         return jsonTextResponse(`Found ${results.length} IACR ePrint papers.\n\n${JSON.stringify(results.map((paper) => PaperFactory.toDict(paper)), null, 2)}`);
     },
-    download_paper: async (args, searchers, dependencies) => handleDownloadPaper(args, searchers, dependencies.carsiBackend),
-    download_with_fallback: async (args, searchers, dependencies) => handleDownloadWithFallback(args, searchers, dependencies.carsiBackend),
-    download_batch: async (args, searchers, dependencies) => handleDownloadBatch(args, searchers, dependencies.carsiBackend),
+    download_paper: async (args, searchers, dependencies) => handleDownloadPaper(args, searchers, dependencies.schoolBackend),
+    download_with_fallback: async (args, searchers, dependencies) => handleDownloadWithFallback(args, searchers, dependencies.schoolBackend),
+    download_batch: async (args, searchers, dependencies) => handleDownloadBatch(args, searchers, dependencies.schoolBackend),
     query_journal_metrics: async (args) => handleJournalMetrics(args),
     search_google_scholar: async (args, searchers) => {
         const { query, maxResults, yearLow, yearHigh, author } = args;

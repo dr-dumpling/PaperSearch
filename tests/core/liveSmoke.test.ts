@@ -5,7 +5,7 @@ import {
   type SmokeCase,
 } from "../../src/core/liveSmoke.js";
 import type { CapabilityProfile } from "../../src/management/capability-profile/index.js";
-import type { EntitledAccessReadiness } from "../../src/management/capability-profile/carsiReadiness.js";
+import type { EntitledAccessReadiness } from "../../src/management/capability-profile/schoolReadiness.js";
 
 const capabilityProfile: CapabilityProfile = {
   ok: true,
@@ -80,7 +80,7 @@ describe("live smoke severity", () => {
 
     const result = await runLiveSmoke({
       capabilityProfile,
-      carsiReadiness: disabledReadiness(),
+      schoolReadiness: disabledReadiness(),
       hasConfig: (key) => key === "ELSEVIER_API_KEY",
       callTool,
     });
@@ -116,8 +116,8 @@ describe("live smoke severity", () => {
       readiness: {
         state: "absent",
         code: "executable_missing",
-        message: "CARSI executable was not found.",
-        missing: ["carsi"],
+        message: "School backend executable was not found.",
+        missing: ["school"],
       },
       status: "failed",
       ok: false,
@@ -127,7 +127,7 @@ describe("live smoke severity", () => {
       readiness: {
         state: "incompatible",
         code: "missing_tool",
-        message: "CARSI contract is incompatible.",
+        message: "School backend contract is incompatible.",
         missing: [],
       },
       status: "failed",
@@ -138,7 +138,7 @@ describe("live smoke severity", () => {
       readiness: {
         state: "available",
         code: "ready",
-        message: "CARSI is ready.",
+        message: "School backend is ready.",
         missing: [],
       },
       status: "passed",
@@ -146,7 +146,7 @@ describe("live smoke severity", () => {
       severity: "degraded",
     },
   ])(
-    "reports CARSI readiness state $readiness.state without invoking a download tool",
+    "reports the school backend readiness state $readiness.state without invoking a download tool",
     async ({ readiness, status, ok, severity }) => {
       const callTool = jest.fn(async (tool: string) => ({
         ok: true,
@@ -155,15 +155,15 @@ describe("live smoke severity", () => {
 
       const result = await runLiveSmoke({
         capabilityProfile,
-        carsiReadiness: readiness,
+        schoolReadiness: readiness,
         hasConfig: () => false,
         callTool,
       });
-      const carsiCase = result.cases.find(
-        (item) => item.name === "CARSI entitled access readiness",
+      const schoolCase = result.cases.find(
+        (item) => item.name === "School backend entitled access readiness",
       );
 
-      expect(carsiCase).toEqual(
+      expect(schoolCase).toEqual(
         expect.objectContaining({
           ok,
           status,
@@ -176,8 +176,8 @@ describe("live smoke severity", () => {
       for (const forbiddenTool of [
         "download_paper",
         "download_with_fallback",
-        "carsi_download",
-        "carsi_cache_clear",
+        "school_download",
+        "school_cache_clear",
       ]) {
         expect(calledTools).not.toContain(forbiddenTool);
       }
@@ -189,7 +189,7 @@ function disabledReadiness(): EntitledAccessReadiness {
   return {
     state: "disabled",
     code: "integration_disabled",
-    message: "CARSI integration is disabled.",
+    message: "School backend integration is disabled.",
     missing: [],
   };
 }

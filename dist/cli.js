@@ -9,9 +9,9 @@ import { initializeSearchers } from "./core/searchers.js";
 import { handleToolCall } from "./core/handleToolCall.js";
 import { diagnoseError, diagnoseToolResult, diagnosticContextFromCli, getRequirementStatus, } from "./management/diagnostics/index.js";
 import { buildCapabilityProfile } from "./management/capability-profile/index.js";
-import { resolveCarsiReadiness } from "./management/capability-profile/carsiReadiness.js";
-import { createCarsiBackend, } from "./capabilities/pdf-discovery/carsi/index.js";
-import { CONFIG_KEYS, getConfigPath, importEnvFile, initUserConfig, listConfigEntries, loadUserConfigIntoEnv, maskValue, readUserConfig, assertConfigKey, getConfigValue, setUserConfigValue, isConfigTrue, resolveDownloadPath, unsetUserConfigValue, } from "./management/config/index.js";
+import { resolveSchoolReadiness } from "./management/capability-profile/schoolReadiness.js";
+import { createSchoolBackend, } from "./capabilities/pdf-discovery/school/index.js";
+import { CONFIG_KEYS, getConfigPath, importEnvFile, initUserConfig, listConfigEntries, loadUserConfigIntoEnv, maskValue, readUserConfig, assertConfigKey, applyLegacyEnvironment, canonicalConfigKey, getConfigValue, migrateLegacyConfigFile, setUserConfigValue, isConfigTrue, resolveDownloadPath, unsetUserConfigValue, } from "./management/config/index.js";
 import { apiKeySignupUrl } from "./config/apiKeySignup.js";
 import { setupGlobalProxy } from "./infrastructure/http/HttpClient.js";
 import { autoSyncSkill, defaultSkillTargetIds, describeSkillTargets, diffSkillTargets, installSkillTargets, parseSkillTargets, skillLocations, statusSkillTargets, } from "./management/skills/index.js";
@@ -20,24 +20,28 @@ import { renderDoctorTextReport, renderSkillDiffTextReport, } from "./management
 import { beginUpdateNotification, checkForUpdate, renderUpdateNotice } from "./management/updates/index.js";
 import { exportFailureReport } from "./management/failures/exportReport.js";
 import { renderFailuresText, summarizeFailures } from "./management/failures/index.js";
-import { createNodeHost } from "./management/carsi/host.js";
-import { InstallError, installCarsi, carsiStatus, renderStatusText, uninstallCarsi, updateCarsi, } from "./management/carsi/installer.js";
-import { resolveDefaultCarsiProfileDir, takeDownloadLock } from "./capabilities/pdf-discovery/carsi/index.js";
-import { autoUpdateCarsi, withAutoUpdate } from "./management/carsi/autoUpdate.js";
-import { withCliCarsiProgress } from "./management/carsi/cliProgress.js";
-import { openSettingsWindow, settingsWindowEnv as windowEnv } from "./management/carsi/settingsWindow.js";
-import { carsiLogin } from "./management/carsi/login.js";
+import { createNodeHost } from "./management/school/host.js";
+import { InstallError, installSchool, schoolStatus, renderStatusText, uninstallSchool, updateSchool, } from "./management/school/installer.js";
+import { resolveDefaultSchoolProfileDir, takeDownloadLock } from "./capabilities/pdf-discovery/school/index.js";
+import { autoUpdateSchool, withAutoUpdate } from "./management/school/autoUpdate.js";
+import { withCliSchoolProgress } from "./management/school/cliProgress.js";
+import { openSettingsWindow, settingsWindowEnv as windowEnv } from "./management/school/settingsWindow.js";
+import { schoolLogin } from "./management/school/login.js";
+import { moveLegacyDataDir } from "./management/school/legacy.js";
 import { paperSearchCommand } from "./config/selfCommand.js";
 import { TESTABLE_KEYS, probeKeyFor, testApiKey } from "./config/apiKeyTest.js";
-import { hasScreen } from "./management/carsi/runtime.js";
+import { hasScreen } from "./management/school/runtime.js";
 import { fileURLToPath } from "node:url";
 import { resolveRunLogRoot } from "./infrastructure/runlog/RunLedger.js";
 import { NPM_UNINSTALL, renderUninstallPlan, runUninstall, uninstallPlan } from "./management/uninstall/index.js";
 import { runLiveSmoke } from "./management/smoke/index.js";
 dotenv.config();
+// Keys from before 0.6.1 (PAPER_SEARCH_CARSI_*) count as the new ones.
+applyLegacyEnvironment();
 // A broken config file is reported by main() like any other error, not as a stack trace.
 let configLoadError;
 try {
+    migrateLegacyConfigFile();
     loadUserConfigIntoEnv();
 }
 catch (error) {
@@ -83,10 +87,10 @@ Usage:
   paper-search status [--validate]
   paper-search doctor [--validate]
   paper-search failures [--run <id>|latest] [--since 2026-11-01] [--runs 5] [--doi <DOI>] [--export <file.zip>] [--all]
-  paper-search carsi <install|status> [--browser chrome|ego] [--yes] [--force] [--skip-school]
-  paper-search carsi update [--force]
-  paper-search carsi login --doi <DOI> [--max-wait <seconds>]
-  paper-search carsi uninstall [--yes] [--remove-data]
+  paper-search school <install|status> [--browser chrome|ego] [--yes] [--force] [--skip-school]
+  paper-search school update [--force]
+  paper-search school login --doi <DOI> [--max-wait <seconds>]
+  paper-search school uninstall [--yes] [--remove-data]
   paper-search uninstall [--dry-run] [--yes]
   paper-search smoke --mock|--live
   paper-search skills <status|update|diff> [--targets agents,codex]
@@ -94,7 +98,7 @@ Usage:
   paper-search diagnostics
   paper-search config <init|set|get|unset|list|doctor|path|import-env|keys|test>
   paper-search settings [download|wait|keys|<API_KEY_NAME>]
-  paper-search setup [--all] [--install-skills agents,codex] [--skip-skills] [--skip-carsi|--install-carsi]
+  paper-search setup [--all] [--install-skills agents,codex] [--skip-skills] [--skip-school|--install-school]
   paper-search download <paper-id> --platform pmc [--save-path ./downloads]
 
 Global flags:
@@ -318,9 +322,9 @@ function firstLine(text) {
 }
 async function callTool(tool, args, flags) {
     const searchers = initializeSearchers();
-    const carsiBackend = carsiBackendForToolCall(tool, args);
+    const schoolBackend = schoolBackendForToolCall(tool, args);
     const response = await handleToolCall(tool, args, searchers, {
-        carsiBackend,
+        schoolBackend,
     });
     const text = extractText(response);
     if (flags.format === "text") {
@@ -348,22 +352,22 @@ async function callTool(tool, args, flags) {
     }
     return payload;
 }
-function carsiBackendForToolCall(tool, args) {
+function schoolBackendForToolCall(tool, args) {
     const isDownloadTool = tool === "download_paper" ||
         tool === "download_with_fallback" ||
         tool === "download_batch";
     if (!isDownloadTool ||
         args.useEntitledAccess === false ||
-        !isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")) {
+        !isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED")) {
         return undefined;
     }
     // After an upgrade, the extension is updated before the backend first starts.
-    return withCliCarsiProgress(withAutoUpdate(createCarsiBackend(), updateCarsiFirst));
+    return withCliSchoolProgress(withAutoUpdate(createSchoolBackend(), updateSchoolFirst));
 }
-/** After a PaperSearch upgrade: the extension brought up to it (autoUpdateCarsi), under the download lock. */
-function updateCarsiFirst() {
-    return autoUpdateCarsi(createNodeHost(() => Promise.resolve("")), carsiContext(), () => {
-        const lockPath = takeDownloadLock(resolveDefaultCarsiProfileDir());
+/** After a PaperSearch upgrade: the extension brought up to it (autoUpdateSchool), under the download lock. */
+function updateSchoolFirst() {
+    return autoUpdateSchool(createNodeHost(() => Promise.resolve("")), schoolContext(), () => {
+        const lockPath = takeDownloadLock(resolveDefaultSchoolProfileDir());
         return () => unlinkSync(lockPath);
     });
 }
@@ -430,8 +434,9 @@ async function run(parsed) {
     if (command === "failures") {
         return handleFailuresCommand(flags);
     }
-    if (command === "carsi") {
-        return handleCarsiCommand(positionals, flags);
+    // "carsi": the command's name before 0.6.1, still taken from older Skills and scripts.
+    if (command === "school" || command === "carsi") {
+        return handleSchoolCommand(positionals, flags);
     }
     if (command === "uninstall") {
         return handleUninstallCommand(flags);
@@ -439,7 +444,7 @@ async function run(parsed) {
     if (command === "settings") {
         // Keys are typed into the window, which saves them; none pass through this command.
         const opened = await openSettingsWindow({
-            executable: getConfigValue("PAPER_SEARCH_CARSI_EXECUTABLE"),
+            executable: getConfigValue("PAPER_SEARCH_SCHOOL_EXECUTABLE"),
             target: positionals[0],
             env: settingsWindowEnv(),
         });
@@ -536,9 +541,9 @@ async function handleConfigCommand(positionals, flags) {
         };
     }
     if (subcommand === "get") {
-        const key = positionals[1];
-        if (!key)
+        if (!positionals[1])
             throw new CliError("Missing config key", "MISSING_CONFIG_KEY");
+        const key = canonicalConfigKey(positionals[1]);
         assertConfigKey(key);
         const entry = listConfigEntries(true).find((item) => item.key === key);
         const value = process.env[key] || readUserConfig()[key] || "";
@@ -564,9 +569,9 @@ async function handleConfigCommand(positionals, flags) {
     if (subcommand === "unset" ||
         subcommand === "delete" ||
         subcommand === "remove") {
-        const key = positionals[1];
-        if (!key)
+        if (!positionals[1])
             throw new CliError("Missing config key", "MISSING_CONFIG_KEY");
+        const key = canonicalConfigKey(positionals[1]);
         unsetUserConfigValue(key);
         return { ok: true, path: getConfigPath(), key, removed: true };
     }
@@ -614,8 +619,8 @@ const DEFAULT_SETUP_PROMPTS = [
         secret: true,
     },
     {
-        key: "PAPER_SEARCH_CARSI_ENABLED",
-        label: "School subscription downloads (CARSI) switch, set by paper-search carsi install; enter true only once it is installed",
+        key: "PAPER_SEARCH_SCHOOL_ENABLED",
+        label: "School subscription downloads switch, set by paper-search school install; enter true only once it is installed",
         secret: false,
     },
 ];
@@ -710,16 +715,16 @@ async function handleSetupCommand(positionals, flags) {
         const skillResult = selectedSkillTargets.length > 0
             ? installSkillTargets(selectedSkillTargets, { skillsRoot })
             : undefined;
-        const carsi = await offerCarsiInstall(session, flags);
-        const carsiReadiness = await resolveCarsiReadiness(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED"));
-        const capabilityProfile = buildCapabilityProfile({ carsiReadiness });
+        const school = await offerSchoolInstall(session, flags);
+        const schoolReadiness = await resolveSchoolReadiness(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED"));
+        const capabilityProfile = buildCapabilityProfile({ schoolReadiness });
         const nextSteps = [
             'Run "paper-search doctor --pretty" to review capability and platform health.',
             'Run "paper-search smoke --mock --pretty" for an offline self-check.',
             'Run "paper-search search \\"machine learning\\" --platform crossref --max-results 1 --pretty" for a no-key search check.',
-            ...(carsi.installed || carsi.skipped
+            ...(school.installed || school.skipped
                 ? []
-                : ['Run "paper-search carsi install" to download papers through your school\'s subscription.']),
+                : ['Run "paper-search school install" to download papers through your school\'s subscription.']),
         ];
         return {
             ok: skillResult ? skillResult.ok : true,
@@ -734,7 +739,7 @@ async function handleSetupCommand(positionals, flags) {
                 destinations: skillDestinations,
                 result: skillResult,
             },
-            carsi,
+            school,
             nextSteps,
         };
     }
@@ -744,27 +749,29 @@ async function handleSetupCommand(positionals, flags) {
 }
 /**
  * Setup's last question (ADR 0013): install the institutional download
- * extension. Not asked when it is installed already, with --skip-carsi, or on
+ * extension. Not asked when it is installed already, with --skip-school, or on
  * a computer without a screen (a server: the school login needs a visible
- * browser); --install-carsi installs without asking.
+ * browser); --install-school installs without asking.
  */
-async function offerCarsiInstall(session, flags) {
+async function offerSchoolInstall(session, flags) {
     const host = createNodeHost((question) => session.line(question));
-    const context = carsiContext();
-    if ((await carsiStatus(host, context)).complete)
+    const context = schoolContext();
+    if ((await schoolStatus(host, context)).complete)
         return { installed: true, asked: false };
-    if (flags.skipCarsi === true)
+    // --skip-carsi and --install-carsi: their names before 0.6.1.
+    const install = flags.installSchool === true || flags.installCarsi === true;
+    if (flags.skipSchool === true || flags.skipCarsi === true)
         return { installed: false, asked: false };
-    if (flags.installCarsi !== true && !hasScreen(host.platform, host.env))
+    if (!install && !hasScreen(host.platform, host.env))
         return { installed: false, asked: false, skipped: "no_screen" };
-    const answer = flags.installCarsi === true
+    const answer = install
         ? "y"
-        : await session.line("Install school subscription downloads (CARSI)? It downloads papers through your school's subscription in your Google Chrome (about 0.5 GB to download). [y/N]: ");
+        : await session.line("Install school subscription downloads? It downloads papers through your school's subscription in your Google Chrome. [y/N]: ");
     if (!/^y(es)?$/i.test(answer.trim()))
         return { installed: false, asked: true };
     try {
-        const outcome = await installCarsi(
-        // Confirmed by setup's question or by --install-carsi: not asked again (an agent's
+        const outcome = await installSchool(
+        // Confirmed by setup's question or by --install-school: not asked again (an agent's
         // setup without a terminal cancelled itself here, review 2026-11-02).
         host, { browser: "chrome", yes: false, confirmed: true, force: false, skipSchool: false }, context);
         return { installed: outcome.status === "installed", asked: true, outcome: outcome.status };
@@ -774,15 +781,15 @@ async function offerCarsiInstall(session, flags) {
             throw error;
         return {
             installed: false, asked: true, error: error.message,
-            hint: "处理后再运行 paper-search carsi install，会从这一步接着装。",
+            hint: "处理后再运行 paper-search school install，会从这一步接着装。",
         };
     }
 }
-function carsiContext() {
+function schoolContext() {
     return {
         packageRoot: fileURLToPath(new URL("..", import.meta.url)),
         paperSearchVersion: packageVersion(),
-        dataDir: resolveDefaultCarsiProfileDir(),
+        dataDir: resolveDefaultSchoolProfileDir(),
         getConfig: (key) => getConfigValue(key),
         setConfig: (key, value) => {
             setUserConfigValue(key, value);
@@ -790,7 +797,7 @@ function carsiContext() {
         unsetConfig: (key) => {
             unsetUserConfigValue(key);
         },
-        readiness: (executable) => resolveCarsiReadiness(true, () => createCarsiBackend(executable)),
+        readiness: (executable) => resolveSchoolReadiness(true, () => createSchoolBackend(executable)),
         now: () => new Date(),
     };
 }
@@ -824,7 +831,7 @@ async function testConfiguredKeys(key, flags) {
 }
 /** What the settings window needs: the backend's data directory, this config, and this CLI for key tests. */
 function settingsWindowEnv() {
-    return windowEnv({ dataDir: resolveDefaultCarsiProfileDir(), configFile: getConfigPath(), cli: paperSearchCommand() });
+    return windowEnv({ dataDir: resolveDefaultSchoolProfileDir(), configFile: getConfigPath(), cli: paperSearchCommand() });
 }
 /**
  * `paper-search uninstall [--dry-run] [--yes]` (user, 2026-11-11): PaperSearch's data (school
@@ -877,15 +884,15 @@ async function handleUninstallCommand(flags) {
     return { ok: done, status: done ? "uninstalled" : "partial", ...result, kept: plan.kept,
         next: done ? NPM_UNINSTALL : "paper-search uninstall", hint, ...(done ? {} : { exitCode: 1 }) };
 }
-/** Install or inspect school subscription downloads (CARSI, ADR 0013). */
-async function handleCarsiCommand(positionals, flags) {
+/** Install or inspect school subscription downloads (ADR 0013). */
+async function handleSchoolCommand(positionals, flags) {
     const sub = positionals[0];
     let session;
     const host = createNodeHost((question) => {
         session ??= new PromptSession();
         return session.line(question);
     });
-    const context = carsiContext();
+    const context = schoolContext();
     try {
         if (sub === "install") {
             // "camoufox", retired (ADR 0016), still means the default browser.
@@ -893,7 +900,7 @@ async function handleCarsiCommand(positionals, flags) {
                 return { ok: false, error: "--browser 只能是 chrome 或 ego" };
             }
             const browser = flags.browser === "ego" ? "ego" : "chrome";
-            const outcome = await installCarsi(host, {
+            const outcome = await installSchool(host, {
                 browser,
                 yes: flags.yes === true,
                 force: flags.force === true,
@@ -903,7 +910,7 @@ async function handleCarsiCommand(positionals, flags) {
                 host.log("安装完成，机构下载已启用。第一次下载时，在弹出的浏览器里登录学校。");
                 // First setup: the settings window, at the API keys; the user closes it when done.
                 const opened = await openSettingsWindow({
-                    executable: getConfigValue("PAPER_SEARCH_CARSI_EXECUTABLE"),
+                    executable: getConfigValue("PAPER_SEARCH_SCHOOL_EXECUTABLE"),
                     target: "keys",
                     env: settingsWindowEnv(),
                 });
@@ -913,36 +920,36 @@ async function handleCarsiCommand(positionals, flags) {
                     host.log("用 ego 前，请在 ego 里打开 chrome://inspect/#remote-debugging，勾选 “Allow remote debugging for this browser instance”。");
                 }
             }
-            const status = await carsiStatus(host, context);
+            const status = await schoolStatus(host, context);
             return flags.format === "text"
                 ? renderStatusText(status)
                 : { ok: outcome.status !== "cancelled", outcome: outcome.status, ...status };
         }
         if (sub === "login") {
             // The backend's own steps of a download up to the article's access (no PDF).
-            await updateCarsiFirst();
-            return carsiLogin({
-                executable: getConfigValue("PAPER_SEARCH_CARSI_EXECUTABLE"),
+            await updateSchoolFirst();
+            return schoolLogin({
+                executable: getConfigValue("PAPER_SEARCH_SCHOOL_EXECUTABLE"),
                 doi: typeof flags.doi === "string" ? flags.doi : "",
                 ...(Number(flags.maxWait) > 0 ? { maxWait: Number(flags.maxWait) } : {}),
                 env: settingsWindowEnv(),
             });
         }
         if (sub === "status") {
-            const status = await carsiStatus(host, context);
+            const status = await schoolStatus(host, context);
             return flags.format === "text" ? renderStatusText(status) : { ok: true, ...status };
         }
         if (sub === "update") {
-            const outcome = await updateCarsi(host, { force: flags.force === true }, context);
+            const outcome = await updateSchool(host, { force: flags.force === true }, context);
             if (outcome.status === "updated")
                 host.log("更新完成。");
-            const status = await carsiStatus(host, context);
+            const status = await schoolStatus(host, context);
             return flags.format === "text"
                 ? renderStatusText(status)
                 : { ok: true, outcome: outcome.status, ...status };
         }
         if (sub === "uninstall") {
-            const outcome = await uninstallCarsi(host, {
+            const outcome = await uninstallSchool(host, {
                 yes: flags.yes === true,
                 removeData: flags.removeData === true,
             }, context);
@@ -957,7 +964,7 @@ async function handleCarsiCommand(positionals, flags) {
         }
         return {
             ok: false,
-            error: "用法：paper-search carsi <install|status|update|uninstall|login>（见 paper-search --help）",
+            error: "用法：paper-search school <install|status|update|uninstall|login>（见 paper-search --help）",
         };
     }
     catch (error) {
@@ -967,7 +974,7 @@ async function handleCarsiCommand(positionals, flags) {
                 step: error.step,
                 error: error.message,
                 log: error.logFile,
-                hint: "处理后再运行 paper-search carsi install，会从这一步接着装。",
+                hint: "处理后再运行 paper-search school install，会从这一步接着装。",
             };
         }
         throw error;
@@ -1004,7 +1011,7 @@ async function handleFailuresCommand(flags) {
     };
     if (typeof flags.export === "string") {
         const report = await exportFailureReport({ root, query, output: flags.export, version: packageVersion(),
-            command: getConfigValue("PAPER_SEARCH_CARSI_EXECUTABLE") || "paper-search-carsi" });
+            command: getConfigValue("PAPER_SEARCH_SCHOOL_EXECUTABLE") || "paper-search-school" });
         return flags.format === "text"
             ? `已导出 ${report.papers} 篇失败记录：${report.path}\n公开前请阅读包内 summary.md 并核对个人信息；${report.incompletePapers} 篇存在材料缺项或限制。`
             : report;
@@ -1018,13 +1025,13 @@ async function handleFailuresCommand(flags) {
 async function handleDoctorCommand(flags) {
     const platformStatus = await callTool("get_platform_status", { validate: flags.validate === true }, {});
     const configEntries = listConfigEntries(true);
-    const carsiReadiness = await resolveCarsiReadiness(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED"));
-    const capabilityProfile = buildCapabilityProfile({ carsiReadiness });
-    const extension = await carsiStatus(createNodeHost(() => Promise.resolve("")), carsiContext());
+    const schoolReadiness = await resolveSchoolReadiness(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED"));
+    const capabilityProfile = buildCapabilityProfile({ schoolReadiness });
+    const extension = await schoolStatus(createNodeHost(() => Promise.resolve("")), schoolContext());
     const report = {
         ok: true,
         skills: skillReport(),
-        carsi: {
+        school: {
             installed: extension.installed,
             complete: extension.complete,
             enabled: extension.enabled,
@@ -1074,15 +1081,15 @@ async function handleSmokeCommand(flags) {
             ? "live"
             : "mock";
     if (flags.live === true || mode === "live") {
-        const carsiReadiness = await resolveCarsiReadiness(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED"));
-        const capabilityProfile = buildCapabilityProfile({ carsiReadiness });
+        const schoolReadiness = await resolveSchoolReadiness(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED"));
+        const capabilityProfile = buildCapabilityProfile({ schoolReadiness });
         const skillsRoot = typeof flags.skillsRoot === "string" ? flags.skillsRoot : undefined;
         const skillStatus = statusSkillTargets(defaultSkillTargetIds(skillsRoot), {
             skillsRoot,
         });
         return runLiveSmoke({
             capabilityProfile,
-            carsiReadiness,
+            schoolReadiness,
             skillStatus,
             hasConfig: (key) => Boolean(process.env[key] || readUserConfig()[key]),
             callTool: (tool, args) => callTool(tool, args, {}),
@@ -1265,7 +1272,7 @@ function parseConfigAssignment(positionals, flags) {
     const eqIndex = first.indexOf("=");
     if (eqIndex > 0) {
         return {
-            key: first.slice(0, eqIndex),
+            key: canonicalConfigKey(first.slice(0, eqIndex)),
             value: first.slice(eqIndex + 1),
         };
     }
@@ -1273,7 +1280,14 @@ function parseConfigAssignment(positionals, flags) {
     if (typeof value !== "string") {
         throw new CliError('Missing config value. Use "paper-search config set KEY VALUE".', "MISSING_CONFIG_VALUE");
     }
-    return { key: first, value };
+    return { key: canonicalConfigKey(first), value };
+}
+/** 0.6.0's data directory takes its new name once nothing uses it (management/school/legacy.ts). */
+function moveLegacySchoolData() {
+    const move = moveLegacyDataDir();
+    if (move.outcome === "failed") {
+        process.stderr.write(`学校订阅下载的数据目录没能改名（${move.error}），这次仍用 ${move.from}，下次再试。\n`);
+    }
 }
 async function main() {
     const parsed = parseCli(process.argv.slice(2));
@@ -1282,6 +1296,9 @@ async function main() {
         // Uninstalling works with a broken config file too: the file goes with the rest.
         if (configLoadError && parsed.command !== "uninstall")
             throw configLoadError;
+        if (!parsed.flags.help && !parsed.flags.version && !["help", "version", "uninstall"].includes(parsed.command)) {
+            moveLegacySchoolData();
+        }
         maybePrintSetupHint(parsed);
         maybeAutoSyncSkill(parsed);
         const exempt = parsed.flags.help || parsed.flags.version || ["help", "version", "config", "setup", "update", "uninstall"].includes(parsed.command);

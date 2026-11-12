@@ -7,7 +7,7 @@ import {
   createDefaultDownloadTiers,
   downloadWithFallback,
 } from "./OpenAccessFallbackService.js";
-import type { CarsiBackend } from "./carsi/index.js";
+import type { SchoolBackend } from "./school/index.js";
 
 import { RunLedger, resolveRunLogRoot } from "../../infrastructure/runlog/RunLedger.js";
 import type {
@@ -120,7 +120,7 @@ export async function handleDownloadPaper(
     useEntitledAccess?: boolean;
   },
   searchers: Searchers,
-  carsiBackend?: CarsiBackend,
+  schoolBackend?: SchoolBackend,
 ) {
   const { paperId, platform, savePath, useEntitledAccess } = args;
   const resolvedSavePath = downloadRunFolder(savePath);
@@ -135,8 +135,8 @@ export async function handleDownloadPaper(
       useEntitledAccess,
       useSciHub: true,
     },
-    (options) => asWindowBatch(options, carsiBackend,
-      (windowed) => downloadWithFallback(searchers, windowed, createDefaultDownloadTiers(carsiBackend))),
+    (options) => asWindowBatch(options, schoolBackend,
+      (windowed) => downloadWithFallback(searchers, windowed, createDefaultDownloadTiers(schoolBackend))),
   );
   return jsonTextResponse(
     `Download paper ${result.status}.\n\n${JSON.stringify(result, null, 2)}`,
@@ -146,26 +146,26 @@ export async function handleDownloadPaper(
 export async function handleDownloadWithFallback(
   args: Parameters<typeof downloadWithFallback>[1],
   searchers: Searchers,
-  carsiBackend?: CarsiBackend,
+  schoolBackend?: SchoolBackend,
 ) {
   args = { ...args, savePath: downloadRunFolder(args.savePath, args.batch?.id) };
-  const tiers = createDefaultDownloadTiers(carsiBackend);
+  const tiers = createDefaultDownloadTiers(schoolBackend);
   // A caller's own serial batch reports each item; a lone download is a batch of one.
   const download = async (options: DownloadWithFallbackOptions, callerBatch: boolean) => {
-    if (options.content === "supplements") return downloadSupplementsOnly(options, carsiBackend, searchers);
+    if (options.content === "supplements") return downloadSupplementsOnly(options, schoolBackend, searchers);
     const outcome = callerBatch && options.batch
-      ? await downloadBatchItem(searchers, { ...options, batch: options.batch }, tiers, carsiBackend)
+      ? await downloadBatchItem(searchers, { ...options, batch: options.batch }, tiers, schoolBackend)
       : await downloadWithFallback(searchers, options, tiers);
     if (options.content === "both" && outcome.status === "ok" && !outcome.supplements) {
       // The main text came from an open stage: supplementary files only.
-      const extra = await downloadSupplementsOnly({ ...options, ...(outcome.publishedDoi ? { doi: outcome.publishedDoi } : {}) }, carsiBackend, searchers, outcome.path && !outcome.version ? outcome.path : undefined);
+      const extra = await downloadSupplementsOnly({ ...options, ...(outcome.publishedDoi ? { doi: outcome.publishedDoi } : {}) }, schoolBackend, searchers, outcome.path && !outcome.version ? outcome.path : undefined);
       if (extra.supplements) return { ...outcome, supplements: extra.supplements, ...(extra.path ? { path: extra.path } : {}) };
     }
     return outcome;
   };
   const result = await recordedDownload(args, (options) => options.batch
     ? download(options, true)
-    : asWindowBatch(options, carsiBackend, (windowed) => download(windowed, false)));
+    : asWindowBatch(options, schoolBackend, (windowed) => download(windowed, false)));
   return jsonTextResponse(
     `Download with fallback ${result.status}.\n\n${JSON.stringify(result, null, 2)}`,
   );
@@ -174,9 +174,9 @@ export async function handleDownloadWithFallback(
 export async function handleDownloadBatch(
   args: DownloadBatchOptions,
   searchers: Searchers,
-  carsiBackend?: CarsiBackend,
+  schoolBackend?: SchoolBackend,
 ) {
-  const result = await downloadBatch(searchers, { ...args, savePath: batchSaveFolder(args) }, carsiBackend);
+  const result = await downloadBatch(searchers, { ...args, savePath: batchSaveFolder(args) }, schoolBackend);
   return jsonTextResponse(
     `Download batch ${result.status}: ${result.succeeded}/${result.total} succeeded.\n\n${JSON.stringify(result, null, 2)}`,
   );

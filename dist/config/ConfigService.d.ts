@@ -1,5 +1,17 @@
-export declare const CONFIG_KEYS: readonly ["SEMANTIC_SCHOLAR_API_KEY", "PAPER_SEARCH_UNPAYWALL_EMAIL", "UNPAYWALL_EMAIL", "CORE_API_KEY", "CORE_MAX_RESULTS_CAP", "WOS_API_KEY", "WOS_API_VERSION", "PUBMED_API_KEY", "NCBI_EMAIL", "NCBI_TOOL", "ELSEVIER_API_KEY", "ELSEVIER_INSTTOKEN", "IEEE_API_KEY", "EASYSCHOLAR_KEY", "SPRINGER_API_KEY", "SPRINGER_OPENACCESS_API_KEY", "CROSSREF_MAILTO", "OPENAIRE_API_KEY", "OPENALEX_API_KEY", "PAPER_SEARCH_CARSI_ENABLED", "PAPER_SEARCH_CARSI_EXECUTABLE", "PAPER_SEARCH_CARSI_DECLINED", "PAPER_SEARCH_CARSI_AUTO_UPDATE", "PAPER_SEARCH_SKILL_AUTO_UPDATE", "PAPER_SEARCH_UPDATE_NOTIFY", "LOG_LEVEL", "DEFAULT_DOWNLOAD_PATH", "MAX_FILE_SIZE_MB", "RATE_LIMIT_REQUESTS_PER_MINUTE", "RATE_LIMIT_BURST", "HTTP_PROXY", "HTTPS_PROXY", "GOOGLE_SCHOLAR_PROXY_URL", "SCHOLAR_RATE_LIMIT_RPS", "SCHOLAR_MAX_RETRIES", "SCHOLAR_TIMEOUT_MS"];
+export declare const CONFIG_KEYS: readonly ["SEMANTIC_SCHOLAR_API_KEY", "PAPER_SEARCH_UNPAYWALL_EMAIL", "UNPAYWALL_EMAIL", "CORE_API_KEY", "CORE_MAX_RESULTS_CAP", "WOS_API_KEY", "WOS_API_VERSION", "PUBMED_API_KEY", "NCBI_EMAIL", "NCBI_TOOL", "ELSEVIER_API_KEY", "ELSEVIER_INSTTOKEN", "IEEE_API_KEY", "EASYSCHOLAR_KEY", "SPRINGER_API_KEY", "SPRINGER_OPENACCESS_API_KEY", "CROSSREF_MAILTO", "OPENAIRE_API_KEY", "OPENALEX_API_KEY", "PAPER_SEARCH_SCHOOL_ENABLED", "PAPER_SEARCH_SCHOOL_EXECUTABLE", "PAPER_SEARCH_SCHOOL_DECLINED", "PAPER_SEARCH_SCHOOL_AUTO_UPDATE", "PAPER_SEARCH_SKILL_AUTO_UPDATE", "PAPER_SEARCH_UPDATE_NOTIFY", "LOG_LEVEL", "DEFAULT_DOWNLOAD_PATH", "MAX_FILE_SIZE_MB", "RATE_LIMIT_REQUESTS_PER_MINUTE", "RATE_LIMIT_BURST", "HTTP_PROXY", "HTTPS_PROXY", "GOOGLE_SCHOLAR_PROXY_URL", "SCHOLAR_RATE_LIMIT_RPS", "SCHOLAR_MAX_RETRIES", "SCHOLAR_TIMEOUT_MS"];
 export type ConfigKey = (typeof CONFIG_KEYS)[number];
+/**
+ * School subscription downloads were named for CARSI, the first federation they
+ * supported, before 0.6.1. Their old keys are still read, from the config file and
+ * the environment, and taken as the new ones; the new key wins when both are set.
+ */
+export declare const LEGACY_CONFIG_KEYS: Readonly<Record<string, ConfigKey>>;
+/** A key as the user or an older Skill names it: the old names give the new keys. */
+export declare function canonicalConfigKey(key: string): string;
+/** Old keys in the environment set the new ones this process reads, unless those are set. */
+export declare function applyLegacyEnvironment(env?: NodeJS.ProcessEnv): void;
+/** Rewrites a config file that still has old keys with the new ones; true when it did. */
+export declare function migrateLegacyConfigFile(): boolean;
 export interface ConfigEntry {
     key: string;
     configured: boolean;
@@ -21,8 +33,8 @@ export declare function initUserConfig(force?: boolean): {
     path: string;
     created: boolean;
 };
-export declare function setUserConfigValue(key: string, value: string): Record<string, string>;
-export declare function unsetUserConfigValue(key: string): Record<string, string>;
+export declare function setUserConfigValue(name: string, value: string): Record<string, string>;
+export declare function unsetUserConfigValue(name: string): Record<string, string>;
 export declare function importEnvFile(filePath: string): {
     path: string;
     imported: string[];

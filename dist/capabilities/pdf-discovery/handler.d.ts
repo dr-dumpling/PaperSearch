@@ -1,6 +1,6 @@
 import type { Searchers } from "../../core/searchers.js";
 import { downloadWithFallback } from "./OpenAccessFallbackService.js";
-import type { CarsiBackend } from "./carsi/index.js";
+import type { SchoolBackend } from "./school/index.js";
 import { type DownloadBatchOptions } from "./batch.js";
 /**
  * The folder of this download (runDownloadFolder). A caller's own serial batch, several calls with one batch id,
@@ -19,19 +19,19 @@ export declare function handleDownloadPaper(args: {
     platform: string;
     savePath?: string;
     useEntitledAccess?: boolean;
-}, searchers: Searchers, carsiBackend?: CarsiBackend): Promise<{
+}, searchers: Searchers, schoolBackend?: SchoolBackend): Promise<{
     content: {
         type: "text";
         text: string;
     }[];
 }>;
-export declare function handleDownloadWithFallback(args: Parameters<typeof downloadWithFallback>[1], searchers: Searchers, carsiBackend?: CarsiBackend): Promise<{
+export declare function handleDownloadWithFallback(args: Parameters<typeof downloadWithFallback>[1], searchers: Searchers, schoolBackend?: SchoolBackend): Promise<{
     content: {
         type: "text";
         text: string;
     }[];
 }>;
-export declare function handleDownloadBatch(args: DownloadBatchOptions, searchers: Searchers, carsiBackend?: CarsiBackend): Promise<{
+export declare function handleDownloadBatch(args: DownloadBatchOptions, searchers: Searchers, schoolBackend?: SchoolBackend): Promise<{
     content: {
         type: "text";
         text: string;

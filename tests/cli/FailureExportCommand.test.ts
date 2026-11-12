@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 
-const python = join(process.cwd(), "carsi/.venv/bin/python");
-const backend = join(process.cwd(), "carsi/bin/paper-search-carsi");
+const python = join(process.cwd(), "school/.venv/bin/python");
+const backend = join(process.cwd(), "school/bin/paper-search-school");
 
 describe("failures export CLI", () => {
   let root: string;
@@ -27,10 +27,10 @@ describe("failures export CLI", () => {
   function cli(args: string[], command = backend) {
     return spawnSync(process.execPath, [join(process.cwd(), "node_modules/.bin/tsx"), "src/cli.ts", "failures", ...args], {
       env: { ...process.env, HOME: root, XDG_DATA_HOME: join(root, "data"), XDG_CONFIG_HOME: join(root, "config"),
-        CARSI_DATA_DIR: join(root, "carsi"), CARSI_PYTHON: python,
+        SCHOOL_DATA_DIR: join(root, "school"), SCHOOL_PYTHON: python,
         PAPER_SEARCH_RUNLOG_DIR: join(root, "runs"), PAPER_SEARCH_RUNLOG: "1",
         PAPER_SEARCH_CONFIG_FILE: join(root, "config.json"), PAPER_SEARCH_SKILL_AUTO_UPDATE: "false",
-        PAPER_SEARCH_HIDE_SETUP_HINT: "1", PAPER_SEARCH_CARSI_ENABLED: "false", PAPER_SEARCH_CARSI_EXECUTABLE: command },
+        PAPER_SEARCH_HIDE_SETUP_HINT: "1", PAPER_SEARCH_SCHOOL_ENABLED: "false", PAPER_SEARCH_SCHOOL_EXECUTABLE: command },
       encoding: "utf8", timeout: 30000,
     });
   }

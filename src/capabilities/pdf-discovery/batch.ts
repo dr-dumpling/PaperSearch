@@ -14,8 +14,8 @@ import {
   createDefaultDownloadTiers,
   downloadWithFallback,
 } from "./OpenAccessFallbackService.js";
-import { carsiShortReason } from "./carsi/index.js";
-import type { CarsiBackend } from "./carsi/index.js";
+import { schoolShortReason } from "./school/index.js";
+import type { SchoolBackend } from "./school/index.js";
 import { fetchSupplementsOnly } from "./tiers/entitledAccess.js";
 import { batchPaper, reportBatchResults, supplementShortfall } from "./batchSummary.js";
 import { PaperList } from "./batchPapers.js";
@@ -99,7 +99,7 @@ export async function downloadBatchItem(
   searchers: Searchers,
   options: DownloadWithFallbackOptions & { batch: DownloadBatchPosition },
   tiers: DownloadTier[],
-  backend?: CarsiBackend,
+  backend?: SchoolBackend,
 ): Promise<DownloadWithFallbackResult> {
   const result = await downloadWithFallback(searchers, options, tiers);
   await reportBatchItem(options, result, backend);
@@ -109,7 +109,7 @@ export async function downloadBatchItem(
 async function reportBatchItem(
   options: DownloadWithFallbackOptions & { batch: DownloadBatchPosition },
   result: DownloadWithFallbackResult,
-  backend?: CarsiBackend,
+  backend?: SchoolBackend,
 ): Promise<void> {
   const { batch } = options;
   if (!backend?.reportBatchProgress || rateLimitWait(result)) return;  // a waiting item runs again
@@ -163,7 +163,7 @@ function itemOptions(
  */
 export async function downloadSupplementsOnly(
   request: DownloadWithFallbackOptions,
-  backend: CarsiBackend | undefined,
+  backend: SchoolBackend | undefined,
   searchers?: Searchers,
   mainPath?: string,
 ): Promise<DownloadWithFallbackResult> {
@@ -231,7 +231,7 @@ export async function downloadSupplementsOnly(
 async function supplementsForOpenItem(
   result: DownloadBatchItemResult,
   request: DownloadWithFallbackOptions,
-  backend: CarsiBackend | undefined,
+  backend: SchoolBackend | undefined,
   searchers: Searchers,
 ): Promise<DownloadWithFallbackResult | undefined> {
   if (request.content !== "both" || result.status !== "ok" || result.supplements) return;
@@ -402,14 +402,14 @@ function summary(
 export async function downloadBatch(
   searchers: Searchers,
   options: DownloadBatchOptions,
-  backend?: CarsiBackend,
+  backend?: SchoolBackend,
   log: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
-  createTiers: (backend?: CarsiBackend) => DownloadTier[] = createDefaultDownloadTiers,
+  createTiers: (backend?: SchoolBackend) => DownloadTier[] = createDefaultDownloadTiers,
   pause: (ms: number) => Promise<void> = wait,
 ): Promise<DownloadBatchResult> {
   options = { ...options, savePath: resolveDownloadPath(options.savePath) };
   const startedAt = Date.now();
-  const run = async (backend?: CarsiBackend) => {
+  const run = async (backend?: SchoolBackend) => {
     const result = await (options.content === "supplements"
       ? downloadSupplementsBatch(options, backend, log, searchers)
       : options.mode === "per_item"
@@ -428,7 +428,7 @@ export async function downloadBatch(
   for (const item of result.content === "both" ? result.items : []) {
     const code = supplementShortfall(item);
     if (!code) continue;
-    const reason = carsiShortReason(code, "附录没下载成功");
+    const reason = schoolShortReason(code, "附录没下载成功");
     shortfalls.set(reason, (shortfalls.get(reason) ?? 0) + 1);
   }
   const missed = [...shortfalls.values()].reduce((sum, n) => sum + n, 0);
@@ -441,7 +441,7 @@ export async function downloadBatch(
 /** content "supplements": every item, one after another, supplementary files only. */
 async function downloadSupplementsBatch(
   options: DownloadBatchOptions,
-  backend: CarsiBackend | undefined,
+  backend: SchoolBackend | undefined,
   log: (line: string) => void,
   searchers: Searchers,
 ): Promise<DownloadBatchResult> {
@@ -485,9 +485,9 @@ async function downloadSupplementsBatch(
 async function downloadPerItem(
   searchers: Searchers,
   options: DownloadBatchOptions,
-  backend: CarsiBackend | undefined,
+  backend: SchoolBackend | undefined,
   log: (line: string) => void,
-  createTiers: (backend?: CarsiBackend) => DownloadTier[],
+  createTiers: (backend?: SchoolBackend) => DownloadTier[],
   pause: (ms: number) => Promise<void>,
 ): Promise<DownloadBatchResult> {
   const batchId = randomUUID();
@@ -564,9 +564,9 @@ function laneError(stage: string, error: unknown): DownloadWithFallbackResult {
 async function downloadTwoPhase(
   searchers: Searchers,
   options: DownloadBatchOptions,
-  backend: CarsiBackend | undefined,
+  backend: SchoolBackend | undefined,
   log: (line: string) => void,
-  createTiers: (backend?: CarsiBackend) => DownloadTier[],
+  createTiers: (backend?: SchoolBackend) => DownloadTier[],
   mode: "two_phase" | "entitled_only" = "two_phase",
   pause: (ms: number) => Promise<void> = wait,
 ): Promise<DownloadBatchResult> {

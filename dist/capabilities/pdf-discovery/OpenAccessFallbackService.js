@@ -14,7 +14,7 @@ import { createPublisherApiTier } from "./tiers/publisherApi.js";
 import { createRepositoryTier } from "./tiers/repositories.js";
 import { createSciHubTier } from "./tiers/scihub.js";
 import { createUnpaywallTier } from "./tiers/unpaywall.js";
-export function createDefaultDownloadTiers(carsiBackend) {
+export function createDefaultDownloadTiers(schoolBackend) {
     return [
         createPrimaryTier(),
         createDirectPdfUrlTier(),
@@ -22,7 +22,7 @@ export function createDefaultDownloadTiers(carsiBackend) {
         createUnpaywallTier(),
         createPublisherApiTier(),
         createSciHubTier(),
-        createEntitledAccessTier(carsiBackend),
+        createEntitledAccessTier(schoolBackend),
         createPreprintTier(),
     ];
 }

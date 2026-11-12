@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "paper-search-school publisher profile (schema_version 1)",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "profile"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "profile": {
+      "type": "object",
+      "required": [
+        "name",
+        "article_url_template",
+        "pdf_url_templates",
+        "base_domains",
+        "doi_prefixes",
+        "success_url_markers",
+        "auth_url_markers",
+        "sso_text_markers"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "doi_prefixes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "base_domains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sample_dois": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "article_url_template": {
+          "type": "string"
+        },
+        "pdf_url_templates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pdf_source_path_templates": {
+          "type": "array"
+        },
+        "success_url_markers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "auth_url_markers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "auth_title_markers": {
+          "description": "Ignored: no code reads it. Optional; accepted so that older profile files still load.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sso_text_markers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pdf_url_markers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pdf_link_text_markers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "supplementary_url_markers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "institution_input_selectors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "institution_result_selectors": {
+          "description": "Optional result locators for the publisher's institution picker. Templates: {institution} is replaced with the user's configured institution name. Never name a specific school.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "platform": {
+          "type": "string",
+          "description": "platform label; no download code reads it; omitted = generic"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -9,7 +9,7 @@ import {
   RUN_KEEP_DAYS,
   RunLedger,
 } from "../../src/infrastructure/runlog/RunLedger.js";
-import { normalizeDownloadResult } from "../../src/capabilities/pdf-discovery/carsi/CarsiResultNormalizer.js";
+import { normalizeDownloadResult } from "../../src/capabilities/pdf-discovery/school/SchoolResultNormalizer.js";
 
 function toolResult(payload: unknown) {
   return { content: [{ type: "text", text: JSON.stringify(payload) }] };

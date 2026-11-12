@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { RunLedger } from "../../infrastructure/runlog/RunLedger.js";
 import { classifyFailureCode, FAILURE_CLASS_NAMES, } from "../../infrastructure/runlog/failureClass.js";
 import { createDefaultDownloadTiers, downloadWithFallback, } from "./OpenAccessFallbackService.js";
-import { carsiShortReason } from "./carsi/index.js";
+import { schoolShortReason } from "./school/index.js";
 import { fetchSupplementsOnly } from "./tiers/entitledAccess.js";
 import { batchPaper, reportBatchResults, supplementShortfall } from "./batchSummary.js";
 import { PaperList } from "./batchPapers.js";
@@ -279,7 +279,7 @@ export async function downloadBatch(searchers, options, backend, log = (line) =>
         const code = supplementShortfall(item);
         if (!code)
             continue;
-        const reason = carsiShortReason(code, "附录没下载成功");
+        const reason = schoolShortReason(code, "附录没下载成功");
         shortfalls.set(reason, (shortfalls.get(reason) ?? 0) + 1);
     }
     const missed = [...shortfalls.values()].reduce((sum, n) => sum + n, 0);

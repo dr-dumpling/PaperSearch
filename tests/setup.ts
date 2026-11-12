@@ -20,7 +20,9 @@ process.env.PAPER_SEARCH_SKILL_AUTO_UPDATE = 'false';
 // Version checks have their own injected transport tests; other tests stay offline.
 process.env.PAPER_SEARCH_UPDATE_NOTIFY = 'false';
 // A development shell (maintainer/dev-env.sh) does not reach the tests: they set what they need.
-for (const name of ['XDG_DATA_HOME', 'CARSI_DATA_DIR', 'PAPER_SEARCH_CARSI_EXECUTABLE', 'PAPER_SEARCH_CARSI_ENABLED']) {
+for (const name of ['XDG_DATA_HOME', 'SCHOOL_DATA_DIR', 'PAPER_SEARCH_SCHOOL_EXECUTABLE', 'PAPER_SEARCH_SCHOOL_ENABLED',
+  // and their names before 0.6.1
+  'CARSI_DATA_DIR', 'PAPER_SEARCH_CARSI_EXECUTABLE', 'PAPER_SEARCH_CARSI_ENABLED']) {
   delete process.env[name];
 }
 

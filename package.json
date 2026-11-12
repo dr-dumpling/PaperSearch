@@ -1,6 +1,6 @@
 {
   "name": "papersearch",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "PaperSearch: an agent-friendly command for searching and downloading academic papers from multiple sources.",
   "main": "dist/cli.js",
   "type": "module",
@@ -28,10 +28,10 @@
     "skills/",
     "LICENSE",
     ".env.example",
-    "carsi/pyproject.toml",
-    "carsi/README.md",
-    "carsi/LICENSE",
-    "carsi/paper_search_carsi/",
+    "school/pyproject.toml",
+    "school/README.md",
+    "school/LICENSE",
+    "school/paper_search_school/",
     "!**/__pycache__/**"
   ],
   "keywords": [

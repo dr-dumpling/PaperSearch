@@ -16,7 +16,7 @@ interface DoctorReportInput {
   };
   capabilityProfile: CapabilityProfile;
   platformStatus: any;
-  carsi?: { installed: boolean; complete: boolean; enabled: boolean; notes: string[] };
+  school?: { installed: boolean; complete: boolean; enabled: boolean; notes: string[] };
   /** ``version``: this command's, which a newer Skill copy is told apart from. */
   skills?: { autoUpdate: boolean; locations: SkillLocation[]; error?: string; version?: string };
 }
@@ -31,10 +31,10 @@ export function renderDoctorTextReport(report: DoctorReportInput): string {
     "",
   ];
 
-  if (report.carsi) {
-    const extension = report.carsi;
+  if (report.school) {
+    const extension = report.school;
     lines.push(
-      `School subscription downloads (CARSI): ${extension.complete ? (extension.enabled ? "installed" : "installed, not enabled") : extension.installed ? "install not finished" : "not installed"}`,
+      `School subscription downloads: ${extension.complete ? (extension.enabled ? "installed" : "installed, not enabled") : extension.installed ? "install not finished" : "not installed"}`,
       ...extension.notes.map((note) => `  ${note}`),
       "",
     );

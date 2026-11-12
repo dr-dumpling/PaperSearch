@@ -1,0 +1,475 @@
+"""What the progress capsule (``progress_capsule``) shows, worked out from the progress file.
+
+The texts, the steps, the needs-you prompts, when a finished window closes,
+the window lock and the OS appearance. No GUI imports, so tests cover every
+state without opening a window.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import sys
+from datetime import datetime
+from typing import Any
+
+CONTENT_LABELS = {"main": "正文", "supplements": "附录", "both": "正文+附录"}
+# The step of the main text, as the status line says it ("正文 · 正在获取 PDF").
+STAGE_TEXT = {
+    "starting": "准备中", "opening_article": "正在打开文章", "checking_access": "正在检查访问权限",
+    "waiting_login": "等待机构登录", "waiting_verification": "等待人机验证", "fetching_pdf": "正在获取 PDF",
+    "pdf_captured": "已读到 PDF，正在核对", "saved_pending_verification": "已保存",
+    "route_failed": "这条路没走通，正在换路",
+    "supplements_checked": "附录检查完成",
+}
+# The capsule's five steps of one paper, and where each stage sits on them.
+STEPS = ("打开文章", "权限", "取 PDF", "核对", "附录")
+STAGE_STEP = {
+    "starting": (0, "准备中"), "opening_article": (0, "打开文章"),
+    "checking_access": (1, "检查权限"), "waiting_login": (1, "等待登录"),
+    "waiting_verification": (1, "等待验证"), "route_failed": (1, "换一条路"),
+    "fetching_pdf": (2, "取 PDF"), "pdf_captured": (3, "核对 PDF"), "saved_pending_verification": (3, "已保存"),
+}
+# The answer a button gets in the window, before the download confirms it.
+ACTION_FEEDBACK = {
+    "show_browser": "正在切到下载浏览器",
+    "stop_batch": "已终止任务：这一篇结束，剩下的不再下载",
+    "skip_item": "已跳过本篇，进入下一篇",
+    "skip_journal": "已记住：本刊无权限，以后自动跳过（可用 entitlements 撤销）",
+    "skip_publisher": "已记住：该出版社无权限，以后自动跳过",
+}
+
+TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled", "interrupted"})
+# The finished card lists failures by reason, not by paper, so it keeps the
+# same height for 20 or 500 papers: at most this many reason rows (the rest
+# under "其他原因"), each opened to its papers on a click; the papers of a few
+# failures are shown at once.
+MAX_REASON_ROWS = 5
+OPEN_FAILURES_UP_TO = 3
+MAX_LISTED_PAPERS = 200
+CLASS_ORDER = ("no_access", "user_or_external", "unsupported", "unexplained")
+DEFAULT_LINGER_SECONDS = 8.0
+NOTICE_SECONDS = 10.0  # how long the download's answer to a click stays on screen
+
+
+class AutoClose:
+    """Decide when an auto-spawned window should close after its task ends.
+
+    A task that saved everything closes ``linger`` seconds after it ends. One
+    with failures, or stopped or interrupted, stays until the user closes it
+    or a new task starts, so the result is still there when they come back.
+    While the pointer is on the window it stays, and the linger starts again
+    once it leaves. A new task in the meantime (different run) keeps the window
+    open. Windows the user opened by hand (``paper-search-school progress``)
+    never close.
+    """
+
+    def __init__(self, *, enabled: bool, linger: float) -> None:
+        self.enabled = enabled
+        self.linger = max(0.0, linger)
+        self._run: object = None
+        self._since: float | None = None
+
+    @classmethod
+    def from_env(cls) -> "AutoClose":
+        enabled = os.environ.get("SCHOOL_PROGRESS_BAR_CHILD") == "1"
+        try:
+            linger = float(os.environ.get("SCHOOL_PROGRESS_BAR_LINGER", DEFAULT_LINGER_SECONDS))
+        except ValueError:
+            linger = DEFAULT_LINGER_SECONDS
+        return cls(enabled=enabled, linger=linger)
+
+    def should_close(self, state: dict[str, Any] | None, now: float, *, hovering: bool = False) -> bool:
+        if not self.enabled:
+            return False
+        if not state or state.get("status") not in TERMINAL_STATUSES:
+            # running (or nothing to show yet): keep the window
+            self._run, self._since = None, None
+            return False
+        if state.get("status") != "done" or _count(state.get("failed")) > 0:
+            return False  # failures, a stop or an interruption: the user closes it
+        run = state.get("run_id") or state.get("started_at")
+        if run != self._run or self._since is None or hovering:
+            self._run, self._since = run, now
+        return not hovering and now - self._since >= self.linger
+
+
+def fmt_clock(seconds: float) -> str:
+    """The capsule's times: 3:12, 2:41, 1:02:03."""
+    seconds = max(0, int(seconds))
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def status_text(state: dict[str, Any], running: bool) -> str:
+    """The status line: which part of the paper is being fetched and how far,
+    "正文 · 正在获取 PDF" or "附录 · 已保存 2/5"; between papers, the phase."""
+    phase = str(state.get("phase") or ("处理中" if running else ""))
+    part = str(state.get("part") or "")
+    if not running or state.get("awaiting_next") or part not in ("main", "supplements"):
+        return phase
+    if part == "supplements":
+        total = state.get("supplements_total")
+        if not isinstance(total, int):
+            return "附录 · 正在查找附录文件"
+        return f"附录 · 已保存 {int(state.get('supplements_saved') or 0)}/{total}"
+    return "正文 · " + STAGE_TEXT.get(str(state.get("stage") or ""), phase)
+
+
+def attention_items(state: dict[str, Any]) -> list[dict[str, Any]]:
+    attention = state.get("attention")
+    if isinstance(attention, dict):
+        if "message" in attention:
+            return [attention]
+        return [v for v in attention.values() if isinstance(v, dict)]
+    if isinstance(attention, list):
+        return [v for v in attention if isinstance(v, dict)]
+    return []
+
+
+def _count(value: Any) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _time(value: Any) -> float | None:
+    try:
+        return datetime.fromisoformat(str(value)).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+# A DOI the article's page can be opened from (doi.org), nothing else.
+DOI = re.compile(r"10\.\d{4,9}/\S{1,280}")
+
+def _journals(failures: list[dict[str, Any]]) -> str:
+    """The journals of a reason row, most papers first: "Spine 8 · JBJS 4 等"."""
+    counts: dict[str, int] = {}
+    for item in failures:
+        if item.get("journal"):
+            counts[item["journal"]] = counts.get(item["journal"], 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: -kv[1])
+    return " · ".join(f"{name} {n}" for name, n in ranked[:2]) + (" 等" if len(ranked) > 2 else "")
+
+
+def _reason_groups(failures: list[dict[str, Any]], open_up_to: int) -> list[dict[str, Any]]:
+    """One row per failure reason, most papers first, each with its papers and
+    whether it starts open (all of them while there are ``open_up_to`` or fewer)."""
+    by_reason: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for item in failures:
+        by_reason.setdefault((str(item.get("cls")), str(item.get("reason"))), []).append(item)
+    rows = sorted(by_reason.items(), key=lambda kv: (
+        -len(kv[1]), CLASS_ORDER.index(kv[0][0]) if kv[0][0] in CLASS_ORDER else len(CLASS_ORDER)))
+    if len(rows) > MAX_REASON_ROWS:
+        rest = [item for _, items in rows[MAX_REASON_ROWS - 1:] for item in items]
+        rows = rows[:MAX_REASON_ROWS - 1] + [(("other", "其他原因"), rest)]
+    groups = []
+    for (cls, reason), items in rows:
+        papers = [{"title": str(item.get("title") or item.get("doi") or "未知论文"),
+                   "where": " · ".join(str(v) for v in (
+                       item.get("journal"), item.get("reason") if cls == "other" else "", item.get("note")) if v),
+                   # The page opens in the user's browser from the list (user, 2026-11-08).
+                   "doi": str(item.get("doi") or "").strip() if DOI.fullmatch(str(item.get("doi") or "").strip()) else ""}
+                  for item in items[:MAX_LISTED_PAPERS]]
+        groups.append({"cls": cls, "reason": reason, "count": len(items), "where": _journals(items),
+                       "papers": papers, "more": len(items) - len(papers),
+                       "open": len(failures) <= open_up_to})
+    return groups
+
+
+def summary_view(results: Any) -> dict[str, Any] | None:
+    """The finished card's lists, from the caller's end-of-batch summary.
+
+    ``groups``: the papers without their main text, by reason (supplements-only
+    batches: without their files); ``supplement_groups``: papers whose main text
+    was saved but not every supplementary file (content "both"), by reason, all
+    closed to keep the card short (user, 2026-11-08); ``saved``: up to two short
+    lines on what was saved and where it came from (no line wraps in the narrow card)."""
+    if not isinstance(results, dict):
+        return None
+    failures = [f for f in results.get("failures") or [] if isinstance(f, dict)]
+    shortfalls = [f for f in results.get("supplement_failures") or [] if isinstance(f, dict)]
+    groups = _reason_groups(failures, OPEN_FAILURES_UP_TO)
+    supplement_groups = _reason_groups(shortfalls, 0)
+
+    content = results.get("content")
+    main, files = _count(results.get("main")), _count(results.get("supplements"))
+    if content == "supplements":
+        first = [f"附录 {files} 个"]
+        none_listed = _count(results.get("no_supplements"))
+        if none_listed:
+            first.append(f"{none_listed} 篇未列出附录")
+    else:
+        first = [f"正文 {main} 篇"] + ([f"附录 {files} 个"] if content == "both" else [])
+    details = results.get("source_details") if isinstance(results.get("source_details"), dict) else {}
+    sources = [f"{s[0]} {_count(s[1])}" + (f"（{details[s[0]]}）" if details.get(s[0]) else "")
+               for s in results.get("sources") or [] if isinstance(s, list) and len(s) == 2 and _count(s[1])]
+    saved = [" · ".join(first)] + ([" · ".join(sources)] if sources and content != "supplements" else [])
+    return {"groups": groups, "supplement_groups": supplement_groups, "supplement_missing": len(shortfalls),
+            "saved": saved}
+
+
+OPEN_DOWNLOAD = "开放下载"
+# Behind 剩余: the paper being downloaded, then the waiting ones by lane.
+LEFT_GROUPS = (("now", "正在下载"), ("school", "排队等机构下载"), ("open", "开放下载还没查"))
+
+
+def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
+    """The lists behind the card's 成功, 失败 and 剩余, from the batch's papers (``sync_papers``).
+
+    ``ok``: by the way each came (开放下载, its sources in brackets; 机构下载), a paper
+    opening its PDF by ``index``; ``failed``: by reason as on the finished card, a paper
+    opening its article page, then the saved papers missing supplementary files, by reason
+    (``supplement`` groups; ``count`` the failed papers only, ``supplement_count`` these); ``left``: the paper being downloaded, those waiting for the
+    institutional download and those open access has not checked yet. Each list has its
+    ``count`` and groups, the first one open. Empty for another batch's papers."""
+    if not isinstance(listed, dict) or not state or listed.get("batch_id") != state.get("batch_id"):
+        return {}
+    papers = sorted((p for p in (listed.get("papers") or {}).values() if isinstance(p, dict)),
+                    key=lambda p: _count(p.get("index")))
+    current = str(state.get("current") or "").lower() if state.get("status") == "running" else ""
+
+    def row(paper: dict[str, Any], *where: Any) -> dict[str, Any]:
+        doi = str(paper.get("doi") or "").strip()
+        return {"index": _count(paper.get("index")), "where": " · ".join(str(w) for w in where if w),
+                "title": str(paper.get("title") or doi or f"第 {_count(paper.get('index'))} 篇"),
+                "doi": doi if DOI.fullmatch(doi) else ""}
+
+    def group(label: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
+        return {"label": label, "count": len(rows), "papers": rows[:MAX_LISTED_PAPERS],
+                "more": max(0, len(rows) - MAX_LISTED_PAPERS), "open": False}
+
+    def first_open(groups: list[dict[str, Any]]) -> dict[str, Any]:
+        for at, item in enumerate(groups):
+            item["open"] = at == 0
+        return {"count": sum(item["count"] for item in groups), "groups": groups}
+
+    by_way: dict[str, list[dict[str, Any]]] = {}
+    for paper in papers:
+        if paper.get("state") == "ok":
+            by_way.setdefault(str(paper.get("via") or OPEN_DOWNLOAD), []).append(paper)
+    saved = []
+    for way, items in sorted(by_way.items(), key=lambda kv: -len(kv[1])):
+        details: dict[str, int] = {}
+        for paper in items:
+            if paper.get("detail"):
+                details[paper["detail"]] = details.get(paper["detail"], 0) + 1
+        label = way + ("（" + "、".join(f"{name} {n}" for name, n in details.items()) + "）" if details else "")
+        saved.append(group(label, [row(p, p.get("journal"), (p.get("detail") or "开放获取") if way == OPEN_DOWNLOAD else "")
+                                   for p in items]))
+
+    failed = _reason_groups([{**p, "note": ""} for p in papers if p.get("state") == "failed"], 0)
+    for item in failed:
+        item.update(label=item["reason"])
+    # As on the finished card, while the batch runs too (user, 2026-11-11).
+    short = _reason_groups([{**p, "cls": p["supplement_cls"], "reason": p["supplement_reason"], "note": ""}
+                            for p in papers if p.get("state") == "ok" and p.get("supplement_reason")], 0)
+    for item in short:
+        item.update(label=item["reason"], supplement=True)
+
+    waiting: dict[str, list[dict[str, Any]]] = {key: [] for key, _ in LEFT_GROUPS}
+    for paper in papers:
+        if paper.get("state") not in ("open", "school"):
+            continue
+        now = bool(current) and str(paper.get("doi") or "").lower() == current
+        way = "机构下载" if paper["state"] == "school" else OPEN_DOWNLOAD
+        waiting["now" if now else paper["state"]].append(row(paper, paper.get("journal"), way if now else ""))
+    left = [group(label, waiting[key]) for key, label in LEFT_GROUPS if waiting[key]]
+    missing = first_open(failed + short)
+    missing.update(count=sum(item["count"] for item in failed), supplement_count=sum(item["count"] for item in short))
+    return {"ok": first_open(saved), "failed": missing, "left": first_open(left)}
+
+
+def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
+    """Everything the capsule shows for one snapshot of the progress file.
+
+    ``now`` is ``time.time()``. ``mode`` is idle, running, attention (a step
+    needs the user) or done; ``tone`` colours the capsule."""
+    if not state:
+        return {"mode": "idle"}
+    status = str(state.get("status") or "")
+    running = status == "running"
+    total = _count(state.get("total"))
+    done = _count(state.get("done"))
+    done = min(total, done) if total else done
+    ok, bad = _count(state.get("success")), _count(state.get("failed"))
+    attention = attention_items(state) if running else []
+
+    if attention:
+        mode, tone, headline = "attention", "warn", "需要你操作"
+    elif running:
+        mode, tone, headline = "running", "accent", "下载中"
+    elif status == "cancelled":
+        mode, tone, headline = "done", "warn", "已终止任务"
+    elif status == "interrupted":
+        mode, tone, headline = "done", "warn", "下载中断"
+    elif ok == 0 and bad > 0:
+        mode, tone, headline = "done", "bad", "下载未成功"
+    elif bad > 0:
+        mode, tone, headline = "done", "warn", "下载结束，部分失败"
+    else:
+        mode, tone, headline = "done", "ok", "下载完成"
+
+    awaiting = bool(state.get("awaiting_next"))
+    part_key = str(state.get("part") or "")
+    if running and not awaiting and part_key in ("main", "supplements"):
+        part = CONTENT_LABELS[part_key]
+    else:
+        part = CONTENT_LABELS.get(str(state.get("content") or "main"), CONTENT_LABELS["main"])
+    # Before any publisher (the caller's open-access stretch), the channel stands in.
+    publisher = str(state.get("publisher") or "") or str(state.get("channel") or "")
+    journal = str(state.get("journal") or "")
+    current = str((attention[-1].get("current") if attention else "") or state.get("current") or "")
+
+    step = None
+    if running and not attention and not awaiting:
+        if part_key == "supplements":
+            found = state.get("supplements_total")
+            label = (f"附录 {_count(state.get('supplements_saved'))}/{found}"
+                     if isinstance(found, int) else "查找附录")
+            step = {"index": 4, "label": label}
+        elif part_key == "main" and str(state.get("stage") or "") in STAGE_STEP:
+            index, label = STAGE_STEP[str(state.get("stage"))]
+            step = {"index": index, "label": label}
+
+    started = _time(state.get("started_at"))
+    ended = now if running else _time(state.get("finished_at"))
+    elapsed = fmt_clock(ended - started) if started is not None and ended is not None else ""
+
+    prompt = None
+    if attention:
+        item = attention[-1]
+        message = str(item.get("message") or "请查看浏览器，可能需要手动操作")
+        # The surrounding SSO/verification stage is not evidence of the action
+        # being requested. In particular, an idle page is not a school login.
+        short = ("页面暂时无进展" if "无进展" in message or "没有进展" in message else
+                 "请选择学校" if "选择学校" in message else
+                 "请登录学校" if "登录" in message else
+                 "请完成验证" if "验证" in message else "需要你处理")
+        deadline = item.get("deadline")
+        remaining = (max(0, int(deadline - now))
+                     if isinstance(deadline, (int, float)) and not isinstance(deadline, bool) else None)
+        prompt = {"message": message, "short": short, "more": len(attention) - 1,
+                  "remaining": fmt_clock(remaining) if remaining is not None else "",
+                  "login": short == "请登录学校"}
+
+    notice = ""
+    raw = state.get("notice")
+    if isinstance(raw, dict) and str(raw.get("current") or "") == str(state.get("current") or ""):
+        try:
+            if now - float(raw.get("at") or 0) < NOTICE_SECONDS:
+                notice = str(raw.get("text") or "")
+        except (TypeError, ValueError):
+            pass
+
+    return {
+        "mode": mode, "tone": tone, "headline": headline,
+        # The collapsed capsule of a finished task: "完成 38/40", "已终止 12/40".
+        "finished": {"cancelled": "已终止", "interrupted": "已中断"}.get(status, "完成"),
+        "done": done, "total": total, "pct": round(100 * done / total) if total else 0,
+        "ok": ok, "bad": bad, "left": max(0, total - done) if running and total else None,
+        "part": part, "publisher": publisher,
+        "where": " · ".join(v for v in (journal, publisher) if v),
+        "title": str(state.get("title") or ""), "current": current,
+        "run_id": str(state.get("run_id") or ""),
+        "step": step, "steps": list(STEPS), "line": status_text(state, running) if running else "",
+        "elapsed": elapsed, "attention": prompt, "notice": notice,
+        "completion_detail": str(state.get("phase") or "")
+            if not running and state.get("stage") == "supplements_checked" else "",
+        "summary": summary_view(state.get("results")) if mode == "done" else None,
+        "actions": running and bool(current) and not awaiting,
+        # This paper has a download browser to show: not between papers, not in
+        # the caller's open-access stretch (its channel), which opens none.
+        "browser": running and bool(current) and not awaiting and not state.get("channel"),
+        "stop_left": max(0, total - done - 1),
+        "folder": bool(state.get("output_dir")),
+    }
+
+
+# --- window plumbing shared by both windows -------------------------------
+def _lock_path():
+    from .progress_reporter import progress_path
+
+    return progress_path().parent / "bar.pid"
+
+
+def write_window_lock() -> None:
+    """Mark this process as the open progress window (ensure_progress_bar reads it)."""
+    try:
+        lock = _lock_path()
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text(str(os.getpid()), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def release_window_lock() -> None:
+    try:
+        lock = _lock_path()
+        if lock.exists() and lock.read_text(encoding="utf-8").strip() == str(os.getpid()):
+            lock.unlink()
+    except Exception:
+        pass
+
+
+def dark_mode() -> bool:
+    """Whether the OS uses a dark appearance (macOS / Windows); light otherwise."""
+    import subprocess
+
+    try:
+        if sys.platform == "darwin":
+            out = subprocess.run(["defaults", "read", "-g", "AppleInterfaceStyle"],
+                                 capture_output=True, text=True, timeout=2).stdout
+            return out.strip().lower() == "dark"
+        if os.name == "nt":
+            import winreg
+
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                 r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+            return winreg.QueryValueEx(key, "AppsUseLightTheme")[0] == 0
+    except Exception:
+        pass
+    return False
+
+
+def open_folder(path: str) -> bool:
+    """Open a folder in Finder / Explorer; False when it is missing."""
+    if not path or not os.path.isdir(path):
+        return False
+    return _open(path)
+
+
+def reveal_file(path: str) -> bool:
+    """Show a file selected in its folder (Finder / Explorer); False when it is missing."""
+    if not path or not os.path.isfile(path):
+        return False
+    if sys.platform.startswith("linux"):
+        return _open(os.path.dirname(path))  # file managers differ in selecting a file
+    try:
+        import subprocess
+
+        if os.name == "nt":
+            # Explorer reads "/select," and the quoted path as one argument.
+            subprocess.Popen(f'explorer /select,"{os.path.normpath(path)}"')
+        else:
+            subprocess.Popen(["open", "-R", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:
+        return False
+
+
+def _open(path: str) -> bool:
+    try:
+        if os.name == "nt":
+            os.startfile(path)  # type: ignore[attr-defined]
+        else:
+            import subprocess
+
+            opener = "open" if sys.platform == "darwin" else "xdg-open"
+            subprocess.Popen([opener, path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:
+        return False

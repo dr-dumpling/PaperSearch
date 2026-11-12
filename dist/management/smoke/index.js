@@ -1,6 +1,6 @@
 export async function runLiveSmoke(runner) {
     const checks = buildLiveSmokeChecks(runner.hasConfig);
-    const cases = [carsiReadinessCase(runner.carsiReadiness)];
+    const cases = [schoolReadinessCase(runner.schoolReadiness)];
     for (const check of checks) {
         if (check.skipWhen) {
             const severity = check.configured || check.enabled ? check.severity : "skipped";
@@ -66,41 +66,41 @@ export async function runLiveSmoke(runner) {
     }
     return summarizeLiveSmoke(cases, runner.capabilityProfile, runner.skillStatus);
 }
-function carsiReadinessCase(readiness) {
+function schoolReadinessCase(readiness) {
     const data = { state: readiness.state, code: readiness.code };
     if (readiness.state === "disabled") {
         return {
-            name: "CARSI entitled access readiness",
+            name: "School backend entitled access readiness",
             ok: true,
             severity: "skipped",
             status: "skipped",
             skipped: true,
             enabled: false,
-            message: "CARSI entitled access is disabled.",
+            message: "School backend entitled access is disabled.",
             data,
         };
     }
     if (readiness.state === "available") {
         return {
-            name: "CARSI entitled access readiness",
+            name: "School backend entitled access readiness",
             ok: true,
             severity: "degraded",
             status: "passed",
             enabled: true,
-            message: "CARSI MCP initialized and its tool contract is compatible.",
+            message: "School backend MCP initialized and its tool contract is compatible.",
             data,
         };
     }
     return {
-        name: "CARSI entitled access readiness",
+        name: "School backend entitled access readiness",
         ok: false,
         severity: "degraded",
         status: "failed",
         enabled: true,
         message: readiness.message,
         remediation: readiness.state === "absent"
-            ? "Run `paper-search carsi install`, then rerun `paper-search smoke --live --pretty`."
-            : "Run `paper-search carsi update`, then rerun `paper-search smoke --live --pretty`.",
+            ? "Run `paper-search school install`, then rerun `paper-search smoke --live --pretty`."
+            : "Run `paper-search school update`, then rerun `paper-search smoke --live --pretty`.",
         data,
     };
 }

@@ -1,7 +1,7 @@
 import type { Searchers } from "../../core/searchers.js";
 import { type FailureClass } from "../../infrastructure/runlog/failureClass.js";
 import type { DownloadTier } from "./DownloadTier.js";
-import type { CarsiBackend } from "./carsi/index.js";
+import type { SchoolBackend } from "./school/index.js";
 import type { DownloadContent, DownloadBatchPosition, DownloadWithFallbackOptions, DownloadWithFallbackResult } from "./types.js";
 export declare const MAX_BATCH_ITEMS = 1000;
 /** From this many items the progress window opens at the start, in the open-access stretch. */
@@ -65,7 +65,7 @@ export interface DownloadBatchResult {
  */
 export declare function downloadBatchItem(searchers: Searchers, options: DownloadWithFallbackOptions & {
     batch: DownloadBatchPosition;
-}, tiers: DownloadTier[], backend?: CarsiBackend): Promise<DownloadWithFallbackResult>;
+}, tiers: DownloadTier[], backend?: SchoolBackend): Promise<DownloadWithFallbackResult>;
 /**
  * Supplementary files only: the entitled-access backend visits the article
  * page for them. An empty completed check is also ok; it is not a failed download,
@@ -74,7 +74,7 @@ export declare function downloadBatchItem(searchers: Searchers, options: Downloa
  * ``mainPath``: the paper's main text, saved before; once a file is saved it moves
  * into the paper's folder beside them (the returned ``path``).
  */
-export declare function downloadSupplementsOnly(request: DownloadWithFallbackOptions, backend: CarsiBackend | undefined, searchers?: Searchers, mainPath?: string): Promise<DownloadWithFallbackResult>;
+export declare function downloadSupplementsOnly(request: DownloadWithFallbackOptions, backend: SchoolBackend | undefined, searchers?: Searchers, mainPath?: string): Promise<DownloadWithFallbackResult>;
 /** Download a list serially; one batch id ties it to one progress window. */
-export declare function downloadBatch(searchers: Searchers, options: DownloadBatchOptions, backend?: CarsiBackend, log?: (line: string) => void, createTiers?: (backend?: CarsiBackend) => DownloadTier[], pause?: (ms: number) => Promise<void>): Promise<DownloadBatchResult>;
+export declare function downloadBatch(searchers: Searchers, options: DownloadBatchOptions, backend?: SchoolBackend, log?: (line: string) => void, createTiers?: (backend?: SchoolBackend) => DownloadTier[], pause?: (ms: number) => Promise<void>): Promise<DownloadBatchResult>;
 //# sourceMappingURL=batch.d.ts.map

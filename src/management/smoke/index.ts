@@ -1,5 +1,5 @@
 import type { CapabilityProfile } from "../capability-profile/index.js";
-import type { EntitledAccessReadiness } from "../capability-profile/carsiReadiness.js";
+import type { EntitledAccessReadiness } from "../capability-profile/schoolReadiness.js";
 import type { SkillStatusResult } from "../skills/index.js";
 
 export type SmokeSeverity = "critical" | "degraded" | "warning" | "skipped";
@@ -38,7 +38,7 @@ export interface LiveSmokeRunner {
     args: Record<string, unknown>,
   ): Promise<{ ok: boolean; message?: string; data?: unknown }>;
   capabilityProfile: CapabilityProfile;
-  carsiReadiness: EntitledAccessReadiness;
+  schoolReadiness: EntitledAccessReadiness;
   skillStatus?: SkillStatusResult;
   hasConfig(key: string): boolean;
 }
@@ -67,7 +67,7 @@ export async function runLiveSmoke(
   runner: LiveSmokeRunner,
 ): Promise<LiveSmokeResult> {
   const checks = buildLiveSmokeChecks(runner.hasConfig);
-  const cases: SmokeCase[] = [carsiReadinessCase(runner.carsiReadiness)];
+  const cases: SmokeCase[] = [schoolReadinessCase(runner.schoolReadiness)];
 
   for (const check of checks) {
     if (check.skipWhen) {
@@ -143,35 +143,35 @@ export async function runLiveSmoke(
   );
 }
 
-function carsiReadinessCase(readiness: EntitledAccessReadiness): SmokeCase {
+function schoolReadinessCase(readiness: EntitledAccessReadiness): SmokeCase {
   const data = { state: readiness.state, code: readiness.code };
   if (readiness.state === "disabled") {
     return {
-      name: "CARSI entitled access readiness",
+      name: "School backend entitled access readiness",
       ok: true,
       severity: "skipped",
       status: "skipped",
       skipped: true,
       enabled: false,
-      message: "CARSI entitled access is disabled.",
+      message: "School backend entitled access is disabled.",
       data,
     };
   }
 
   if (readiness.state === "available") {
     return {
-      name: "CARSI entitled access readiness",
+      name: "School backend entitled access readiness",
       ok: true,
       severity: "degraded",
       status: "passed",
       enabled: true,
-      message: "CARSI MCP initialized and its tool contract is compatible.",
+      message: "School backend MCP initialized and its tool contract is compatible.",
       data,
     };
   }
 
   return {
-    name: "CARSI entitled access readiness",
+    name: "School backend entitled access readiness",
     ok: false,
     severity: "degraded",
     status: "failed",
@@ -179,8 +179,8 @@ function carsiReadinessCase(readiness: EntitledAccessReadiness): SmokeCase {
     message: readiness.message,
     remediation:
       readiness.state === "absent"
-        ? "Run `paper-search carsi install`, then rerun `paper-search smoke --live --pretty`."
-        : "Run `paper-search carsi update`, then rerun `paper-search smoke --live --pretty`.",
+        ? "Run `paper-search school install`, then rerun `paper-search smoke --live --pretty`."
+        : "Run `paper-search school update`, then rerun `paper-search smoke --live --pretty`.",
     data,
   };
 }

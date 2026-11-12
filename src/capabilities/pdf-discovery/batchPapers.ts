@@ -1,4 +1,4 @@
-import type { CarsiBackend, CarsiBatchPaper } from "./carsi/index.js";
+import type { SchoolBackend, SchoolBatchPaper } from "./school/index.js";
 
 /** How soon a report that did not get through goes again, and how many times in a row (about a minute). */
 export const PAPERS_RETRY_MS = 2_000;
@@ -11,24 +11,24 @@ const PAPERS_RETRIES = 30;
  * up once the batch has its backend; a backend without the lists gets nothing.
  */
 export class PaperList {
-  private readonly papers: CarsiBatchPaper[];
+  private readonly papers: SchoolBatchPaper[];
   private readonly unsent = new Set<number>();
   private retry?: ReturnType<typeof setTimeout>;
   private retries = 0;
   private finished = false;
 
   constructor(
-    private readonly backend: CarsiBackend | undefined,
+    private readonly backend: SchoolBackend | undefined,
     private readonly id: string,
     private readonly folder: string,
-    papers: ReadonlyArray<Omit<CarsiBatchPaper, "index">>,
+    papers: ReadonlyArray<Omit<SchoolBatchPaper, "index">>,
     private readonly retryMs = PAPERS_RETRY_MS,
   ) {
     this.papers = papers.map((paper, offset) => ({ ...paper, index: offset + 1 }));
     this.papers.forEach((_, offset) => this.unsent.add(offset));
   }
 
-  set(offset: number, paper: Omit<CarsiBatchPaper, "index">): void {
+  set(offset: number, paper: Omit<SchoolBatchPaper, "index">): void {
     const next = { ...paper, index: offset + 1 };
     if (JSON.stringify(next) === JSON.stringify(this.papers[offset])) return;
     this.papers[offset] = next;

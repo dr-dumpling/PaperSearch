@@ -440,7 +440,7 @@ export class ScopusSearcher extends PaperSource {
     options: DownloadOptions = {},
   ): Promise<string> {
     throw new Error(
-      "Scopus itself does not perform authorized PDF downloads; the optional CARSI tier is handled by the unified download funnel.",
+      "Scopus itself does not perform authorized PDF downloads; the optional school subscription tier is handled by the unified download funnel.",
     );
   }
 

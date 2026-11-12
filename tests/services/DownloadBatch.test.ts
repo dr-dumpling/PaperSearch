@@ -8,14 +8,14 @@ import type {
   DownloadTierContext,
 } from "../../src/capabilities/pdf-discovery/DownloadTier.js";
 import type {
-  CarsiBackend,
-  CarsiBatchUpdate,
-  CarsiDownloadRequest,
-} from "../../src/capabilities/pdf-discovery/carsi/types.js";
+  SchoolBackend,
+  SchoolBatchUpdate,
+  SchoolDownloadRequest,
+} from "../../src/capabilities/pdf-discovery/school/types.js";
 import {
-  createCarsiDownloadArguments,
-  selectCarsiBatchSupport,
-} from "../../src/capabilities/pdf-discovery/carsi/CarsiReadiness.js";
+  createSchoolDownloadArguments,
+  selectSchoolBatchSupport,
+} from "../../src/capabilities/pdf-discovery/school/SchoolReadiness.js";
 
 /** Item 1 finishes through open access; items 2 and 3 reach entitled access. */
 function fakeTiers(contexts: DownloadTierContext[]): DownloadTier[] {
@@ -41,7 +41,7 @@ function fakeTiers(contexts: DownloadTierContext[]): DownloadTier[] {
   ];
 }
 
-function fakeBackend(updates: CarsiBatchUpdate[]): CarsiBackend {
+function fakeBackend(updates: SchoolBatchUpdate[]): SchoolBackend {
   return {
     probe: async () => ({ state: "available", code: "ready", message: "", missing: [] }),
     downloadLegalDoi: async () => {
@@ -90,7 +90,7 @@ describe("serial download batch", () => {
 
   it("per_item: passes each item its batch position and keeps the window's totals right", async () => {
     const contexts: DownloadTierContext[] = [];
-    const updates: CarsiBatchUpdate[] = [];
+    const updates: SchoolBatchUpdate[] = [];
     const lines: string[] = [];
     const result = await downloadBatch(
       {} as never,
@@ -144,7 +144,7 @@ describe("serial download batch", () => {
 
   it("entitled_only: every item goes straight to entitled access, open stages never run", async () => {
     const order: string[] = [];
-    const updates: CarsiBatchUpdate[] = [];
+    const updates: SchoolBatchUpdate[] = [];
     const lines: string[] = [];
     const tiers = (): DownloadTier[] => [
       { id: "oa", stage: "unpaywall", run: async (context) => { order.push(`oa:${context.doi}`); return { status: "ok", verified: true, path: "/tmp/oa.pdf", message: "ok" }; } },
@@ -175,7 +175,7 @@ describe("serial download batch", () => {
   it("two_phase: entitled access starts on the first item open access misses, while open access goes on", async () => {
     const order: string[] = [];
     const entitled: DownloadTierContext[] = [];
-    const updates: CarsiBatchUpdate[] = [];
+    const updates: SchoolBatchUpdate[] = [];
     const lines: string[] = [];
     let browserStarted!: () => void;
     const started = new Promise<void>((resolve) => { browserStarted = resolve; });
@@ -250,10 +250,10 @@ describe("serial download batch", () => {
 
   it("two_phase: five or more items show both lanes, the counts never going back", async () => {
     const entitled: DownloadTierContext[] = [];
-    const updates: CarsiBatchUpdate[] = [];
+    const updates: SchoolBatchUpdate[] = [];
     let openChecked!: () => void;
     const checkedAll = new Promise<void>((resolve) => { openChecked = resolve; });
-    const backend: CarsiBackend = {
+    const backend: SchoolBackend = {
       ...fakeBackend(updates),
       reportBatchProgress: async (update) => {
         updates.push(update);
@@ -310,9 +310,9 @@ describe("serial download batch", () => {
   });
 
   it("two_phase with supplementary files: open-access items settle only after their files", async () => {
-    const updates: CarsiBatchUpdate[] = [];
-    const visits: Array<CarsiDownloadRequest["batch"]> = [];
-    const backend: CarsiBackend = {
+    const updates: SchoolBatchUpdate[] = [];
+    const visits: Array<SchoolDownloadRequest["batch"]> = [];
+    const backend: SchoolBackend = {
       ...fakeBackend(updates),
       downloadLegalDoi: async (request) => {
         visits.push(request.batch);
@@ -415,7 +415,7 @@ describe("serial download batch", () => {
     for (const mode of ["entitled_only", "per_item"] as const) {
       const seen: string[] = [];
       const lines: string[] = [];
-      const updates: CarsiBatchUpdate[] = [];
+      const updates: SchoolBatchUpdate[] = [];
       const tiers = (): DownloadTier[] => [
         {
           id: "entitled_access",
@@ -475,7 +475,7 @@ describe("serial download batch", () => {
   });
 
   it("tells the finished window each failure's class and reason, the sources and the start", async () => {
-    const updates: CarsiBatchUpdate[] = [];
+    const updates: SchoolBatchUpdate[] = [];
     const before = Math.floor(Date.now() / 1000);
     const root = mkdtempSync(join(tmpdir(), "batch-summary-"));
     const tiers = (): DownloadTier[] => [
@@ -524,7 +524,7 @@ describe("serial download batch", () => {
   });
 
   it("a batch stopped in the window says so in its finished card", async () => {
-    const updates: CarsiBatchUpdate[] = [];
+    const updates: SchoolBatchUpdate[] = [];
     const tiers = (): DownloadTier[] => [{
       id: "entitled_access",
       stage: "entitled_access",
@@ -580,7 +580,7 @@ describe("backend batch support", () => {
     batch_failed: { type: "integer" },
   };
   const progress = {
-    name: "carsi_batch_progress",
+    name: "school_batch_progress",
     inputSchema: {
       type: "object",
       properties: {
@@ -596,64 +596,64 @@ describe("backend batch support", () => {
   };
 
   it("sends batch fields only to a backend that declares them", () => {
-    const declared = selectCarsiBatchSupport(
+    const declared = selectSchoolBatchSupport(
       [
-        { name: "carsi_download", inputSchema: { type: "object", properties: { ...base, ...batchFields } } },
+        { name: "school_download", inputSchema: { type: "object", properties: { ...base, ...batchFields } } },
         progress,
       ],
       "legal_only",
     );
     expect(declared).toEqual({ downloadFields: true, progressTool: true, supplementsField: false, userWaitField: false, diagnosticsDirField: false });
-    const plain = selectCarsiBatchSupport(
-      [{ name: "carsi_download", inputSchema: { type: "object", properties: base } }],
+    const plain = selectSchoolBatchSupport(
+      [{ name: "school_download", inputSchema: { type: "object", properties: base } }],
       "legal_only",
     );
     expect(plain).toEqual({ downloadFields: false, progressTool: false, supplementsField: false, userWaitField: false, diagnosticsDirField: false });
-    const waiting = selectCarsiBatchSupport(
-      [{ name: "carsi_download", inputSchema: { type: "object", properties: { ...base, user_wait: { type: "string" } } } }],
+    const waiting = selectSchoolBatchSupport(
+      [{ name: "school_download", inputSchema: { type: "object", properties: { ...base, user_wait: { type: "string" } } } }],
       "legal_only",
     );
     expect(waiting.userWaitField).toBe(true);
-    expect(createCarsiDownloadArguments("10.1000/x", "/tmp", "legal_only", undefined, undefined, "short")).toEqual(
+    expect(createSchoolDownloadArguments("10.1000/x", "/tmp", "legal_only", undefined, undefined, "short")).toEqual(
       expect.objectContaining({ user_wait: "short" }),
     );
   });
 
   it("sends the finished window's summary only to a backend that declares it", () => {
-    const download = { name: "carsi_download", inputSchema: { type: "object", properties: base } };
-    expect(selectCarsiBatchSupport([download, progress], "legal_only").progressResults).toBeUndefined();
+    const download = { name: "school_download", inputSchema: { type: "object", properties: base } };
+    expect(selectSchoolBatchSupport([download, progress], "legal_only").progressResults).toBeUndefined();
     const withResults = {
       ...progress,
       inputSchema: { ...progress.inputSchema, properties: { ...progress.inputSchema.properties, results: { type: "object" } } },
     };
-    expect(selectCarsiBatchSupport([download, withResults], "legal_only").progressResults).toBe(true);
+    expect(selectSchoolBatchSupport([download, withResults], "legal_only").progressResults).toBe(true);
   });
 
   it("sends the open-access phase and channel only to a backend that declares them", () => {
-    const download = { name: "carsi_download", inputSchema: { type: "object", properties: base } };
-    expect(selectCarsiBatchSupport([download, progress], "legal_only").progressPhase).toBeUndefined();
+    const download = { name: "school_download", inputSchema: { type: "object", properties: base } };
+    expect(selectSchoolBatchSupport([download, progress], "legal_only").progressPhase).toBeUndefined();
     const withPhase = {
       ...progress,
       inputSchema: { ...progress.inputSchema, properties: { ...progress.inputSchema.properties,
         phase: { type: "string" }, channel: { type: "string" } } },
     };
-    expect(selectCarsiBatchSupport([download, withPhase], "legal_only").progressPhase).toBe(true);
+    expect(selectSchoolBatchSupport([download, withPhase], "legal_only").progressPhase).toBe(true);
   });
 
   it("sends the lanes line only to a backend that declares it", () => {
-    const download = { name: "carsi_download", inputSchema: { type: "object", properties: base } };
-    expect(selectCarsiBatchSupport([download, progress], "legal_only").progressLanes).toBeUndefined();
+    const download = { name: "school_download", inputSchema: { type: "object", properties: base } };
+    expect(selectSchoolBatchSupport([download, progress], "legal_only").progressLanes).toBeUndefined();
     const withLanes = {
       ...progress,
       inputSchema: { ...progress.inputSchema, properties: { ...progress.inputSchema.properties, lanes: { type: "string" } } },
     };
-    expect(selectCarsiBatchSupport([download, withLanes], "legal_only").progressLanes).toBe(true);
+    expect(selectSchoolBatchSupport([download, withLanes], "legal_only").progressLanes).toBe(true);
   });
 
   it("adds the batch fields to the download arguments", () => {
-    expect(createCarsiDownloadArguments("10.1000/x", "/tmp", "legal_only", batch)).toEqual(
+    expect(createSchoolDownloadArguments("10.1000/x", "/tmp", "legal_only", batch)).toEqual(
       expect.objectContaining({ batch_id: "b", batch_index: 1, batch_total: 2, batch_done: 0 }),
     );
-    expect(Object.keys(createCarsiDownloadArguments("10.1000/x", "/tmp"))).not.toContain("batch_id");
+    expect(Object.keys(createSchoolDownloadArguments("10.1000/x", "/tmp"))).not.toContain("batch_id");
   });
 });

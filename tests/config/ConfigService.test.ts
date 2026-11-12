@@ -37,30 +37,30 @@ describe("ConfigService", () => {
     }
   });
   it("selects the configured executable with environment precedence", () => {
-    const previous = process.env.PAPER_SEARCH_CARSI_EXECUTABLE;
+    const previous = process.env.PAPER_SEARCH_SCHOOL_EXECUTABLE;
     try {
-      delete process.env.PAPER_SEARCH_CARSI_EXECUTABLE;
+      delete process.env.PAPER_SEARCH_SCHOOL_EXECUTABLE;
       setUserConfigValue(
-        "PAPER_SEARCH_CARSI_EXECUTABLE",
-        "/candidate/bin/paper-search-carsi",
+        "PAPER_SEARCH_SCHOOL_EXECUTABLE",
+        "/candidate/bin/paper-search-school",
       );
-      expect(getConfigValue("PAPER_SEARCH_CARSI_EXECUTABLE")).toBe(
-        "/candidate/bin/paper-search-carsi",
+      expect(getConfigValue("PAPER_SEARCH_SCHOOL_EXECUTABLE")).toBe(
+        "/candidate/bin/paper-search-school",
       );
-      process.env.PAPER_SEARCH_CARSI_EXECUTABLE = "/override/bin/paper-search-carsi";
-      expect(getConfigValue("PAPER_SEARCH_CARSI_EXECUTABLE")).toBe(
-        "/override/bin/paper-search-carsi",
+      process.env.PAPER_SEARCH_SCHOOL_EXECUTABLE = "/override/bin/paper-search-school";
+      expect(getConfigValue("PAPER_SEARCH_SCHOOL_EXECUTABLE")).toBe(
+        "/override/bin/paper-search-school",
       );
     } finally {
       if (previous === undefined)
-        delete process.env.PAPER_SEARCH_CARSI_EXECUTABLE;
-      else process.env.PAPER_SEARCH_CARSI_EXECUTABLE = previous;
+        delete process.env.PAPER_SEARCH_SCHOOL_EXECUTABLE;
+      else process.env.PAPER_SEARCH_SCHOOL_EXECUTABLE = previous;
     }
   });
   let tempDir: string;
   let originalConfigFile: string | undefined;
   let originalSemanticKey: string | undefined;
-  let originalCarsiEnabled: string | undefined;
+  let originalSchoolEnabled: string | undefined;
   let originalScholarProxy: string | undefined;
   let originalScholarRate: string | undefined;
   let originalScholarRetries: string | undefined;
@@ -70,10 +70,10 @@ describe("ConfigService", () => {
     tempDir = mkdtempSync(join(tmpdir(), "paper-search-config-test-"));
     originalConfigFile = process.env.PAPER_SEARCH_CONFIG_FILE;
     originalSemanticKey = process.env.SEMANTIC_SCHOLAR_API_KEY;
-    originalCarsiEnabled = process.env.PAPER_SEARCH_CARSI_ENABLED;
+    originalSchoolEnabled = process.env.PAPER_SEARCH_SCHOOL_ENABLED;
     process.env.PAPER_SEARCH_CONFIG_FILE = join(tempDir, "config.json");
     delete process.env.SEMANTIC_SCHOLAR_API_KEY;
-    delete process.env.PAPER_SEARCH_CARSI_ENABLED;
+    delete process.env.PAPER_SEARCH_SCHOOL_ENABLED;
     originalScholarProxy = process.env.GOOGLE_SCHOLAR_PROXY_URL;
     originalScholarRate = process.env.SCHOLAR_RATE_LIMIT_RPS;
     originalScholarRetries = process.env.SCHOLAR_MAX_RETRIES;
@@ -93,9 +93,9 @@ describe("ConfigService", () => {
       delete process.env.SEMANTIC_SCHOLAR_API_KEY;
     else process.env.SEMANTIC_SCHOLAR_API_KEY = originalSemanticKey;
 
-    if (originalCarsiEnabled === undefined)
-      delete process.env.PAPER_SEARCH_CARSI_ENABLED;
-    else process.env.PAPER_SEARCH_CARSI_ENABLED = originalCarsiEnabled;
+    if (originalSchoolEnabled === undefined)
+      delete process.env.PAPER_SEARCH_SCHOOL_ENABLED;
+    else process.env.PAPER_SEARCH_SCHOOL_ENABLED = originalSchoolEnabled;
 
     if (originalScholarProxy === undefined)
       delete process.env.GOOGLE_SCHOLAR_PROXY_URL;
@@ -219,36 +219,36 @@ describe("ConfigService", () => {
   });
 
   it("exposes the opt-in flag, explicit executable and the user's no, without account settings", () => {
-    expect(CONFIG_KEYS.filter((key) => key.includes("CARSI"))).toEqual([
-      "PAPER_SEARCH_CARSI_ENABLED",
-      "PAPER_SEARCH_CARSI_EXECUTABLE",
-      "PAPER_SEARCH_CARSI_DECLINED",
-      "PAPER_SEARCH_CARSI_AUTO_UPDATE",
+    expect(CONFIG_KEYS.filter((key) => key.includes("SCHOOL"))).toEqual([
+      "PAPER_SEARCH_SCHOOL_ENABLED",
+      "PAPER_SEARCH_SCHOOL_EXECUTABLE",
+      "PAPER_SEARCH_SCHOOL_DECLINED",
+      "PAPER_SEARCH_SCHOOL_AUTO_UPDATE",
     ]);
   });
 
-  it("enables CARSI only for the exact true string in user config", () => {
-    expect(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")).toBe(false);
+  it("enables the school backend only for the exact true string in user config", () => {
+    expect(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED")).toBe(false);
 
     for (const value of ["false", "TRUE", "1", "yes", " true ", ""]) {
-      setUserConfigValue("PAPER_SEARCH_CARSI_ENABLED", value);
-      expect(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")).toBe(false);
+      setUserConfigValue("PAPER_SEARCH_SCHOOL_ENABLED", value);
+      expect(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED")).toBe(false);
     }
 
-    setUserConfigValue("PAPER_SEARCH_CARSI_ENABLED", "true");
-    expect(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")).toBe(true);
+    setUserConfigValue("PAPER_SEARCH_SCHOOL_ENABLED", "true");
+    expect(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED")).toBe(true);
   });
 
   it("gives the environment value priority over user config without coercion", () => {
-    setUserConfigValue("PAPER_SEARCH_CARSI_ENABLED", "true");
+    setUserConfigValue("PAPER_SEARCH_SCHOOL_ENABLED", "true");
 
     for (const value of ["false", "TRUE", "1", "yes", " true ", ""]) {
-      process.env.PAPER_SEARCH_CARSI_ENABLED = value;
-      expect(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")).toBe(false);
+      process.env.PAPER_SEARCH_SCHOOL_ENABLED = value;
+      expect(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED")).toBe(false);
     }
 
-    process.env.PAPER_SEARCH_CARSI_ENABLED = "true";
-    expect(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")).toBe(true);
+    process.env.PAPER_SEARCH_SCHOOL_ENABLED = "true";
+    expect(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED")).toBe(true);
   });
 
   it.each([
@@ -257,17 +257,17 @@ describe("ConfigService", () => {
   ])(
     "does not overwrite an explicitly defined %p environment value from user config",
     (environmentValue, configured) => {
-      setUserConfigValue("PAPER_SEARCH_CARSI_ENABLED", "true");
-      process.env.PAPER_SEARCH_CARSI_ENABLED = environmentValue;
+      setUserConfigValue("PAPER_SEARCH_SCHOOL_ENABLED", "true");
+      process.env.PAPER_SEARCH_SCHOOL_ENABLED = environmentValue;
 
       expect(loadUserConfigIntoEnv()).not.toContain(
-        "PAPER_SEARCH_CARSI_ENABLED",
+        "PAPER_SEARCH_SCHOOL_ENABLED",
       );
-      expect(process.env.PAPER_SEARCH_CARSI_ENABLED).toBe(environmentValue);
-      expect(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")).toBe(false);
+      expect(process.env.PAPER_SEARCH_SCHOOL_ENABLED).toBe(environmentValue);
+      expect(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED")).toBe(false);
       expect(
         listConfigEntries(true).find(
-          (entry) => entry.key === "PAPER_SEARCH_CARSI_ENABLED",
+          (entry) => entry.key === "PAPER_SEARCH_SCHOOL_ENABLED",
         ),
       ).toEqual(
         expect.objectContaining({
@@ -281,29 +281,29 @@ describe("ConfigService", () => {
   it("lets a value copied from the config file follow a later write of that file", () => {
     // setup reported the extension disabled right after installing it: the
     // process kept the copy "false" it had loaded (review 2026-11-02).
-    setUserConfigValue("PAPER_SEARCH_CARSI_ENABLED", "false");
-    expect(loadUserConfigIntoEnv()).toContain("PAPER_SEARCH_CARSI_ENABLED");
-    expect(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")).toBe(false);
+    setUserConfigValue("PAPER_SEARCH_SCHOOL_ENABLED", "false");
+    expect(loadUserConfigIntoEnv()).toContain("PAPER_SEARCH_SCHOOL_ENABLED");
+    expect(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED")).toBe(false);
 
-    setUserConfigValue("PAPER_SEARCH_CARSI_ENABLED", "true");
-    expect(process.env.PAPER_SEARCH_CARSI_ENABLED).toBe("true");
-    expect(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")).toBe(true);
+    setUserConfigValue("PAPER_SEARCH_SCHOOL_ENABLED", "true");
+    expect(process.env.PAPER_SEARCH_SCHOOL_ENABLED).toBe("true");
+    expect(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED")).toBe(true);
     expect(
       listConfigEntries(true).find(
-        (entry) => entry.key === "PAPER_SEARCH_CARSI_ENABLED",
+        (entry) => entry.key === "PAPER_SEARCH_SCHOOL_ENABLED",
       )?.source,
     ).toBe("user_config");
 
-    unsetUserConfigValue("PAPER_SEARCH_CARSI_ENABLED");
-    expect(process.env.PAPER_SEARCH_CARSI_ENABLED).toBeUndefined();
-    expect(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")).toBe(false);
+    unsetUserConfigValue("PAPER_SEARCH_SCHOOL_ENABLED");
+    expect(process.env.PAPER_SEARCH_SCHOOL_ENABLED).toBeUndefined();
+    expect(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED")).toBe(false);
   });
 
   it("keeps the environment's own value when the config file is written", () => {
-    process.env.PAPER_SEARCH_CARSI_ENABLED = "false";
-    setUserConfigValue("PAPER_SEARCH_CARSI_ENABLED", "true");
-    expect(process.env.PAPER_SEARCH_CARSI_ENABLED).toBe("false");
-    expect(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")).toBe(false);
+    process.env.PAPER_SEARCH_SCHOOL_ENABLED = "false";
+    setUserConfigValue("PAPER_SEARCH_SCHOOL_ENABLED", "true");
+    expect(process.env.PAPER_SEARCH_SCHOOL_ENABLED).toBe("false");
+    expect(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED")).toBe(false);
   });
 
   it("does not carry user-config provenance across config file paths", () => {
@@ -311,22 +311,22 @@ describe("ConfigService", () => {
     const secondConfigPath = join(tempDir, "second-config.json");
 
     process.env.PAPER_SEARCH_CONFIG_FILE = firstConfigPath;
-    setUserConfigValue("PAPER_SEARCH_CARSI_ENABLED", "true");
-    expect(loadUserConfigIntoEnv()).toContain("PAPER_SEARCH_CARSI_ENABLED");
+    setUserConfigValue("PAPER_SEARCH_SCHOOL_ENABLED", "true");
+    expect(loadUserConfigIntoEnv()).toContain("PAPER_SEARCH_SCHOOL_ENABLED");
     expect(
       listConfigEntries(true).find(
-        (entry) => entry.key === "PAPER_SEARCH_CARSI_ENABLED",
+        (entry) => entry.key === "PAPER_SEARCH_SCHOOL_ENABLED",
       )?.source,
     ).toBe("user_config");
 
     process.env.PAPER_SEARCH_CONFIG_FILE = secondConfigPath;
-    setUserConfigValue("PAPER_SEARCH_CARSI_ENABLED", "true");
-    process.env.PAPER_SEARCH_CARSI_ENABLED = "true";
+    setUserConfigValue("PAPER_SEARCH_SCHOOL_ENABLED", "true");
+    process.env.PAPER_SEARCH_SCHOOL_ENABLED = "true";
 
-    expect(isConfigTrue("PAPER_SEARCH_CARSI_ENABLED")).toBe(true);
+    expect(isConfigTrue("PAPER_SEARCH_SCHOOL_ENABLED")).toBe(true);
     expect(
       listConfigEntries(true).find(
-        (entry) => entry.key === "PAPER_SEARCH_CARSI_ENABLED",
+        (entry) => entry.key === "PAPER_SEARCH_SCHOOL_ENABLED",
       )?.source,
     ).toBe("environment");
   });

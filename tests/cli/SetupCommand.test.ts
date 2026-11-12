@@ -18,7 +18,7 @@ const CONFIG_KEYS_TO_CLEAR = [
   "CORE_API_KEY",
   "EASYSCHOLAR_KEY",
   "CROSSREF_MAILTO",
-  "PAPER_SEARCH_CARSI_ENABLED",
+  "PAPER_SEARCH_SCHOOL_ENABLED",
   "GOOGLE_SCHOLAR_PROXY_URL",
   "SCHOLAR_RATE_LIMIT_RPS",
   "SCHOLAR_MAX_RETRIES",
@@ -65,7 +65,7 @@ describe("setup command", () => {
       "SEMANTIC_SCHOLAR_API_KEY",
       "CORE_API_KEY",
       "EASYSCHOLAR_KEY",
-      "PAPER_SEARCH_CARSI_ENABLED",
+      "PAPER_SEARCH_SCHOOL_ENABLED",
     ]);
     expect(
       output.capabilityProfile.entries.find(
@@ -159,20 +159,20 @@ describe("setup command", () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain("Install school subscription downloads (CARSI)?");
+    expect(result.stderr).toContain("Install school subscription downloads?");
     const output = JSON.parse(result.stdout);
-    expect(output.carsi).toEqual({ installed: false, asked: true });
-    expect(output.nextSteps.join(" ")).toContain("paper-search carsi install");
+    expect(output.school).toEqual({ installed: false, asked: true });
+    expect(output.nextSteps.join(" ")).toContain("paper-search school install");
   });
 
-  it("enables CARSI only for the exact value true and reports an absent executable without failing setup", () => {
+  it("enables the school backend only for the exact value true and reports an absent executable without failing setup", () => {
     const result = runSetup("\n\n\n\n\ntrue\n", ["--skip-skills"], {
       PATH: join(tempDir, "empty-path"),
     });
 
     expect(result.status).toBe(0);
     const output = JSON.parse(result.stdout);
-    expect(readConfig().PAPER_SEARCH_CARSI_ENABLED).toBe("true");
+    expect(readConfig().PAPER_SEARCH_SCHOOL_ENABLED).toBe("true");
     expect(
       output.capabilityProfile.entries.find(
         (entry: any) => entry.id === "entitled_access",
@@ -180,7 +180,7 @@ describe("setup command", () => {
     ).toEqual(
       expect.objectContaining({
         status: "unavailable",
-        missing: ["carsi"],
+        missing: ["school"],
         readiness: { state: "absent", code: "executable_missing" },
       }),
     );
@@ -189,11 +189,11 @@ describe("setup command", () => {
     );
   });
 
-  it("stores TRUE but keeps CARSI disabled because enablement is strict", () => {
+  it("stores TRUE but keeps the school backend disabled because enablement is strict", () => {
     const marker = join(tempDir, "scan-marker.log");
     const binDir = join(tempDir, "bin");
     mkdirSync(binDir, { recursive: true });
-    const executable = join(binDir, "paper-search-carsi");
+    const executable = join(binDir, "paper-search-school");
     writeFileSync(
       executable,
       `#!/bin/sh\nprintf spawned >> ${JSON.stringify(marker)}\nexit 1\n`,
@@ -206,7 +206,7 @@ describe("setup command", () => {
 
     expect(result.status).toBe(0);
     const output = JSON.parse(result.stdout);
-    expect(readConfig().PAPER_SEARCH_CARSI_ENABLED).toBe("TRUE");
+    expect(readConfig().PAPER_SEARCH_SCHOOL_ENABLED).toBe("TRUE");
     expect(
       output.capabilityProfile.entries.find(
         (entry: any) => entry.id === "entitled_access",
@@ -218,18 +218,18 @@ describe("setup command", () => {
     expect(existsSync(marker)).toBe(false);
   });
 
-  it("keeps an existing exact true value and probes CARSI exactly once", () => {
-    const logPath = join(tempDir, "setup-carsi.log");
+  it("keeps an existing exact true value and probes the school backend exactly once", () => {
+    const logPath = join(tempDir, "setup-school.log");
     const binDir = join(tempDir, "fake-bin");
-    const executable = join(binDir, "paper-search-carsi");
+    const executable = join(binDir, "paper-search-school");
     const fixturePath = join(
       process.cwd(),
-      "tests/fixtures/carsi/fake/fake-carsi-mcp.mjs",
+      "tests/fixtures/school/fake/fake-school-mcp.mjs",
     );
     mkdirSync(binDir, { recursive: true });
     writeFileSync(
       configFile,
-      JSON.stringify({ PAPER_SEARCH_CARSI_ENABLED: "true" }, null, 2),
+      JSON.stringify({ PAPER_SEARCH_SCHOOL_ENABLED: "true" }, null, 2),
     );
     writeFileSync(
       executable,
@@ -244,7 +244,7 @@ describe("setup command", () => {
 
     expect(result.status).toBe(0);
     const output = JSON.parse(result.stdout);
-    expect(output.kept).toContain("PAPER_SEARCH_CARSI_ENABLED");
+    expect(output.kept).toContain("PAPER_SEARCH_SCHOOL_ENABLED");
     expect(
       output.capabilityProfile.entries.find(
         (entry: any) => entry.id === "entitled_access",
@@ -267,7 +267,7 @@ describe("setup command", () => {
     extraEnv: NodeJS.ProcessEnv = {},
   ) {
     // The extension question depends on this machine's install: asked by its own test.
-    return runCli(["setup", ...extraArgs, "--skip-carsi"], input, extraEnv);
+    return runCli(["setup", ...extraArgs, "--skip-school"], input, extraEnv);
   }
 
   function runCli(

@@ -10,12 +10,12 @@ describe("first-install next steps", () => {
     expect(steps[1]).toContain("需要配置时说“请开始配置”");
     expect(steps[1]).toContain("references/setup.md");
     expect(steps.join("\n")).not.toContain("新开");
-    for (const install of ["carsi install", "brew install", "winget install", "不用先问"]) {
+    for (const install of ["school install", "brew install", "winget install", "不用先问"]) {
       expect(steps.join("\n")).not.toContain(install);
     }
   });
 
   it("can store the user's no in the config file", () => {
-    expect(CONFIG_KEYS).toContain("PAPER_SEARCH_CARSI_DECLINED");
+    expect(CONFIG_KEYS).toContain("PAPER_SEARCH_SCHOOL_DECLINED");
   });
 });

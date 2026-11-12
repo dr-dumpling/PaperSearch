@@ -48,7 +48,7 @@ paper-search failures --format text
      同一个下载命令，按顺序尝试：
      ├─ ① 开放下载（默认就有）：来源自带的下载、PMC、Unpaywall、出版社接口
      ├─ ② Sci-Hub 兜底（默认开启，可关闭）
-     ├─ ③ 机构下载（可选扩展）：浏览器经 CARSI 登录你的学校，在出版社网站取 PDF 和补充材料
+     ├─ ③ 机构下载（可选扩展）：浏览器经学校所属的学术身份联盟或 OpenAthens 登录你的学校，在出版社网站取 PDF 和补充材料
      ├─ ④ arXiv 预印本：前面都没拿到正式发表版时才用，并标明是预印本
      ├─ 每一步拿到文件都核对首页的 DOI 和题名；通过就保存，后面的步骤不再试
      └─ 都没拿到 → paper-search failures 说明原因
@@ -58,9 +58,9 @@ paper-search failures --format text
 
 |  | 开放下载（默认） | 机构下载（可选扩展） |
 |---|---|---|
-| 能不能直接用 | 装好就能用 | 要另外安装：`paper-search carsi install` |
+| 能不能直接用 | 装好就能用 | 要另外安装：`paper-search school install` |
 | 能拿到什么 | 开放获取的正文 | 你的学校订阅的正文；有规则的出版社还能取补充材料 |
-| 怎么拿 | 程序直接下载，通常几秒，不用登录：来源自带的下载、元数据里的 PDF 地址、PubMed Central、Unpaywall、出版社接口（你自己的 Elsevier/Springer key）；最后是默认开启的 Sci-Hub 兜底 | 打开 Chrome，经 CARSI 登录你的学校，在出版社网站上取 PDF |
+| 怎么拿 | 程序直接下载，通常几秒，不用登录：来源自带的下载、元数据里的 PDF 地址、PubMed Central、Unpaywall、出版社接口（你自己的 Elsevier/Springer key）；最后是默认开启的 Sci-Hub 兜底 | 打开 Chrome，经学校所属的学术身份联盟或 OpenAthens 登录你的学校，在出版社网站上取 PDF |
 | 你要做的事 | 无 | 在浏览器里登录学校；程序自动过验证，需要人工接管时再按提示操作 |
 
 两种方式用同一个下载命令：先试开放下载，拿不到时，装了机构下载才继续用学校权限。
@@ -119,7 +119,7 @@ paper-search skills update
 
 - `--targets all` 会同步到所有内置位置。更新会覆盖包里管理的文件，保留你在 Skill 目录里自己加的文件。
 - 升级 PaperSearch 后第一次运行时，装过的 Skill 会自动更新，被替换的旧文件备份在 `~/.local/share/paper-search-cli/skill-backups/`。不想自动更新：`paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false`。装的 Skill 比命令行程序新时（例如先从 GitHub 装了新版 Skill），不会被换回旧版，命令行每天提示一次运行 `npm install -g papersearch@latest`。
-- 装了学校订阅下载的，升级后第一次用到它时，扩展也会先自动更新（终端里有一行说明），再接着下载。不想自动更新：`paper-search config set PAPER_SEARCH_CARSI_AUTO_UPDATE false`，之后自己运行 `paper-search carsi update`。
+- 装了学校订阅下载的，升级后第一次用到它时，扩展也会先自动更新（终端里有一行说明），再接着下载。不想自动更新：`paper-search config set PAPER_SEARCH_SCHOOL_AUTO_UPDATE false`，之后自己运行 `paper-search school update`。
 - `paper-search doctor` 显示内置安装目标中的 Skill 位置和版本状态。
 
 ## 全部命令
@@ -132,7 +132,7 @@ paper-search skills update
 | `paper-search run <工具>` | 精确调用某个工具，参数用 `--arg` 或 `--json-args` |
 | `paper-search failures` | 汇总下载失败的原因 |
 | `paper-search update check` | 检查是否有新版本 |
-| `paper-search carsi` | 学校订阅下载的安装、状态、更新、卸载 |
+| `paper-search school` | 学校订阅下载的安装、状态、更新、卸载 |
 | `paper-search setup` / `config` | 配置 key、Skill 和扩展 |
 | `paper-search settings` | 打开设置窗口：下载文件夹、等待和提醒、API key（需装学校订阅下载、有图形界面） |
 | `paper-search uninstall` | 卸载：先列出要删的内容（学校订阅下载和登录状态、运行记录、配置和 API key、各 AI 工具里的 Skill），确认后一次删完；下载的论文不动；`--dry-run` 只列出不删 |
@@ -153,10 +153,10 @@ paper-search skills update
 | `UNPAYWALL_EMAIL`、`CROSSREF_MAILTO` | Unpaywall 按 DOI 找开放获取 PDF、Crossref 优先通道要用的联系邮箱 | `paper-search setup` 留空时自动生成；也可以在设置窗口填 |
 | `GOOGLE_SCHOLAR_PROXY_URL` | Google Scholar 的出口代理；直连反复被拦时，用有授权的代理 | 不设置 |
 | `PAPER_SEARCH_SKILL_AUTO_UPDATE` | 设为 `false` 时，升级后不再自动更新已安装的 Skill | 开启 |
-| `PAPER_SEARCH_CARSI_AUTO_UPDATE` | 设为 `false` 时，升级后不再自动更新学校订阅下载扩展，改为自己运行 `paper-search carsi update` | 开启 |
+| `PAPER_SEARCH_SCHOOL_AUTO_UPDATE` | 设为 `false` 时，升级后不再自动更新学校订阅下载扩展，改为自己运行 `paper-search school update` | 开启 |
 | `PAPER_SEARCH_UPDATE_NOTIFY` | 设为 `false` 时，不再提示有新版本 | 开启 |
-| `PAPER_SEARCH_CARSI_DECLINED` | 设为 `true` 时，AI 不再主动建议安装学校订阅下载（你说过不装时它会自己设上）；你要装时直接说即可 | 未设置 |
-| `PAPER_SEARCH_CARSI_ENABLED` | 学校订阅下载的开关 | `paper-search carsi install` 自动设置 |
+| `PAPER_SEARCH_SCHOOL_DECLINED` | 设为 `true` 时，AI 不再主动建议安装学校订阅下载（你说过不装时它会自己设上）；你要装时直接说即可 | 未设置 |
+| `PAPER_SEARCH_SCHOOL_ENABLED` | 学校订阅下载的开关 | `paper-search school install` 自动设置 |
 
 ## 排障
 
@@ -165,12 +165,12 @@ paper-search skills update
 | 找不到 `paper-search` 命令 | `npm install -g papersearch` 重新安装 |
 | 安装时报 `EEXIST`，或从旧包 `paper-search-cli` 换过来 | 先 `npm uninstall -g paper-search-cli`，再装 `papersearch`；配置、Skill、学校登录和下载记录都会保留 |
 | 某个功能不能用 | `paper-search doctor --format text` 看缺什么，再 `paper-search setup` 配置 |
-| 学校订阅的文章下载不到 | `paper-search carsi status --format text` 看学校订阅下载是否装好；`paper-search failures --format text` 看每篇的原因 |
+| 学校订阅的文章下载不到 | `paper-search school status --format text` 看学校订阅下载是否装好；`paper-search failures --format text` 看每篇的原因 |
 | 来源限流 | 减小 `--max-results`、配置对应 key，或换来源 |
 | Google Scholar 出验证页 | 等一会儿再试，或改用 `--sources no-key` |
 | AI 读到的 Skill 是旧的 | `paper-search skills status --pretty`，再 `paper-search skills update`；新开一个 AI 会话 |
-| 先登录学校、或试一下能不能登录 | `paper-search carsi login --doi <学校订阅的一篇文章的 DOI>`：弹出下载用的浏览器，在学校登录页登录即可 |
-| 更新或卸载学校订阅下载 | `paper-search carsi update`；`paper-search carsi uninstall` |
+| 先登录学校、或试一下能不能登录 | `paper-search school login --doi <学校订阅的一篇文章的 DOI>`：弹出下载用的浏览器，在学校登录页登录即可 |
+| 更新或卸载学校订阅下载 | `paper-search school update`；`paper-search school uninstall` |
 | 卸载 PaperSearch | `paper-search uninstall`，确认后再运行 `npm uninstall -g papersearch` |
 | Windows 的 PowerShell 拦住 `npm` | 改用 `npm.cmd`，或在命令提示符里运行 |
 | 想反馈下载失败 | 用 Issue 里的“下载失败”模板，写明版本、系统、网站和 DOI；`paper-search failures --export ./failure-report.zip` 可以导出失败记录，附上前先检查包里的 `summary.md` 和截图有没有个人信息 |

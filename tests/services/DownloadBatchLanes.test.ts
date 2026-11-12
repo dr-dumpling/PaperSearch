@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "@jest/globals";
 import { downloadBatch, type DownloadBatchResult } from "../../src/capabilities/pdf-discovery/batch.js";
 import type { DownloadTier, DownloadTierContext, DownloadTierResult } from "../../src/capabilities/pdf-discovery/DownloadTier.js";
-import type { CarsiBackend, CarsiBatchPaper, CarsiBatchPapers, CarsiBatchUpdate } from "../../src/capabilities/pdf-discovery/carsi/types.js";
+import type { SchoolBackend, SchoolBatchPaper, SchoolBatchPapers, SchoolBatchUpdate } from "../../src/capabilities/pdf-discovery/school/types.js";
 
 /**
  * two_phase runs two lanes at once: open access checks every item in turn and
@@ -28,7 +28,7 @@ function seeded(seed: number): () => number {
   };
 }
 
-function backendRecording(updates: CarsiBatchUpdate[]): CarsiBackend {
+function backendRecording(updates: SchoolBatchUpdate[]): SchoolBackend {
   return {
     probe: async () => ({ state: "available", code: "ready", message: "", missing: [] }),
     downloadLegalDoi: async () => {
@@ -71,12 +71,12 @@ describe("two lanes at once", () => {
       let mostAtOnce = 0;
       const schoolCalls: Array<{ item: number; batch: DownloadTierContext["batch"] }> = [];
       const limited = new Set<number>();
-      const updates: CarsiBatchUpdate[] = [];
+      const updates: SchoolBatchUpdate[] = [];
       const pauses: number[] = [];
       const lines: string[] = [];
       // The window's lists: a report may not get through while a download opens its backend.
-      const listed: Array<CarsiBatchPapers & { delivered: boolean }> = [];
-      const backend: CarsiBackend = {
+      const listed: Array<SchoolBatchPapers & { delivered: boolean }> = [];
+      const backend: SchoolBackend = {
         ...backendRecording(updates),
         reportBatchPapers: async (update) => {
           const delivered = active === 0 || random() < 0.5;
@@ -165,7 +165,7 @@ describe("two lanes at once", () => {
         // a paper never goes back, and each ends as its result.
         expect(listed[0].papers.map((paper) => paper.index)).toEqual(plan.map((_, offset) => offset + 1));
         const rank = { open: 0, school: 1, ok: 2, failed: 2 };
-        const merged = new Map<number, CarsiBatchPaper>();
+        const merged = new Map<number, SchoolBatchPaper>();
         for (const report of listed.filter((sent) => sent.delivered)) {
           expect(report.folder).toBe(root);
           for (const paper of report.papers) {
@@ -200,8 +200,8 @@ describe("two lanes at once", () => {
 
   it("entitled_only and per_item send the window's lists too: waiting, then each paper as it ends", async () => {
     for (const mode of ["entitled_only", "per_item"] as const) {
-      const listed: CarsiBatchPapers[] = [];
-      const backend: CarsiBackend = {
+      const listed: SchoolBatchPapers[] = [];
+      const backend: SchoolBackend = {
         ...backendRecording([]),
         reportBatchPapers: async (update) => {
           listed.push(structuredClone(update));

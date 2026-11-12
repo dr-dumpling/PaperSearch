@@ -172,7 +172,7 @@ describe("handleToolCall", () => {
       );
     });
 
-    it("injects CARSI only into download handlers through ToolCallDependencies", async () => {
+    it("injects the school backend only into download handlers through ToolCallDependencies", async () => {
       const tempDir = mkdtempSync(
         join(tmpdir(), "paper-search-handler-entitled-"),
       );
@@ -203,7 +203,7 @@ describe("handleToolCall", () => {
               getPaperByDoi: async () => null,
             },
           } as any,
-          { carsiBackend: { downloadLegalDoi } as any },
+          { schoolBackend: { downloadLegalDoi } as any },
         );
         const data = responseData(response);
 

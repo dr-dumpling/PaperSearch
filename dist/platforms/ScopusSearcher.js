@@ -273,7 +273,7 @@ export class ScopusSearcher extends PaperSource {
         };
     }
     async downloadPdf(paperId, options = {}) {
-        throw new Error("Scopus itself does not perform authorized PDF downloads; the optional CARSI tier is handled by the unified download funnel.");
+        throw new Error("Scopus itself does not perform authorized PDF downloads; the optional school subscription tier is handled by the unified download funnel.");
     }
     async readPaper(paperId, options = {}) {
         const paper = await this.getAbstract(paperId);

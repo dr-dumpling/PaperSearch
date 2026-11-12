@@ -10,8 +10,8 @@ describe("paper-search uninstall (command)", () => {
 
   beforeEach(() => {
     tempRoot = mkdtempSync(join(tmpdir(), "paper-search-uninstall-cli-"));
-    mkdirSync(join(data(), "carsi"), { recursive: true });
-    writeFileSync(join(data(), "carsi", "access.json"), "{}");
+    mkdirSync(join(data(), "school"), { recursive: true });
+    writeFileSync(join(data(), "school", "access.json"), "{}");
     writeFileSync(join(tempRoot, "config.json"), '{"DEFAULT_DOWNLOAD_PATH":"/papers"}');
     mkdirSync(join(tempRoot, ".agents", "skills", "paper-search"), { recursive: true });
     writeFileSync(join(tempRoot, ".agents", "skills", "paper-search", "SKILL.md"), "---\nname: paper-search\n---\n");

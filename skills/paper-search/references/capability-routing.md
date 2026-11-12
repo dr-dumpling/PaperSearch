@@ -108,7 +108,7 @@ paper-search run download_with_fallback --json-args '{"source":"crossref","paper
 
 固定顺序：`primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access -> preprint`。`download_paper` 也进入同一个漏斗，来源自带的下载最多试一次。Sci-Hub 成功就不再调用机构下载后端；Sci-Hub 失败或被跳过时，才进入 `entitled_access`。
 
-机构下载后端（CARSI）是唯一可选的授权下载后端。除非 `PAPER_SEARCH_CARSI_ENABLED` 恰好是 `true`，它全局关闭；请求里的 `useEntitledAccess` 默认是 `true`，只能关掉这一层，不能绕过全局关闭。单次请求关掉它：
+机构下载后端（学校订阅下载）是唯一可选的授权下载后端。除非 `PAPER_SEARCH_SCHOOL_ENABLED` 恰好是 `true`，它全局关闭；请求里的 `useEntitledAccess` 默认是 `true`，只能关掉这一层，不能绕过全局关闭。单次请求关掉它：
 
 ```bash
 paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"10.xxxx/xxxxx","doi":"10.xxxx/xxxxx","title":"Paper title","useEntitledAccess":false}' --pretty
@@ -127,7 +127,7 @@ PDF 来源分组：
 - `open_access_sources`：bioRxiv、medRxiv、PMC、Europe PMC、CORE、OpenAIRE、Unpaywall、OpenAlex 的开放获取元数据、Semantic Scholar 的 openAccessPdf、出版社开放获取模式、IACR；
 - `scihub_sources`：Sci-Hub，单独标出，是开放渠道之后、机构下载之前默认开启的一层；它既不是开放获取，也不是机构授权。
 
-`metadata_entitled` 是给带 key 的数据库和出版社的元数据分类，不能当作本机的授权 PDF 后端。机构下载后端只通过 PaperSearch 固定的 `CarsiBackend` 接口调用；它由用户要求时用 `paper-search carsi install` 安装（见 `carsi-setup.md`），自带 MCP stdio 服务，不需要另装 MCP 包、全局 MCP 配置、常驻进程或端口。
+`metadata_entitled` 是给带 key 的数据库和出版社的元数据分类，不能当作本机的授权 PDF 后端。机构下载后端只通过 PaperSearch 固定的 `SchoolBackend` 接口调用；它由用户要求时用 `paper-search school install` 安装（见 `school-setup.md`），自带 MCP stdio 服务，不需要另装 MCP 包、全局 MCP 配置、常驻进程或端口。
 
 调用机构下载后端时固定用 `legal_only`（后端声明支持 `institutional_only` 时用它，跳过后端自己的公开来源竞速），并关闭后端内部的 Sci-Hub 和 Tor。`legal_only` 不等于 `entitled_only`：成功的结果也可能来自开放获取，不能当作学校授权的证明。除机构下载后端外，没有浏览器、WebVPN 或 EZProxy 兜底。
 

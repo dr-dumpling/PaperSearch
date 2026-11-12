@@ -18,7 +18,7 @@ interface IdentityCase {
   expected: string;
 }
 const cases = JSON.parse(
-  readFileSync(join(process.cwd(), "carsi/tests/fixtures/pdf_identity_cases.json"), "utf8"),
+  readFileSync(join(process.cwd(), "school/tests/fixtures/pdf_identity_cases.json"), "utf8"),
 ) as IdentityCase[];
 
 describe.each([...new Set(cases.map((c) => c.group))])("PDF identity: %s", (group) => {

@@ -43,7 +43,7 @@ export function apiKeySetupCommand(key: string): string {
 /**
  * Keys the settings window (`paper-search settings`, part of school subscription
  * downloads) can enter: every key and email above. Its list is
- * carsi/paper_search_carsi/assets/api_keys.json; a test keeps the two equal.
+ * school/paper_search_school/assets/api_keys.json; a test keeps the two equal.
  * (Elsevier's institution token, which only institutions get, stays in the terminal.)
  */
 export const SETTINGS_WINDOW_KEYS: ReadonlySet<string> = new Set([

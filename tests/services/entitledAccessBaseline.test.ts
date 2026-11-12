@@ -60,11 +60,11 @@ describe("authorized PDF retrieval boundary", () => {
   it("does not expose a native publisher token or backend-selection knobs", () => {
     expect(CONFIG_KEYS).not.toContain("WILEY_TDM_TOKEN");
     expect(CONFIG_KEYS).toContain("ELSEVIER_API_KEY");
-    expect(CONFIG_KEYS.filter((key) => key.includes("CARSI"))).toEqual([
-      "PAPER_SEARCH_CARSI_ENABLED",
-      "PAPER_SEARCH_CARSI_EXECUTABLE",
-      "PAPER_SEARCH_CARSI_DECLINED",
-      "PAPER_SEARCH_CARSI_AUTO_UPDATE",
+    expect(CONFIG_KEYS.filter((key) => key.includes("SCHOOL"))).toEqual([
+      "PAPER_SEARCH_SCHOOL_ENABLED",
+      "PAPER_SEARCH_SCHOOL_EXECUTABLE",
+      "PAPER_SEARCH_SCHOOL_DECLINED",
+      "PAPER_SEARCH_SCHOOL_AUTO_UPDATE",
     ]);
 
     expect(TOOLS.map((tool) => tool.name)).not.toContain("search_wiley");
@@ -86,13 +86,13 @@ describe("authorized PDF retrieval boundary", () => {
       "enableInstitutionalAccess",
       "institutionalProvider",
       "authorizedBackend",
-      "carsi",
+      "school",
     ]) {
       expect(tool!.inputSchema.properties).not.toHaveProperty(knob);
     }
   });
 
-  it("does not claim a CARSI readiness state without an injected snapshot", () => {
+  it("does not claim a school backend readiness state without an injected snapshot", () => {
     const profile = buildCapabilityProfile();
     const entitled = profile.entries.find(
       (entry) => entry.id === "entitled_access",
@@ -109,7 +109,7 @@ describe("authorized PDF retrieval boundary", () => {
         },
       }),
     );
-    expect(entitled?.reason).toMatch(/CARSI/i);
+    expect(entitled?.reason).toMatch(/school/i);
   });
 
   it("does not let publisher metadata keys masquerade as authorized PDF access", () => {
@@ -146,15 +146,15 @@ describe("authorized PDF retrieval boundary", () => {
     );
   });
 
-  it("keeps concrete CARSI MCP implementation imports behind the stable port", () => {
+  it("keeps concrete school backend MCP implementation imports behind the stable port", () => {
     const srcRoot = join(process.cwd(), "src");
     const adapterRoot = join(
       srcRoot,
       "capabilities",
       "pdf-discovery",
-      "carsi",
+      "school",
     );
-    // Judged by where an import leads, not by its spelling: "../carsi/runtime.js"
+    // Judged by where an import leads, not by its spelling: "../school/runtime.js"
     // from src/management/skills is the management layer's installer, not the adapter.
     const reachesAdapter = (filePath: string, specifier: string) => {
       const target = resolve(dirname(filePath), specifier);

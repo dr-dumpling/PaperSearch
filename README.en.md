@@ -72,7 +72,7 @@ Your AI first asks whether to install the PaperSearch command-line program; once
 
 ### 2. Add school subscription downloads during setup
 
-After "Start setup", your AI first asks whether to add [school subscription downloads](#1-school-subscription-downloads): full texts and supplementary files of subscription papers through your school account; it needs Chrome (installed too if missing) and downloads about 0.5 GB. It installs only after you agree, then asks for your school, sets it, and opens the settings window.
+After "Start setup", your AI first asks whether to add [school subscription downloads](#1-school-subscription-downloads): full texts and supplementary files of subscription papers through your school account; it needs Chrome (installed too if missing). It installs only after you agree, then asks for your school, sets it, and opens the settings window.
 
 - Don't want it? Say so and it is skipped for good; searching and open-access downloads work as before.
 - Servers without a screen are not asked.
@@ -161,29 +161,29 @@ Papers the open channels cannot get can come through your school's subscriptions
 Install:
 
 ```bash
-paper-search carsi install                # choose your school during installation
-paper-search carsi status --format text   # check that it is ready
+paper-search school install                # choose your school during installation
+paper-search school status --format text   # check that it is ready
 ```
 
 **Progress capsule**
 
-<p align="center"><img src="assets/carsi-capsule.en.webp" width="840" alt="Progress capsule: a small capsule shows the progress, hover for each paper, minimized to the Dock it keeps downloading, one click brings it back"></p>
+<p align="center"><img src="assets/school-capsule.en.webp" width="840" alt="Progress capsule: a small capsule shows the progress, hover for each paper, minimized to the Dock it keeps downloading, one click brings it back"></p>
 
 **Verification pages**
 
-<p align="center"><img src="assets/carsi-verify.en.webp" width="840" alt="Verification pages: when a verification page stops the download, it passes on its own, no clicks from you"></p>
+<p align="center"><img src="assets/school-verify.en.webp" width="840" alt="Verification pages: when a verification page stops the download, it passes on its own, no clicks from you"></p>
 
 **School sign-in**
 
-<p align="center"><img src="assets/carsi-signin.en.webp" width="840" alt="School sign-in: the institution login is clicked and your school filled in, on to your school login page"></p>
+<p align="center"><img src="assets/school-signin.en.webp" width="840" alt="School sign-in: the institution login is clicked and your school filled in, on to your school login page"></p>
 
 **Asks when needed**
 
-<p align="center"><img src="assets/carsi-attention.en.webp" width="840" alt="Asks when needed: the capsule turns amber for the school login; click to switch to the browser, or skip the paper"></p>
+<p align="center"><img src="assets/school-attention.en.webp" width="840" alt="Asks when needed: the capsule turns amber for the school login; click to switch to the browser, or skip the paper"></p>
 
 **Results**
 
-<p align="center"><img src="assets/carsi-finish.en.webp" width="840" alt="Results: skip a paper; the final card lists what was saved and why the rest wasn't; clicking a title opens it in your own browser"></p>
+<p align="center"><img src="assets/school-finish.en.webp" width="840" alt="Results: skip a paper; the final card lists what was saved and why the rest wasn't; clicking a title opens it in your own browser"></p>
 
 ### 2. API keys
 
@@ -241,14 +241,14 @@ Next on the list:
 4. **School sign-in worldwide**: the academic identity federations of Asia are supported; next come the US, the UK, Australia and the federations of European countries, then every country in eduGAIN; WebVPN, EZProxy and similar where possible.
 5. **Better paper search and full-text snippets**: learn from similar tools and improve how papers and passages are found.
 
-The full plan is in the [roadmap](docs/ROADMAP.zh.md) (Chinese); how it works inside is in the [architecture](docs/ARCHITECTURE.zh.md) (Chinese). Feature ideas are welcome as [issues](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) and pull requests; for failed downloads or publisher requests use the matching issue template, and to add publisher rules yourself see [carsi/CONTRIBUTING.md](carsi/CONTRIBUTING.md).
+The full plan is in the [roadmap](docs/ROADMAP.zh.md) (Chinese); how it works inside is in the [architecture](docs/ARCHITECTURE.zh.md) (Chinese). Feature ideas are welcome as [issues](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) and pull requests; for failed downloads or publisher requests use the matching issue template, and to add publisher rules yourself see [school/CONTRIBUTING.md](school/CONTRIBUTING.md).
 
 ## Acknowledgements
 
 - Thanks to the [LINUX DO community](https://linux.do/): the command-plus-Skill approach and workflow improvements came from discussion and open sharing there.
 - [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp): the project draws on its ideas, reworked into a standalone command.
 - [Dianel555/paper-search-mcp-nodejs](https://github.com/Dianel555/paper-search-mcp-nodejs) (MIT): the command started as an adaptation of its Node.js implementation.
-- [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf) (MIT): the institutional download backend (`carsi/`) draws on its architecture (CARSI and other federation sign-in, publisher site capture, session reuse, PDF capture).
+- [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf) (MIT): the institutional download backend (`school/`) draws on its architecture (CARSI and other federation sign-in, publisher site capture, session reuse, PDF capture).
 
 ## License
 

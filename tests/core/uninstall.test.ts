@@ -24,8 +24,8 @@ describe("paper-search uninstall", () => {
 
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), "paper-search-uninstall-"));
-    write(at(".local", "share", "paper-search-cli", "carsi-runtime", "venv", "python"));
-    write(at(".local", "share", "paper-search-cli", "carsi", "browser_profiles", "Cookies"));
+    write(at(".local", "share", "paper-search-cli", "school-runtime", "venv", "python"));
+    write(at(".local", "share", "paper-search-cli", "school", "browser_profiles", "Cookies"));
     write(at(".local", "share", "paper-search-cli", "runs", "1", "run.json"));
     write(at(".local", "share", "paper-search-cli", "skill-sync.json"));
     write(at(".config", "paper-search-cli", "config.json"), '{"EASYSCHOLAR_KEY":"k"}');

@@ -27,7 +27,7 @@ export async function exportFailureReport(options: {
     const child = spawn(options.command, ["report-export", "--output", resolve(options.output)], {
       stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
       env: Object.fromEntries(Object.entries(process.env).filter(([key]) =>
-        /^(PATH|HOME|USERPROFILE|SYSTEMROOT|WINDIR|TEMP|TMP|TMPDIR|LANG|LC_ALL|XDG_DATA_HOME|XDG_CONFIG_HOME|CARSI_DATA_DIR|CARSI_PYTHON|PYTHONPATH|OPENBLAS_NUM_THREADS)$/i.test(key))),
+        /^(PATH|HOME|USERPROFILE|SYSTEMROOT|WINDIR|TEMP|TMP|TMPDIR|LANG|LC_ALL|XDG_DATA_HOME|XDG_CONFIG_HOME|SCHOOL_DATA_DIR|SCHOOL_PYTHON|PYTHONPATH|OPENBLAS_NUM_THREADS)$/i.test(key))),
     });
     const chunks: Buffer[] = [];
     let size = 0;
@@ -46,7 +46,7 @@ export async function exportFailureReport(options: {
     });
     child.on("error", () => {
       clearTimeout(timer);
-      reject(new Error("无法启动学校订阅下载，请运行 paper-search carsi status 检查安装。"));
+      reject(new Error("无法启动学校订阅下载，请运行 paper-search school status 检查安装。"));
     });
     child.stdin.on("error", () => { /* EPIPE: close reports unsupported/failed backend. */ });
     child.on("close", (code) => {

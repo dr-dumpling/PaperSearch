@@ -46,7 +46,7 @@ paper-search config list --pretty
 2. 用户同意后运行 `paper-search uninstall --yes --format text`。有文件没删掉时，按输出提示请用户关掉进度窗口和下载用的 Chrome，再运行一次。
 3. 最后运行 `npm uninstall -g papersearch`（Windows PowerShell 用 `npm.cmd`）。
 
-只删学校订阅下载用 `paper-search carsi uninstall`（见 `carsi-setup.md`）。
+只删学校订阅下载用 `paper-search school uninstall`（见 `school-setup.md`）。
 
 ## 健康检查（doctor）
 
@@ -59,11 +59,11 @@ paper-search config list --pretty
 - `body_snippet_search`：Semantic Scholar 开放获取正文片段检索，需要 `SEMANTIC_SCHOLAR_API_KEY`。
 - `journal_metrics`：EasyScholar 期刊指标，需要 `EASYSCHOLAR_KEY`。
 - `pdf_discovery`：PDF 获取与下载，经来源自带的下载、元数据里的 PDF 地址、开放获取来源、机构库、Unpaywall，以及默认开启的 Sci-Hub 兜底。
-- `entitled_access`：可选的机构下载后端（CARSI）。机构下载后端（CARSI）是唯一可选的授权下载后端，默认关闭。`doctor`、交互式 `setup` 和真实冒烟测试会给出它的运行状态：`disabled`（未启用）、`absent`（找不到后端）、`incompatible`（后端版本不兼容）或 `available`（能连上）；离线的能力概况不启动后端，显示 `not_evaluated`。
+- `entitled_access`：可选的机构下载后端（学校订阅下载）。机构下载后端（学校订阅下载）是唯一可选的授权下载后端，默认关闭。`doctor`、交互式 `setup` 和真实冒烟测试会给出它的运行状态：`disabled`（未启用）、`absent`（找不到后端）、`incompatible`（后端版本不兼容）或 `available`（能连上）；离线的能力概况不启动后端，显示 `not_evaluated`。
 
 出版社或数据库的 key（记为 `metadata_entitled`）与 `entitled_access` 无关：它们只开放元数据或开放获取接口，不能当作本机的授权 PDF 后端。除机构下载后端外，没有浏览器、WebVPN 或 EZProxy 兜底。
 
-`PAPER_SEARCH_CARSI_ENABLED` 不是密钥，只有值恰好是 `true` 时才启用机构下载后端。单次请求的 `useEntitledAccess` 默认是 `true`，但只能关掉这一层，不能绕过全局关闭。一次下载失败只影响那一次，不改写全局的可用状态。
+`PAPER_SEARCH_SCHOOL_ENABLED` 不是密钥，只有值恰好是 `true` 时才启用机构下载后端。单次请求的 `useEntitledAccess` 默认是 `true`，但只能关掉这一层，不能绕过全局关闭。一次下载失败只影响那一次，不改写全局的可用状态。
 
 agent 做判断时读 JSON 输出；只有用户需要可读报告时才用 `--format text`。
 
@@ -139,15 +139,15 @@ paper-search smoke --mock --pretty
 
 `npm install -g .` 把全局命令链接到这个仓库目录，之后仓库重新编译，全局命令随之变化。要装一个固定的版本，先运行 `npm pack`，再 `npm install -g <生成的 .tgz>`。发布前或在本机全局安装本地构建前，用这条路径验证仓库。
 
-学校订阅下载（CARSI 后端）与 PaperSearch 本体分开更新，只在用户要求时安装：
+学校订阅下载后端与 PaperSearch 本体分开更新，只在用户要求时安装：
 
 ```bash
-paper-search carsi status --format text
-paper-search carsi install
+paper-search school status --format text
+paper-search school install
 paper-search doctor --pretty
 ```
 
-`install` 先检查本机有 Google Chrome，列出要下载的内容和位置，再准备它自己的 Python、安装后端，并启用它（`PAPER_SEARCH_CARSI_ENABLED=true`、`PAPER_SEARCH_CARSI_EXECUTABLE`）。PaperSearch 升级后，第一次用到学校订阅下载时，CLI 先自动更新扩展再下载（stderr 一行说明；另一个下载正在用扩展、或更新没成功时，这次用旧版本继续）；用户关掉自动更新（`PAPER_SEARCH_CARSI_AUTO_UPDATE=false`）时，`status` 会提示何时运行 `paper-search carsi update`。用户在别处维护的后端用 `paper-search config set PAPER_SEARCH_CARSI_EXECUTABLE <路径>` 指定。学校、浏览器（Google Chrome 或 ego）和账号见 `carsi-setup.md`；账号密码只在用户自己的浏览器里输入，不进聊天、配置、命令参数或日志。`doctor` 显示 `available` 只证明后端接口能用，不代表已登录学校或对某篇有权限。日常下载仍用 `paper-search download`、`paper-search run download_with_fallback` 或 `download_batch`，见 `browser-download.md`。
+`install` 先检查本机有 Google Chrome，列出要下载的内容和位置，再准备它自己的 Python、安装后端，并启用它（`PAPER_SEARCH_SCHOOL_ENABLED=true`、`PAPER_SEARCH_SCHOOL_EXECUTABLE`）。PaperSearch 升级后，第一次用到学校订阅下载时，CLI 先自动更新扩展再下载（stderr 一行说明；另一个下载正在用扩展、或更新没成功时，这次用旧版本继续）；用户关掉自动更新（`PAPER_SEARCH_SCHOOL_AUTO_UPDATE=false`）时，`status` 会提示何时运行 `paper-search school update`。用户在别处维护的后端用 `paper-search config set PAPER_SEARCH_SCHOOL_EXECUTABLE <路径>` 指定。学校、浏览器（Google Chrome 或 ego）和账号见 `school-setup.md`；账号密码只在用户自己的浏览器里输入，不进聊天、配置、命令参数或日志。`doctor` 显示 `available` 只证明后端接口能用，不代表已登录学校或对某篇有权限。日常下载仍用 `paper-search download`、`paper-search run download_with_fallback` 或 `download_batch`，见 `browser-download.md`。
 
 ## 配置检查
 
@@ -176,4 +176,4 @@ paper-search doctor --pretty
 
 `paper-search config set PAPER_SEARCH_UPDATE_NOTIFY false` 关闭自动检查和提醒；`true` 重新开启。此设置与胶囊/系统通知独立。`paper-search update check --format text` 可主动检查，关闭自动提醒后也可用；网络不可用时如实报告无法查询，不猜测最新版本。旧安装缺少该命令时只报告其版本，不伪造检查成功。
 
-看到提醒可以向用户说明有新版；未经授权，不执行提示中的升级命令。更新 CLI 包本体、已安装 Skill 同步、更新扩展（升级后第一次用到时自动进行，或 `paper-search carsi update`）是三个不同步骤。
+看到提醒可以向用户说明有新版；未经授权，不执行提示中的升级命令。更新 CLI 包本体、已安装 Skill 同步、更新扩展（升级后第一次用到时自动进行，或 `paper-search school update`）是三个不同步骤。

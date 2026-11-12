@@ -22,10 +22,10 @@ export const CONFIG_KEYS = [
     "CROSSREF_MAILTO",
     "OPENAIRE_API_KEY",
     "OPENALEX_API_KEY",
-    "PAPER_SEARCH_CARSI_ENABLED",
-    "PAPER_SEARCH_CARSI_EXECUTABLE",
-    "PAPER_SEARCH_CARSI_DECLINED",
-    "PAPER_SEARCH_CARSI_AUTO_UPDATE",
+    "PAPER_SEARCH_SCHOOL_ENABLED",
+    "PAPER_SEARCH_SCHOOL_EXECUTABLE",
+    "PAPER_SEARCH_SCHOOL_DECLINED",
+    "PAPER_SEARCH_SCHOOL_AUTO_UPDATE",
     "PAPER_SEARCH_SKILL_AUTO_UPDATE",
     "PAPER_SEARCH_UPDATE_NOTIFY",
     "LOG_LEVEL",
@@ -40,6 +40,41 @@ export const CONFIG_KEYS = [
     "SCHOLAR_MAX_RETRIES",
     "SCHOLAR_TIMEOUT_MS",
 ];
+/**
+ * School subscription downloads were named for CARSI, the first federation they
+ * supported, before 0.6.1. Their old keys are still read, from the config file and
+ * the environment, and taken as the new ones; the new key wins when both are set.
+ */
+export const LEGACY_CONFIG_KEYS = {
+    PAPER_SEARCH_CARSI_ENABLED: "PAPER_SEARCH_SCHOOL_ENABLED",
+    PAPER_SEARCH_CARSI_EXECUTABLE: "PAPER_SEARCH_SCHOOL_EXECUTABLE",
+    PAPER_SEARCH_CARSI_DECLINED: "PAPER_SEARCH_SCHOOL_DECLINED",
+    PAPER_SEARCH_CARSI_AUTO_UPDATE: "PAPER_SEARCH_SCHOOL_AUTO_UPDATE",
+};
+/** A key as the user or an older Skill names it: the old names give the new keys. */
+export function canonicalConfigKey(key) {
+    return LEGACY_CONFIG_KEYS[key] ?? key;
+}
+/** Old keys in the environment set the new ones this process reads, unless those are set. */
+export function applyLegacyEnvironment(env = process.env) {
+    for (const [legacy, key] of Object.entries(LEGACY_CONFIG_KEYS)) {
+        if (env[key] === undefined && env[legacy] !== undefined)
+            env[key] = env[legacy];
+    }
+}
+/** Rewrites a config file that still has old keys with the new ones; true when it did. */
+export function migrateLegacyConfigFile() {
+    const filePath = getConfigPath();
+    if (!existsSync(filePath))
+        return false;
+    const parsed = parseConfigFile(filePath);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+        return false;
+    if (!Object.keys(parsed).some((key) => key in LEGACY_CONFIG_KEYS))
+        return false;
+    writeUserConfig(readUserConfig());
+    return true;
+}
 const CONFIG_KEY_SET = new Set(CONFIG_KEYS);
 const APPLIED_FROM_USER_CONFIG = new Map();
 export function getConfigPath() {
@@ -58,9 +93,14 @@ export function readUserConfig() {
         throw configError(`Config file is not a JSON object: ${filePath}. ${CONFIG_FIX_HINT}`);
     }
     const config = {};
-    for (const [key, value] of Object.entries(parsed)) {
-        if (CONFIG_KEY_SET.has(key) && value !== undefined && value !== null) {
-            config[key] = String(value);
+    const entries = parsed;
+    for (const [key, value] of Object.entries(entries)) {
+        const name = canonicalConfigKey(key);
+        // An old key gives its new one only when the file does not have the new one.
+        if (name !== key && name in entries)
+            continue;
+        if (CONFIG_KEY_SET.has(name) && value !== undefined && value !== null) {
+            config[name] = String(value);
         }
     }
     return config;
@@ -138,7 +178,8 @@ export function initUserConfig(force = false) {
     writeUserConfig({});
     return { path: filePath, created: true };
 }
-export function setUserConfigValue(key, value) {
+export function setUserConfigValue(name, value) {
+    const key = canonicalConfigKey(name);
     assertConfigKey(key);
     const config = readUserConfig();
     config[key] = value;
@@ -146,7 +187,8 @@ export function setUserConfigValue(key, value) {
     followConfigWrite(key, value);
     return config;
 }
-export function unsetUserConfigValue(key) {
+export function unsetUserConfigValue(name) {
+    const key = canonicalConfigKey(name);
     assertConfigKey(key);
     const config = readUserConfig();
     delete config[key];
@@ -181,7 +223,8 @@ export function importEnvFile(filePath) {
     const parsed = dotenv.parse(readFileSync(filePath));
     const config = readUserConfig();
     const imported = [];
-    for (const [key, value] of Object.entries(parsed)) {
+    for (const [name, value] of Object.entries(parsed)) {
+        const key = canonicalConfigKey(name);
         if (!CONFIG_KEY_SET.has(key))
             continue;
         config[key] = value;

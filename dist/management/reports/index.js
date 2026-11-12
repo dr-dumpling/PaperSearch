@@ -8,9 +8,9 @@ export function renderDoctorTextReport(report) {
         `Missing keys: ${report.config.missing.length}`,
         "",
     ];
-    if (report.carsi) {
-        const extension = report.carsi;
-        lines.push(`School subscription downloads (CARSI): ${extension.complete ? (extension.enabled ? "installed" : "installed, not enabled") : extension.installed ? "install not finished" : "not installed"}`, ...extension.notes.map((note) => `  ${note}`), "");
+    if (report.school) {
+        const extension = report.school;
+        lines.push(`School subscription downloads: ${extension.complete ? (extension.enabled ? "installed" : "installed, not enabled") : extension.installed ? "install not finished" : "not installed"}`, ...extension.notes.map((note) => `  ${note}`), "");
     }
     if (report.skills) {
         lines.push(...renderSkillLines(report.skills), "");

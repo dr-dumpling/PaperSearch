@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import { sanitizeDoi } from "../../infrastructure/security/SecurityUtils.js";
 import { classifyFailureCode } from "../../infrastructure/runlog/failureClass.js";
-import { carsiShortReason } from "./carsi/index.js";
-import type { CarsiBackend, CarsiBatchPaper, CarsiBatchResults } from "./carsi/index.js";
+import { schoolShortReason } from "./school/index.js";
+import type { SchoolBackend, SchoolBatchPaper, SchoolBatchResults } from "./school/index.js";
 import type { DownloadBatchItemResult, DownloadBatchResult } from "./batch.js";
 import type { DownloadWithFallbackOptions, DownloadWithFallbackResult } from "./types.js";
 
@@ -42,7 +42,7 @@ export function supplementShortfall(item: DownloadBatchItemResult): string | und
  */
 export async function reportBatchResults(
   result: DownloadBatchResult,
-  backend: CarsiBackend | undefined,
+  backend: SchoolBackend | undefined,
   startedAt: number,
   folder: string,
 ): Promise<void> {
@@ -69,7 +69,7 @@ export async function reportBatchResults(
  */
 export async function asWindowBatch(
   options: DownloadWithFallbackOptions & { savePath: string },
-  backend: CarsiBackend | undefined,
+  backend: SchoolBackend | undefined,
   download: (options: DownloadWithFallbackOptions) => Promise<DownloadWithFallbackResult>,
 ): Promise<DownloadWithFallbackResult> {
   if (!backend?.reportBatchProgress) return download(options);
@@ -93,10 +93,10 @@ export async function asWindowBatch(
   return result;
 }
 
-export function batchResults(result: DownloadBatchResult, startedAt: number, folder: string): CarsiBatchResults {
+export function batchResults(result: DownloadBatchResult, startedAt: number, folder: string): SchoolBatchResults {
   const sources = new Map<string, number>();
   const details = new Map<string, number>();
-  const summary: CarsiBatchResults = {
+  const summary: SchoolBatchResults = {
     content: result.content,
     folder,
     started: Math.floor(startedAt / 1000),
@@ -152,7 +152,7 @@ export function batchPaper(
   item: DownloadBatchItemResult | undefined,
   waiting: "open" | "school" | undefined,
   content: DownloadBatchResult["content"],
-): Omit<CarsiBatchPaper, "index"> {
+): Omit<SchoolBatchPaper, "index"> {
   const paper = { doi: item?.doi ?? request.doi ?? "", title: item?.title ?? request.title ?? "", journal: item?.journal ?? "" };
   if (waiting || !item) return { ...paper, state: waiting ?? "open" };
   if (item.status !== "ok") return { ...paper, state: "failed", ...failure(item, content) };
@@ -169,9 +169,9 @@ export function batchPaper(
 function supplementsMissing(
   item: DownloadBatchItemResult,
   content: DownloadBatchResult["content"],
-): Pick<CarsiBatchResults["supplement_failures"][number], "cls" | "reason"> | undefined {
+): Pick<SchoolBatchResults["supplement_failures"][number], "cls" | "reason"> | undefined {
   const shortfall = content === "both" ? supplementShortfall(item) : undefined;
-  return shortfall ? { cls: classifyFailureCode(shortfall), reason: carsiShortReason(shortfall, "附录没下载成功") } : undefined;
+  return shortfall ? { cls: classifyFailureCode(shortfall), reason: schoolShortReason(shortfall, "附录没下载成功") } : undefined;
 }
 
 /** The way a main text came (and, for the open one, its source when not open access). */
@@ -186,14 +186,14 @@ function sourceLabel(item: DownloadBatchItemResult): [string, string?] {
 function failure(
   item: DownloadBatchItemResult,
   content: DownloadBatchResult["content"],
-): Pick<CarsiBatchResults["failures"][number], "cls" | "reason"> {
+): Pick<SchoolBatchResults["failures"][number], "cls" | "reason"> {
   if (content === "supplements") {
     const code = item.supplements?.find((file) => file.status !== "saved" && file.reason)?.reason;
-    return { cls: classifyFailureCode(code), reason: carsiShortReason(code, "附录没下载成功") };
+    return { cls: classifyFailureCode(code), reason: schoolShortReason(code, "附录没下载成功") };
   }
   const entitled = [...item.attempts].reverse().find((attempt) => attempt.stage === "entitled_access");
   if (entitled && (entitled.status === "error" || entitled.code === "batch_stopped")) {
-    return { cls: classifyFailureCode(entitled.code), reason: carsiShortReason(entitled.code) };
+    return { cls: classifyFailureCode(entitled.code), reason: schoolShortReason(entitled.code) };
   }
   // Institutional access never ran for this item.
   return item.doi && sanitizeDoi(item.doi).valid

@@ -1,4 +1,4 @@
-import type { CarsiBackend, CarsiBatchPaper } from "./carsi/index.js";
+import type { SchoolBackend, SchoolBatchPaper } from "./school/index.js";
 /** How soon a report that did not get through goes again, and how many times in a row (about a minute). */
 export declare const PAPERS_RETRY_MS = 2000;
 /**
@@ -17,8 +17,8 @@ export declare class PaperList {
     private retry?;
     private retries;
     private finished;
-    constructor(backend: CarsiBackend | undefined, id: string, folder: string, papers: ReadonlyArray<Omit<CarsiBatchPaper, "index">>, retryMs?: number);
-    set(offset: number, paper: Omit<CarsiBatchPaper, "index">): void;
+    constructor(backend: SchoolBackend | undefined, id: string, folder: string, papers: ReadonlyArray<Omit<SchoolBatchPaper, "index">>, retryMs?: number);
+    set(offset: number, paper: Omit<SchoolBatchPaper, "index">): void;
     /** ``last``: the batch's final list, which may start the backend for itself. */
     send(last?: boolean): Promise<void>;
     /**

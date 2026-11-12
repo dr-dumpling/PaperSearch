@@ -130,7 +130,7 @@ describe("schemas", () => {
         paperId: "10.1000/example",
         institutional_access: true,
         authorizedBackend: "native",
-        carsi: true,
+        school: true,
       }),
     ).toEqual({
       source: "crossref",

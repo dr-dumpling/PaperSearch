@@ -91,7 +91,7 @@ describe("skill CLI commands", () => {
     const binDir = join(tempRoot, "bin");
     mkdirSync(binDir, { recursive: true });
     writeFileSync(
-      join(binDir, "paper-search-carsi"),
+      join(binDir, "paper-search-school"),
       `#!/bin/sh\nprintf spawned >> ${JSON.stringify(marker)}\nexit 1\n`,
       {
         mode: 0o755,
@@ -102,7 +102,7 @@ describe("skill CLI commands", () => {
       ["smoke", "--mock", "--skills-root", tempRoot, "--pretty"],
       {
         PATH: binDir,
-        PAPER_SEARCH_CARSI_ENABLED: "true",
+        PAPER_SEARCH_SCHOOL_ENABLED: "true",
       },
     );
     expect(result.status).toBe(0);

@@ -5,20 +5,20 @@ const METADATA_FREE_SOURCES = getCapabilityProfileSources("metadata_free");
 const METADATA_ENTITLED_SOURCES = getCapabilityProfileSources("metadata_entitled");
 const OPEN_ACCESS_SOURCES = getCapabilityProfileSources("pdf_open_access");
 const SCIHUB_SOURCES = getCapabilityProfileSources("pdf_scihub");
-const CARSI_BACKEND_SOURCE = "carsi";
+const SCHOOL_BACKEND_SOURCE = "school";
 const METADATA_KEY_BY_SOURCE = getCapabilityProfileConfigKeysBySource([
     "metadata_entitled",
 ]);
 export function buildCapabilityProfile(options = {}) {
     const configuredKeys = configuredConfigKeys();
-    const carsi = carsiCapabilitySnapshot(options.carsiReadiness);
+    const school = schoolCapabilitySnapshot(options.schoolReadiness);
     const entries = [
         metadataSearchEntry(configuredKeys),
         citationExpansionEntry(),
         bodySnippetSearchEntry(configuredKeys),
         journalMetricsEntry(configuredKeys),
-        pdfDiscoveryEntry(carsi),
-        entitledAccessEntry(carsi),
+        pdfDiscoveryEntry(school),
+        entitledAccessEntry(school),
     ];
     return {
         ok: entries.some((entry) => entry.status === "available" || entry.status === "degraded"),
@@ -88,49 +88,49 @@ function keySetup(key) {
     const signupUrl = apiKeySignupUrl(key);
     return { key, ...(signupUrl ? { signupUrl } : {}), command: apiKeySetupCommand(key) };
 }
-function pdfDiscoveryEntry(carsi) {
+function pdfDiscoveryEntry(school) {
     return {
         id: "pdf_discovery",
         status: "available",
-        reason: `Open-access PDF discovery and the Sci-Hub fallback stage are available; ${carsi.reason}`,
+        reason: `Open-access PDF discovery and the Sci-Hub fallback stage are available; ${school.reason}`,
         configured: [
             ...OPEN_ACCESS_SOURCES,
-            ...carsi.configured,
+            ...school.configured,
             ...SCIHUB_SOURCES,
         ],
-        missing: carsi.missing,
+        missing: school.missing,
         sourceGroups: {
             open_access_sources: OPEN_ACCESS_SOURCES,
-            entitled_access_sources: carsi.configured,
-            missing_entitled_access_sources: carsi.missing,
+            entitled_access_sources: school.configured,
+            missing_entitled_access_sources: school.missing,
             scihub_sources: SCIHUB_SOURCES,
         },
     };
 }
-function entitledAccessEntry(carsi) {
+function entitledAccessEntry(school) {
     return {
         id: "entitled_access",
-        status: carsi.status,
-        reason: `${carsi.reason} Publisher metadata keys do not enable entitled PDF retrieval.`,
-        configured: carsi.configured,
-        missing: carsi.missing,
+        status: school.status,
+        reason: `${school.reason} Publisher metadata keys do not enable entitled PDF retrieval.`,
+        configured: school.configured,
+        missing: school.missing,
         sourceGroups: {
-            configured_sources: carsi.configured,
-            missing_sources: carsi.missing,
+            configured_sources: school.configured,
+            missing_sources: school.missing,
         },
         readiness: {
-            state: carsi.state,
-            code: carsi.code,
+            state: school.state,
+            code: school.code,
         },
     };
 }
-function carsiCapabilitySnapshot(readiness) {
+function schoolCapabilitySnapshot(readiness) {
     if (!readiness) {
         return {
             state: "not_evaluated",
             code: "not_evaluated",
             status: "unavailable",
-            reason: "CARSI readiness was not evaluated in this capability snapshot.",
+            reason: "School backend readiness was not evaluated in this capability snapshot.",
             configured: [],
             missing: [],
         };
@@ -141,8 +141,8 @@ function carsiCapabilitySnapshot(readiness) {
                 state: readiness.state,
                 code: readiness.code,
                 status: "available",
-                reason: "The optional CARSI backend is enabled and contract-compatible.",
-                configured: [CARSI_BACKEND_SOURCE],
+                reason: "The optional school backend is enabled and contract-compatible.",
+                configured: [SCHOOL_BACKEND_SOURCE],
                 missing: [],
             };
         case "absent":
@@ -150,16 +150,16 @@ function carsiCapabilitySnapshot(readiness) {
                 state: readiness.state,
                 code: readiness.code,
                 status: "unavailable",
-                reason: "The optional CARSI backend executable is not available.",
+                reason: "The optional school backend executable is not available.",
                 configured: [],
-                missing: [CARSI_BACKEND_SOURCE],
+                missing: [SCHOOL_BACKEND_SOURCE],
             };
         case "incompatible":
             return {
                 state: readiness.state,
                 code: readiness.code,
                 status: "unavailable",
-                reason: "The optional CARSI backend is not contract-compatible.",
+                reason: "The optional school backend is not contract-compatible.",
                 configured: [],
                 missing: [],
             };
@@ -168,7 +168,7 @@ function carsiCapabilitySnapshot(readiness) {
                 state: readiness.state,
                 code: readiness.code,
                 status: "unavailable",
-                reason: "The optional CARSI backend integration is disabled.",
+                reason: "The optional school backend integration is disabled.",
                 configured: [],
                 missing: [],
             };
