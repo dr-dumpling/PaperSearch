@@ -128,9 +128,10 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 
 ### 1. 学校订阅下载
 
-开放渠道下不到的论文，可以借你学校的订阅来下：程序经你学校所属的学术身份联盟登录出版社，用学校账号下载。配置时只要说出学校名称（中文、英文或当地语言都行），程序会自己查出学校属于哪个联盟。
+开放渠道下不到的论文，可以借你学校的订阅来下：程序经你学校所属的学术身份联盟登录出版社，用学校账号下载。配置时只要说出学校名称，即可登录下载非OA文献。
 
-各国的学术身份联盟通过 [eduGAIN](https://edugain.org/) 互联，出版社借此认可各国学校的账号；没有加入本国联盟的学校，不少接入了 [OpenAthens](https://www.openathens.net/) 机构登录服务，程序也能经它登录。
+1.通过 [eduGAIN](https://edugain.org/) 互联，如中国CARSI、香港HKAF，新加坡SGAF等；
+2.没有加入本国联盟的学校，有 [OpenAthens](https://www.openathens.net/) 权限的，也能经它登录。
 
 **支持的学术身份联盟**（第一阶段：亚洲）
 
@@ -144,10 +145,8 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 | 马来西亚 | SIFULAN | SIFULAN Malaysian Access Federation |
 | 未加入本国联盟的学校（东南亚多数大学等） | OpenAthens | OpenAthens 机构登录服务 |
 
-- 每个联盟的支持情况和已实测的学校，见 [学术联盟支持表](skills/paper-search/references/federation-support.md)。
+- 每个联盟的支持情况，见 [学术联盟支持表](skills/paper-search/references/federation-support.md)。
 - 计划中：美国（InCommon）、英国（UK federation）、澳大利亚（AAF）、欧洲各国联盟，之后是 eduGAIN 里的其他国家，见 [路线图](docs/ROADMAP.zh.md)。
-- 学校没有加入任何联盟、也没有接入 OpenAthens（只能用校园网、VPN 或图书馆代理）的，暂时用不了。
-- 能不能下到某篇文章，还要看学校有没有订阅、出版社有没有给学校开通学校账号登录；没开通的，程序会写明原因。
 
 - **学校账号就能用**：不用另外申请 key；出版社 API key 只覆盖 Elsevier、Springer 两家。
 - **深度适配出版社**：深度优化了下载的通用流程，并且针对 30 多家出版社逐家写了专门规则，机构登录入口在哪、PDF 和补充材料怎么取，都按各自出版社的实际情况来，下载更准、更少漏篇。优化的出版社主要有：
