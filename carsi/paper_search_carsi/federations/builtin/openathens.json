@@ -1,0 +1,21 @@
+{
+  "code": "openathens",
+  "name": "OpenAthens",
+  "country": "",
+  "kind": "service",
+  "secondary": true,
+  "openathens_entries": true,
+  "registration_authorities": [
+    "https://openathens.net"
+  ],
+  "chooser_labels": [
+    "OpenAthens Federation"
+  ],
+  "chooser_pattern": "\\bOpenAthens\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "",
+  "school_login_pages": [
+    "https://login.openathens.net/auth/*/o/"
+  ]
+}

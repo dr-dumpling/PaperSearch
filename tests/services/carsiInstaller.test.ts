@@ -219,7 +219,7 @@ describe("paper-search carsi install", () => {
       expect.stringMatching(/^python -c import json\nfrom paper_search_carsi\.browser/),
       "paper-search-carsi config set browser_backend chrome",
       expect.stringMatching(/^python -c import json\nfrom paper_search_carsi\.config/),
-      "paper-search-carsi setup --carsi --institution 红木兰大学",
+      "paper-search-carsi setup --institution 红木兰大学",
       "paper-search-carsi config get progress_notify",
     ]);
     const record = JSON.parse(readFileSync(join(m.root, "install.json"), "utf8"));
@@ -390,43 +390,53 @@ describe("paper-search carsi install", () => {
     expect(m.config.PAPER_SEARCH_CARSI_EXECUTABLE).toBe("/repo/carsi/bin/paper-search-carsi");
   });
 
-  it("lets the user pick one of several CARSI schools, saved by its entityID", async () => {
+  it("lets the user pick one of the schools it could be, saved by its entityID", async () => {
     const candidates = [
-      { name: "示例大学", name_en: "Example University", domain: "example.edu.cn", entity_id: "https://idp.example.edu.cn/idp/shibboleth" },
-      { name: "示例师范大学", name_en: "Example Normal University", domain: "example-normal.edu.cn", entity_id: "https://idp.example-normal.edu.cn/idp/shibboleth" },
+      { name: "示例大学", name_en: "Example University", federation: "CARSI", domain: "example.edu.cn", entity_id: "https://idp.example.edu.cn/idp/shibboleth" },
+      { name: "The Example University", name_en: "The Example University", federation: "HKAF", domain: "example.edu.hk", entity_id: "https://idp.example.edu.hk/idp/shibboleth" },
     ];
     const m = fakeMachine({
-      answers: ["示例", "2"],
+      answers: ["Example University", "2"],
       respond: (name, args) => {
-        if (name !== "paper-search-carsi" || args[0] !== "setup" || args[1] !== "--carsi" || !args[3]) return undefined;
-        if (args[3] === "示例") return { code: 1, stdout: JSON.stringify({ error: "carsi_school_ambiguous", count: 2, candidates }), stderr: "" };
-        return { code: 0, stdout: JSON.stringify({ updated: true, settings: { carsi_institution_hint: "示例师范大学" } }), stderr: "" };
+        if (name !== "paper-search-carsi" || args[0] !== "setup" || args[1] !== "--institution" || !args[2]) return undefined;
+        if (args[2] === "Example University") return { code: 1, stdout: JSON.stringify({ error: "school_ambiguous", count: 2, candidates }), stderr: "" };
+        return { code: 0, stdout: JSON.stringify({ updated: true, settings: { carsi_institution_hint: "The Example University" } }), stderr: "" };
       },
     });
     const outcome = await installCarsi(m.host, YES, m.context);
-    expect(outcome.record?.school).toBe("示例师范大学");
-    expect(m.calls).toContain("paper-search-carsi setup --carsi --institution https://idp.example-normal.edu.cn/idp/shibboleth");
-    expect(m.logs).toContain("  2. 示例师范大学（Example Normal University，example-normal.edu.cn）");
+    expect(outcome.record?.school).toBe("The Example University");
+    expect(m.calls).toContain("paper-search-carsi setup --institution https://idp.example.edu.hk/idp/shibboleth");
+    expect(m.logs).toContain("  1. 示例大学（Example University，CARSI，example.edu.cn）");
+    expect(m.logs).toContain("  2. The Example University（HKAF，example.edu.hk）");
   });
 
-  it("asks again for a school that is not a CARSI member, and stops on an unreachable list", async () => {
+  it("asks again for a school found nowhere, and stops on unreachable lists or an unsupported federation", async () => {
     const m = fakeMachine({
       answers: ["Nowhere", "示例大学"],
       respond: (name, args) => {
-        if (name !== "paper-search-carsi" || args[0] !== "setup" || !args[3]) return undefined;
-        return args[3] === "Nowhere"
-          ? { code: 1, stdout: JSON.stringify({ error: "carsi_school_not_found", query: "Nowhere" }), stderr: "" }
+        if (name !== "paper-search-carsi" || args[0] !== "setup" || !args[2]) return undefined;
+        return args[2] === "Nowhere"
+          ? { code: 1, stdout: JSON.stringify({ error: "school_not_found", query: "Nowhere" }), stderr: "" }
           : { code: 0, stdout: JSON.stringify({ settings: { carsi_institution_hint: "示例大学" } }), stderr: "" };
       },
     });
     expect((await installCarsi(m.host, YES, m.context)).record?.school).toBe("示例大学");
     const offline = fakeMachine({
-      respond: (name, args) => (name === "paper-search-carsi" && args[0] === "setup" && args[3]
-        ? { code: 1, stdout: JSON.stringify({ error: "carsi_school_list_unavailable", detail: "ConnectionError: timed out" }), stderr: "" }
+      respond: (name, args) => (name === "paper-search-carsi" && args[0] === "setup" && args[2]
+        ? { code: 1, stdout: JSON.stringify({ error: "school_list_unavailable", detail: "ConnectionError: timed out" }), stderr: "" }
         : undefined),
     });
     await expect(installCarsi(offline.host, YES, offline.context)).rejects.toMatchObject({
-      step: "school", message: "取不到 CARSI 学校列表（ConnectionError: timed out）：稍后再运行本命令，或加 --skip-school 先跳过",
+      step: "school", message: "取不到学校名单（ConnectionError: timed out）：稍后再运行本命令，或加 --skip-school 先跳过",
+    });
+    const elsewhere = fakeMachine({
+      respond: (name, args) => (name === "paper-search-carsi" && args[0] === "setup" && args[2]
+        ? { code: 1, stdout: JSON.stringify({ error: "federation_not_supported",
+          found: [{ name: "Northern University", registration_authority: "http://ukfederation.org.uk" }] }), stderr: "" }
+        : undefined),
+    });
+    await expect(installCarsi(elsewhere.host, YES, elsewhere.context)).rejects.toMatchObject({
+      step: "school", message: "找到了“红木兰大学”，但它所属的联盟还不支持：Northern University（http://ukfederation.org.uk）",
     });
   });
 

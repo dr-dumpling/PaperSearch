@@ -117,8 +117,7 @@ class SageAdapter(PublisherAdapter):
                        for value in redirects)
             if (target.scheme == "https" and target.hostname == "journals.sagepub.com"
                     and target.path == "/action/ssostart" and result is not None
-                    and (d.config.get("publisher_institution_federation") != "carsi"
-                         or d._manual_institution_target_allowed(target.geturl()))
+                    and (d.federation is None or d._manual_institution_target_allowed(target.geturl()))
                     and redirects and (home or any(d._url_matches_record(value, result.doi) for value in redirects))):
                 if home:
                     query["redirectUri"] = [article]
@@ -137,8 +136,7 @@ class SageAdapter(PublisherAdapter):
         d = self.d
         article = urlparse(str(page.url))._replace(fragment="").geturl()
         target = f"{SSO_START}?{urlencode({'redirectUri': article})}"
-        if result is None or (d.config.get("publisher_institution_federation") == "carsi"
-                              and not d._manual_institution_target_allowed(target)):
+        if result is None or (d.federation is not None and not d._manual_institution_target_allowed(target)):
             return False
         open_page(page, target, timeout_ms=30_000)
         d._event(result, "sso_entry_clicked", "sage-institution-address")

@@ -18,13 +18,20 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "network_proxy": "",
     "proxy_pool": "",  # 逗号分隔的代理列表；非空时批量下载按代理轮换出口 IP
     "carsi_enabled": False,
-    # The user's school. `setup --carsi --institution ...` saves the Chinese and English
-    # names and the SAML entityID (https://idp.<school>/idp/shibboleth) from the CARSI
-    # member list; pickers select the entry carrying the entityID first, then by name.
+    # The user's school, of any federation (the keys keep their first, CARSI names).
+    # `setup --institution ...` finds it in the federations' member lists and saves its
+    # names (CARSI: Chinese and English), its SAML entityID, the hosts of its login
+    # pages and its federation (publisher_institution_federation: carsi, hkaf, ...);
+    # pickers select the entry carrying the entityID first, then by name.
     # Empty: the user picks in the window.
     "carsi_idp_name": "",
     "carsi_idp_name_en": "",
     "idp_entity_id": "",
+    "idp_login_hosts": [],
+    # The school's own login pages on a service shared by many schools (OpenAthens).
+    "idp_login_pages": [],
+    # The school's own domains: every page under them is the school's side of the login.
+    "idp_domains": [],
     "connect_timeout": 15,
     "read_timeout": 30,
     "request_delay_min": 2.0,

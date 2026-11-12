@@ -1,0 +1,22 @@
+{
+  "code": "carsi",
+  "name": "CARSI",
+  "country": "CN",
+  "registration_authorities": [
+    "https://www.carsi.edu.cn"
+  ],
+  "chooser_labels": [
+    "China CERNET Federation (CARSI)",
+    "China (CARSI)"
+  ],
+  "chooser_pattern": "\\bCARSI\\b",
+  "discovery_hosts": [
+    "ds.carsi.edu.cn"
+  ],
+  "service_domains": [
+    "carsi.edu.cn"
+  ],
+  "metadata_url": "",
+  "member_list": "carsi",
+  "without_school": true
+}

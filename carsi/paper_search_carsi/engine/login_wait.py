@@ -2,6 +2,10 @@
 
 Only events inside the dedicated login document are counted. No field values,
 key contents, system input hooks or foreground-window observations are used.
+
+The stop has a limit (``idle_limit``, the login wait): once that long has passed
+since the user's last input, the time since that input counts again, so a stray
+click on the login page cannot hold a batch forever (the user, 2026-11-11).
 """
 from __future__ import annotations
 
@@ -50,10 +54,13 @@ _REMOVE_ACTIVITY = """token => {
 
 
 class LoginWait:
-    def __init__(self, deadline: float, clock: Callable[[], float], *, attribute: str = ""):
+    def __init__(self, deadline: float, clock: Callable[[], float], *, attribute: str = "",
+                 idle_limit: float | None = None):
         self._deadline = deadline
         self._clock = clock
         self._paused_at: float | None = None
+        self._last_input: float | None = None
+        self._idle_limit = idle_limit
         self._token = uuid4().hex
         self._frames: dict[Any, int] = {}
         self.user_step = False
@@ -76,8 +83,22 @@ class LoginWait:
 
     def take_over(self) -> None:
         """An explicit capsule request counts only during a human login step."""
-        if self.user_step and not self.paused:
-            self._paused_at = self._clock()
+        if self.user_step:
+            now = self._clock()
+            self._last_input = now
+            if not self.paused:
+                self._paused_at = now
+
+    def _resume_when_idle(self) -> None:
+        """No input for ``idle_limit``: the stop ends at the last input, and the
+        time since then counts as waiting."""
+        if self._paused_at is None or self._idle_limit is None or self._last_input is None:
+            return
+        now = self._clock()
+        if now - self._last_input >= self._idle_limit:
+            self._account()
+            self._deadline -= now - self._last_input
+            self._paused_at = None
 
     def exclude_elapsed(self, seconds: float) -> None:
         """A nested manual verification already accounted for this time."""
@@ -103,6 +124,7 @@ class LoginWait:
             self._frames[frame] = count
             if count > 0 and count != previous:
                 self.take_over()
+        self._resume_when_idle()
 
     def _remove_listeners(self) -> None:
         frames, self._frames = self._frames, {}

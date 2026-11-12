@@ -40,10 +40,23 @@ def _data_dir() -> Path:
 # setup
 # ---------------------------------------------------------------------------
 
+def _federation_code(cfg: dict[str, Any]) -> str:
+    """The configured federation's code; "carsi" for the old switch alone."""
+    from .federations import configured
+
+    federation = configured(cfg)
+    return federation.code if federation else ("carsi" if cfg.get("carsi_enabled") else "")
+
+
 def _institutional_summary(cfg: dict[str, Any]) -> dict[str, Any]:
+    from .federations import by_code
+
+    federation = by_code(_federation_code(cfg))
     return {
         "data_dir": str(_data_dir()),
-        "federation": cfg.get("publisher_institution_federation") or ("carsi" if cfg.get("carsi_enabled") else ""),
+        "federation": federation.code if federation else "",
+        "federation_name": federation.name if federation else "",
+        "federation_country": federation.country if federation else "",
         "carsi_enabled": bool(cfg.get("carsi_enabled")),
         "carsi_institution_hint": cfg.get("carsi_idp_name") or "",
         "carsi_institution_en": cfg.get("carsi_idp_name_en") or "",
@@ -81,14 +94,14 @@ def _environment_check(cfg: dict[str, Any]) -> tuple[bool, list[dict[str, str]],
     except Exception as exc:  # pragma: no cover - import problems are themselves a finding
         add("browser_backend", False, f"{type(exc).__name__}")
 
-    federation = cfg.get("publisher_institution_federation") or ("carsi" if cfg.get("carsi_enabled") else "")
-    add("institutional_route", federation == "carsi", federation or "none; run: setup --carsi")
+    federation = _federation_code(cfg)
+    add("institutional_route", bool(federation), federation or 'none; run: setup --institution "<your school>"')
     school = str(cfg.get("carsi_idp_name") or "").strip()
-    if federation == "carsi" and school:
-        # A name alone (saved before setup used the CARSI list) is not found in English-only pickers.
+    if federation and school:
+        # A name alone (saved before setup used the member lists) is not found in English-only pickers.
         complete = bool(cfg.get("idp_entity_id") and cfg.get("carsi_idp_name_en"))
-        add("carsi_school", complete,
-            school if complete else f'only the name is saved; run: setup --carsi --institution "{school}"')
+        add("school", complete,
+            school if complete else f'only the name is saved; run: setup --institution "{school}"')
     for item in ("output_dir", "cache_dir"):
         value = cfg.get(item) or ""
         add(item, bool(value), value)
@@ -123,8 +136,37 @@ def _set_carsi_school(cfg: dict[str, Any], query: str) -> dict[str, Any] | None:
         return {"error": "carsi_school_ambiguous", "query": query, "count": len(candidates),
                 "candidates": [s.summary() for s in candidates[:10]],
                 "hint": "run again with the full name, the domain or the entityID of one candidate"}
-    cfg.update(carsi_idp_name=school.name, carsi_idp_name_en=school.name_en, idp_entity_id=school.entity_id)
+    cfg.update(carsi_idp_name=school.name, carsi_idp_name_en=school.name_en, idp_entity_id=school.entity_id,
+               idp_login_hosts=[], idp_login_pages=[], idp_domains=[school.domain] if school.domain else [])
     return None
+
+
+def _find_school(cfg: dict[str, Any], query: str, also: list[str]) -> dict[str, Any] | None:
+    """Save the school the user named, any federation (``federations.schools``);
+    the problem to report when there is not exactly one."""
+    from .federations import schools
+
+    found = schools.find(query, cfg, _data_dir(), also=also)
+    if found.school is not None:
+        schools.save(cfg, found.school)
+        return None
+    if found.candidates:
+        return {"error": "school_ambiguous", "query": query, "count": len(found.candidates),
+                "candidates": [s.summary() for s in found.candidates],
+                "hint": "ask the user which one, then run again with its entity_id as --institution"}
+    if found.unsupported:
+        return {"error": "federation_not_supported", "query": query,
+                "found": [{"name": n, "registration_authority": ra} for n, ra in found.unsupported[:10]],
+                "hint": "the school signs in through a federation not supported yet"}
+    if found.unavailable:
+        return {"error": "school_list_unavailable", "query": query, "sources": found.unavailable,
+                "hint": "retry later; `setup --carsi` without --institution leaves the school to the login window"}
+    return {"error": "school_not_found", "query": query,
+            "reasons": ["the name is written differently from the federations' lists",
+                        "the school has not joined an identity federation or OpenAthens: it gives access by campus "
+                        "network, VPN or a library proxy only, and school subscription download cannot sign in for it"],
+            "hint": "try the school's official name in its own language or in English (--also-name for another name), "
+                    "its web domain or its entityID; if it is still not found, tell the user the second reason"}
 
 
 def _cmd_setup(args: argparse.Namespace) -> int:
@@ -155,16 +197,13 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         cfg["carsi_enabled"] = False
         changed = True
     if args.institution:
-        if cfg.get("publisher_institution_federation") == "carsi":
-            problem = _set_carsi_school(cfg, args.institution)
-            if problem:
-                print(json.dumps(problem, ensure_ascii=False, indent=2))
-                return 1
-        else:
-            name = args.institution.strip()
-            if name != cfg.get("carsi_idp_name"):
-                # The English name and entityID belong to the previous school.
-                cfg.update(carsi_idp_name=name, carsi_idp_name_en="", idp_entity_id="")
+        # With --carsi only CARSI's member list is asked; otherwise every
+        # supported federation, and the school's federation is saved with it.
+        problem = (_set_carsi_school(cfg, args.institution) if args.carsi
+                   else _find_school(cfg, args.institution, list(args.also_name or ())))
+        if problem:
+            print(json.dumps(problem, ensure_ascii=False, indent=2))
+            return 1
         changed = True
 
     if args.output_dir:
@@ -246,7 +285,7 @@ def _cmd_login(args: argparse.Namespace) -> int:
         return 2
     if not _any_institutional_configured(load_config()):
         print(json.dumps({"success": False, "error": "school_not_configured",
-                          "hint": 'run: setup --carsi --institution "<your school>"'}, ensure_ascii=False))
+                          "hint": 'run: setup --institution "<your school>"'}, ensure_ascii=False))
         return 2
     import shutil
     import tempfile
@@ -526,9 +565,13 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("run", help="start the MCP stdio server").set_defaults(func=_cmd_run)
 
     st = sub.add_parser("setup", help="show or change institutional access settings")
-    st.add_argument("--carsi", action="store_true", help="use the CARSI federation; without --institution the school is chosen in the login window")
-    st.add_argument("--no-carsi", action="store_true")
-    st.add_argument("--institution", help="optional: your school. With CARSI it is looked up in the CARSI member list (Chinese or English name, domain or entityID) and its names and entityID are saved; publisher pickers then select only that school. Leave empty to pick by hand")
+    st.add_argument("--carsi", action="store_true", help="use the CARSI federation; with --institution only CARSI's member list is asked; without it the school is chosen in the login window")
+    st.add_argument("--no-carsi", action="store_true", help="no federation: the institution is chosen by hand")
+    st.add_argument("--institution", help="your school: its name in its own language or English, its domain or its entityID. "
+                    "It is looked up in the supported federations' member lists; its federation, names, entityID and "
+                    "login hosts are saved and publisher pickers then select only that school")
+    st.add_argument("--also-name", action="append", metavar="NAME",
+                    help="another name of the same school (its official English name when --institution is in another language); repeatable")
     st.add_argument("--list-carsi-schools", nargs="?", const="", metavar="KEYWORD", help="print CARSI member schools, optionally only those matching KEYWORD")
     st.add_argument("--output-dir")
     st.add_argument("--check", action="store_true", help="environment check; exit 2 when something is missing")

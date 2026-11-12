@@ -132,7 +132,7 @@ paper-search skills update
 | `paper-search run <工具>` | 精确调用某个工具，参数用 `--arg` 或 `--json-args` |
 | `paper-search failures` | 汇总下载失败的原因 |
 | `paper-search update check` | 检查是否有新版本 |
-| `paper-search carsi` | 学校订阅下载（CARSI）的安装、状态、更新、卸载 |
+| `paper-search carsi` | 学校订阅下载的安装、状态、更新、卸载 |
 | `paper-search setup` / `config` | 配置 key、Skill 和扩展 |
 | `paper-search settings` | 打开设置窗口：下载文件夹、等待和提醒、API key（需装学校订阅下载、有图形界面） |
 | `paper-search uninstall` | 卸载：先列出要删的内容（学校订阅下载和登录状态、运行记录、配置和 API key、各 AI 工具里的 Skill），确认后一次删完；下载的论文不动；`--dry-run` 只列出不删 |
@@ -156,7 +156,7 @@ paper-search skills update
 | `PAPER_SEARCH_CARSI_AUTO_UPDATE` | 设为 `false` 时，升级后不再自动更新学校订阅下载扩展，改为自己运行 `paper-search carsi update` | 开启 |
 | `PAPER_SEARCH_UPDATE_NOTIFY` | 设为 `false` 时，不再提示有新版本 | 开启 |
 | `PAPER_SEARCH_CARSI_DECLINED` | 设为 `true` 时，AI 不再主动建议安装学校订阅下载（你说过不装时它会自己设上）；你要装时直接说即可 | 未设置 |
-| `PAPER_SEARCH_CARSI_ENABLED` | 学校订阅下载（CARSI）的开关 | `paper-search carsi install` 自动设置 |
+| `PAPER_SEARCH_CARSI_ENABLED` | 学校订阅下载的开关 | `paper-search carsi install` 自动设置 |
 
 ## 排障
 

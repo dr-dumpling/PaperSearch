@@ -67,7 +67,8 @@ class OxfordLoginRetryTests(unittest.TestCase):
     def test_manual_login_can_finish_after_the_original_deadline(self):
         self.d.config['user_wait'] = 'short'
         self.state = 'human_login'
-        frame = Mock(evaluate=Mock(side_effect=lambda *args: int(self.now >= 2)))
+        # Input from 2 s on, one every 50 s (within the idle limit, the login wait).
+        frame = Mock(evaluate=Mock(side_effect=lambda *args: int(self.now >= 2) + int(self.now // 50)))
         self.page.frames = [frame]
         def human_wait(ms):
             self.wait(ms)

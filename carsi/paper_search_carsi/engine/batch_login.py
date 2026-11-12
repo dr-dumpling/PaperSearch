@@ -14,7 +14,7 @@ from urllib.parse import unquote, urljoin, urlparse
 
 from . import access_rules
 from .login_wait import LoginWait
-from .. import progress_reporter
+from .. import federations, progress_reporter
 from .batch_common import (AWAY_WAIT_SEC, POLL_MS, DownloadResult, PublisherContentError, _is_browser_error,
                            _is_navigation_cut, open_page, pump_until, settle)
 
@@ -263,7 +263,7 @@ class LoginMixin:
 
     @contextmanager
     def _login_wait_budget(self, result: DownloadResult, attribute: str, deadline: float, clock):
-        wait = result._login_wait = LoginWait(deadline, clock, attribute=attribute)
+        wait = result._login_wait = LoginWait(deadline, clock, attribute=attribute, idle_limit=self.login_timeout_sec)
         try:
             yield wait
         finally:
@@ -277,7 +277,7 @@ class LoginMixin:
         own = self.adapter.complete_login(page, result)
         if own is not None:
             return own
-        manual_selection = self.config.get("publisher_institution_federation") == "carsi"
+        manual_selection = self.federation is not None
         if self._institution_pdf_entitlement_missing(page):
             return False
         result.state = "sso_required"
@@ -363,9 +363,9 @@ class LoginMixin:
                     break
                 time.sleep(1)  # each pass checks the page again: a step done goes on within a second
                 if manual_selection and self.institution_query and not getattr(result, "_institution_not_listed", False):
-                    # A CARSI school list without the school ends the wait whatever this pass
+                    # The federation's school list without the school ends the wait whatever this pass
                     # would do next (Science, 2026-11-11: the list stood a whole page wait).
-                    self._check_carsi_school_links(page, result, str(getattr(page, "url", "") or ""))
+                    self._check_federation_school_links(page, result, str(getattr(page, "url", "") or ""))
                 if getattr(result, "_institution_not_listed", False):
                     # The publisher's institution search has no entry for the school.
                     result.reason = "institution_federation_unavailable"
@@ -679,14 +679,15 @@ class LoginMixin:
             return str(kind)
         return "duo" if "authentication with duo is required" in self._body_text(page, 2_000).lower() else ""
 
-    def _federation_list_lacks_carsi(self, page: Any) -> str:
-        """A federation list without CARSI: no route for a CARSI school, so waiting
+    def _federation_list_lacks_ours(self, page: Any) -> str:
+        """A federation list without the school's federation: no route for the school, so waiting
         for a login cannot succeed. One rule for every chooser: a <select> named a
         federation (its id or name, or its placeholder: BMJ's #shib-fed-select,
         AACR's #FederationDropdown "--Select a Federation--" listing only the UK,
         US and German federations, 2026-11-02) with two or more entries, none of
-        them CARSI. The list and its entries, or "" (a list with CARSI, or none)."""
-        if self.config.get("publisher_institution_federation") != "carsi":
+        them the school's federation. The list and its entries, or "" (a list with it, or none)."""
+        federation = self.federation
+        if federation is None:
             return ""
         for select in self._page_selects(page):
             options = [o for o in select.get("options") or () if isinstance(o, (list, tuple)) and len(o) == 2]
@@ -694,14 +695,14 @@ class LoginMixin:
             placeholder = str(options[0][1]) if options else ""
             entries = [str(label) for value, label in options if str(value).strip() and str(label).strip()]
             if (not (re.search(r"fed", name, re.I) or re.search(r"federation", placeholder, re.I)) or len(entries) < 2
-                    or any(self._CARSI_OPTION.search(label) for label in entries)):
+                    or any(federation.matches(label) for label in entries)):
                 continue
             return f"{name}: {', '.join(label[:40] for label in entries[:6])}"
         if self._on_publisher_host(str(getattr(page, "url", "") or "")):
             listing = page.locator(self._FEDERATION_LINK_LIST).first
             if listing.is_visible() is True:
                 entries = [label.strip() for label in listing.get_by_role("link").all_text_contents() if label.strip()]
-                if len(entries) >= 2 and not any(self._CARSI_OPTION.search(label) for label in entries):
+                if len(entries) >= 2 and not any(federation.matches(label) for label in entries):
                     return f"federation links: {', '.join(label[:40] for label in entries[:6])}"
         return ""
 
@@ -709,7 +710,7 @@ class LoginMixin:
         """OpenAthens's "Find your institution" answers "No institutions found" for
         the configured school: it lists OpenAthens members, not CARSI schools
         (Sage's OpenAthens route: no CARSI school is listed, 2026-11-01)."""
-        if (self.config.get("publisher_institution_federation") != "carsi"
+        if (self.federation is None
                 or urlparse(str(getattr(page, "url", "") or "")).hostname != "login.openathens.net"):
             return False
         try:
@@ -746,9 +747,9 @@ class LoginMixin:
             line = self._denial_line(page)
             if line:
                 return line
-        lists = self._federation_list_lacks_carsi(page) if code == "institution_federation_unavailable" else ""
+        lists = self._federation_list_lacks_ours(page) if code == "institution_federation_unavailable" else ""
         if lists:
-            return f"the federation list has no CARSI entry ({lists})"[:240]
+            return f"the federation list has no {self.federation.name} entry ({lists})"[:240]
         url = urlparse(str(getattr(page, "url", "") or ""))
         text = f"{self._title(page)}\n{self._body_text(page, 2_000)}"
         found = self._BLOCK_WORDS.search(text)
@@ -778,7 +779,7 @@ class LoginMixin:
             pass
         if self._publisher_access_blocked(page):
             return "publisher_access_blocked"
-        if self._federation_list_lacks_carsi(page) or self._openathens_lacks_school(page):
+        if self._federation_list_lacks_ours(page) or self._openathens_lacks_school(page):
             return "institution_federation_unavailable"
         current_url = str(getattr(page, "url", "") or "").lower()
         haystack = f"{self._title(page)} {self._body_text(page, 2_000)}".lower()
@@ -1101,7 +1102,7 @@ class LoginMixin:
             # The federation page is already an SSO step. Generic OpenAthens
             # text/ancestor matching can click its logo or account sign-in.
             return False
-        if self.config.get("publisher_institution_federation") == "carsi":
+        if self.federation is not None:
             return self._click_manual_institution_entry(page, result)
         sso_selectors = (
             "button:has-text('Access Through Your Institution')",
@@ -1255,7 +1256,7 @@ class LoginMixin:
             if not _is_browser_error(exc):
                 raise
             controls = []
-        labels = (sorted(self._INSTITUTION_ENTRY_LABELS) if self.config.get("publisher_institution_federation") == "carsi"
+        labels = (sorted(self._INSTITUTION_ENTRY_LABELS) if self.federation is not None
                   else list(self.profile.sso_text_markers))
         found = "; ".join(str(c) for c in controls[:8]) if isinstance(controls, list) and controls else "none"
         return (f"looked for: entries ({', '.join(labels)}); access menus (get access, access options, "
@@ -1345,18 +1346,20 @@ class LoginMixin:
         # "Find your institution" (Sage's OpenAthens route, 2026-11-01); the
         # OpenAthens account form there has a password field and stays the user's.
         ("login.openathens.net", "/auth"),
-        ("ds.carsi.edu.cn", "/"),
+        # The federations' own discovery pages (CARSI's) come from the federation layer.
         # SeamlessAccess's discovery page behind its button (AIP, 2026-11-03): it was
         # taken for the user's own login and the school was typed by hand.
         ("service.seamlessaccess.org", "/ds"),
     )
 
     def _is_federation_chooser(self, url: str) -> bool:
+        if self._on_school_login_page(url):
+            return False  # the school's own sign-in page on a shared service is the user's
         if self.adapter.is_institution_chooser(url):
             return True
         parsed = urlparse(url)
-        return parsed.scheme == "https" and any(
-            parsed.hostname == host and parsed.path.startswith(path) for host, path in self._FEDERATION_CHOOSERS)
+        return parsed.scheme == "https" and (federations.on_discovery_page(url) or any(
+            parsed.hostname == host and parsed.path.startswith(path) for host, path in self._FEDERATION_CHOOSERS))
 
     def _on_publisher_host(self, url: str) -> bool:
         """The publisher's own site: a profile domain, or an article page its
@@ -1383,7 +1386,13 @@ class LoginMixin:
                 and (not self.institution_query or bool(getattr(self, "_manual_school", False))))
 
     def _idp_user_action(self, page: Any) -> bool:
-        if not self._is_idp_host(urlparse(str(getattr(page, "url", "") or "")).netloc):
+        url = str(getattr(page, "url", "") or "")
+        if self._on_school_login_page(url):
+            # The school's own page on a shared service: choosing how to sign in
+            # there is the user's step too (a school's OpenAthens page offering
+            # staff and guest sign-in, no field, 2026-11-11).
+            return True
+        if not self._is_idp_host(urlparse(url).netloc):
             return False
         if self._idp_confirmation(page):
             return True
@@ -1412,7 +1421,11 @@ class LoginMixin:
                 && !el.disabled && !el.readOnly && ['text','email','tel'].includes(el.type));
             const qr = [...document.querySelectorAll('img,canvas,[role="img"]')].some(el => visible(el)
                 && /qr|二维码|扫码/i.test([el.id,el.className,el.getAttribute('alt'),el.getAttribute('aria-label')].join(' ')));
-            return input || qr;
+            // A button the identity provider waits on (set up a passkey, choose an
+            // account: a school's Okta page, 2026-11-11).
+            const button = [...document.querySelectorAll('button,input[type=submit],input[type=button],[role=button]')]
+                .some(el => visible(el) && !el.disabled && (el.innerText || el.value || el.getAttribute('aria-label') || '').trim());
+            return input || qr || button;
         }""") is True
 
     def _login_wait_page(self, page: Any) -> str:
@@ -1737,7 +1750,9 @@ class LoginMixin:
             return False
 
     def _click_openathens_entry(self, page: Any, result: DownloadResult) -> bool:
-        if self.config.get("publisher_institution_federation") == "carsi":
+        # A federation's school does not sign in through OpenAthens, unless that
+        # is its route (the federation layer's ``openathens_entries``).
+        if self.federation is not None and not self.federation.openathens_entries:
             return False
         current_url = str(getattr(page, "url", "") or "")
         lower_url = current_url.lower()
@@ -1795,7 +1810,7 @@ class LoginMixin:
         matching the user's configured institution; otherwise a chooser page is
         left entirely to the user (no default option is ever submitted).
         """
-        if self.config.get("publisher_institution_federation") == "carsi" and not after_selection:
+        if self.federation is not None and not after_selection:
             return
         if not after_selection and self._page_has_institution_chooser(page):
             if not any(e["state"] == "institution_continue_withheld" for e in result.events):

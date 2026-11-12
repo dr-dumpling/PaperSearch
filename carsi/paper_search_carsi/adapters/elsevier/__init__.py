@@ -23,6 +23,10 @@ from ...browser.driver import is_driver_error
 from ...engine.router import elsevier_journal_article, extract_elsevier_pii
 from ..base import PublisherAdapter, SupplementLink, register
 from . import journal_site, sciencedirect
+
+# An account's sign-in route in Elsevier ID's search results ("entityId": null or "...").
+_ENTITY_ID = re.compile(r'"entityId"\s*:\s*(null|"[^"]*")')
+_IP_OR_VPN_ONLY = re.compile(r"can grant access through either an IP address or a VPN", re.I)
 from .journal_site import JournalSite, _record_pii
 from .sciencedirect import ScienceDirectSite
 
@@ -208,14 +212,14 @@ class ElsevierAdapter(PublisherAdapter):
 
     def open_institution_entry(self, page: Any, result: Any) -> bool | None:
         clicked = self.click_institution_entry(page, result)
-        if self.d.config.get("publisher_institution_federation") == "carsi":
+        if self.d.federation is not None:
             return clicked
         return True if clicked else None  # otherwise the generic entries are tried
 
     def click_institution_entry(self, page: Any, result: Any) -> bool:
         if self.d._is_human_login_page(page):
             return False
-        manual_selection = self.d.config.get("publisher_institution_federation") == "carsi"
+        manual_selection = self.d.federation is not None
         if manual_selection and urlparse(str(page.url)).hostname not in sciencedirect.HOSTS | {"auth.elsevier.com"}:
             return False
         try:
@@ -233,7 +237,23 @@ class ElsevierAdapter(PublisherAdapter):
 
     def login_block_reason(self, page: Any, text: str) -> str | None:
         # A remembered school's entry is a continuation, not a block.
-        return "" if self.remembered_institution_entry(text) else None
+        if self.remembered_institution_entry(text):
+            return ""
+        # "Instructions from your organization": the school grants access only by
+        # IP address or VPN, no sign-in through it (Elsevier ID, 2026-11-11).
+        if (self.is_institution_chooser(str(getattr(page, "url", "") or ""))
+                and _IP_OR_VPN_ONLY.search(" ".join(text.split()))):
+            return "institution_federation_unavailable"
+        return None
+
+    def institution_entry_signs_in(self, data: str) -> bool | None:
+        """Elsevier ID's organization search keeps each entry's account as JSON in a
+        hidden field: ``"entityId": null`` is an account without a federated
+        sign-in (its IP range, VPN, or a work email: "derivedFlowType": "EIA")."""
+        found = _ENTITY_ID.search(data or "")
+        if not found:
+            return None
+        return found.group(1) != "null"
 
     def remembered_institution_entry(self, text: str) -> bool:
         """ScienceDirect shows "Access through <institution>" once an institution is remembered.

@@ -234,6 +234,13 @@ class PublisherAdapter:
         school is chosen (``choose_institution``) and nothing else is clicked."""
         return False
 
+    def institution_entry_signs_in(self, data: str) -> bool | None:
+        """Whether an entry of the publisher's own institution search (its link,
+        data attributes and hidden fields, ``data``) signs the school in through
+        its identity provider: False = the publisher marks it as another route
+        (IP, VPN, a work email), None = no opinion."""
+        return None
+
     def leave_email_step(self, page: Any, result: Any) -> bool:
         """The publisher's sign-in asks for the user's work email, not the school:
         go back to its school search before anything is typed; True when clicked."""

@@ -29,6 +29,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
 
+from . import federations
 from .browser.backend import SESSION_COOKIES_FILE, chrome_profile_dir, profile_holder
 from .browser.cookies import _CLOUDFLARE_COOKIE_NAMES, PUBLISHER_DOMAINS
 from .engine.batch_institution import InstitutionMixin, _school_auth_patterns
@@ -43,7 +44,8 @@ PERSONAL_ACCOUNT_HOSTS = ("id.elsevier.com", "auth.elsevier.com")
 # (Elsevier: "id.inst", "id.wayf.result.acct"); that part goes.
 _REMEMBERED_SCHOOL_NAME = re.compile(r"(?:^|[._-])(?:inst|institution|wayf|idp|shib)(?:[._-]|$)", re.I)
 # Services that remember the chosen school or carry the federated login.
-FEDERATION_HOSTS = ("carsi.edu.cn", "openathens.net", "seamlessaccess.org", "sams-sigma.com", "iam.atypon.com")
+FEDERATION_HOSTS = (*federations.service_domains(), "openathens.net", "seamlessaccess.org", "sams-sigma.com",
+                    "iam.atypon.com")
 _CONSENT_NAME = re.compile(r"consent|optanon|cookielaw|gdpr", re.I)
 # Cookie files the engine restores into a browser.
 _CACHE_COOKIE_FILES = ("publisher_cookies.json",)

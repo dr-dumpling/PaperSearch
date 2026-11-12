@@ -1,0 +1,11 @@
+{
+  "code": "kafe",
+  "name": "KAFE",
+  "country": "KR",
+  "registration_authorities": ["http://kafe.kreonet.net"],
+  "chooser_labels": ["Korean Access Federation"],
+  "chooser_pattern": "\\bKAFE\\b|\\bKorean\\s+Access\\s+Federation\\b",
+  "discovery_hosts": [],
+  "service_domains": ["kreonet.net"],
+  "metadata_url": "https://fedinfo.kreonet.net/signedmetadata/federation/Upstream-eduGAIN/metadata.xml"
+}

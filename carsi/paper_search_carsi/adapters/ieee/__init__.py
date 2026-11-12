@@ -272,7 +272,7 @@ class IEEEAdapter(PublisherAdapter):
                     return True
             except Exception:
                 continue
-        if d.config.get("publisher_institution_federation") == "carsi":
+        if d.federation is not None:
             return False  # no text match: never pick the first suggestion for the user
         try:
             input_box.press("ArrowDown", timeout=2_000)

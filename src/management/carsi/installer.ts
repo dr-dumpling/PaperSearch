@@ -406,7 +406,7 @@ async function writeConfig(
     { env: { CARSI_DATA_DIR: context.dataDir } }), "写入浏览器设置失败");
 }
 
-// The backend's own rule for "some institutional access is configured" (CARSI);
+// The backend's own rule for "some institutional access is configured" (a federation);
 // without it the backend skips the browser download altogether.
 const ACCESS_PROBE = [
   "import json",
@@ -431,8 +431,8 @@ async function askSchool(
   const access = await accessProbe(host, paths, context);
   let school = access.school;
   const answer = options.skipSchool ? "" : (await host.ask(school
-    ? `学校（CARSI；现在是“${school}”，回车保留）：`
-    : "请输入你的学校（中文名、英文名或域名都可以；回车跳过，登录时在选校页自己选）：")).trim();
+    ? `学校（现在是“${school}”，回车保留）：`
+    : "请输入你的学校（中文名、英文名或学校域名都可以；香港等地的学校请用英文名；回车跳过，登录时在选校页自己选）：")).trim();
   if (answer) school = (await saveSchool(host, paths, env, answer)) || school;
   if (!school && !access.configured) {
     // CARSI on, the school chosen by the user on the chooser.
@@ -442,7 +442,7 @@ async function askSchool(
   else warn(record, NO_SCHOOL);
 }
 
-interface SchoolCandidate { name: string; name_en: string; domain: string; entity_id: string }
+interface SchoolCandidate { name: string; name_en: string; domain: string; entity_id: string; federation?: string; country?: string }
 
 async function askNotifications(
   host: InstallerHost, paths: RuntimePaths, context: InstallContext, record: InstallRecord,
@@ -475,6 +475,7 @@ interface SetupReply {
   detail?: string;
   count?: number;
   candidates?: SchoolCandidate[];
+  found?: { name: string; registration_authority: string }[];
   settings?: { carsi_institution_hint?: string };
 }
 
@@ -487,32 +488,40 @@ function setupReply(stdout: string): SetupReply {
 }
 
 /**
- * The backend looks the school up in the CARSI member list and saves its
- * names and entityID. Several matches are numbered for the user to pick one
- * (saved by its entityID); a name that is not a member is asked again. An
- * empty answer leaves the school as it was ("" is returned).
+ * The backend looks the school up in the supported federations' member lists
+ * (CARSI, HKAF, ...) and saves it with its federation. Matches that are not
+ * certain are numbered for the user to pick one (saved by its entityID); a
+ * name found nowhere is asked again. An empty answer leaves the school as it
+ * was ("" is returned).
  */
 async function saveSchool(
   host: InstallerHost, paths: RuntimePaths, env: Record<string, string>, first: string,
 ): Promise<string> {
-  const setup = (school: string) => host.run(paths.executable, ["setup", "--carsi", "--institution", school], { env });
+  const setup = (school: string) => host.run(paths.executable, ["setup", "--institution", school], { env });
   let answer = first;
   for (let attempt = 1; answer; attempt++) {
     let result = await setup(answer);
     const reply = setupReply(result.stdout);
-    if (result.code !== 0 && reply.error === "carsi_school_list_unavailable") {
-      throw new Error(`取不到 CARSI 学校列表（${reply.detail ?? ""}）：稍后再运行本命令，或加 --skip-school 先跳过`);
+    if (result.code !== 0 && reply.error === "school_list_unavailable") {
+      throw new Error(`取不到学校名单（${reply.detail ?? ""}）：稍后再运行本命令，或加 --skip-school 先跳过`);
     }
-    if (result.code !== 0 && reply.error === "carsi_school_not_found") {
-      if (attempt >= 3) throw new Error(`CARSI 成员学校里没有“${answer}”`);
-      answer = (await host.ask(`CARSI 成员学校里没有“${answer}”，请重新输入（中文名、英文名或域名；回车跳过）：`)).trim();
+    if (result.code !== 0 && reply.error === "federation_not_supported") {
+      const where = (reply.found ?? []).map((f) => `${f.name}（${f.registration_authority}）`).join("、");
+      throw new Error(`找到了“${answer}”，但它所属的联盟还不支持：${where}`);
+    }
+    if (result.code !== 0 && reply.error === "school_not_found") {
+      const why = "可能是名称写法和联盟名单不同；也可能这所学校没有接入学术身份联盟或 OpenAthens，只能用校园网、VPN 或图书馆代理访问，学校订阅下载无法为它登录";
+      if (attempt >= 3) throw new Error(`没有找到“${answer}”：${why}`);
+      host.log(`没有找到“${answer}”：${why}。`);
+      answer = (await host.ask("请换个写法再试（学校正式名称、英文名或学校域名；回车跳过）：")).trim();
       continue;
     }
-    if (result.code !== 0 && reply.error === "carsi_school_ambiguous" && reply.candidates?.length) {
+    if (result.code !== 0 && reply.error === "school_ambiguous" && reply.candidates?.length) {
       const candidates = reply.candidates;
       const more = (reply.count ?? 0) > candidates.length ? `（共 ${reply.count} 所，列出前 ${candidates.length} 所）` : "";
-      host.log(`“${answer}”对应多所学校${more}：`);
-      candidates.forEach((c, i) => host.log(`  ${i + 1}. ${c.name}（${c.name_en}，${c.domain}）`));
+      host.log(`“${answer}”对应的学校还需要你确认${more}：`);
+      candidates.forEach((c, i) => host.log(
+        `  ${i + 1}. ${c.name}（${[c.name_en !== c.name ? c.name_en : "", c.federation, c.domain].filter(Boolean).join("，")}）`));
       const pick = candidates[Number((await host.ask("输入序号（回车跳过）：")).trim()) - 1];
       if (!pick) return "";
       result = await setup(pick.entity_id);

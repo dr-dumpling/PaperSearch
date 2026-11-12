@@ -21,6 +21,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from .. import federations
+from ..federations import schools
 from ..log import get_logger
 
 log = get_logger()
@@ -148,7 +150,7 @@ def try_institutional(
 
     # Mode 1: External instsci package — full cascade
     # The external adapter does not carry the explicit federation choice.
-    if config.get("publisher_institution_federation") != "carsi":
+    if federations.configured(config) is None:
         result = _try_external_instsci(doi, output_path, config)
         if result:
             return result
@@ -160,10 +162,7 @@ def try_institutional(
 
 
 def _any_institutional_configured(config: dict[str, Any]) -> bool:
-    return bool(
-        config.get("publisher_institution_federation") == "carsi"
-        or (config.get("carsi_enabled") and config.get("carsi_idp_name", "").strip())
-    )
+    return schools.institutional_configured(config)
 
 
 # ---------------------------------------------------------------------------
@@ -201,20 +200,20 @@ def _try_external_instsci(
     return _instsci_result_to_dict(result, doi, output_path)
 
 
-def _map_to_instsci_config(carsi_config: dict[str, Any], output_path: Path):
+def _map_to_instsci_config(backend_config: dict[str, Any], output_path: Path):
     from instsci.config import Config as InstSciConfig
     # This backend has no WebVPN or EZProxy route: the package gets none either.
     return InstSciConfig(
         school="",
         webvpn_base_url="",
         ezproxy_base_url="",
-        email=carsi_config.get("email", ""),
-        elsevier_api_key=carsi_config.get("elsevier_api_key", ""),
-        elsevier_inst_token=carsi_config.get("elsevier_insttoken", ""),
-        carsi_enabled=carsi_config.get("carsi_enabled", False),
-        carsi_idp_name=carsi_config.get("carsi_idp_name", ""),
+        email=backend_config.get("email", ""),
+        elsevier_api_key=backend_config.get("elsevier_api_key", ""),
+        elsevier_inst_token=backend_config.get("elsevier_insttoken", ""),
+        carsi_enabled=backend_config.get("carsi_enabled", False),
+        carsi_idp_name=backend_config.get("carsi_idp_name", ""),
         output_dir=str(output_path.parent),
-        cache_dir=carsi_config.get("cache_dir", ""),
+        cache_dir=backend_config.get("cache_dir", ""),
     )
 
 
@@ -280,7 +279,7 @@ def _try_builtin_institutional(
                      getattr(profile, "name", ""))
 
     failures: list[dict[str, str]] = []
-    manual_carsi = config.get("publisher_institution_federation") == "carsi"
+    manual_school = federations.configured(config) is not None
 
     # Remembered entitlement decisions (progress-window buttons): a journal or
     # publisher the user marked as "no access" is skipped before any browser.
@@ -352,7 +351,7 @@ def _try_builtin_institutional(
     # jobs cannot propagate the federation/manual-selection policy.
     if profile:
         log.info("   [Institutional] Publisher driver (%s)", getattr(profile, "name", ""))
-        if not manual_carsi:
+        if not manual_school:
             result = _try_session_broker(doi, output_path, config, profile)
             if accept(result, "institutional:session_broker"):
                 return result
@@ -377,7 +376,7 @@ def _try_builtin_institutional(
                   "action": primary["action"], "source_failures": failures}
         if primary["error_type"] == "access_blocked":
             _remember_blocked_journal(doi, identity)
-        if primary["error_type"] == "institution_federation_unavailable" and manual_carsi:
+        if primary["error_type"] == "institution_federation_unavailable" and manual_school:
             _remember_missing_route(publisher_name, config, doi)
         if "reason_code" in primary:
             result["reason_code"] = primary["reason_code"]
@@ -513,9 +512,8 @@ def _try_browser_batch_download(
 
     # The caller's title checks the PDF when the article page names none (orchestrator).
     record = PaperRecord(doi=doi, title=str(config.get("record_title") or ""))
-    # The institution name is the user's own setting (explicit CARSI); empty means "choose by hand".
-    institution_query = (config.get("carsi_idp_name", "") if config.get("publisher_institution_federation") == "carsi"
-                         else "")
+    # The institution name is the user's own setting (with its federation); empty means "choose by hand".
+    institution_query = schools.name(config) if federations.configured(config) else ""
     login_timeout = config.get("browser_login_timeout", 180)
 
     downloader = PublisherBatchDownloader(

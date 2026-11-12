@@ -61,7 +61,7 @@ def test_capsule_takeover_removes_countdown_without_repeating_notification(tmp_p
             clock[0] += 10
             d._show_download_browser(page, result)
             assert wait.paused
-            clock[0] += 400
+            clock[0] += 100  # within the idle limit (the login wait, 180 s) the countdown stays off
             d._set_login_attention(result, result._login_attention, wait.deadline, page=page)
             state = progress_reporter.read_state()
             after = next(iter(state["attention"].values()))
@@ -74,7 +74,51 @@ def test_capsule_takeover_removes_countdown_without_repeating_notification(tmp_p
     except ValueError as exc:
         assert ending == "exception" and str(exc) == "fixture ended login"
     assert result._login_wait is None and result._attention_page is None
-    assert result._school_login_deadline == 1580
+    assert result._school_login_deadline == 1280
     assert progress_reporter.read_state()["attention"] == {}
     # The next login in this article inherits only the time used.
-    assert d._school_login_deadline(result) == 1580
+    assert d._school_login_deadline(result) == 1280
+
+
+def test_a_stray_input_holds_the_login_only_for_the_idle_limit():
+    # The user, 2026-11-11: a click on the login page and nobody there must not wait forever.
+    clock = [1000.0]
+    frame = Mock(evaluate=Mock(return_value=0))
+    page = Mock(frames=[frame])
+    wait = LoginWait(1180, lambda: clock[0], idle_limit=180)
+    wait.observe(page, True)
+    clock[0] += 10
+    frame.evaluate.return_value = 1  # one click, then nothing
+    wait.observe(page, True)
+    assert wait.paused
+    clock[0] += 179
+    wait.observe(page, True)
+    assert wait.paused  # still within the idle limit
+    clock[0] += 1
+    wait.observe(page, True)
+    assert not wait.paused
+    # The time since the click counts again: 170 s were left, 180 s have passed.
+    assert wait.deadline <= clock[0]
+    wait.close()
+
+
+def test_typing_keeps_the_stop_going():
+    clock = [1000.0]
+    frame = Mock(evaluate=Mock(return_value=0))
+    page = Mock(frames=[frame])
+    wait = LoginWait(1180, lambda: clock[0], idle_limit=180)
+    wait.observe(page, True)
+    for typed in range(1, 6):  # an input every 100 s for 500 s
+        clock[0] += 100
+        frame.evaluate.return_value = typed
+        wait.observe(page, True)
+        assert wait.paused
+    clock[0] += 179
+    wait.observe(page, True)
+    assert wait.paused and wait.deadline > clock[0]
+    clock[0] += 1
+    wait.observe(page, True)
+    assert not wait.paused
+    # Left when the stop began (80 s) minus the idle time since the last input (180 s).
+    assert wait.deadline == clock[0] - 100
+    wait.close()

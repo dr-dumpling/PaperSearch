@@ -23,7 +23,6 @@ from ....engine.batch_common import _is_browser_error, open_page
 from ...base import PublisherAdapter, SupplementLink, register
 
 _ARTICLE = re.compile(r"/doi/(?:(?:abs|full|pdf|epdf|pdfdirect|reader)/)?(10\.\d{4,9}/[^?#]+)", re.I)
-_CARSI = "China CERNET Federation (CARSI)"
 # Supplement files: /doi/suppl/<DOI>/suppl_file/<name>, with the link text.
 _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href*="/doi/suppl/"]')].map(a => ({
     href: a.href, label: ((a.textContent || '').trim() || a.getAttribute('title') || '').replace(/\\s+/g, ' ').trim().slice(0, 200)}))"""
@@ -139,8 +138,7 @@ class AtyponAdapter(PublisherAdapter):
         # The access box's link, else the chooser's address: the same page (NEJM).
         target = ((self.institution_link(page, result.doi) or self.chooser_url(str(getattr(page, "url", "") or "")))
                   if result is not None else "")
-        if not target or (d.config.get("publisher_institution_federation") == "carsi"
-                          and not d._manual_institution_target_allowed(target)):
+        if not target or (d.federation is not None and not d._manual_institution_target_allowed(target)):
             return None
         # Opened, not clicked: a click soon after the article loaded left the
         # page on the article (Neurological Research, cold start 2026-11-01, twice).
@@ -152,22 +150,27 @@ class AtyponAdapter(PublisherAdapter):
         d = self.d
         if not self._chooser(str(getattr(page, "url", "") or "")):
             return False
-        federation = page.locator("select#shib-search--fed")
-        if not federation.is_visible():
+        ours = d.federation
+        chooser = page.locator("select#shib-search--fed")
+        if ours is None or not chooser.is_visible():
             return None  # a search box only: the engine chooses the school there
-        changed = federation.locator("option:checked").inner_text() != _CARSI
+        # The school's federation as this list names it (the federation layer).
+        label = ours.option_among(" ".join(text.split()) for text in chooser.locator("option").all_text_contents())
+        if label is None:
+            return None  # not listed: the engine's federation-list rule reports it
+        changed = " ".join(chooser.locator("option:checked").inner_text().split()) != label
         if changed:
-            # Changed by the user only on the very page where CARSI was chosen; a
+            # Changed by the user only on the very page where the federation was chosen; a
             # chooser reloaded with its first federation is chosen again (the
             # engine's one rule, review 2026-11-02).
             here = d._federation_choice_page(page, result)
             if here is None:
                 return False
-            federation.select_option(label=_CARSI, timeout=5_000)
-            d._federation_chosen(result, here, "carsi")
+            chooser.select_option(label=label, timeout=5_000)
+            d._federation_chosen(result, here, ours.code)
         # The federation is set here; the configured school is then chosen in
         # the school list by the engine's assistance (2026-11-01: the configured
-        # CARSI school was chosen automatically), else by the user.
+        # school was chosen automatically), else by the user.
         if not any(event["state"] == "institution_selection_required" for event in result.events):
-            d._event(result, "institution_selection_required", "carsi")
+            d._event(result, "institution_selection_required", ours.code)
         return changed

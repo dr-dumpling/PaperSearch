@@ -226,7 +226,7 @@ class PublisherSupplementBrowserTests(unittest.TestCase):
                 page = browser.new_page()
                 d = PublisherBatchDownloader({}, institution_query="Fixture University")
                 d._click_unique_institution_entry = Mock(return_value=False)
-                d._assist_carsi_discovery = Mock(return_value=False)
+                d._assist_federation_discovery = Mock(return_value=False)
                 d._institution_search_selectors = Mock(return_value=())
                 result = DownloadResult(doi="10.1/fixture", status="failed")
                 for school, clickable, expected in [

@@ -1,0 +1,11 @@
+{
+  "code": "gakunin",
+  "name": "GakuNin",
+  "country": "JP",
+  "registration_authorities": ["https://www.gakunin.jp"],
+  "chooser_labels": ["Academic Access Management Federation in Japan (GakuNin)"],
+  "chooser_pattern": "\\bGakuNin\\b|\\bAcademic\\s+Access\\s+Management\\s+Federation\\s+in\\s+Japan\\b",
+  "discovery_hosts": [],
+  "service_domains": ["gakunin.nii.ac.jp"],
+  "metadata_url": "https://metadata.gakunin.nii.ac.jp/gakunin-edugain-metadata.xml"
+}

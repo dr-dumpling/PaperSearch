@@ -229,7 +229,7 @@ class BackendBrowserChooserTests(unittest.TestCase):
                                     "'<li><a href=\"' + href + '\">China CERNET Federation (CARSI)</a></li>'); }",
                                     school_list)
         self.assertEqual(d._login_block_reason(page), "")
-        self.assertTrue(d._select_carsi_federation_link(page, with_alternate, page.url))
+        self.assertTrue(d._select_federation_link(page, with_alternate, page.url))
         page.wait_for_url(chooser + school_list)
         self.assertEqual(d._login_block_reason(page), "")
 

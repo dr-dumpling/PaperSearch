@@ -56,6 +56,21 @@ class Redactor:
                 host = host_of(value) or (value if key.endswith('_domain') else '')
                 if host:
                     self.school_hosts.add(host)
+        # The hosts of the school's login pages, as its federation lists them.
+        for value in cfg.get('idp_login_hosts') or ():
+            host = str(value or '').strip().lower()
+            if len(host) > 2:
+                self.terms.add(host)
+                self.school_hosts.add(host)
+        for value in cfg.get('idp_domains') or ():
+            host = str(value or '').strip().lower()
+            if len(host) > 3:
+                self.terms.add(host)
+                self.school_hosts.add(host)
+        for value in cfg.get('idp_login_pages') or ():
+            page = str(value or '').strip()
+            if len(page) > 2:
+                self.terms.add(page)
         # The configured IdP often lives below the institution's domain.
         for host in list(self.school_hosts):
             if host.split('.')[0] in {'idp', 'sso', 'login', 'auth'} and host.count('.') >= 2:

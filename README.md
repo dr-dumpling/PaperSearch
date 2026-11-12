@@ -13,7 +13,7 @@
   <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch?style=flat-square" alt="npm"></a>
   <a href="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml"><img src="https://img.shields.io/github/actions/workflow/status/dr-dumpling/PaperSearch/publish.yml?style=flat-square&amp;label=publish" alt="发布工作流状态"></a>
   <a href="https://nodejs.org/"><img src="https://img.shields.io/node/v/papersearch?style=flat-square" alt="Node.js 版本要求"></a>
-  <a href="#1-学校订阅下载carsi"><img src="https://img.shields.io/badge/CARSI-supported-7284CE?style=flat-square" alt="学校订阅下载 CARSI"></a>
+  <a href="#1-学校订阅下载"><img src="https://img.shields.io/badge/school%20login-Asia%20(6%20federations%20%2B%20OpenAthens)-7284CE?style=flat-square" alt="学校订阅下载：亚洲 6 个学术身份联盟和 OpenAthens"></a>
   <a href="docs/guide.zh.md#agent-skill"><img src="https://img.shields.io/badge/Agent%20Skill-bundled-D97757?style=flat-square" alt="随包 Agent Skill"></a>
   <a href="#快速开始"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-555555?style=flat-square" alt="支持 macOS 和 Windows"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2F9E44?style=flat-square" alt="MIT 许可证"></a>
@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="#演示视频">演示视频</a> · <a href="#快速开始">快速开始</a> · <a href="#1-学校订阅下载carsi">学校订阅下载</a> · <a href="#2-api-key">API key</a> · <a href="docs/guide.zh.md">使用说明</a> · <a href="docs/ARCHITECTURE.zh.md">架构说明</a> · <a href="docs/ROADMAP.zh.md">路线图</a> · <a href="https://github.com/dr-dumpling/PaperSearch/issues/new/choose">反馈问题</a>
+  <a href="#演示视频">演示视频</a> · <a href="#快速开始">快速开始</a> · <a href="#1-学校订阅下载">学校订阅下载</a> · <a href="#2-api-key">API key</a> · <a href="docs/guide.zh.md">使用说明</a> · <a href="docs/ARCHITECTURE.zh.md">架构说明</a> · <a href="docs/ROADMAP.zh.md">路线图</a> · <a href="https://github.com/dr-dumpling/PaperSearch/issues/new/choose">反馈问题</a>
 </p>
 
 PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Claude Code、Codex、DeepSeek、GLM、Kimi Code、Qwen Code、CodeBuddy 等支持本机命令调用的 AI 工具，就能替你：
@@ -32,7 +32,7 @@ PaperSearch 提供 `paper-search` 命令和一份随包 Skill。装好后，Clau
 - **查引文和参考文献**：顺着一篇论文，找出引用它的研究和它引用的文献。
 - **下载全文和补充材料**：
   - OA 文章：直接下载。
-  - 非 OA 文章：通过“[学校订阅下载（CARSI）](#1-学校订阅下载carsi)”（推荐）或 [API key](#2-api-key) 配置。
+  - 非 OA 文章：通过“[学校订阅下载](#1-学校订阅下载)”（推荐）或 [API key](#2-api-key) 配置。
 
 <p align="center"><img src="assets/overview.png" width="840" alt="PaperSearch 能做的事：检索论文、搜正文片段、查期刊 IF 与分区、查引文和参考文献、下载全文和补充材料"></p>
 
@@ -66,13 +66,13 @@ Windows 上这条命令需要 Git，没有的话先装 [Git for Windows](https:/
 /paper-search 请开始配置
 ```
 
-AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好，再带你配置学校订阅下载（CARSI）和 API key。
+AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好，再带你配置学校订阅下载和 API key。
 
 <p align="center"><img src="assets/install.webp" width="840" alt="安装演示：把一句话发给 AI，它先装好 Skill；引用 Skill 说“请开始配置”，它先问再装命令行程序，列出能用的功能，接着带你配置"></p>
 
 ### 2. 配置时装上学校订阅下载
 
-说了“请开始配置”后，AI 会先问你要不要装[学校订阅下载（CARSI）](#1-学校订阅下载carsi)：用学校账号下载非 OA 文章的全文和补充材料，需要 Chrome（没有的话一起装），下载约 0.5 GB。你同意后它才安装，装完问你的学校并设好，然后弹出设置窗口。
+说了“请开始配置”后，AI 会先问你要不要装[学校订阅下载](#1-学校订阅下载)：用学校账号下载非 OA 文章的全文和补充材料，需要 Chrome（没有的话一起装），下载约 0.5 GB。你同意后它才安装，装完问你的学校并设好，然后弹出设置窗口。
 
 - 不要的话说一声就跳过，之后不再提；检索和 OA 文章下载照常能用。
 - 没有图形界面的服务器上不问、不装。
@@ -111,7 +111,7 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 
 功能对比：
 
-| | 装好就能用 |  API key | 学校订阅下载（CARSI） |
+| | 装好就能用 |  API key | 学校订阅下载 |
 |---|:---:|:---:|:---:|
 | **检索** | | | |
 | &emsp;检索论文、查引文和参考文献 | ✅ | — | — |
@@ -126,9 +126,28 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 | **需要准备** | Node.js 22 或以上 | 到各家网站申请 key | Google Chrome、学校账号 |
 | **怎么开启** | 快速开始第 1 步 | 设置窗口或终端 | 配置时同意安装 |
 
-### 1. 学校订阅下载（CARSI）
+### 1. 学校订阅下载
 
-开放渠道下不到的论文，可以借你学校的订阅来下。CARSI 是中国高校身份联盟，国内高校基本都已加入，用学校账号就能登录各家出版社。
+开放渠道下不到的论文，可以借你学校的订阅来下：程序经你学校所属的学术身份联盟登录出版社，用学校账号下载。配置时只要说出学校名称（中文、英文或当地语言都行），程序会自己查出学校属于哪个联盟。
+
+各国的学术身份联盟通过 [eduGAIN](https://edugain.org/) 互联，出版社借此认可各国学校的账号；没有加入本国联盟的学校，不少接入了 [OpenAthens](https://www.openathens.net/) 机构登录服务，程序也能经它登录。
+
+**支持的学术身份联盟**（第一阶段：亚洲）
+
+| 地区 | 学术身份联盟 | 全称 |
+|---|---|---|
+| 中国内地、澳门 | CARSI | CERNET 联邦认证与资源共享基础设施（CERNET Authentication and Resource Sharing Infrastructure） |
+| 香港 | HKAF | Hong Kong Access Federation |
+| 新加坡 | SGAF | Singapore Access Federation |
+| 日本 | GakuNin（学認） | 学術認証フェデレーション（Academic Access Management Federation in Japan） |
+| 韩国 | KAFE | Korean Access Federation |
+| 马来西亚 | SIFULAN | SIFULAN Malaysian Access Federation |
+| 未加入本国联盟的学校（东南亚多数大学等） | OpenAthens | OpenAthens 机构登录服务 |
+
+- 每个联盟的支持情况和已实测的学校，见 [学术联盟支持表](skills/paper-search/references/federation-support.md)。
+- 计划中：美国（InCommon）、英国（UK federation）、澳大利亚（AAF）、欧洲各国联盟，之后是 eduGAIN 里的其他国家，见 [路线图](docs/ROADMAP.zh.md)。
+- 学校没有加入任何联盟、也没有接入 OpenAthens（只能用校园网、VPN 或图书馆代理）的，暂时用不了。
+- 能不能下到某篇文章，还要看学校有没有订阅、出版社有没有给学校开通学校账号登录；没开通的，程序会写明原因。
 
 - **学校账号就能用**：不用另外申请 key；出版社 API key 只覆盖 Elsevier、Springer 两家。
 - **深度适配出版社**：深度优化了下载的通用流程，并且针对 30 多家出版社逐家写了专门规则，机构登录入口在哪、PDF 和补充材料怎么取，都按各自出版社的实际情况来，下载更准、更少漏篇。优化的出版社主要有：
@@ -220,7 +239,7 @@ paper-search carsi status --format text   # 查看是否装好
 1. **进度胶囊优化**：提醒时机更准，学校登录页能自动放行时不提前打扰；减少 Windows 上浏览器启动、换页时短暂跳到前台的情况，优化显示效果。
 2. **并行下载**：不同出版社之间并行下载，同时处理多篇，缩短几十上百篇的总耗时；每家出版社仍遵守下载上限。
 3. **Markdown 全文包**：除了 PDF，再交付原始 XML/HTML、Markdown 阅读副本和正文图片，图号、图注和正文引用一一对应，方便直接交给 AI 阅读和引用。
-4. **更多学校访问方式**：除了中国的 CARSI，支持其他国家的学术身份联盟（如美国 InCommon、英国 UK federation）；有条件的话再接入 WebVPN、EZProxy 等访问方式。
+4. **全球学校登录**：亚洲的学术身份联盟已支持；接下来是美国、英国、澳大利亚和欧洲各国联盟，之后覆盖 eduGAIN 里的所有国家；有条件的话再接入 WebVPN、EZProxy 等访问方式。
 5. **检索论文、搜正文片段再优化**：参考同类工具的做法，进一步提升检索论文和搜正文片段的效果。
 
 完整计划见 [路线图](docs/ROADMAP.zh.md)，原理和代码结构见 [架构说明](docs/ARCHITECTURE.zh.md)。还想要什么功能，欢迎提 [Issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) 和 PR；下载失败或想支持某家出版社，请用对应的 Issue 模板，想自己加出版社规则见 [carsi/CONTRIBUTING.md](carsi/CONTRIBUTING.md)。

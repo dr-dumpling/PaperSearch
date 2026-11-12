@@ -289,7 +289,7 @@ class CarsiDiscoveryAssistTests(unittest.TestCase):
     def test_publisher_pages_are_left_to_the_federation_step(self):
         d = downloader("Example University", config={"publisher_institution_federation": "carsi"})
         page = Mock(); page.url = "https://www.tandfonline.com/action/ssostart"
-        self.assertFalse(d._assist_carsi_discovery(page, DownloadResult(doi="10.1/x", status="failed")))
+        self.assertFalse(d._assist_federation_discovery(page, DownloadResult(doi="10.1/x", status="failed")))
         page.locator.assert_not_called()
 
     def test_carsi_discovery_page_gets_the_configured_name_and_only_a_matching_click(self):
@@ -336,7 +336,7 @@ class FederationListWithoutCarsiTests(unittest.TestCase):
     def lists(self, *lists):
         d = downloader("Example University", config={"publisher_institution_federation": "carsi"})
         d._page_selects = lambda page: list(lists)
-        return d._federation_list_lacks_carsi(Mock())
+        return d._federation_list_lacks_ours(Mock())
 
     def test_aacr_s_list_of_three_federations(self):
         # aacrjournals.org/institutional-login, 2026-11-02.
@@ -362,14 +362,14 @@ class FederationListWithoutCarsiTests(unittest.TestCase):
     def test_only_in_carsi_mode(self):
         d = downloader("Example University", config={})
         d._page_selects = Mock()
-        self.assertEqual(d._federation_list_lacks_carsi(Mock()), "")
+        self.assertEqual(d._federation_list_lacks_ours(Mock()), "")
         d._page_selects.assert_not_called()
 
 
 class LoginBlockReasonTests(unittest.TestCase):
     def blocked(self, url, text):
         d = downloader("Example University", config={"publisher_institution_federation": "carsi"})
-        for name in ("_publisher_access_blocked", "_federation_list_lacks_carsi", "_openathens_lacks_school",
+        for name in ("_publisher_access_blocked", "_federation_list_lacks_ours", "_openathens_lacks_school",
                      "_is_challenge_page", "_institution_pdf_entitlement_missing"):
             setattr(d, name, lambda page: False)
         d._title = lambda page: "Error | OpenAthens"

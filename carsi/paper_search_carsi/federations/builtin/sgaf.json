@@ -1,0 +1,11 @@
+{
+  "code": "sgaf",
+  "name": "SGAF",
+  "country": "SG",
+  "registration_authorities": ["https://www.singaren.net.sg"],
+  "chooser_labels": ["Singapore Access Federation"],
+  "chooser_pattern": "\\bSGAF\\b|\\bSingapore\\s+Access\\s+Federation\\b",
+  "discovery_hosts": [],
+  "service_domains": ["sgaf.org.sg"],
+  "metadata_url": "https://ds.sgaf.org.sg/distribution/metadata/sgaf-edugain-export-metadata.xml"
+}

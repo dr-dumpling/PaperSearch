@@ -208,7 +208,7 @@ paper-search doctor --pretty
 
 `PAPER_SEARCH_CARSI_ENABLED` 是不保密的严格开关：只有字符串 `true` 启用；`TRUE`、`1`、`yes` 或前后带空格的写法都算关闭。
 
-用户的学校用 `paper-search-carsi setup --carsi --institution "<学校>"` 配置，数据目录要和下载用的相同，见 `carsi-setup.md`。学校只写用户自己告诉你的那一所；`doctor=available` 不能说成学校会话有效或对某篇有权限的证明。
+用户的学校用 `paper-search-carsi setup --institution "<学校>"` 配置，数据目录要和下载用的相同，见 `carsi-setup.md`。学校只写用户自己告诉你的那一所；`doctor=available` 不能说成学校会话有效或对某篇有权限的证明。
 
 ### arXiv
 

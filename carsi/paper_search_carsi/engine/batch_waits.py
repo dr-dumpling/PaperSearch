@@ -525,7 +525,8 @@ class UserWaitMixin:
                         manual = True
                         from .login_wait import LoginWait
                         verification_deadline = deadline
-                        verification_wait = result._verification_wait = LoginWait(deadline, time.time)
+                        verification_wait = result._verification_wait = LoginWait(
+                            deadline, time.time, idle_limit=self.login_timeout_sec)
                         verification_wait.observe(page, True)
                         self._verification_attention(result, deadline)
                         self._event(result, "challenge_manual_wait", "complete verification in visible browser")

@@ -98,7 +98,7 @@ class DiagnosticsMixin:
                 "sso_start": ("正在查找机构登录入口", "checking_access"),
                 "institution_federation_selected": ("已进入所选机构认证联盟", "checking_access"),
                 "institution_selection_required": ("检查学校选择入口", "checking_access"),
-                "institution_entry_unresolved": ("官方机构入口尚未确认 CARSI", "checking_access"),
+                "institution_entry_unresolved": ("官方机构入口尚未确认所属联盟", "checking_access"),
                 "login_state": ("检查机构登录页面", "checking_access"),
                 "idp_confirmation_required": ("请在浏览器里确认学校认证页的提示（信息发送同意、使用条款或二次验证）", "waiting_login"),
                 "idp_confirmation_accepted": ("已确认学校认证页的提示", "checking_access"),

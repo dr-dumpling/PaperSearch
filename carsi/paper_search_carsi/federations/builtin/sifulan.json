@@ -1,0 +1,11 @@
+{
+  "code": "sifulan",
+  "name": "SIFULAN",
+  "country": "MY",
+  "registration_authorities": ["https://sifulan.my"],
+  "chooser_labels": ["Malaysian Access Federation (SIFULAN)"],
+  "chooser_pattern": "\\bSIFULAN\\b|\\bMalaysian\\s+Access\\s+Federation\\b",
+  "discovery_hosts": [],
+  "service_domains": ["sifulan.my"],
+  "metadata_url": "https://sifulan.my/metadata/edugain-metadata.xml"
+}

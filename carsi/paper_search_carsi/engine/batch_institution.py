@@ -9,22 +9,17 @@ import time
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse
 
+from .. import federations
+from ..federations import schools
 from .batch_common import (DownloadResult, _is_browser_error, _is_navigation_cut, logger, open_page,
                            pump_until, settle)
 
 
 def _school_auth_patterns(config: dict[str, Any]) -> tuple[str, ...]:
-    """The configured school's identity-provider host, for telling its login pages apart.
-
-    Taken from the entityID that ``setup`` saved from the CARSI member list
-    (``https://idp.example.edu.cn/idp/shibboleth`` -> ``idp.example.edu.cn``);
-    empty without one. The package names no school itself.
-    """
-    entity_id = str(config.get("idp_entity_id", "") or "").strip()
-    if not entity_id.startswith("https://"):
-        return ()
-    host = (urlparse(entity_id).hostname or "").lower()
-    return (host,) if host else ()
+    """The configured school's login hosts, for telling its login pages apart
+    (``schools.login_hosts``: its entityID's host and those its federation lists);
+    empty without one. The package names no school itself."""
+    return schools.login_hosts(config)
 
 
 # Institution search input selectors, tried in order on WAYF pages
@@ -40,6 +35,12 @@ class InstitutionMixin:
 
     # The school chosen this often on one chooser address, the chooser back each time.
     SCHOOL_CHOICE_REPEATS = 3
+
+    @property
+    def federation(self) -> "federations.Federation | None":
+        """The federation of the user's school (the federation layer); None: no
+        school is configured and the user chooses the institution."""
+        return federations.configured(self.config)
 
     @staticmethod
     def _school_choices_here(result: DownloadResult, url: str) -> int:
@@ -73,7 +74,14 @@ class InstitutionMixin:
             return False  # the user reported a wrong school: they choose it in the window
         if self.adapter.leave_email_step(page, result):
             return True  # an email field takes no school name (Elsevier ID, 2026-11-11)
-        if self.config.get("publisher_institution_federation") == "carsi":
+        federation = self.federation
+        if federation is not None:
+            here = str(getattr(page, "url", "") or "")
+            if self._is_idp_host(urlparse(here).netloc) or self._on_school_login_page(here):
+                # The school's own login page is the user's: nothing is chosen or
+                # typed there (its CAS page took the school's name in a search
+                # field once, 2026-11-11).
+                return False
             if self._has_publisher_institution_session(page):
                 # The publisher already shows a signed-in school: nothing to choose
                 # (RSC's account menu names it and was clicked as an entry, 2026-11-01).
@@ -81,6 +89,10 @@ class InstitutionMixin:
             here = str(getattr(page, "url", "") or "")
             if self._school_choices_here(result, here) >= self.SCHOOL_CHOICE_REPEATS:
                 return self._after_repeated_school_choice(page, result, here)
+            # The OpenAthens wayfinder goes straight to the school's entity on the
+            # route that signs in there.
+            if federation.openathens_entries and self._select_openathens_wayfinder(page, result):
+                return True
             # Everything except human verification and the user's credentials is
             # automated once an institution is configured: a remembered
             # "Access through <school>" entry, the school in a publisher list or
@@ -89,10 +101,10 @@ class InstitutionMixin:
                 return True
             if self.institution_query and self._assist_configured_institution(page, result):
                 return True
-            if self.institution_query and self._select_carsi_federation_link(page, result, here):
+            if self.institution_query and self._select_federation_link(page, result, here):
                 return True
             if self.institution_query and not getattr(result, "_institution_not_listed", False):
-                self._check_carsi_school_links(page, result, here)
+                self._check_federation_school_links(page, result, here)
             if getattr(result, "_institution_not_listed", False):
                 return False
             if self.adapter.prepare_institution_choice(page, result) is False:
@@ -110,10 +122,10 @@ class InstitutionMixin:
                 return False
             if chosen is not None:
                 return chosen
-            if self.institution_query and self._assist_carsi_discovery(page, result):
+            if self.institution_query and self._assist_federation_discovery(page, result):
                 return True
             if not any(event["state"] == "institution_selection_required" for event in result.events):
-                self._event(result, "institution_selection_required", "carsi")
+                self._event(result, "institution_selection_required", federation.code)
             return False
         current_url = str(getattr(page, "url", "") or "")
         host = (urlparse(current_url).netloc or "").lower()
@@ -233,7 +245,6 @@ class InstitutionMixin:
         }
         return null;
     }"""
-    _CARSI_OPTION = re.compile(r"\bCARSI\b", re.I)
     _FEDERATION_LINK_LIST = "ul.federation--list"
     _FEDERATION_SCHOOL_LIST = "ul.federation--list-inner"
     # How long one pass waits for the school's option once the federation is chosen
@@ -266,11 +277,14 @@ class InstitutionMixin:
                     return select, hits[0][0], hits[0][1], "entityID" if by_id else "name"
         return None
 
-    def _carsi_federation_option(self, lists: list[dict]) -> tuple[dict, str, str] | None:
-        """``(select, value, label)``: a federation list's single CARSI entry."""
+    def _federation_option(self, lists: list[dict]) -> tuple[dict, str, str] | None:
+        """``(select, value, label)``: a federation list's single entry for the school's federation."""
+        federation = self.federation
+        if federation is None:
+            return None
         for select in lists:
             hits = [(str(o[0]), str(o[1])) for o in select.get("options") or ()
-                    if isinstance(o, (list, tuple)) and len(o) == 2 and o[0] and self._CARSI_OPTION.search(str(o[1]))]
+                    if isinstance(o, (list, tuple)) and len(o) == 2 and o[0] and federation.matches(str(o[1]))]
             if len(hits) == 1:
                 return select, hits[0][0], hits[0][1]
         return None
@@ -309,8 +323,8 @@ class InstitutionMixin:
     _PAGE_LOAD_JS = "() => performance.timeOrigin"
 
     def _federation_choice_page(self, page: Any, result: DownloadResult) -> tuple[str, str] | None:
-        """This page (its address and its load) when CARSI may be chosen in its
-        federation list now; None when not: the program chose CARSI on this very
+        """This page (its address and its load) when the school's federation may be chosen in its
+        federation list now; None when not: the program chose the federation on this very
         page and it shows another federation since (the user's choice, left alone),
         or the page is navigating (looked at again next pass). A chooser that
         reloads, at the same address or another, with its first federation
@@ -332,45 +346,48 @@ class InstitutionMixin:
         return None
 
     def _federation_chosen(self, result: DownloadResult, here: tuple[str, str], detail: str) -> None:
-        """Record that the program chose CARSI on page ``here`` (``_federation_choice_page``)."""
+        """Record that the program chose the school's federation on page ``here`` (``_federation_choice_page``)."""
         result._federation_pages = getattr(result, "_federation_pages", set()) | {here}
         self._event(result, "institution_federation_selected", detail)
 
-    def _select_carsi_federation_link(self, page: Any, result: DownloadResult, url: str) -> bool:
-        if not self._on_publisher_host(url):
+    def _select_federation_link(self, page: Any, result: DownloadResult, url: str) -> bool:
+        """A publisher's list of federation links (Atypon's): the school's federation's."""
+        federation = self.federation
+        if federation is None or not self._on_publisher_host(url):
             return False
         listing = page.locator(self._FEDERATION_LINK_LIST).first
         try:
             if listing.is_visible() is not True:
                 return False
-            links = listing.get_by_role("link", name=self._CARSI_OPTION)
+            links = listing.get_by_role("link", name=federation.chooser_pattern)
             if links.count() != 1:
                 return False
             href = links.first.get_attribute("href", timeout=800)
             if not href or not self._manual_institution_target_allowed(urljoin(url, href)):
                 return False
             here = self._federation_choice_page(page, result)
-            if here is None or not self._click_control(page, links.first, result, "choose CARSI federation"):
+            if here is None or not self._click_control(page, links.first, result, f"choose {federation.name} federation"):
                 return False
         except Exception as exc:
             if not _is_browser_error(exc):
                 raise
             self._event(result, "institution_step_interrupted", type(exc).__name__)
             return False
-        self._federation_chosen(result, here, f"carsi: federation link @ {url}")
+        self._federation_chosen(result, here, f"{federation.code}: federation link @ {url}")
         return True
 
-    def _check_carsi_school_links(self, page: Any, result: DownloadResult, url: str) -> None:
-        """Only a complete link directory can establish absence after choosing CARSI."""
-        if not self._on_publisher_host(url):
+    def _check_federation_school_links(self, page: Any, result: DownloadResult, url: str) -> None:
+        """Only a complete link directory can establish absence after choosing the federation."""
+        federation = self.federation
+        if federation is None or not self._on_publisher_host(url):
             return
         try:
             listing = page.locator(self._FEDERATION_SCHOOL_LIST).first
             if listing.is_visible() is not True:
                 return
-            heading = page.get_by_role("heading", level=1, name=self._CARSI_OPTION).first
+            heading = page.get_by_role("heading", level=1, name=federation.chooser_pattern).first
             if heading.is_visible() is not True or self._is_challenge_page(page):
-                self._school_list_unconfirmed(result, url, "no CARSI heading, or a verification page")
+                self._school_list_unconfirmed(result, url, f"no {federation.name} heading, or a verification page")
                 return
             rows = listing.locator(":scope > li")
             entries = page.evaluate(self._ENTRIES_JS, self._FEDERATION_SCHOOL_LIST + " > li > a[href]")
@@ -387,7 +404,8 @@ class InstitutionMixin:
             if any(self._institution_entry_score(entry, entity_id)
                    or self._canonical_school_name(entry["t"]) in names for entry in entries):
                 return
-            self._event(result, "auto_institution_not_found", f"{self.institution_query} (CARSI list, {len(entries)} schools) @ {url}")
+            self._event(result, "auto_institution_not_found",
+                        f"{self.institution_query} ({federation.name} list, {len(entries)} schools) @ {url}")
             result._institution_not_listed = True
         except Exception as exc:
             if not _is_browser_error(exc):
@@ -395,11 +413,11 @@ class InstitutionMixin:
             self._event(result, "institution_step_interrupted", type(exc).__name__)
 
     def _school_list_unconfirmed(self, result: DownloadResult, url: str, why: str) -> None:
-        """Why a shown CARSI school list could not settle the school's absence, once per page:
+        """Why a shown school list of the federation could not settle the school's absence, once per page:
         the school was left to choose by hand and the wait ran out (Science, 2026-11-11)."""
-        if not any(e["state"] == "carsi_school_list_unconfirmed" and str(e.get("detail", "")).endswith(f"@ {url}")
+        if not any(e["state"] == "federation_school_list_unconfirmed" and str(e.get("detail", "")).endswith(f"@ {url}")
                    for e in result.events):
-            self._event(result, "carsi_school_list_unconfirmed", f"{why} @ {url}")
+            self._event(result, "federation_school_list_unconfirmed", f"{why} @ {url}")
 
     def _close_blank_overlay(self, page: Any, result: DownloadResult) -> None:
         try:
@@ -413,7 +431,7 @@ class InstitutionMixin:
 
     def _select_from_institution_lists(self, page: Any, result: DownloadResult) -> bool:
         """One rule for school lists in <select>s, shown or hidden: the federation
-        list's CARSI entry, then the configured school's option (by entityID, the
+        list's entry for the school's federation, then the school's option (by entityID, the
         option's value, else by name), then the list's own submit control. Once per
         page; True when something was chosen. Without the school in a filled list
         the publisher has no route for it (``_institution_not_listed``)."""
@@ -425,7 +443,7 @@ class InstitutionMixin:
             return False  # only the publisher's and the federations' choosers
         lists = self._page_selects(page)
         school = self._school_option(lists)
-        federation = None if school else self._carsi_federation_option(lists)
+        federation = None if school else self._federation_option(lists)
         if school is None and federation is None:
             return False
         if federation is not None:
@@ -439,7 +457,7 @@ class InstitutionMixin:
                 if here is None:
                     return False
                 self._set_select(page, select, value)
-                self._federation_chosen(result, here, f"carsi: {label} in {select.get('name')} @ {url}")
+                self._federation_chosen(result, here, f"{self.federation.code}: {label} in {select.get('name')} @ {url}")
                 page.wait_for_timeout(500)
                 self._close_blank_overlay(page, result)
             started, seen = time.time(), {}
@@ -457,7 +475,7 @@ class InstitutionMixin:
                     name, options = next(iter(filled.items()))
                     sample = ", ".join(str(o[1]) for o in options[1:6])
                     self._event(result, "auto_institution_not_found",
-                                f"carsi list {name} ({len(options)} options: {sample}) @ {url}")
+                                f"{self.federation.code} list {name} ({len(options)} options: {sample}) @ {url}")
                     result._institution_not_listed = True
                     return False
                 count = max((len(s.get("options") or ()) for s in seen.get("lists") or () if s.get("i") != select.get("i")), default=0)
@@ -525,8 +543,11 @@ class InstitutionMixin:
             if head >= 2 and all(self._institution_match_score(note) >= 2 for note in notes):
                 return head
         best = 0
+        text = re.sub(r"^the ", "", text)  # "University of Kita" is "The University of Kita"
+        if self._name_residue(text) == "":
+            return 3  # only the school's own names ("<Chinese name> <English name>")
         for name in self._institution_names():
-            name = " ".join(name.translate(self._QUOTES).split()).lower()
+            name = re.sub(r"^the ", "", " ".join(name.translate(self._QUOTES).split()).lower())
             if not name:
                 continue
             if text == name:
@@ -568,6 +589,77 @@ class InstitutionMixin:
             return 4
         return self._institution_match_score(entry.get("t", ""))
 
+    def _name_residue(self, text: str) -> str | None:
+        """What is left of ``text`` (lower case) once the school's names are taken
+        out, as words; None when it holds none of them."""
+        names = sorted({re.sub(r"^the ", "", " ".join(n.translate(self._QUOTES).split()).lower())
+                        for n in self._institution_names()} - {""}, key=len, reverse=True)
+        rest, found = f" {text} ", False
+        for name in names:
+            if name in rest:
+                rest, found = rest.replace(name, " "), True
+        return " ".join(re.sub(r"[\W_]+", " ", rest).split()) if found else None
+
+    # Words a unit of the school itself may add to its name (its library, campus,
+    # hospital): such an entry may be the school's, so the search settles nothing.
+    _OWN_UNIT = re.compile(r"^(?:graduate school|school of|faculty of|department of|institute of|cent(?:er|re) for)\b"
+                           r"|^(?:(?:the|main|central|university|univ|library|libraries|campus|branch|hospital|"
+                           r"medical|medicine|dentistry|nursing|pharmacy|law|business|graduate|department|"
+                           r"health|engineering|center|centre|faculty|school|college|of|and)\b\s*)+$")
+
+    # A search's own word that it found nothing (Elsevier's "Can't find your
+    # institution?" is always there and does not count).
+    _NO_RESULTS = re.compile(r"\bno (?:results?|matches|matching (?:institutions?|organi[sz]ations?)|"
+                             r"(?:institutions?|organi[sz]ations?) (?:were )?found)\b|\b0 results\b|"
+                             r"没有找到|无结果|未找到|找不到(?:相关|匹配)", re.I)
+    # How long the results must stay the same before they settle the school's absence.
+    SEARCH_SETTLED_SEC = 4
+
+    def _search_lists_no_school(self, page: Any, result: DownloadResult, url: str, scored: list) -> bool:
+        """The school's name was searched on this page, the results are shown and
+        have not changed for ``SEARCH_SETTLED_SEC``, and none is the school: other
+        schools whose names contain its own ("<school> of Advanced Science",
+        Elsevier 2026-11-11), or the search saying it found none. Then the publisher has no entry for the school: the login ends at
+        once (``_institution_not_listed``), not at the end of the wait."""
+        def searched_here(event: dict) -> bool:
+            # A record keeps 500 characters: a long address (Elsevier ID's) is cut short in it.
+            where = str(event.get("detail", "")).split(" @ ", 1)[-1]
+            return event["state"] == "auto_institution_search" and len(where) > 10 and url.startswith(where)
+
+        if not any(searched_here(e) for e in result.events):
+            return False  # nothing searched here: a page's other lists say nothing
+        others = sorted({str(it.get("t") or "")[:80] for score, it in scored if score == 1})
+        # A unit of the school (its library, campus, a faculty) may be its way in,
+        # unless its publisher marks it as signing in no one (IP, VPN, email).
+        may_sign_in = [str(it.get("t") or "") for score, it in scored if score == 1
+                       and self.adapter.institution_entry_signs_in(unquote(str(it.get("ids") or ""))) is not False]
+        residues = [self._name_residue(" ".join(o.translate(self._QUOTES).split()).lower()) for o in may_sign_in]
+        if any(r is not None and self._OWN_UNIT.match(r) for r in residues):
+            return False  # perhaps the school's own library or campus: left to the user
+        if others:
+            evidence = f"{len(others)} other entries: " + "; ".join(others[:3])
+        else:
+            try:
+                said = self._NO_RESULTS.search(self._body_text(page, 4_000) or "")
+            except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
+                return False
+            if not said:
+                return False  # results not shown yet: looked at again next pass
+            evidence = f'"{said.group(0)}"'
+        now = time.time()
+        seen = getattr(result, "_search_miss", None)
+        if not seen or seen[0] != url or seen[1] != evidence:
+            result._search_miss = (url, evidence, now)
+            return False
+        if now - seen[2] < self.SEARCH_SETTLED_SEC:
+            return False
+        self._event(result, "auto_institution_not_found",
+                    f"{self.institution_query} (search: {evidence[:160]}) @ {url}")
+        result._institution_not_listed = True
+        return True
+
     def _click_unique_institution_entry(self, page: Any, result: DownloadResult, url: str) -> bool:
         """Click the single best visible entry for the configured school.
 
@@ -588,11 +680,36 @@ class InstitutionMixin:
         entity_id = self._entity_id()
 
         scored = [(self._institution_entry_score(it, entity_id), it) for it in items if isinstance(it, dict)]
+        if self.federation is not None:
+            # An entry its publisher marks as signing in no school (Elsevier's
+            # entries carry their route: IP, VPN or a work email, no entityID) is
+            # not the school's sign-in, whatever its name (2026-11-11).
+            without = [it for score, it in scored if score >= 2
+                       and self.adapter.institution_entry_signs_in(unquote(str(it.get("ids") or ""))) is False]
+            if without:
+                scored = [(score, it) for score, it in scored if not any(it is w for w in without)]
+                if not any(score >= 2 for score, _ in scored):
+                    self._event(result, "auto_institution_not_found",
+                                f"{self.institution_query} (listed only without a school sign-in: "
+                                f"{len(without)} entr{'y' if len(without) == 1 else 'ies'}) @ {url}")
+                    result._institution_not_listed = True
+                    return False
         top = max([score for score, _ in scored] or [0])
         best = [it for score, it in scored if score == top]
+        if top < 2 and self.federation is not None and self._search_lists_no_school(page, result, url, scored):
+            return False
         same = (len(best) == 1 or top == 4
                 or (len({(it.get("t"), it.get("h")) for it in best}) == 1 and best[0].get("h")))
         if top < 2 or not same:
+            # The entries' names first (all of them), then what each carries.
+            seen = (" | ".join(str(it.get("t") or "")[:50] for it in best[:8]) + " :: "
+                    + "; ".join(unquote(str(it.get("ids") or ""))[:600] for it in best[:4]))
+            if top >= 1 and not any(e["state"] == "institution_entries_ambiguous"
+                                    and str(e.get("detail", "")).startswith(seen) for e in result.events):
+                # Which entries were alike, and what each carries: the record to
+                # tell the school's entry from the others by (Elsevier listed two
+                # entries with one school's name, neither its federation's, 2026-11-11).
+                self._event(result, "institution_entries_ambiguous", f"{seen} @ {url[:200]}")
             return False
         target = best[0]
         before = str(getattr(page, "url", "") or "")
@@ -642,6 +759,10 @@ class InstitutionMixin:
                 return False
         self._event(result, "auto_institution_entry", f"{target['t'][:80]} @ {url}")
         self._event(result, "institution_selected", target["t"][:80] + (" (entityID)" if top == 4 else ""))
+        if top < 4:
+            # Chosen by its name: what the entry carries, to tell later whether it
+            # was the school's sign-in (Elsevier's entries carry their route, 2026-11-11).
+            self._event(result, "institution_entry_data", unquote(str(target.get("ids") or ""))[:480])
         if not self._left_page(page, before):
             # Elsevier ID's entry goes straight on to the school; its page's other
             # "Submit and continue" belongs to something else.
@@ -819,8 +940,8 @@ class InstitutionMixin:
         if not once("institution_search"):
             return self._handle_institution_search_miss(page, result, url)
         if not self._is_challenge_page(page):
-            if self._assist_carsi_discovery(page, result):
-                self._event(result, "auto_institution_search", f"carsi @ {url}")
+            if self._assist_federation_discovery(page, result):
+                self._event(result, "auto_institution_search", f"{self.federation.code} @ {url}")
                 return True
             for selector in self._institution_search_selectors(page):
                 try:
@@ -924,15 +1045,16 @@ class InstitutionMixin:
             self._left_page(page, url, timeout_ms=10_000)
         return True
 
-    def _assist_carsi_discovery(self, page: Any, result: DownloadResult) -> bool:
-        """On CARSI's own IdP discovery page, type the configured institution and click its entry.
+    def _assist_federation_discovery(self, page: Any, result: DownloadResult) -> bool:
+        """On the school's federation's own discovery page (CARSI's), type the
+        configured institution and click its entry.
 
         Publisher federation choosers are left alone: there the only automatic
-        step is selecting the CARSI federation. Nothing is submitted here; the
+        step is selecting the federation. Nothing is submitted here; the
         user confirms in the window. Without a match the page is left as is.
         """
-        host = (urlparse(str(getattr(page, "url", "") or "")).hostname or "").lower()
-        if not (host == "carsi.edu.cn" or host.endswith(".carsi.edu.cn")):
+        federation = self.federation
+        if federation is None or not federation.on_discovery_page(str(getattr(page, "url", "") or "")):
             return False
         if any(event["state"] == "institution_selected" for event in result.events):
             return False
@@ -944,7 +1066,7 @@ class InstitutionMixin:
                 if (box.input_value(timeout=2_000) or "").strip():
                     return False  # the user already typed; never overwrite
                 box.fill(self.institution_query)
-                self._event(result, "institution_search", f"carsi:{selector}")
+                self._event(result, "institution_search", f"{federation.code}:{selector}")
                 pump_until(page, lambda: self._any_visible(page, self._institution_result_selectors()), 2_000)
                 for result_selector in self._institution_result_selectors():
                     try:
@@ -1018,49 +1140,39 @@ class InstitutionMixin:
 
     # Campus identity-provider hostnames (idp.example.edu.cn, ids.lzu.edu.cn, sso.x.edu ...).
     _IDP_HOST_RE = re.compile(r"^(?:idp?|ids|sso|cas|login|passport|auth(?:server)?|shibboleth|webauth)\.[^/]+\.edu(?:\.cn)?$")
+    # Identity services schools sign in with behind their identity provider (the
+    # school's own tenant there): Microsoft Entra, Okta, OneLogin, Auth0, Ping,
+    # SeciossLink (2026-11-11: four schools' logins went on to these).
+    _IDENTITY_SERVICE_HOSTS = ("login.microsoftonline.com", "okta.com", "oktapreview.com", "onelogin.com",
+                               "auth0.com", "pingone.com", "b2clogin.com", "secioss.com")
 
     def _institution_names(self) -> tuple[str, ...]:
         """The school being chosen, plus its English name when it is the one saved by setup.
 
-        Setup saves both names from the CARSI member list; the package names no school itself.
+        Setup saves both names from the federation's list; the package names no school itself.
         """
         query = (self.institution_query or "").strip()
         names = [query] if query else []
-        if query and query == str(self.config.get("carsi_idp_name") or "").strip():
-            english = str(self.config.get("carsi_idp_name_en") or "").strip()
-            if english and english not in names:
-                names.append(english)
+        if query and query == schools.name(self.config):
+            names.extend(n for n in schools.names(self.config) if n not in names)
         return tuple(names)
 
     def _entity_id(self) -> str:
-        """The configured school's SAML entityID: ``idp_entity_id`` (saved by setup
-        from the CARSI list), else the CARSI list's entry for ``carsi_idp_name``."""
+        """The configured school's SAML entityID (``schools.entity_id``), resolved once."""
         configured = str(self.config.get("idp_entity_id") or "").strip()
         if configured:
             return configured
         resolved = getattr(self, "_resolved_entity_id", None)
         if resolved is None:
-            resolved = self._resolved_entity_id = self._entity_id_from_carsi_list()
+            try:
+                from ..config import DATA_DIR
+
+                resolved = schools.entity_id(self.config, DATA_DIR)
+            except Exception as exc:  # an unreadable copy: the names decide
+                logger.info("institution: member list unreadable (%s)", type(exc).__name__)
+                resolved = ""
+            self._resolved_entity_id = resolved
         return resolved
-
-    def _entity_id_from_carsi_list(self) -> str:
-        """The CARSI member list's entityID for the configured school, from the copy
-        setup saved in the data directory (a download never fetches the list)."""
-        name = str(self.config.get("carsi_idp_name") or "").strip()
-        if not name:
-            return ""
-        try:
-            from ..carsi_schools import CACHE_FILE, choose_school, parse_school_list
-            from ..config import DATA_DIR
-
-            cache = DATA_DIR / CACHE_FILE
-            if not cache.is_file():
-                return ""
-            school, _ = choose_school(parse_school_list(cache.read_text(encoding="utf-8")), name)
-        except Exception as exc:  # an unreadable copy: the names decide
-            logger.info("institution: CARSI list unreadable (%s)", type(exc).__name__)
-            return ""
-        return school.entity_id if school else ""
 
     @staticmethod
     def _carries_entity_id(text: str, entity_id: str) -> bool:
@@ -1074,12 +1186,19 @@ class InstitutionMixin:
         pattern = re.compile(r"(?<![\w.:/-])" + re.escape(entity_id) + r"(?![\w.:/-])")
         return any(pattern.search(t.replace("\\/", "/")) for t in decoded)
 
+    def _on_school_login_page(self, url: str) -> bool:
+        """The configured school's own login page on a service shared by many
+        schools (``schools.login_pages``: its OpenAthens sign-in page)."""
+        return schools.on_login_page(self.config, url)
+
     def _is_idp_host(self, host: str) -> bool:
         """True for the configured school's identity provider or any generic campus IdP hostname."""
         host = (host or "").lower().split(":")[0]
         if not host:
             return False
         if any(token in host for token in _school_auth_patterns(self.config)):
+            return True
+        if any(host == d or host.endswith("." + d) for d in (*schools.domains(self.config), *self._IDENTITY_SERVICE_HOSTS)):
             return True
         return bool(self._IDP_HOST_RE.match(host))
 
@@ -1138,7 +1257,7 @@ class InstitutionMixin:
             return False
 
     _CHOOSER_URL_MARKERS = ("shibboleth.htm", "/action/ssostart", "wayfinder.openathens.net",
-                            "carsi.edu.cn", "/wayf", "/discovery", "/ds/", "institution-search")
+                            "/wayf", "/discovery", "/ds/", "institution-search")
 
     # A search box naming an institution in its placeholder or label, or in its id or
     # name (De Gruyter's LibLynx box has neither placeholder nor label, 2026-11-02).
@@ -1164,7 +1283,8 @@ class InstitutionMixin:
         """
         try:
             url = str(getattr(page, "url", "") or "").lower()
-            if any(marker in url for marker in self._CHOOSER_URL_MARKERS):
+            if (any(marker in url for marker in self._CHOOSER_URL_MARKERS)
+                    or any(domain in url for domain in federations.service_domains())):
                 return True
             return bool(page.evaluate('''() => {
                 const visible = (el) => !el.disabled && el.checkVisibility();

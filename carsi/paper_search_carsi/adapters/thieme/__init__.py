@@ -138,29 +138,31 @@ class ThiemeAdapter(PublisherAdapter):
     CONTINUE_GAP_SEC = 5
 
     def choose_institution(self, page: Any, result: Any) -> bool | None:
-        """On the federation chooser: China (CARSI), then the form's own Continue,
-        again while the page stays on this step (``CONTINUE_TRIES``)."""
+        """On the federation chooser: the school's federation as Thieme names it,
+        then the form's own Continue, again while the page stays on this step
+        (``CONTINUE_TRIES``)."""
         d = self.d
         current = urlparse(str(page.url))
         if (current.scheme != "https" or current.netloc != "profile.thieme.de"
                 or current.path != "/HTML/sso/ejournals/shibboleth.htm"):
             return False
+        ours = d.federation
         federation = page.locator("select#federation")
-        if not federation.is_visible():
+        if ours is None or not federation.is_visible():
             return False
-        label = "China (CARSI)"
-        if label not in federation.locator("option").all_text_contents():
+        label = ours.option_among(" ".join(text.split()) for text in federation.locator("option").all_text_contents())
+        if label is None:
             return False
-        changed = federation.locator("option:checked").inner_text() != label
+        changed = " ".join(federation.locator("option:checked").inner_text().split()) != label
         if changed:
-            # Changed by the user only on the very page where CARSI was chosen: Thieme
+            # Changed by the user only on the very page where the federation was chosen: Thieme
             # reloads the step with its first federation selected after a Continue
             # (2026-11-02), a new page chosen again (the engine's one rule).
             here = d._federation_choice_page(page, result)
             if here is None:
                 return False
             federation.select_option(label=label, timeout=5_000)
-            d._federation_chosen(result, here, "carsi")
+            d._federation_chosen(result, here, ours.code)
         # Only the form's own fields: a cookie panel's search box (OneTrust's vendor
         # search on this page, 2026-11-02) is not the page asking for the school.
         school_box = federation.locator("xpath=ancestor::form[1]").locator(
@@ -178,11 +180,11 @@ class ThiemeAdapter(PublisherAdapter):
                 if (button.is_visible(timeout=1_500) is True
                         and d._click_control(page, button, result, "Thieme federation Continue")):
                     result._federation_continue_at = time.time()
-                    d._event(result, "institution_federation_continue", "carsi")
+                    d._event(result, "institution_federation_continue", ours.code)
                     return True
             except Exception as exc:
                 if not _is_browser_error(exc):
                     raise
         if not any(event["state"] == "institution_selection_required" for event in result.events):
-            d._event(result, "institution_selection_required", "carsi")
+            d._event(result, "institution_selection_required", ours.code)
         return changed

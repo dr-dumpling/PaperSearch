@@ -4,7 +4,7 @@ description: |
   用本机 paper-search 命令做文献工作：检索论文、核对 DOI/PMID、搜正文片段（找方法和结果的原文）、查期刊影响因子与分区、查施引和参考文献、下载全文和补充材料。
   用户要找文献、查期刊、下载论文，或说“请开始配置”时使用；英文请求（literature search、journal metrics、paper download、start setup）同样适用。
 metadata:
-  version: "0.5.15"
+  version: "0.6.0"
 ---
 
 # 文献检索与下载（paper-search）
@@ -43,7 +43,7 @@ metadata:
      │    primary → direct_pdf_url → repositories → unpaywall → publisher_api
      ├─ ② Sci-Hub 兜底（默认开启，useSciHub=false 关闭）
      ├─ ③ 机构下载（学校订阅下载，电脑上经用户同意后安装；paper-search carsi install）
-     │    entitled_access：浏览器打开出版社网站 → 程序选 CARSI 和学校
+     │    entitled_access：浏览器打开出版社网站 → 程序选学校所属的联盟和学校
      │    → 用户登录学校，后端尝试简单验证、必要时提示人工接管 → 程序取 PDF
      │    补充材料只走这一步：正文已由 ①② 拿到时，content=both 也会单独来这里取
      │
@@ -66,6 +66,7 @@ metadata:
 | 机构下载：安装或检查扩展、配置学校、选择浏览器（Google Chrome / ego） | `references/carsi-setup.md` |
 | 机构下载：登录与验证、批量、进度窗口、失败分类、补充材料、确认下载成功 | `references/browser-download.md` |
 | 机构下载：某家出版社、某本期刊能不能下正文和补充材料，没有学校登录路线时怎么办 | `references/publisher-support.md` |
+| 机构下载：某所学校、某个国家或地区能不能用（支持哪些学术身份联盟） | `references/federation-support.md` |
 
 参考文件与实际的 `paper-search --help`、`paper-search tools` 不一致时，以实际命令为准，并告诉用户 Skill 需要更新。
 
@@ -126,7 +127,7 @@ paper-search doctor --pretty
 | 怎么拿 | 程序直接下载，通常几秒，不用登录：来源自带的下载、元数据里的 PDF 地址、PMC、Unpaywall、出版社接口（用户自己的 key）；最后是默认开启的 Sci-Hub 兜底（它不是开放获取，`useSciHub=false` 关闭） | 打开浏览器，经 CARSI 登录学校，在出版社网站取 PDF；账号密码由用户输入，后端尝试简单验证，必要时提示人工接管 |
 | 补充材料 | 不提供 | 有规则的出版社可以取，见 `references/publisher-support.md` |
 | 结果里怎么看 | `attempts[]` 里成功的一步是 `primary`、`direct_pdf_url`、`repositories`、`unpaywall`、`publisher_api` 或 `scihub` | 成功的一步是 `entitled_access` |
-| 参考文件 | `references/capability-routing.md` 的“PDF 获取” | `references/carsi-setup.md`、`references/browser-download.md`、`references/publisher-support.md` |
+| 参考文件 | `references/capability-routing.md` 的“PDF 获取” | `references/carsi-setup.md`、`references/browser-download.md`、`references/publisher-support.md`、`references/federation-support.md` |
 
 两种方式用同一个下载命令，不需要分开调用：先试开放下载；拿不到时，机构下载已启用才继续用学校权限，它固定是最后一步。
 

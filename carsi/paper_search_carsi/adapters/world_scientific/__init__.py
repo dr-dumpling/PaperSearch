@@ -21,8 +21,9 @@ class WorldScientificAdapter(AtyponAdapter):
     def chooser_block_reason(self, page: Any, url: str, text: str) -> str | None:
         if "worldscientific.com/action/ssostart" not in url:
             return None
+        federation = self.d.federation
         if any(label in text for label in ("find your institution", "type the name of your institution",
                                            "select your federation", "select your institution",
-                                           "china cernet federation (carsi)")):
+                                           *(f.lower() for f in (federation.chooser_labels if federation else ())))):
             return ""
         return "sso_redirect_stalled"

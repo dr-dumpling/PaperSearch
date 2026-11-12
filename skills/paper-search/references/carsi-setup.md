@@ -1,6 +1,6 @@
 # 机构下载：安装扩展、配置学校、选择浏览器
 
-学校订阅下载（CARSI）让 PaperSearch 用用户学校的权限，在浏览器里下载需要订阅的论文。在有图形界面的电脑上，用户同意后才装：用户说“请开始配置”或第一次要下订阅文章时问一次；用户说过不要（`PAPER_SEARCH_CARSI_DECLINED=true`）或没有图形界面的服务器上不装、不问。检索和开放下载不需要它。
+学校订阅下载（经学校所属的学术身份联盟或 OpenAthens 登录）让 PaperSearch 用用户学校的权限，在浏览器里下载需要订阅的论文。在有图形界面的电脑上，用户同意后才装：用户说“请开始配置”或第一次要下订阅文章时问一次；用户说过不要（`PAPER_SEARCH_CARSI_DECLINED=true`）或没有图形界面的服务器上不装、不问。检索和开放下载不需要它。
 
 ## 查看与安装
 
@@ -47,18 +47,19 @@ paper-search carsi login --doi <学校订阅的一篇文章的 DOI>
 
 ## 学校
 
-用户的学校写在后端配置里，由用户提供，不预设、不替换：
+用户的学校写在后端配置里，由用户提供，不预设、不替换。用户只需说出学校名，所属联盟由后端判断，不要问用户是哪个联盟：
 
 ```bash
-paper-search-carsi setup --carsi --institution "学校名"
+paper-search-carsi setup --institution "用户说的校名" [--also-name "学校的英文正式名称"]
 ```
 
-- `--institution` 可以是 CARSI 成员学校的中文名、英文名、拼音、域名或 entityID。后端在 CARSI 学校列表里找到唯一一所才保存（中文名、英文名、entityID 都用列表原文）。
-- 返回 `carsi_school_ambiguous` 时，把 `candidates` 列给用户选，再用所选学校的 `entity_id` 重新运行；`carsi_school_not_found` 时请用户换个写法；`carsi_school_list_unavailable` 是取不到列表，稍后重试。
-- 查列表：`paper-search-carsi setup --list-carsi-schools 关键词`。
-- `setup --check` 的 `carsi_school` 项为 `missing` 时，说明只存了学校名，按提示重新运行上面的命令。
+- 目前支持中国内地和澳门（CARSI）、香港（HKAF）、新加坡（SGAF）、日本（GakuNin）、韩国（KAFE）、马来西亚（SIFULAN）的学术身份联盟，以及只经 OpenAthens 登录的学校。`--institution` 可以是校名（任何语言）、学校域名或 entityID；后端在各联盟的学校名单里查，确定是哪一所才保存，并保存它所属的联盟。
+- 联盟名单里的校名是当地语言和英文（中国内地、澳门有中文，日本有日文，香港、韩国、新加坡、马来西亚多只有英文）。用户说的校名不是这两种时，加 `--also-name` 给出学校的英文正式名称；不确定英文名就不加。
+- 返回 `school_ambiguous` 时，把 `candidates`（含学校名、联盟、域名）列给用户选，再用所选学校的 `entity_id` 作为 `--institution` 重新运行；只有一个候选也要问，那是名字不完全一致的学校。`school_not_found` 时请用户换成学校正式名称、英文名或学校域名，仍找不到就按回复里的 `reasons` 如实说明：这所学校可能没有接入学术身份联盟或 OpenAthens，学校订阅下载无法为它登录；`federation_not_supported` 是找到了学校但它所属的联盟还不支持，如实告诉用户；`school_list_unavailable` 是名单取不到，稍后重试。
+- `--carsi --institution` 只在 CARSI 名单里查（错误码 `carsi_school_*`）；查 CARSI 名单：`paper-search-carsi setup --list-carsi-schools 关键词`。
+- `setup --check` 的 `school` 项为 `missing` 时，说明只存了学校名，按提示重新运行上面的命令。
 - 配置后，选联盟、选学校、点继续由程序完成；用户只在学校登录页输入账号密码、完成人机验证。
-- 没有配置学校时，CARSI 照样开启，由用户在选校页自己选。
+- 没有配置学校时（`setup --carsi`），CARSI 照样开启，由用户在选校页自己选。
 - 出版社列表里找不到用户的学校时，报告找不到，不改选别的学校。
 - 后端命令要和下载使用同一个数据目录（PaperSearch 默认 `${XDG_DATA_HOME:-~/.local/share}/paper-search-cli/carsi`）；需要时在命令前加 `CARSI_DATA_DIR=<该目录>`。登录状态保存在这个目录的下载浏览器里。
 

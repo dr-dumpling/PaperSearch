@@ -13,7 +13,7 @@ One sentence and your AI searches, verifies and downloads full texts and supplem
   <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch?style=flat-square" alt="npm"></a>
   <a href="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml"><img src="https://img.shields.io/github/actions/workflow/status/dr-dumpling/PaperSearch/publish.yml?style=flat-square&amp;label=publish" alt="Publish workflow status"></a>
   <a href="https://nodejs.org/"><img src="https://img.shields.io/node/v/papersearch?style=flat-square" alt="Required Node.js version"></a>
-  <a href="#1-school-subscription-downloads-carsi"><img src="https://img.shields.io/badge/CARSI-supported-7284CE?style=flat-square" alt="School subscription downloads (CARSI)"></a>
+  <a href="#1-school-subscription-downloads"><img src="https://img.shields.io/badge/school%20login-Asia%20(6%20federations%20%2B%20OpenAthens)-7284CE?style=flat-square" alt="School subscription downloads: six academic identity federations in Asia and OpenAthens"></a>
   <a href="docs/guide.en.md#agent-skill"><img src="https://img.shields.io/badge/Agent%20Skill-bundled-D97757?style=flat-square" alt="Bundled Agent Skill"></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-555555?style=flat-square" alt="Runs on macOS and Windows"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2F9E44?style=flat-square" alt="MIT license"></a>
@@ -21,7 +21,7 @@ One sentence and your AI searches, verifies and downloads full texts and supplem
 </p>
 
 <p align="center">
-  <a href="#demo-video">Demo video</a> · <a href="#quick-start">Quick start</a> · <a href="#1-school-subscription-downloads-carsi">School subscription downloads</a> · <a href="#2-api-keys">API keys</a> · <a href="docs/guide.en.md">Guide</a> · <a href="docs/ARCHITECTURE.zh.md">Architecture</a> · <a href="docs/ROADMAP.zh.md">Roadmap</a> · <a href="https://github.com/dr-dumpling/PaperSearch/issues/new/choose">Report an issue</a>
+  <a href="#demo-video">Demo video</a> · <a href="#quick-start">Quick start</a> · <a href="#1-school-subscription-downloads">School subscription downloads</a> · <a href="#2-api-keys">API keys</a> · <a href="docs/guide.en.md">Guide</a> · <a href="docs/ARCHITECTURE.zh.md">Architecture</a> · <a href="docs/ROADMAP.zh.md">Roadmap</a> · <a href="https://github.com/dr-dumpling/PaperSearch/issues/new/choose">Report an issue</a>
 </p>
 
 PaperSearch provides the `paper-search` command and a bundled Skill. Once installed, Claude Code, Codex, DeepSeek, GLM, Kimi Code, Qwen Code, CodeBuddy and other AI tools that can run local commands can do this for you:
@@ -32,7 +32,7 @@ PaperSearch provides the `paper-search` command and a bundled Skill. Once instal
 - **Look up citations and references**: from one paper, find the studies that cite it and the works it cites.
 - **Download full texts and supplementary files**:
   - Open-access papers: downloaded directly.
-  - Subscription papers: through "[school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi)" (recommended) or [API keys](#2-api-keys).
+  - Subscription papers: through "[school subscription downloads](#1-school-subscription-downloads)" (recommended) or [API keys](#2-api-keys).
 
 <p align="center"><img src="assets/overview.en.png" width="840" alt="What PaperSearch does: search papers, full-text snippets, journal metrics, citations and references, full texts and supplementary files"></p>
 
@@ -66,13 +66,13 @@ Once it is installed, mention the Skill and send:
 /paper-search Start setup
 ```
 
-Your AI first asks whether to install the PaperSearch command-line program; once you agree, it installs it and then walks you through school subscription downloads (CARSI) and API keys.
+Your AI first asks whether to install the PaperSearch command-line program; once you agree, it installs it and then walks you through school subscription downloads and API keys.
 
 <p align="center"><img src="assets/install.en.webp" width="840" alt="Install demo: send your AI one sentence and it installs the Skill; mention the Skill and say Start setup, and it asks before installing the command-line program, lists what works, and goes on to setup"></p>
 
 ### 2. Add school subscription downloads during setup
 
-After "Start setup", your AI first asks whether to add [school subscription downloads (CARSI)](#1-school-subscription-downloads-carsi): full texts and supplementary files of subscription papers through your school account; it needs Chrome (installed too if missing) and downloads about 0.5 GB. It installs only after you agree, then asks for your school, sets it, and opens the settings window.
+After "Start setup", your AI first asks whether to add [school subscription downloads](#1-school-subscription-downloads): full texts and supplementary files of subscription papers through your school account; it needs Chrome (installed too if missing) and downloads about 0.5 GB. It installs only after you agree, then asks for your school, sets it, and opens the settings window.
 
 - Don't want it? Say so and it is skipped for good; searching and open-access downloads work as before.
 - Servers without a screen are not asked.
@@ -111,7 +111,7 @@ Once set up, mention the PaperSearch Skill and say what you want to search for, 
 
 Feature comparison:
 
-| | Works once installed | API keys | School subscription downloads (CARSI) |
+| | Works once installed | API keys | School subscription downloads |
 |---|:---:|:---:|:---:|
 | **Search** | | | |
 | &emsp;Search papers, citations and references | ✅ | — | — |
@@ -126,9 +126,28 @@ Feature comparison:
 | **You need** | Node.js 22 or later | Keys from each provider | Google Chrome, a school account |
 | **How to turn it on** | Quick start step 1 | Settings window or terminal | Agree during setup |
 
-### 1. School subscription downloads (CARSI)
+### 1. School subscription downloads
 
-Papers the open channels cannot get can come through your school's subscriptions. CARSI is the China higher-education identity federation; almost every Chinese university has joined it, so your school account signs you in to the publishers.
+Papers the open channels cannot get can come through your school's subscriptions: the program signs in to the publishers through the academic identity federation your school belongs to, with your school account. At setup you only name your school (in Chinese, English or its own language); the program finds out which federation it belongs to.
+
+The academic identity federations of different countries are interconnected through [eduGAIN](https://edugain.org/), which is how publishers accept school accounts from many countries; many schools in no national federation use the [OpenAthens](https://www.openathens.net/) institutional sign-in service, and the program signs in through it too.
+
+**Supported academic identity federations** (first stage: Asia)
+
+| Region | Federation | Full name |
+|---|---|---|
+| Chinese mainland, Macau | CARSI | CERNET Authentication and Resource Sharing Infrastructure |
+| Hong Kong | HKAF | Hong Kong Access Federation |
+| Singapore | SGAF | Singapore Access Federation |
+| Japan | GakuNin | Academic Access Management Federation in Japan |
+| South Korea | KAFE | Korean Access Federation |
+| Malaysia | SIFULAN | SIFULAN Malaysian Access Federation |
+| Schools in no national federation (most universities in Southeast Asia and others) | OpenAthens | OpenAthens institutional sign-in |
+
+- What each federation supports and which schools have been tested: [federation support table](skills/paper-search/references/federation-support.md) (Chinese).
+- Planned: the US (InCommon), the UK (UK federation), Australia (AAF) and the federations of European countries, then the other countries in eduGAIN; see the [roadmap](docs/ROADMAP.zh.md) (Chinese).
+- A school in no federation and not on OpenAthens (reached only from the campus network, a VPN or a library proxy) cannot be used yet.
+- Whether a given paper comes through still depends on your school's subscriptions and on whether the publisher lets your school sign in with school accounts; when it does not, the program says so.
 
 - **Your school account is enough**: no keys to apply for; publisher API keys only cover Elsevier and Springer.
 - **Deep publisher adaptation**: the general download flow is deeply optimized, and more than 30 publishers have dedicated rules, one by one: where the institutional login is and how to fetch the PDF and supplementary files follow each publisher as it really is, so downloads are more accurate and fewer papers are missed. The main publishers:
@@ -220,7 +239,7 @@ Next on the list:
 1. **A better progress capsule**: better-timed reminders, with no early prompt when the school login page lets you through by itself; less of the browser briefly jumping to the front on Windows when it starts or changes pages; a cleaner look.
 2. **Parallel downloads**: papers from different publishers download at the same time, cutting the total time for dozens or hundreds of papers; each publisher's download limits still apply.
 3. **A Markdown full-text package**: besides the PDF, the original XML/HTML, a Markdown reading copy and the figures, with figure numbers, captions and in-text references matched, ready to hand to an AI for reading and citing.
-4. **More ways to reach your school's access**: beyond China's CARSI, the identity federations of other countries (such as InCommon in the US and the UK federation); WebVPN, EZProxy and similar where possible.
+4. **School sign-in worldwide**: the academic identity federations of Asia are supported; next come the US, the UK, Australia and the federations of European countries, then every country in eduGAIN; WebVPN, EZProxy and similar where possible.
 5. **Better paper search and full-text snippets**: learn from similar tools and improve how papers and passages are found.
 
 The full plan is in the [roadmap](docs/ROADMAP.zh.md) (Chinese); how it works inside is in the [architecture](docs/ARCHITECTURE.zh.md) (Chinese). Feature ideas are welcome as [issues](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) and pull requests; for failed downloads or publisher requests use the matching issue template, and to add publisher rules yourself see [carsi/CONTRIBUTING.md](carsi/CONTRIBUTING.md).

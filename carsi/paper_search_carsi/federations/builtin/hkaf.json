@@ -1,0 +1,12 @@
+{
+  "code": "hkaf",
+  "name": "HKAF",
+  "country": "HK",
+  "registration_authorities": ["https://hkaf.edu.hk"],
+  "chooser_labels": ["Hong Kong Access Federation"],
+  "chooser_pattern": "\\bHKAF\\b|\\bHong\\s+Kong\\s+Access\\s+Federation\\b",
+  "discovery_hosts": [],
+  "service_domains": ["hkaf.edu.hk"],
+  "metadata_url": "https://md.hkaf.edu.hk/hkaf-edugain-metadata.xml",
+  "member_list": ""
+}

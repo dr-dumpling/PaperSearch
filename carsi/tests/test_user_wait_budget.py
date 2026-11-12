@@ -128,7 +128,8 @@ class UserWaitBudgetTests(unittest.TestCase):
     def test_manual_verification_input_pauses_the_page_and_article_budgets(self):
         d = self.downloader()
         page, clock = self.verification_page()
-        page.frames = [Mock(evaluate=Mock(side_effect=lambda *a: int(clock[0] >= 1005)))]
+        # Input on the verification from 1005 s on, one every minute (within the idle limit).
+        page.frames = [Mock(evaluate=Mock(side_effect=lambda *a: int(clock[0] >= 1005) + int((clock[0] - 1000) // 60)))]
         d._challenge_shell = Mock(side_effect=lambda p: clock[0] < 1400)
         d._is_challenge_page = Mock(side_effect=lambda p: clock[0] < 1400)
         d._automatic_challenge_step = Mock(return_value=False)
@@ -174,7 +175,8 @@ class UserWaitBudgetTests(unittest.TestCase):
         d = self.downloader(user_wait="short")
         clock = [1000.0]
         page = Mock(url="https://cas.school.example/login")
-        page.frames = [Mock(evaluate=Mock(side_effect=lambda *a: int(clock[0] >= 1012)))]
+        # Real input from 1012 s on, one every minute (within the idle limit).
+        page.frames = [Mock(evaluate=Mock(side_effect=lambda *a: int(clock[0] >= 1012) + int((clock[0] - 1000) // 60)))]
         d._users_login_step = Mock(return_value=True)
         def finish_login(*args):
             if clock[0] >= 1400:
@@ -184,10 +186,28 @@ class UserWaitBudgetTests(unittest.TestCase):
         d._check_user_decision.side_effect = finish_login
         result = DownloadResult(doi="10.1002/x", status="failed", article_url=ARTICLE)
         self.assertTrue(self.login_loop(d, page, result, clock))
-        # One real input takes over; even a long pause between inputs is allowed.
+        # Input keeps the countdown off past the login's own time.
         self.assertGreaterEqual(clock[0] - 1000, 400)
         self.assertFalse(getattr(result, "_user_wait_expired", False))
         self.assertIsNone(result._login_wait)
+
+    def test_a_stray_click_on_the_login_page_holds_it_only_for_the_login_wait(self):
+        # The user, 2026-11-11: one click and nobody there must not hold the batch forever.
+        d = self.downloader(user_wait="short")
+        clock = [1000.0]
+        page = Mock(url="https://cas.school.example/login")
+        page.frames = [Mock(evaluate=Mock(side_effect=lambda *a: int(clock[0] >= 1012)))]
+        d._users_login_step = Mock(return_value=True)
+        def finish_login(*args):
+            if clock[0] >= 1400:
+                d._users_login_step.return_value = False
+                d._is_human_login_page.return_value = False
+                d._article_access_available.return_value = True
+        d._check_user_decision.side_effect = finish_login
+        result = DownloadResult(doi="10.1002/x", status="failed", article_url=ARTICLE)
+        self.assertFalse(self.login_loop(d, page, result, clock))
+        self.assertGreaterEqual(clock[0] - 1012, d.login_timeout_sec)
+        self.assertLess(clock[0], 1400)
 
     def test_a_verification_before_the_school_login_leaves_it_all_its_time(self):
         # Elsevier, 2026-11-09: a 22 s verification and choosing the school used up

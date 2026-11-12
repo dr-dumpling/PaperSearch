@@ -341,8 +341,9 @@ class AccessMixin:
                                      "library", "libraries", "hospital", "the", "and", "for"})
 
     def _school_names(self) -> list[str]:
-        names = [str(self.config.get(key) or "").strip() for key in ("carsi_idp_name", "carsi_idp_name_en")]
-        return [n for n in names + [str(self.institution_query or "").strip()] if n]
+        from ..federations import schools
+
+        return [n for n in [*schools.names(self.config), str(self.institution_query or "").strip()] if n]
 
     def _names_configured_school(self, label: str) -> bool:
         """The label contains the configured school's Chinese name or every

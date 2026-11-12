@@ -59,17 +59,17 @@ class SetupLoginCliTests(unittest.TestCase):
     def test_setup_carsi_school_must_be_one_member_school(self):
         self.use_school_list()
         run_cli(self.data_dir, "setup", "--carsi", "--institution", "example.edu.cn")
-        code, out, _ = run_cli(self.data_dir, "setup", "--institution", "示例")
+        code, out, _ = run_cli(self.data_dir, "setup", "--carsi", "--institution", "示例")
         self.assertEqual(code, 1)
         payload = json.loads(out)
         self.assertEqual(payload["error"], "carsi_school_ambiguous")
         self.assertEqual([c["name"] for c in payload["candidates"]], ["示例大学", "示例师范大学"])
         self.assertEqual(payload["candidates"][1]["entity_id"], "https://idp.example-normal.edu.cn/idp/shibboleth")
-        code, out, _ = run_cli(self.data_dir, "setup", "--institution", "Nowhere Institute")
+        code, out, _ = run_cli(self.data_dir, "setup", "--carsi", "--institution", "Nowhere Institute")
         self.assertEqual((code, json.loads(out)["error"]), (1, "carsi_school_not_found"))
         settings = json.loads(run_cli(self.data_dir, "setup")[1])["settings"]
         self.assertEqual(settings["carsi_institution_hint"], "示例大学")  # unchanged
-        code, out, _ = run_cli(self.data_dir, "setup", "--institution", "https://idp.example-normal.edu.cn/idp/shibboleth")
+        code, out, _ = run_cli(self.data_dir, "setup", "--carsi", "--institution", "https://idp.example-normal.edu.cn/idp/shibboleth")
         self.assertEqual(json.loads(out)["settings"]["carsi_institution_en"], "Example Normal University")
 
     def test_setup_lists_carsi_schools(self):
@@ -83,20 +83,12 @@ class SetupLoginCliTests(unittest.TestCase):
         run_cli(self.data_dir, "setup", "--carsi")
         run_cli(self.data_dir, "config", "set", "carsi_idp_name", "示例大学")
         items = {c["item"]: c for c in json.loads(run_cli(self.data_dir, "setup", "--check")[1])["checks"]}
-        self.assertEqual(items["carsi_school"]["status"], "missing")
-        self.assertIn("setup --carsi --institution", items["carsi_school"]["detail"])
+        self.assertEqual(items["school"]["status"], "missing")
+        self.assertIn("setup --institution", items["school"]["detail"])
         self.use_school_list()
-        run_cli(self.data_dir, "setup", "--institution", "示例大学")
+        run_cli(self.data_dir, "setup", "--carsi", "--institution", "示例大学")
         items = {c["item"]: c for c in json.loads(run_cli(self.data_dir, "setup", "--check")[1])["checks"]}
-        self.assertEqual(items["carsi_school"]["status"], "ok")
-
-    def test_without_carsi_the_name_is_saved_as_typed(self):
-        self.use_school_list()
-        run_cli(self.data_dir, "setup", "--carsi", "--institution", "Example University")
-        code, out, _ = run_cli(self.data_dir, "setup", "--no-carsi", "--institution", "Overseas Institute")
-        settings = json.loads(out)["settings"]
-        self.assertEqual((code, settings["carsi_institution_hint"]), (0, "Overseas Institute"))
-        self.assertEqual((settings["carsi_institution_en"], settings["idp_entity_id"]), ("", ""))
+        self.assertEqual(items["school"]["status"], "ok")
 
     def test_setup_carsi_works_without_a_school(self):
         code, out, _ = run_cli(self.data_dir, "setup", "--carsi")

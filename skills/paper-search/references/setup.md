@@ -8,7 +8,7 @@
 A. 机构配置（用户同意用学校订阅下载）
 
 1. 没装时安装（见 `carsi-setup.md`）：`paper-search carsi install --yes --skip-school`，没有 Chrome 时先装 Chrome。
-2. 直接问用户的学校并设好：运行 `paper-search-carsi setup --carsi --institution "学校名"`（见 `carsi-setup.md` 的“学校”一节）。只有用户主动说跳过时才跳过，那样第一次下载时在选校页选。
+2. 直接问用户的学校并设好：运行 `paper-search-carsi setup --institution "学校名"`（见 `carsi-setup.md` 的“学校”一节）。只有用户主动说跳过时才跳过，那样第一次下载时在选校页选。
 3. 其余配置都在设置窗口里做：装完设置窗口会自己打开；没打开或早已装好时，直接运行 `paper-search settings` 打开设置窗口。告诉用户在窗口里填要用的 API key、改下载文件夹和等待时间，每个 key 可以点“测试”，填完点右上角 × 关闭。推荐先填 EasyScholar（影响因子和分区）和 Semantic Scholar（正文片段），其余 key 非必须。不在对话里逐项问 key 或下载文件夹。
 4. 用户说填好了，运行 `paper-search doctor --format text`，告诉用户现在能用哪些功能。
 
