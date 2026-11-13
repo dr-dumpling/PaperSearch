@@ -603,7 +603,8 @@ class InstitutionMixin:
 
     # Words a unit of the school itself may add to its name (its library, campus,
     # hospital): such an entry may be the school's, so the search settles nothing.
-    _OWN_UNIT = re.compile(r"^(?:graduate school|school of|faculty of|department of|institute of|cent(?:er|re) for)\b"
+    # A campus by its own name too ("<school> - Campus <name>", 2026-11-13).
+    _OWN_UNIT = re.compile(r"^(?:graduate school|school of|faculty of|department of|institute of|cent(?:er|re) for|campus)\b"
                            r"|^(?:(?:the|main|central|university|univ|library|libraries|campus|branch|hospital|"
                            r"medical|medicine|dentistry|nursing|pharmacy|law|business|graduate|department|"
                            r"health|engineering|center|centre|faculty|school|college|of|and)\b\s*)+$")
@@ -615,6 +616,8 @@ class InstitutionMixin:
                              r"没有找到|无结果|未找到|找不到(?:相关|匹配)", re.I)
     # How long the results must stay the same before they settle the school's absence.
     SEARCH_SETTLED_SEC = 4
+    # Entries enough to be a search's results, not a page's own links.
+    UNRELATED_RESULTS = 3
 
     def _search_lists_no_school(self, page: Any, result: DownloadResult, url: str, scored: list) -> bool:
         """The school's name was searched on this page, the results are shown and
@@ -637,6 +640,7 @@ class InstitutionMixin:
         residues = [self._name_residue(" ".join(o.translate(self._QUOTES).split()).lower()) for o in may_sign_in]
         if any(r is not None and self._OWN_UNIT.match(r) for r in residues):
             return False  # perhaps the school's own library or campus: left to the user
+        settled = self.SEARCH_SETTLED_SEC
         if others:
             evidence = f"{len(others)} other entries: " + "; ".join(others[:3])
         else:
@@ -646,20 +650,104 @@ class InstitutionMixin:
                 if not _is_browser_error(exc):
                     raise
                 return False
-            if not said:
+            baseline = getattr(result, "_search_baseline", None)
+            before = baseline[1] if isinstance(baseline, tuple) and baseline[0] == url else set()
+            # Only what the search added: the page's own links listed before it are no results
+            # (2026-11-13: "About Elsevier", "Cookie settings" ended four searches still loading).
+            unrelated = sorted({str(it.get("t") or "")[:60] for score, it in scored if score == 0
+                                and str(it.get("t") or "").strip() and str(it.get("t") or "")[:60] not in before})
+            if said:
+                evidence = f'"{said.group(0)}"'
+            elif len(unrelated) >= self.UNRELATED_RESULTS and not self._search_list_closed(page, result, url):
+                # A fuzzy search listing only schools of other names, none carrying
+                # the school's entityID (2026-11-13: "University of <town>" for one
+                # school, 20 of them): longer, a slow search may still be replacing them.
+                evidence, settled = f"{len(unrelated)} unrelated entries: " + "; ".join(unrelated[:3]), 2 * settled
+            else:
                 return False  # results not shown yet: looked at again next pass
-            evidence = f'"{said.group(0)}"'
         now = time.time()
         seen = getattr(result, "_search_miss", None)
         if not seen or seen[0] != url or seen[1] != evidence:
             result._search_miss = (url, evidence, now)
             return False
-        if now - seen[2] < self.SEARCH_SETTLED_SEC:
+        if now - seen[2] < settled:
             return False
         self._event(result, "auto_institution_not_found",
                     f"{self.institution_query} (search: {evidence[:160]}) @ {url}")
         result._institution_not_listed = True
         return True
+
+    # How long a search by one of the school's names may show nothing before the next is typed.
+    SEARCH_RETRY_SEC = 6
+
+    def _search_queries(self, names: list[str]) -> list[str]:
+        """The school's names to search by, in Latin letters first (straight apostrophes)."""
+        typed = [n.translate(self._QUOTES) for n in names]
+        return list(dict.fromkeys([q for q in typed if q.isascii()] + [q for q in typed if not q.isascii()]))
+
+    def _search_again_by_another_name(self, page: Any, result: DownloadResult, url: str, names: list[str]) -> bool:
+        """The search by one of the school's names has shown nothing for
+        ``SEARCH_RETRY_SEC`` (its list closed, or no entry beyond the page's own):
+        the box is cleared and the next name typed, once each (2026-11-13: a school
+        listed by its French name, searched by its English one, found nothing).
+        A box holding anything but our own query is the user's and stays."""
+        box_at = getattr(result, "_search_box", None)
+        if (not isinstance(box_at, tuple) or box_at[0] != url
+                or time.time() - float(getattr(result, "_search_typed_at", 0) or 0) < self.SEARCH_RETRY_SEC):
+            return False
+        tried = []
+        for event in result.events:
+            query, _, where = str(event.get("detail", "")).partition(" @ ")
+            if event["state"] == "auto_institution_search" and len(where) > 10 and url.startswith(where):
+                tried.append(query)
+        left = [q for q in self._search_queries(names) if q not in tried]
+        if not left:
+            return False
+        baseline = getattr(result, "_search_baseline", None)
+        before = baseline[1] if isinstance(baseline, tuple) and baseline[0] == url else set()
+        if not self._search_list_closed(page, result, url) and self._entry_texts(page) - before:
+            return False  # results shown: they decide
+        box = page.locator(box_at[1]).first
+        try:
+            if str(box.input_value(timeout=2_000) or "").strip() not in tried:
+                return False
+            box.fill("")
+            box.press_sequentially(left[0], delay=40)
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return False
+        result._search_typed_at = time.time()
+        result._search_miss = None
+        self._event(result, "auto_institution_search", f"{left[0]} @ {url}")
+        return True
+
+    def _search_list_closed(self, page: Any, result: DownloadResult, url: str) -> bool:
+        """The search box typed in says its list is closed (``aria-expanded="false"``):
+        no results are shown, whatever else the page lists (2026-11-13: a search
+        showing nothing, its page's links taken for results)."""
+        box = getattr(result, "_search_box", None)
+        if not isinstance(box, tuple) or box[0] != url:
+            return False
+        try:
+            return page.evaluate("""(selector) => {
+                const el = document.querySelector(selector);
+                return !!el && el.getAttribute('aria-expanded') === 'false';
+            }""", box[1]) is True
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return True  # not readable now: nothing concluded from it
+
+    def _entry_texts(self, page: Any) -> set[str]:
+        """The entries a page lists now, by their text (``_ENTRIES_JS``)."""
+        try:
+            items = page.evaluate(self._ENTRIES_JS, self._ENTRY_SELECTOR)
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return set()
+        return {str(it.get("t") or "")[:60] for it in items if isinstance(it, dict)} if isinstance(items, list) else set()
 
     def _click_unique_institution_entry(self, page: Any, result: DownloadResult, url: str) -> bool:
         """Click the single best visible entry for the configured school.
@@ -939,6 +1027,8 @@ class InstitutionMixin:
         # never on a verification page, which the challenge wait takes first: a
         # search there found no school and ended the login (fixture, 2026-11-01).
         if not once("institution_search"):
+            if self._search_again_by_another_name(page, result, url, names):
+                return True
             return self._handle_institution_search_miss(page, result, url)
         if not self._is_challenge_page(page):
             if self._assist_federation_discovery(page, result):
@@ -952,7 +1042,11 @@ class InstitutionMixin:
                     if str(box.input_value(timeout=2_000) or "").strip():
                         return False  # the user is typing; never replace it
                     # The English name, with a straight apostrophe (CARSI writes "Xi’an", 2026-11-01).
-                    query = next((q for q in (n.translate(self._QUOTES) for n in names) if q.isascii()), names[0])
+                    query = self._search_queries(names)[0]
+                    # What the page lists before the search (its own links): no result of it.
+                    result._search_baseline = (url, self._entry_texts(page))
+                    result._search_box = (url, selector)
+                    result._search_typed_at = time.time()
                     # Key by key: search-as-you-type lists (SAMS Sigma, OpenAthens)
                     # do not search on a filled value (2026-11-01).
                     box.press_sequentially(query, delay=40)

@@ -1,0 +1,11 @@
+{
+  "code": "irfed",
+  "name": "IRFED",
+  "country": "IR",
+  "registration_authorities": ["https://irfed.ir/"],
+  "chooser_labels": ["IRFED"],
+  "chooser_pattern": "\\bIRFED\\b",
+  "discovery_hosts": [],
+  "service_domains": ["irfed.ir"],
+  "metadata_url": "https://irfed.ir/IRFED.xml"
+}

@@ -1,0 +1,11 @@
+{
+  "code": "maeen",
+  "name": "Maeen",
+  "country": "SA",
+  "registration_authorities": ["https://www.maeen.sa"],
+  "chooser_labels": ["Maeen Identity Federation"],
+  "chooser_pattern": "\\bMaeen\\b",
+  "discovery_hosts": [],
+  "service_domains": ["maeen.sa"],
+  "metadata_url": "https://md.maeen.sa/metadata/maeen-edugain-metadata.xml"
+}

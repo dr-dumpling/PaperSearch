@@ -1,0 +1,11 @@
+{
+  "code": "eduidlu",
+  "name": "eduID Luxembourg",
+  "country": "LU",
+  "registration_authorities": ["http://eduid.lu"],
+  "chooser_labels": ["eduID Luxembourg"],
+  "chooser_pattern": "\\beduID\\s+Luxembourg\\b",
+  "discovery_hosts": [],
+  "service_domains": ["eduid.lu"],
+  "metadata_url": "https://www.eduid.lu/metadata/upstream.xml"
+}

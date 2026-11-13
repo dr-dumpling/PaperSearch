@@ -144,11 +144,11 @@ class FindSchoolTests(unittest.TestCase):
 
     def test_a_federation_not_supported_yet_is_told(self):
         self.rows["Northern University"] = [{"type": "idp", "title": "Northern University",
-                                             "entity_id": "https://idp.northern.ac.uk/shibboleth",
-                                             "registrationAuthority": ["http://ukfederation.org.uk"]}]
+                                             "entity_id": "https://idp.northern.example/shibboleth",
+                                             "registrationAuthority": ["https://federation.example.org"]}]
         found = self.find("Northern University")
         self.assertEqual((found.school, found.candidates), (None, []))
-        self.assertEqual(found.unsupported, [("Northern University", "http://ukfederation.org.uk")])
+        self.assertEqual(found.unsupported, [("Northern University", "https://federation.example.org")])
 
     def test_the_federations_own_list_when_seamlessaccess_cannot_be_read(self):
         found = self.find("harbour.edu.hk", unavailable=True)
@@ -215,8 +215,10 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
         self.assertEqual((athens.kind, athens.secondary, athens.openathens_entries), ("service", True, True))
         self.assertTrue(athens.matches("OpenAthens Federation"))
 
-    def test_south_and_west_asia_and_the_united_states(self):
-        # India, Turkey, Sri Lanka, Bangladesh, Pakistan, Oman; the United States (2026-11-12).
+    def test_federations_added_by_region(self):
+        # India, Turkey, Sri Lanka, Bangladesh, Pakistan, Oman; the United States (2026-11-12);
+        # China's CSTCloud, Saudi Arabia, Cyprus, Israel, Iran, Azerbaijan (2026-11-13);
+        # Western Europe: the UK, Ireland, France, the Netherlands, Belgium, Luxembourg (2026-11-13).
         for code, authority, label in (
                 ("infed", "http://inflibnet.ac.in", "INFLIBNET Access Management Federation (INFED)"),
                 ("yetkim", "https://yetkim.org.tr", "YETKIM Identity Federation"),
@@ -224,7 +226,19 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
                 ("tigerfed", "https://tigerfed.net.bd", "TIGERfed"),
                 ("pkifed", "https://pkifed.pk", "Pakistan Identity Federation"),
                 ("omren", "http://www.omren.om", "OMREN Identity Federation"),
-                ("incommon", "https://incommon.org/", "InCommon Federation")):
+                ("incommon", "https://incommon.org/", "InCommon Federation"),
+                ("cstcloud", "https://www.cstcloud.net", "CSTCloud Federation"),
+                ("maeen", "https://www.maeen.sa", "Maeen Identity Federation"),
+                ("cynet", "https://cif.cynet.ac.cy/", "CyNet Identity Federation"),
+                ("iucc", "http://iif.iucc.ac.il", "IUCC Identity Federation"),
+                ("irfed", "https://irfed.ir", "IRFED"),
+                ("azsciencenet", "https://edugain.azsciencenet.az", "AzScienceNet Identity Federation"),
+                ("ukfederation", "http://ukfederation.org.uk", "UK Higher Education"),
+                ("edugate", "http://www.heanet.ie", "Ireland - Edugate Federation"),
+                ("renater", "https://federation.renater.fr", "Fédération Éducation-Recherche (Renater)"),
+                ("surfconext", "http://www.surfconext.nl", "SURFconext"),
+                ("belnet", "http://federation.belnet.be", "Belnet Federation"),
+                ("eduidlu", "http://eduid.lu", "eduID Luxembourg")):
             federation = federations.by_code(code)
             self.assertIs(federations.by_registration_authority(authority), federation, code)
             self.assertTrue(federation.matches(label), code)
@@ -235,7 +249,8 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
                   "entity_id": "https://kimlik.liman.edu.tr/idp", "registrationAuthority": ["https://yetkim.org.tr/"],
                   "scope": "liman.edu.tr"}
         found = self.find({"Liman Üniversitesi": [listed]}, "Liman Üniversitesi")
-        self.assertEqual((found.school.federation, found.school.name), ("yetkim", "Harbour University"))
+        self.assertEqual((found.school.federation, found.school.name, found.school.name_en),
+                         ("yetkim", "Liman Üniversitesi", "Harbour University"))
 
     def test_a_school_listed_shorter_than_its_full_name_is_asked_about(self):
         short = {"type": "idp", "title": "Kita Bay", "entity_id": "urn:mace:incommon:kitabay.edu",
@@ -248,6 +263,63 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
         # One word alone is not enough: "Kita" is inside many names.
         one = {**short, "title": "Kita"}
         self.assertEqual(self.find({"Kita Bay University": [one]}, "Kita Bay University").candidates, [])
+
+    def test_a_name_ending_with_its_login_servers_word_is_exact(self):
+        listed = {"type": "idp", "title": "Harbour Technical University IdP", "entity_id": "https://idp.htu.edu.az/idp",
+                  "registrationAuthority": ["https://edugain.azsciencenet.az"], "scope": "htu.edu.az"}
+        found = self.find({"Harbour Technical University": [listed]}, "Harbour Technical University")
+        self.assertEqual((found.school and found.school.federation, found.candidates), ("azsciencenet", []))
+        self.assertEqual(found.school.name, "Harbour Technical University")  # saved, and searched for, without it
+
+    def test_a_school_found_by_its_domain_under_a_shared_entry_keeps_the_given_name(self):
+        shared = {"type": "idp", "title": "Harbour Research ID", "entity_id": "https://passport.harbour.cn/idp",
+                  "registrationAuthority": ["https://www.cstcloud.net/"], "scope": "passport.harbour.cn,kbi.ac.cn,lbi.ac.cn"}
+        rows = {"港湾生物所": [], "Kita Bay Institute": [], "kbi.ac.cn": [shared]}
+        with patch.object(schools, "_seamlessaccess", side_effect=lambda text, config: rows.get(text, [])):
+            found = schools.find("港湾生物所", {}, self.data_dir, also=["Kita Bay Institute", "kbi.ac.cn"])
+        self.assertEqual((found.school.name, found.school.name_en, found.school.entity_id),
+                         ("港湾生物所", "Kita Bay Institute", "https://passport.harbour.cn/idp"))
+        # Only its domain given: the entry's own name stays.
+        self.assertEqual(self.find({"kbi.ac.cn": [shared]}, "kbi.ac.cn").school.name, "Harbour Research ID")
+
+    def test_accents_do_not_count(self):
+        listed = {"type": "idp", "title": "Universite du Port (UP)", "entity_id": "https://idp.port.be/idp",
+                  "registrationAuthority": ["http://federation.belnet.be/"], "scope": "port.be"}
+        self.assertEqual(self.find({"Université du Port": [listed]}, "Université du Port").school.federation, "belnet")
+        # SeamlessAccess finding it only without the accents.
+        self.assertEqual(self.find({"Universite du Port": [listed]}, "Université du Port").school.federation, "belnet")
+        listed = {**listed, "title": "Liman Universitesi", "registrationAuthority": ["https://yetkim.org.tr/"]}
+        self.assertEqual(self.find({"Lİman Ünİversİtesİ": [listed]}, "Lİman Ünİversİtesİ").candidates, [])
+        # Japanese voicing marks are part of the name.
+        self.assertNotEqual(schools._key("ガクエン"), schools._key("カクエン"))
+
+    def test_one_school_listed_twice_in_its_federation_is_its_plainest_entry(self):
+        main = {"type": "idp", "title": "Harbour University", "entity_id": "https://idp.harbour.nl/a",
+                "registrationAuthority": ["http://www.surfconext.nl/"], "scope": "harbour.nl"}
+        second = {**main, "title": "Harbour University (Entra)", "entity_id": "https://idp.harbour.nl/b"}
+        found = self.find({"Harbour University": [main, second]}, "Harbour University")
+        self.assertEqual((found.school.entity_id, found.candidates), ("https://idp.harbour.nl/a", []))
+        # A national entry covering the school's domain is another entry, not the school's second.
+        own = {"type": "idp", "title": "Harbour University", "entity_id": "https://idp.harbour.edu.pk/idp",
+               "registrationAuthority": ["https://pkifed.pk"], "scope": "harbour.edu.pk"}
+        shared = {"type": "idp", "title": "National Login Pakistan", "entity_id": "https://idp2.national.pk/idp",
+                  "registrationAuthority": ["https://pkifed.pk"], "scope": "national.pk,harbour.edu.pk"}
+        found = self.find({"harbour.edu.pk": [own, shared]}, "harbour.edu.pk")
+        self.assertIsNone(found.school)
+        self.assertEqual(len(found.candidates), 2)
+
+    def test_a_carsi_school_also_listed_by_cstcloud_stays_carsi(self):
+        # Both federations list the same entityID for some schools (2026-11-13): it is
+        # one school, signing in through CARSI, the user's default.
+        harbour = {"type": "idp", "title": "Harbour University", "title_langs": {"zh": "港湾大学", "en": "Harbour University"},
+                   "entity_id": "https://idp.harbour.edu.cn/idp/shibboleth", "registrationAuthority": ["https://www.cstcloud.net/"],
+                   "scope": "harbour.edu.cn"}
+        carsi = schools.School("港湾大学", "Harbour University", "https://idp.harbour.edu.cn/idp/shibboleth", "carsi",
+                               "harbour.edu.cn")
+        with patch.object(schools, "_from_school_list",
+                          side_effect=lambda given, config, data_dir, found, lookup: found.add(carsi, True)):
+            found = self.find({"港湾大学": [harbour]}, "港湾大学")
+        self.assertEqual((found.school.federation, found.candidates), ("carsi", []))
 
     def test_the_same_school_on_openathens_under_its_librarys_host_goes(self):
         federation = {"type": "idp", "title": "Harbour University of Engineering", "entity_id": "https://idp.hue.ac.bd/idp",
@@ -542,6 +614,9 @@ class SearchListsNoSchoolTests(unittest.TestCase):
         d, result = self.downloader()
         self.assertEqual(self.settle(d, result, [(1, {"t": "Kita University Main Library"})]), (False, False))
         d, result = self.downloader()
+        campus = {"t": "Kita University - Campus Hanako Sato"}
+        self.assertEqual(self.settle(d, result, [(1, campus), (1, {"t": "Kita University Abu Dhabi"})]), (False, False))
+        d, result = self.downloader()
         faculty = {"t": "Kita University Graduate School of Informatics Library"}
         self.assertEqual(self.settle(d, result, [(1, faculty)]), (False, False))
         # The same unit marked by its publisher as signing in no one settles nothing on its own.
@@ -549,6 +624,67 @@ class SearchListsNoSchoolTests(unittest.TestCase):
         marked = {**faculty, "ids": '{"entityId":null}'.replace('"', "%22")}
         self.assertEqual(self.settle(d, result, [(1, marked), (1, {"t": "Kita University of Advanced Science"})]),
                          (False, True))
+
+    def test_a_search_listing_only_schools_of_other_names_settles_later(self):
+        d, result = self.downloader()
+        scored = [(0, {"t": "University of Southtown"}), (0, {"t": "University of Northtown"}),
+                  (0, {"t": "Westtown College"})]
+        from paper_search_school.engine import batch_institution
+        page = Mock()
+        d._body_text = lambda page, limit=2000: ""
+        for at, ends in ((100.0, False), (100.0 + d.SEARCH_SETTLED_SEC, False), (100.0 + 2 * d.SEARCH_SETTLED_SEC, True)):
+            with patch.object(batch_institution.time, "time", return_value=at):
+                self.assertIs(d._search_lists_no_school(page, result, self.URL, scored), ends, at)
+        self.assertIn("3 unrelated entries", result.events[-1]["detail"])
+        # A search box saying its list is closed shows no results, whatever the page lists.
+        d, result = self.downloader()
+        d._body_text = lambda page, limit=2000: ""
+        result._search_box = (self.URL, "#search")
+        closed = Mock(**{"evaluate.return_value": True})
+        for at in (100.0, 100.0 + 2 * d.SEARCH_SETTLED_SEC):
+            with patch.object(batch_institution.time, "time", return_value=at):
+                self.assertFalse(d._search_lists_no_school(closed, result, self.URL, scored))
+        # The page's own links listed before the search are no results of it, however many.
+        d, result = self.downloader()
+        d._body_text = lambda page, limit=2000: ""
+        result._search_baseline = (self.URL, {"About Fixture Press", "Cookie settings", "Help"})
+        links = [(0, {"t": "About Fixture Press"}), (0, {"t": "Cookie settings"}), (0, {"t": "Help"})]
+        for at in (100.0, 100.0 + 2 * d.SEARCH_SETTLED_SEC):
+            with patch.object(batch_institution.time, "time", return_value=at):
+                self.assertFalse(d._search_lists_no_school(page, result, self.URL, links))
+        with patch.object(batch_institution.time, "time", return_value=300.0):
+            self.assertFalse(d._search_lists_no_school(page, result, self.URL, links + scored))
+        with patch.object(batch_institution.time, "time", return_value=300.0 + 2 * d.SEARCH_SETTLED_SEC):
+            self.assertTrue(d._search_lists_no_school(page, result, self.URL, links + scored))
+        self.assertIn("3 unrelated entries: Northtown", result.events[-1]["detail"].replace("University of ", ""))
+        # Two links of the page's own are no search's results.
+        d, result = self.downloader()
+        d._body_text = lambda page, limit=2000: ""
+        with patch.object(batch_institution.time, "time", return_value=500.0):
+            self.assertFalse(d._search_lists_no_school(page, result, self.URL, scored[:2]))
+        self.assertIsNone(result._search_miss)
+
+    def test_a_search_showing_nothing_is_tried_again_by_the_next_name(self):
+        d, result = self.downloader(name="Kita University", local="北大学")
+        result.events = [{"state": "auto_institution_search", "detail": f"Kita University @ {self.URL}"}]
+        result._search_box, result._search_baseline = (self.URL, "#search"), (self.URL, {"Help"})
+        box = Mock(**{"input_value.return_value": "Kita University"})
+        page = Mock(**{"locator.return_value.first": box, "evaluate.return_value": True})  # its list closed
+        from paper_search_school.engine import batch_institution
+        result._search_typed_at = 100.0
+        with patch.object(batch_institution.time, "time", return_value=103.0):
+            self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["北大学", "Kita University"]))
+        with patch.object(batch_institution.time, "time", return_value=107.0):
+            self.assertTrue(d._search_again_by_another_name(page, result, self.URL, ["北大学", "Kita University"]))
+        box.press_sequentially.assert_called_once_with("北大学", delay=40)
+        self.assertEqual(result.events[-1]["detail"], f"北大学 @ {self.URL}")
+        # Every name tried, or a box holding the user's own text: nothing more is typed.
+        with patch.object(batch_institution.time, "time", return_value=200.0):
+            self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["北大学", "Kita University"]))
+        result.events.pop()
+        box.input_value.return_value = "Kita"
+        with patch.object(batch_institution.time, "time", return_value=300.0):
+            self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["北大学", "Kita University"]))
 
     def test_a_long_address_cut_short_in_the_record_is_the_same_page(self):
         d, result = self.downloader()

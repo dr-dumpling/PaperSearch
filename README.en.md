@@ -133,27 +133,19 @@ Papers the open channels cannot get can come through your school's subscriptions
 1. Through the federations interconnected via [eduGAIN](https://edugain.org/), such as CARSI in China, HKAF in Hong Kong and SGAF in Singapore;
 2. Schools in no national federation that have [OpenAthens](https://www.openathens.net/) access can sign in through it as well.
 
-**Supported academic identity federations** (Asia, the US)
+**Supported academic identity federations** (by continent and region)
 
-| Region | Federation | Full name |
+| Continent | Region | Supported (place: federation) |
 |---|---|---|
-| Chinese mainland, Macau | CARSI | CERNET Authentication and Resource Sharing Infrastructure |
-| Hong Kong | HKAF | Hong Kong Access Federation |
-| Singapore | SGAF | Singapore Access Federation |
-| Japan | GakuNin | Academic Access Management Federation in Japan |
-| South Korea | KAFE | Korean Access Federation |
-| Malaysia | SIFULAN | SIFULAN Malaysian Access Federation |
-| India | INFED | INFLIBNET Access Management Federation |
-| Turkey | YETKİM | YETKİM Identity Federation |
-| Sri Lanka | LIAF | LEARN Identity Access Federation |
-| Bangladesh | TIGERfed | Trust, Identity and Group management for Education and Research Federation |
-| Pakistan | PKIFED | Pakistan Identity Federation |
-| Oman | OMREN | OMREN Identity Federation |
-| United States | InCommon | InCommon Federation |
-| Schools in no national federation (most universities in Southeast Asia and others) | OpenAthens | OpenAthens institutional sign-in |
+| Asia | East Asia | Chinese mainland, Macau: CARSI; research institutions in the Chinese mainland: CSTCloud; Hong Kong: HKAF; Japan: GakuNin; South Korea: KAFE; Taiwan: through OpenAthens |
+| Asia | Southeast Asia | Singapore: SGAF; Malaysia: SIFULAN; Thailand, the Philippines and others: through OpenAthens |
+| Asia | South Asia | India: INFED; Sri Lanka: LIAF; Bangladesh: TIGERfed; Pakistan: PKIFED |
+| Asia | West Asia | Turkey: YETKİM; Saudi Arabia: Maeen; Cyprus: CyNet; Israel: IUCC; Iran: IRFED; Azerbaijan: AzScienceNet; Oman: OMREN |
+| Europe | Western Europe | United Kingdom: UK federation; Ireland: Edugate; France: RENATER; Netherlands: SURFconext; Belgium: Belnet; Luxembourg: eduID Luxembourg |
+| Americas | North America | United States: InCommon |
 
-- What each federation supports: [federation support table](skills/paper-search/references/federation-support.md) (Chinese).
-- Planned: the UK (UK federation), Australia (AAF) and the federations of European countries, then the other countries in eduGAIN; see the [roadmap](docs/ROADMAP.zh.md) (Chinese).
+- Full names, school counts and tested schools of each federation: [federation support table](skills/paper-search/references/federation-support.md) (Chinese).
+- Planned, in this order: the rest of Europe (Northern, Central, Southern, Eastern), the Americas (Canada, then Latin America and the Caribbean), Oceania, and Africa last; see the [roadmap](docs/ROADMAP.zh.md) (Chinese).
 
 - **Your school account is enough**: no keys to apply for; publisher API keys only cover Elsevier and Springer.
 - **Deep publisher adaptation**: the general download flow is deeply optimized, and more than 30 publishers have dedicated rules, one by one: where the institutional login is and how to fetch the PDF and supplementary files follow each publisher as it really is, so downloads are more accurate and fewer papers are missed. The main publishers:

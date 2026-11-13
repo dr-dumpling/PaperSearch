@@ -344,8 +344,9 @@ describe("School backend CLI integration", () => {
     expect(result.stderr).toContain("[学校订阅] 正在等待人工安全验证");
     expect(result.stderr).toContain("[学校订阅] 正在获取 PDF");
     expect(result.stdout).not.toContain("[学校订阅]");
+    // Check the fixture URL, since CI stack traces can contain macOS's /private/tmp.
     expect(result.stdout + result.stderr).not.toMatch(
-      /do-not-leak|cookie=|token=|private/,
+      /do-not-leak|cookie=|token=|https:\/\/example\.org\//,
     );
   });
 

@@ -1,0 +1,11 @@
+{
+  "code": "renater",
+  "name": "RENATER",
+  "country": "FR",
+  "registration_authorities": ["https://federation.renater.fr/"],
+  "chooser_labels": ["Fédération Éducation-Recherche (Renater)"],
+  "chooser_pattern": "\\bRENATER\\b|\\bF[ée]d[ée]ration\\s+[ÉE]ducation[- ]Recherche\\b",
+  "discovery_hosts": [],
+  "service_domains": ["federation.renater.fr"],
+  "metadata_url": "https://pub.federation.renater.fr/metadata/edugain-upstream/renater-edugain-upstream-metadata.xml"
+}

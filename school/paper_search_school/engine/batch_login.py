@@ -578,9 +578,10 @@ class LoginMixin:
     _IDP_CONFIRMATION_JS = """() => document.querySelector('[name="_eventId_TermsRejected"]') ? 'terms-of-use'
         : document.querySelector('[name="_shib_idp_consentOptions"], [name="_shib_idp_consentIds"]') ? 'attribute-release' : ''"""
     # Shibboleth's "Message Security Error": the identity provider could not trust the
-    # publisher's request (a school's IdP to Elsevier, 2026-11-12).
+    # publisher's request (a school's IdP to Elsevier, 2026-11-12); AD FS's "An error
+    # occurred. Contact your administrator" (two schools' AD FS, 2026-11-13).
     _IDP_ERROR_RE = re.compile(r"未知错误|系统错误|服务异常|认证失败|出错了|\b5\d{4}\b.{0,20}错误|an unexpected error|error code|system error"
-                               r"|message security error", re.I)
+                               r"|message security error|an error occurred\. contact your administrator", re.I)
 
     # A publisher's own terms form on the way to the school: SIAM's SAML consent
     # ("I have read and agree to the Terms and Conditions and Privacy Policy.",
@@ -734,6 +735,7 @@ class LoginMixin:
         r"|application you have accessed is not registered|may not be enabled for this type of authentication"
         r"|can't find your institution|access to this resource has been restricted by your organization|oa-ap-4032"
         r"|不支持的请求|does not have access to this resource|message security error|reported an idp error"
+        r"|an error occurred\. contact your administrator|application not authorized to use cas"
         r"|temporarily unavailable|verify you are human|are you a robot|checking your browser|正在进行安全验证", re.I)
 
     def _login_block_reason(self, page: Any) -> str:
@@ -831,6 +833,10 @@ class LoginMixin:
                 and any(name.lower() in haystack for name in self._institution_names() if name)):
             return "institution_pdf_entitlement_missing"
         if "application you have accessed is not registered" in haystack:
+            return "institution_not_registered"
+        # Apereo CAS as the school's identity provider, the publisher not enabled there
+        # ("Application Not Authorized to Use CAS", 2026-11-13).
+        if "application not authorized to use cas" in haystack and self._is_idp_host(urlparse(current_url).netloc):
             return "institution_not_registered"
         if "your institution may not be enabled for this type of authentication" in haystack:
             return "institution_not_registered"
@@ -1480,11 +1486,18 @@ class LoginMixin:
         url = str(getattr(page, "url", "") or "")
         return self._school_password_box(page, url) or self._idp_user_action(page)
 
+    _CREDENTIAL_BOX = 'input[type="password"]:visible, input[autocomplete="one-time-code"]:visible'
+
     def _school_password_box(self, page: Any, url: str) -> bool:
-        """A password or one-time-code field that is not a personal account's box on the publisher's site."""
+        """A password or one-time-code field that is not a personal account's box on the
+        publisher's site; on the school's side also one in a frame of its page (a
+        school's login form shown in a frame, its page's own copy hidden: 2026-11-13)."""
         try:
-            return bool(page.locator('input[type="password"]:visible, input[autocomplete="one-time-code"]:visible').count()
-                        and not self._personal_login_box(page, url))
+            if page.locator(self._CREDENTIAL_BOX).count() and not self._personal_login_box(page, url):
+                return True
+            frames = page.frames if isinstance(getattr(page, "frames", None), list) else []
+            return (len(frames) > 1 and self._is_idp_host(urlparse(url).netloc)
+                    and any(frame.locator(self._CREDENTIAL_BOX).count() for frame in frames[1:]))
         except Exception as exc:
             if not _is_navigation_cut(exc):
                 raise

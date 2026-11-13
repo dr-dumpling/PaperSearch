@@ -86,6 +86,27 @@ _EMAIL_STEP_JS = """() => {
   return true;
 }"""
 
+# Elsevier ID's "Access through your organization – You will be sent to <school>"
+# for a school chosen before in this browser, with "Try Another way" to its search:
+# the school shown, when the page is that one (2026-11-13: it named the previous
+# school and no other could be chosen there).
+_REMEMBERED_JS = """() => {
+  const shown = (el) => !!el && el.getClientRects().length > 0;
+  const another = [...document.querySelectorAll("#bdd-elsSecondaryBtn-tryAnotherWay, #bdd-elsSecondaryBtn")]
+    .find((el) => shown(el) && /try another way/i.test(el.textContent || ""));
+  const body = (document.body && document.body.innerText) || "";
+  if (!another || !/you will be sent to/i.test(body)) return null;
+  const school = [...document.querySelectorAll("#bdd-elsPrimaryBtn .els-institution-group, #bdd-elsPrimaryBtn")].find(shown);
+  return {school: ((school && (school.innerText || school.textContent)) || "").replace(/\\s+/g, " ").trim()};
+}"""
+_TRY_ANOTHER_JS = """() => {
+  const el = [...document.querySelectorAll("#bdd-elsSecondaryBtn-tryAnotherWay, #bdd-elsSecondaryBtn")]
+    .find((el) => el.getClientRects().length > 0 && /try another way/i.test(el.textContent || ""));
+  if (!el) return false;
+  el.click();
+  return true;
+}"""
+
 _ENTRY_JS = """
                 ({manualSelection, institutionQuery}) => {
                   const visible = (el) => {
@@ -281,6 +302,31 @@ class ElsevierAdapter(PublisherAdapter):
             return False  # the page moved on while it was read
         if clicked:
             self.d._event(result, "elsevier_email_step_left", "Access via another organization")
+            return True
+        return self._leave_remembered_other_school(page, result)
+
+    def _leave_remembered_other_school(self, page: Any, result: Any) -> bool:
+        """Elsevier ID offers only a school chosen before in this browser (``_REMEMBERED_JS``):
+        when it is not the configured school, "Try Another way" goes to the search.
+        The configured school's own page, and any page with no school configured,
+        stay as they are."""
+        names = [n for n in self.d._institution_names() if n]
+        if not names:
+            return False
+        try:
+            shown = page.evaluate(_REMEMBERED_JS)
+            if not isinstance(shown, dict) or not shown.get("school"):
+                return False
+            key = lambda text: re.sub(r"[\W_]+", "", str(text or "").casefold())
+            if any(key(name) and key(name) in key(shown["school"]) for name in names):
+                return False
+            clicked = page.evaluate(_TRY_ANOTHER_JS) is True
+        except Exception as exc:
+            if not is_driver_error(exc):
+                raise
+            return False  # the page moved on while it was read
+        if clicked:
+            self.d._event(result, "elsevier_remembered_school_left", f"{shown['school'][:120]}: not the configured school")
         return clicked
 
     def is_redirect_page(self, url: str) -> bool:

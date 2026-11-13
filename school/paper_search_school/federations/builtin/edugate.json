@@ -1,0 +1,11 @@
+{
+  "code": "edugate",
+  "name": "Edugate",
+  "country": "IE",
+  "registration_authorities": ["http://www.heanet.ie"],
+  "chooser_labels": ["Ireland - Edugate Federation"],
+  "chooser_pattern": "\\bEdugate\\b",
+  "discovery_hosts": [],
+  "service_domains": ["edugate.heanet.ie"],
+  "metadata_url": "https://edugate.heanet.ie/rr3/signedmetadata/federationexport/ZWR1R0FJTg~~/metadata.xml"
+}

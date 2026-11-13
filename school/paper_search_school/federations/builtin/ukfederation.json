@@ -1,0 +1,11 @@
+{
+  "code": "ukfederation",
+  "name": "UK federation",
+  "country": "GB",
+  "registration_authorities": ["http://ukfederation.org.uk"],
+  "chooser_labels": ["UK Higher Education", "UK Access Management Federation", "UK federation (United Kingdom)"],
+  "chooser_pattern": "\\bUK\\s+(?:Access\\s+Management\\s+)?Federation\\b|\\bUK\\s+Higher\\s+Education\\b",
+  "discovery_hosts": [],
+  "service_domains": ["ukfederation.org.uk"],
+  "metadata_url": "http://metadata.ukfederation.org.uk/ukfederation-export.xml"
+}

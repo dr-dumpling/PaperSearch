@@ -1,0 +1,11 @@
+{
+  "code": "surfconext",
+  "name": "SURFconext",
+  "country": "NL",
+  "registration_authorities": ["http://www.surfconext.nl/"],
+  "chooser_labels": ["SURFconext"],
+  "chooser_pattern": "\\bSURFconext\\b",
+  "discovery_hosts": [],
+  "service_domains": ["surfconext.nl"],
+  "metadata_url": "https://metadata.surfconext.nl/signed/2023/edugain-upstream.xml"
+}

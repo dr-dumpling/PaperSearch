@@ -1,0 +1,11 @@
+{
+  "code": "azsciencenet",
+  "name": "AzScienceNet",
+  "country": "AZ",
+  "registration_authorities": ["https://edugain.azsciencenet.az"],
+  "chooser_labels": ["AzScienceNet Identity Federation"],
+  "chooser_pattern": "\\bAzScienceNet\\b",
+  "discovery_hosts": [],
+  "service_domains": ["edugain.azsciencenet.az"],
+  "metadata_url": "https://registry1.azsciencenet.az/rr3/signedmetadata/federation/AzScienceNetIF/metadata.xml"
+}

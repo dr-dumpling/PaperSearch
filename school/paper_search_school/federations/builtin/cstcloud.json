@@ -1,0 +1,11 @@
+{
+  "code": "cstcloud",
+  "name": "CSTCloud",
+  "country": "CN",
+  "registration_authorities": ["https://www.cstcloud.net/"],
+  "chooser_labels": ["CSTCloud Federation"],
+  "chooser_pattern": "\\bCSTCloud\\b|中国科技云",
+  "discovery_hosts": [],
+  "service_domains": ["cstcloud.net"],
+  "metadata_url": "http://www.cstcloud.net/discovery/metadata/cstcloud-fed-metadata-sig.xml"
+}

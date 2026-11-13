@@ -1,0 +1,11 @@
+{
+  "code": "cynet",
+  "name": "CyNet",
+  "country": "CY",
+  "registration_authorities": ["https://cif.cynet.ac.cy"],
+  "chooser_labels": ["CyNet Identity Federation"],
+  "chooser_pattern": "\\bCyNet\\b",
+  "discovery_hosts": [],
+  "service_domains": ["cif.cynet.ac.cy"],
+  "metadata_url": "https://cif.cynet.ac.cy/md/edugain-upstream.xml"
+}

@@ -133,27 +133,19 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 1.通过 [eduGAIN](https://edugain.org/) 互联，如中国CARSI、香港HKAF，新加坡SGAF等；
 2.没有加入本国联盟的学校，有 [OpenAthens](https://www.openathens.net/) 权限的，也能经它登录。
 
-**支持的学术身份联盟**（亚洲、美国）
+**支持的学术身份联盟**（按大洲和区域）
 
-| 地区 | 学术身份联盟 | 全称 |
+| 大洲 | 区域 | 已支持（地区：联盟） |
 |---|---|---|
-| 中国内地、澳门 | CARSI | CERNET 联邦认证与资源共享基础设施（CERNET Authentication and Resource Sharing Infrastructure） |
-| 香港 | HKAF | Hong Kong Access Federation |
-| 新加坡 | SGAF | Singapore Access Federation |
-| 日本 | GakuNin（学認） | 学術認証フェデレーション（Academic Access Management Federation in Japan） |
-| 韩国 | KAFE | Korean Access Federation |
-| 马来西亚 | SIFULAN | SIFULAN Malaysian Access Federation |
-| 印度 | INFED | INFLIBNET Access Management Federation |
-| 土耳其 | YETKİM | YETKİM Identity Federation |
-| 斯里兰卡 | LIAF | LEARN Identity Access Federation |
-| 孟加拉 | TIGERfed | Trust, Identity and Group management for Education and Research Federation |
-| 巴基斯坦 | PKIFED | Pakistan Identity Federation |
-| 阿曼 | OMREN | OMREN Identity Federation |
-| 美国 | InCommon | InCommon Federation |
-| 未加入本国联盟的学校（东南亚多数大学等） | OpenAthens | OpenAthens 机构登录服务 |
+| 亚洲 | 东亚 | 中国内地、澳门：CARSI；中国内地科研机构：CSTCloud（中国科技云联盟）；香港：HKAF；日本：GakuNin（学認）；韩国：KAFE；台湾：经 OpenAthens |
+| 亚洲 | 东南亚 | 新加坡：SGAF；马来西亚：SIFULAN；泰国、菲律宾等：经 OpenAthens |
+| 亚洲 | 南亚 | 印度：INFED；斯里兰卡：LIAF；孟加拉：TIGERfed；巴基斯坦：PKIFED |
+| 亚洲 | 西亚 | 土耳其：YETKİM；沙特阿拉伯：Maeen；塞浦路斯：CyNet；以色列：IUCC；伊朗：IRFED；阿塞拜疆：AzScienceNet；阿曼：OMREN |
+| 欧洲 | 西欧 | 英国：UK federation；爱尔兰：Edugate；法国：RENATER；荷兰：SURFconext；比利时：Belnet；卢森堡：eduID Luxembourg |
+| 美洲 | 北美洲 | 美国：InCommon |
 
-- 每个联盟的支持情况，见 [学术联盟支持表](skills/paper-search/references/federation-support.md)。
-- 计划中：英国（UK federation）、澳大利亚（AAF）、欧洲各国联盟，之后是 eduGAIN 里的其他国家，见 [路线图](docs/ROADMAP.zh.md)。
+- 各联盟的全称、学校数和实测过的学校，见 [学术联盟支持表](skills/paper-search/references/federation-support.md)。
+- 计划中，按这个顺序推进：欧洲其余地区（北欧、中欧、南欧、东欧）、美洲（加拿大，再拉丁美洲和加勒比）、大洋洲，最后非洲，见 [路线图](docs/ROADMAP.zh.md)。
 
 - **学校账号就能用**：不用另外申请 key；出版社 API key 只覆盖 Elsevier、Springer 两家。
 - **深度适配出版社**：深度优化了下载的通用流程，并且针对 30 多家出版社逐家写了专门规则，机构登录入口在哪、PDF 和补充材料怎么取，都按各自出版社的实际情况来，下载更准、更少漏篇。优化的出版社主要有：

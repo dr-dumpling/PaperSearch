@@ -182,3 +182,32 @@ def test_a_username_first_page_is_the_schools_login_and_a_portal_search_box_is_n
         finally:
             context.close()
             browser.close()
+
+
+def test_the_schools_login_form_in_a_frame_of_its_page_is_the_users_step():
+    # The page's own form hidden, the one shown in a frame of the school's host (2026-11-13).
+    from patchright.sync_api import sync_playwright
+    page_html = ('<title>Fixture Passport</title><form style="display:none"><input type="password" name="p"></form>'
+                 '<iframe src="https://idp.fixture.edu/oauth2/authorize" style="width:600px;height:300px"></iframe>')
+    frame_html = '<form><input type="text" name="u"><input type="password" name="p"><button>Sign in</button></form>'
+    with sync_playwright() as driver:
+        browser = driver.chromium.launch(channel="chrome", headless=True)
+        context = browser.new_context(service_workers="block")
+        context.route("**/*", lambda route: route.fulfill(content_type="text/html", body=(
+            frame_html if "oauth2" in route.request.url else page_html)))
+        page = context.new_page()
+        try:
+            page.goto("https://idp.fixture.edu/idp/profile/SAML2/Redirect/SSO?execution=e1s1")
+            page.frame(url="https://idp.fixture.edu/oauth2/authorize").wait_for_load_state()
+            d = PublisherBatchDownloader({"publisher_institution_federation": "carsi",
+                                          "idp_entity_id": "https://idp.fixture.edu/idp/shibboleth"},
+                                         profile=get_publisher_profile("elsevier"))
+            assert d._school_password_box(page, page.url)
+            assert d._login_wait_page(page) == "school_login"
+            # A publisher's page with such a frame stays as it was: only the school's side looks inside.
+            page.goto("https://www.sciencedirect.com/science/article/pii/S0000")
+            page.frame(url="https://idp.fixture.edu/oauth2/authorize").wait_for_load_state()
+            assert not d._school_password_box(page, page.url)
+        finally:
+            context.close()
+            browser.close()

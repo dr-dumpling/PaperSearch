@@ -20,6 +20,15 @@ EMAIL_STEP = """<title>Enter your organizational email</title>
   <button type="submit" id="bdd-elsSecondaryBtn" class="els-secondaryBtn btn-border" name="action"
           value="other">Access via another organization</button>
 </form>"""
+# Elsevier ID with a school chosen before in this browser (2026-11-13).
+REMEMBERED = """<title>Access through your organization</title>
+<form method="post" action="/as/AbCdE/resume/as/authorization.ping">
+  <h1>Access through your organization</h1><p>You will be sent to</p>
+  <button type="submit" id="bdd-elsPrimaryBtn" class="instImgLink" name="action" value="inst">
+    <div class="els-institution-group">Synthetic University B (Synthetic University B)</div></button>
+  <button type="submit" id="bdd-elsPrimaryBtn3" class="els-primaryBtn" name="action" value="go">Access through your organization</button>
+  <button type="submit" id="bdd-elsSecondaryBtn-tryAnotherWay" name="action" value="another">Try Another way</button>
+</form>"""
 # A search by name keeps the field (its label here is made up: it names more than an email).
 SEARCH = """<title>Find your organization</title><h1>Find your organization</h1>
 <label id="emaillabel">Organization name or email</label><input type="text" id="bdd-email" name="email">"""
@@ -49,6 +58,18 @@ class EmailStepTests(unittest.TestCase):
         page = SimpleNamespace(url=CHOOSER, evaluate=Mock(return_value=False))
         self.assertFalse(self.d.adapter.leave_email_step(page, self.result))
         self.assertEqual(self.result.events, [])
+
+    def test_another_remembered_school_is_left_for_the_search(self):
+        page = SimpleNamespace(url=CHOOSER, evaluate=Mock(side_effect=[False, {"school": "Synthetic University B"}, True]))
+        self.assertTrue(self.d.adapter.leave_email_step(page, self.result))
+        self.assertEqual([e["state"] for e in self.result.events], ["elsevier_remembered_school_left"])
+        # The configured school remembered, or no school configured: nothing is clicked.
+        page = SimpleNamespace(url=CHOOSER, evaluate=Mock(side_effect=[False, {"school": "Synthetic University A (SUA)"}]))
+        self.assertFalse(self.d.adapter.leave_email_step(page, self.result))
+        self.d.institution_query = ""
+        page = SimpleNamespace(url=CHOOSER, evaluate=Mock(side_effect=[False]))
+        self.assertFalse(self.d.adapter.leave_email_step(page, self.result))
+        self.assertEqual(len(self.result.events), 1)
 
     def test_a_page_moving_on_while_read_is_looked_at_again_later(self):
         error = type("Error", (Exception,), {"__module__": "patchright._impl._errors"})
@@ -96,6 +117,20 @@ class EmailStepBrowserTests(unittest.TestCase):
         self.assertEqual(len(self.posted), 1)
         self.assertIn("action=other", self.posted[0])
         self.assertIn("email=&", self.posted[0] + "&")  # the email field went back empty
+
+    def test_try_another_way_is_clicked_for_another_remembered_school(self):
+        self.html = REMEMBERED
+        self.page.goto(CHOOSER)
+        self.assertTrue(self.d.adapter.leave_email_step(self.page, self.result))
+        self.page.wait_for_function("document.title === 'Find your organization'")
+        self.assertEqual(len(self.posted), 1)
+        self.assertIn("action=another", self.posted[0])
+        # The configured school remembered: the page is left as it is.
+        self.posted.clear()
+        self.html = REMEMBERED.replace("Synthetic University B", "Synthetic University A")
+        self.page.goto(CHOOSER)
+        self.assertFalse(self.d.adapter.leave_email_step(self.page, self.result))
+        self.assertEqual(self.posted, [])
 
     def test_the_search_by_name_is_left_alone(self):
         self.html = SEARCH

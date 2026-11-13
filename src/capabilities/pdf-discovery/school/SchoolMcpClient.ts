@@ -55,7 +55,7 @@ export const SCHOOL_CLEANUP_TIMEOUT_MS = 5_000;
 
 const SCHOOL_BACKEND_SOURCE = "school";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.6.3";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.6.4";
 
 interface ActiveSession {
   client: Client;

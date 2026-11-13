@@ -161,3 +161,10 @@ class DecisionEvidenceTests(unittest.TestCase):
                     "Status: urn:oasis:names:tc:SAML:2.0:status:Requester", url="https://auth.fixture-press.example/SAML2/POST")
         self.assertEqual(d._login_block_reason(back), "idp_login_error")
         self.assertIn("reported an IdP error", d._block_evidence)
+        adfs = page("Error\nAn error occurred\nAn error occurred. Contact your administrator for more information.\n"
+                    "Activity ID: 00000000-0000-0000-0000-000000000000", url="https://idp.example.edu.cn/adfs/ls/?SAMLRequest=x")
+        self.assertEqual(d._login_block_reason(adfs), "idp_login_error")
+        self.assertIn("Contact your administrator", d._block_evidence)
+        cas = page("CAS Central Authentication Service\nApplication Not Authorized to Use CAS",
+                   url="https://idp.example.edu.cn/cas/idp/profile/SAML2/Redirect/SSO?SAMLRequest=x")
+        self.assertEqual(d._login_block_reason(cas), "institution_not_registered")

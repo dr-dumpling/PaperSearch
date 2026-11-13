@@ -242,8 +242,9 @@ class PublisherAdapter:
         return None
 
     def leave_email_step(self, page: Any, result: Any) -> bool:
-        """The publisher's sign-in asks for the user's work email, not the school:
-        go back to its school search before anything is typed; True when clicked."""
+        """The publisher's sign-in asks for the user's work email, not the school, or
+        offers only another school chosen before in this browser: go back to its
+        school search before anything is typed; True when clicked."""
         return False
 
     def prepare_institution_choice(self, page: Any, result: Any) -> bool | None:

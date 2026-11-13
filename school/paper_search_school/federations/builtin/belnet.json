@@ -1,0 +1,11 @@
+{
+  "code": "belnet",
+  "name": "Belnet",
+  "country": "BE",
+  "registration_authorities": ["http://federation.belnet.be/"],
+  "chooser_labels": ["Belnet Federation"],
+  "chooser_pattern": "\\bBelnet\\b",
+  "discovery_hosts": [],
+  "service_domains": ["federation.belnet.be"],
+  "metadata_url": "https://federation.belnet.be/metadata/edugain-metadata.xml"
+}

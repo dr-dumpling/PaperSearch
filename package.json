@@ -1,6 +1,6 @@
 {
   "name": "papersearch",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "PaperSearch: an agent-friendly command for searching and downloading academic papers from multiple sources.",
   "main": "dist/cli.js",
   "type": "module",

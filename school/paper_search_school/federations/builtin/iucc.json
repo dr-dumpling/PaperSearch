@@ -1,0 +1,11 @@
+{
+  "code": "iucc",
+  "name": "IUCC",
+  "country": "IL",
+  "registration_authorities": ["http://iif.iucc.ac.il"],
+  "chooser_labels": ["IUCC Identity Federation"],
+  "chooser_pattern": "\\bIUCC\\b",
+  "discovery_hosts": [],
+  "service_domains": ["iif.iucc.ac.il"],
+  "metadata_url": "https://iif-ng.iucc.ac.il/md/iif-ng.xml"
+}
