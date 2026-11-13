@@ -326,6 +326,10 @@ let open = false;          // the card is showing
 let panel = "";            // "", "menu", "report", "confirm", "settings": kept until the user leaves it
 let flash = { text: "", until: 0 };
 let settings = null, settingsErrors = {}, notifyOn = true;
+// What is typed on this settings page and not yet saved. Any redraw shows it instead of the
+// saved value: a click on the card's background is a drag, and its end redraws the card
+// (a typed hourly limit went back to the saved one, Windows, 2026-11-13).
+let settingsDraft = {};
 let notifyCheck = null;  // the notification check under the switch: {state: testing, sent, off, unseen or failed}
 // Settings pages: "home" lists download, wait and keys. settingsOnly: this window was started
 // just to show them (`paper-search-school settings`), so it closes with them unless a download runs.
@@ -426,7 +430,8 @@ function stat(list, value, label, color) {
 
 function runningCard() {
   const v = V;
-  const sub = [v.total ? v.done + "/" + v.total : "", v.part, v.elapsed ? "已用 " + v.elapsed : ""].filter(Boolean).join(" · ");
+  // Held by the hourly limit, the time used gives way: the line stays one line (2026-11-13).
+  const sub = [v.total ? v.done + "/" + v.total : "", v.part, v.elapsed && !v.hold ? "已用 " + v.elapsed : ""].filter(Boolean).join(" · ");
   return '<div class="card-body">' + header(v.headline, sub, false) + paperBlock()
     + '<div class="stats">' + stat("ok", v.ok, "成功", "var(--ok)") + stat("failed", v.bad, "失败", "var(--bad)")
     + stat("left", v.left == null ? "—" : v.left, "剩余") + "</div>"
@@ -608,7 +613,7 @@ function settingsHome() {
 
 function fieldRows(page) {
   return fieldsOn(page).map((f) => '<div class="row"><span>' + esc(f.label) + '</span><span><input data-field="' + esc(f.name)
-    + '" value="' + esc(f.value) + '" aria-label="' + esc(f.label) + '" inputmode="numeric"> <span class="dim">' + esc(f.unit) + "</span></span></div>"
+    + '" value="' + esc(f.name in settingsDraft ? settingsDraft[f.name] : f.value) + '" aria-label="' + esc(f.label) + '" inputmode="numeric"> <span class="dim">' + esc(f.unit) + "</span></span></div>"
     + (settingsErrors[f.name] ? '<div class="err">' + esc(settingsErrors[f.name]) + "</div>" : "")).join("");
 }
 
@@ -621,7 +626,7 @@ function settingsFoot() {
 function settingsDownload() {
   return settingsHead("下载")
     + '<div class="folder-setting"><label for="download-dir">默认下载文件夹</label><div class="folder-row">'
-    + '<input id="download-dir" type="text" value="' + esc(settings.download_dir || '') + '" placeholder="输入完整路径">'
+    + '<input id="download-dir" type="text" value="' + esc(("download_dir" in settingsDraft ? settingsDraft.download_dir : settings.download_dir) || '') + '" placeholder="输入完整路径">'
     + '<button class="btn" data-act="choose_folder">选择…</button></div>'
     + '<div class="hint">用于后续下载；命令中指定路径时优先使用指定路径。</div>'
     + (settingsErrors.download_dir ? '<div class="err">' + esc(settingsErrors.download_dir) + '</div>' : '') + '</div>'
@@ -744,7 +749,7 @@ function updateStrip() {
 }
 
 async function loadSettings() {
-  settings = await api().settings(); notifyOn = settings.notify; settingsErrors = {}; notifyCheck = null;
+  settings = await api().settings(); notifyOn = settings.notify; settingsErrors = {}; settingsDraft = {}; notifyCheck = null;
   try { apiKeys = await api().api_keys(); } catch (error) { apiKeys = null; }
 }
 
@@ -768,7 +773,7 @@ async function savedValues(service) {
 }
 
 function leaveSettings() {
-  panel = ""; editing = ""; editValues = {}; settingsNote = "";
+  panel = ""; editing = ""; editValues = {}; settingsDraft = {}; settingsNote = "";
   if (settingsOnly && !busy()) return act("close");
   return render(true);
 }
@@ -955,11 +960,11 @@ async function act(action, target) {
       return render(true);
     }
     case "settings_page":
-      settingsPage = target.dataset.page; settingsErrors = {}; settingsNote = ""; editing = ""; editValues = {}; return render(true);
+      settingsPage = target.dataset.page; settingsErrors = {}; settingsDraft = {}; settingsNote = ""; editing = ""; editValues = {}; return render(true);
     case "back":
       if (panel !== "settings") { panel = ""; return render(true); }
       if (settingsPage === "home") return leaveSettings();
-      settingsPage = "home"; editing = ""; editValues = {}; settingsErrors = {}; return render(true);
+      settingsPage = "home"; editing = ""; editValues = {}; settingsErrors = {}; settingsDraft = {}; return render(true);
     case "progress": case "close_settings": return leaveSettings();
     case "edit_key":
       editValues = await savedValues(target.dataset.service);
@@ -1028,11 +1033,14 @@ async function act(action, target) {
     case "notify_settings": return api().open_notification_settings();
     case "choose_folder": {
       const selected = await api().choose_download_directory();
-      if (selected) { settings.download_dir = selected; root.querySelector('#download-dir').value = selected; }
+      if (selected) { settingsDraft.download_dir = selected; root.querySelector('#download-dir').value = selected; }
       return;
     }
     case "defaults":
-      for (const f of fieldsOn(settingsPage)) { const input = root.querySelector('input[data-field="' + f.name + '"]'); if (input) input.value = f.default; }
+      for (const f of fieldsOn(settingsPage)) {
+        const input = root.querySelector('input[data-field="' + f.name + '"]');
+        if (input) { input.value = f.default; settingsDraft[f.name] = String(f.default); }
+      }
       return;
     case "save": {
       // Only this page's fields; the notification switch has saved itself.
@@ -1041,9 +1049,7 @@ async function act(action, target) {
       const folder = root.querySelector('#download-dir');
       const result = await api().save_settings(values, folder ? folder.value : null);
       if (!result.ok) {
-        settingsErrors = result.errors || {};
-        settings.fields.forEach((f) => { if (f.name in values) f.value = values[f.name]; });
-        if (folder) settings.download_dir = folder.value;
+        settingsErrors = result.errors || {};  // what was typed stays in settingsDraft
         return render(true);
       }
       await loadSettings();
@@ -1112,6 +1118,13 @@ window.addEventListener("pointercancel", finishDrag);
 root.addEventListener("lostpointercapture", finishDrag);
 window.addEventListener("blur", finishDrag);
 
+root.addEventListener("input", (event) => {
+  // What is typed goes into the page's model at once, so that a redraw keeps it.
+  const input = event.target;
+  if (input.dataset.field) settingsDraft[input.dataset.field] = input.value;
+  else if (input.id === "download-dir") settingsDraft.download_dir = input.value;
+  else if (input.dataset.key && editing) editValues[input.dataset.key] = input.value;
+});
 root.addEventListener("click", (event) => {
   const target = event.target.closest("[data-act]");
   if (target) { event.stopPropagation(); act(target.dataset.act, target); }

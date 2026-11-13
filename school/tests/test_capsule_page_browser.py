@@ -331,6 +331,96 @@ class CapsulePageTests(unittest.TestCase):
                     self.assertEqual(page.evaluate("dragLocks"), [])
                     browser.close()
 
+    def test_what_is_typed_in_the_settings_survives_a_click_on_the_card(self):
+        """A click on the card's background is a drag, and its end redraws the card: a typed
+        hourly limit went back to the saved one unless 保存 was the next click (Windows,
+        2026-11-13). What is typed stays until it is saved or its page is left."""
+        from patchright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            for platform in ("win32", "darwin"):
+                with self.subTest(platform=platform):
+                    browser, page = self.drag_page(p, platform)
+                    try:
+                        page.evaluate("""() => {
+                            window.savedSettings = [];
+                            Object.assign(pywebview.api, {
+                                settings: async()=>({fields:[{name:'hourly', label:'每家出版社每小时最多', unit:'篇',
+                                    value:150, default:100, page:'download'}], notify:true, download_dir:'/original'}),
+                                save_settings: async(values, folder)=>{savedSettings.push([values, folder]); return {ok:true}},
+                                api_keys: async()=>({ok:true, filled:0, total:1, groups:[{title:'查期刊、搜正文', services:[
+                                    {id:'semantic', name:'Semantic Scholar', use:'', url:'https://example.org/s', set:false,
+                                     guide:'', masked:'', keys:[{key:'SEMANTIC_KEY', label:'API key', set:false, masked:''}]}]}]}),
+                                api_key_values: async()=>({ok:true, values:{}}),
+                            });
+                        }""")
+                        page.mouse.move(50, 25)
+                        page.wait_for_function('open')
+                        page.locator('[data-act=settings]').click()
+                        page.locator('[data-page=download]').click()
+                        hourly = page.get_by_label('每家出版社每小时最多')
+                        hourly.fill('200')
+                        page.locator('#download-dir').fill('/typed')
+                        page.evaluate('dragLocks = []')
+                        page.get_by_text('每家出版社每小时最多').click()  # the card's background
+                        page.wait_for_function('dragLocks.length === 2 && !dragging && !endingDrag')
+                        self.assertEqual(hourly.input_value(), '200')
+                        self.assertEqual(page.locator('#download-dir').input_value(), '/typed')
+                        page.locator('[data-act=save]').click()
+                        page.wait_for_function('savedSettings.length === 1')
+                        self.assertEqual(page.evaluate('savedSettings[0]'), [{'hourly': '200'}, '/typed'])
+                        # Typed, then left without saving: the saved value again.
+                        page.locator('[data-page=download]').click()
+                        hourly.fill('300')
+                        page.locator('[data-act=back]').click()
+                        page.locator('[data-page=download]').click()
+                        self.assertEqual(hourly.input_value(), '150')
+                        # A key being typed stays too.
+                        page.locator('[data-act=back]').click()
+                        page.locator('[data-page=keys]').click()
+                        page.locator('[data-service=semantic]').click()
+                        key = page.get_by_label('Semantic Scholar API key')
+                        key.fill('sk-typed-1234')
+                        page.evaluate('dragLocks = []')
+                        page.locator('.head .title').click()  # the key list itself does not drag; its header does
+                        page.wait_for_function('dragLocks.length === 2 && !dragging && !endingDrag')
+                        self.assertEqual(key.input_value(), 'sk-typed-1234')
+                    finally:
+                        browser.close()
+
+    def test_a_held_batch_card_keeps_its_header_to_one_line_and_says_the_hold_once(self):
+        """Held by the hourly limit: "148/392 · 已达每小时上限 · 已用 40:09" broke into two
+        lines, and the hold's phase repeated the notice below it (Windows, 2026-11-13)."""
+        import time
+        from datetime import datetime
+        from patchright.sync_api import sync_playwright
+        from paper_search_school.progress_view import view
+        now = time.time()
+        paused = "Elsevier 一小时内已打开 150 篇（每小时上限），13:05 继续这一篇"
+        state = dict(status='running', run_id='r', current='10.1016/x', total=392, done=148, success=146, failed=2,
+                     title='Age- and sex-specific knee alignment patterns in symptomatic patients: a cross-sectional study',
+                     publisher='Elsevier', awaiting_next=True, phase=paused,
+                     started_at=datetime.fromtimestamp(now - 2409).isoformat(timespec='seconds'),
+                     hourly_wait={'publisher': 'Elsevier', 'limit': 150, 'until': now + 1200, 'phase': paused})
+        one_line = """() => { const sub = root.querySelector('.head .sub'); const range = document.createRange();
+            range.selectNodeContents(sub); return [sub.innerText, range.getClientRects().length]; }"""
+        with sync_playwright() as p:
+            for english in (False, True):
+                with self.subTest(english=english):
+                    browser, page = self.drag_page(p, 'win32', english=english)
+                    try:
+                        page.evaluate("s => { testState = s; open = true; tick(); }", view(state, now))
+                        page.wait_for_function("root.querySelector('.head .sub') && !root.classList.contains('animating')")
+                        text, lines = page.evaluate(one_line)
+                        self.assertEqual(lines, 1, text)
+                        self.assertNotIn('已用' if not english else 'elapsed', text)
+                        # The notice says the hold once; its phase does not follow it.
+                        shown = page.locator('#root').inner_text()
+                        resume = time.strftime('%H:%M', time.localtime(now + 1200))
+                        self.assertEqual(shown.count(resume), 1, shown)
+                        self.assertNotIn('opened this hour' if english else '一小时内已打开', shown)
+                    finally:
+                        browser.close()
+
     def test_mac_window_motion_does_not_retrigger_hover_without_pointer_motion(self):
         from patchright.sync_api import sync_playwright
         with sync_playwright() as p:

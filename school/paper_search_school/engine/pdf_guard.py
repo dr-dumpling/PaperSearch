@@ -20,12 +20,13 @@ another article. A title's numbers must always be exact. An attachment
 (supplementary material, disclosure form) and a notice about the article
 (correction, retraction, briefing, letter to the editor), each known by its own
 heading line, are not the article, unless the notice is itself the requested
-item: its title says so, or the pages name it (its DOI in the header, or its
-whole title and its DOI) and print no other DOI. A DOI the pages label as the article
+item: its title says so, or the pages name it (its DOI in the header or right above
+its copyright line, or its whole title and its DOI) and print no other DOI. A DOI the pages label as the article
 a notice is about ("DOI of original article:", "Correction to:") is no other DOI for
 the notice itself (a letter that names the article it discusses); when that label
 points at the requested DOI, the PDF is a notice about it. A scan without a text layer is
-``"source"`` when the URL it came from names the DOI (``assess`` with ``source``;
+``"source"`` when the URL it came from names the DOI, or its suffix when that is long
+enough to name one article (an Elsevier PII) (``assess`` with ``source``;
 the frontend passes it, the engine does not); so is a page that prints no DOI at all and is
 no notice or attachment, for an item named like a section rather than an article (a
 one-page "Journal Club" note, "Issue Information").
@@ -83,6 +84,10 @@ _ABOUT_REACH = 200  # how far after its label the DOI of the article a notice is
 # A DOI may break right after its prefix ("https://doi.org/10.1016/" then "S0140-…", The Lancet).
 _DOI_IN_TEXT = re.compile(r"10\.\d{4,9}/(?:[ \t]*\n[ \t]*)?[^\s\"<>]+")
 _LETTER = re.compile(r"[a-zЀ-ӿ一-鿿]")
+# The copyright line right after a DOI ("https://doi.org/…" then "1063-4584/© 2025 …"):
+# the item's own footer. Text extraction can put the footer after the reference list
+# (Elsevier letters and replies, 2026-11-13).
+_COPYRIGHT_AFTER = re.compile(r"\s*(?:\d{4}-\d{3}[\dx]\s*/\s*)?©", re.I)
 _ENTITIES = {"amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'"}
 
 
@@ -211,6 +216,13 @@ def _doi_named(pages: str, target: str) -> bool:
     return re.search(rf"(?<![0-9.]){head}{pattern(suffix)}(?![0-9a-z_/-]|\.[0-9a-z])", pages) is not None
 
 
+def _doi_above_copyright(text: str, target: str) -> bool:
+    """The target DOI with the copyright line right after it: its own footer, wherever
+    the text extraction put it."""
+    return any(_bare(_clean_doi(match)) == _bare(target) and _COPYRIGHT_AFTER.match(text, match.end())
+               for match in _DOI_IN_TEXT.finditer(text))
+
+
 def _clean_doi(match: re.Match[str]) -> str:
     return re.sub(r"[.,;:)\]]+$", "", re.sub(r"\s+", "", match.group(0)))
 
@@ -268,7 +280,8 @@ def evidence(first_pages: str, identifier: str, title: str = "") -> dict | None:
     front = _REFERENCES_HEADING.split(text, maxsplit=1)[0]
     target = _target_doi(identifier)
     chars, at = _letters(front)
-    doi = _doi_named(front, target)
+    own_footer = _doi_above_copyright(text, target)
+    doi = _doi_named(front, target) or own_footer
     found = _title_evidence(front, chars, at, title) if (title or "").strip() else None
     if found is None and doi and _short_title_beside_doi(front, target, title or ""):
         found = "single"
@@ -282,7 +295,9 @@ def evidence(first_pages: str, identifier: str, title: str = "") -> dict | None:
     # editor" heading) and print no other DOI. A notice about an article prints its
     # own DOI as well ("Author Correction" then "Correction to: Nature
     # https://doi.org/<the article>"; a Frontiers corrigendum, 2026-11-02).
-    named = (_doi_named(front[:HEAD_CHARS], target) or (doi and found == "strong")) and not others
+    # Its DOI above its copyright line names it as well as its header does (a letter with
+    # a short title, 2026-11-13).
+    named = (_doi_named(front[:HEAD_CHARS], target) or own_footer or (doi and found == "strong")) and not others
     return {
         "not_article": _not_the_article(text[:HEAD_CHARS], title or "", named),
         "doi": doi,
@@ -305,8 +320,14 @@ def _source_names_doi(source: str, target: str) -> bool:
     """The URL a PDF came from names the DOI, not as part of a longer DOI (a ".pdf" may follow)."""
     if not re.match(r"10\.\d{4,9}/\S", target):
         return False
-    return re.search(rf"(?<![0-9.]){re.escape(target)}(?![0-9a-z_/-]|\.(?!pdf(?![0-9a-z]))[0-9a-z])",
-                     _decoded(source).lower()) is not None
+    url = _decoded(source).lower()
+    if re.search(rf"(?<![0-9.]){re.escape(target)}(?![0-9a-z_/-]|\.(?!pdf(?![0-9a-z]))[0-9a-z])", url):
+        return True
+    # A suffix long enough to name one article on its own, as a path segment: an Elsevier
+    # PII ("/article/S1063-4584(25)01284-1/pdf" for 10.1016/S1063-4584(25)01284-1, 2026-11-13).
+    suffix = _suffix(target)
+    return len(_bare(suffix)) >= SHARED_SUFFIX and re.search(
+        rf"/{re.escape(suffix)}(?![0-9a-z_-]|\.(?!pdf(?![0-9a-z]))[0-9a-z])", url) is not None
 
 
 def assess(first_pages: str, identifier: str, title: str = "", source: str = "") -> str:

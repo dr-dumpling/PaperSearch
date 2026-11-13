@@ -307,14 +307,14 @@ def _try_builtin_institutional(
                 "error_type": "access_blocked", "reason": "journal_blocked_earlier", "action": "review_access",
                 "blocked_by": blocked_by}
 
-    # At most ``publisher_hourly_limit`` articles per publisher in any hour
+    # At most ``publisher_hourly_limit`` articles per publisher in each hour
     # (state L): psc's batch waits the given seconds and tries this one again.
     from .. import rate_limit
     rate_key = publisher_name or (urlparse(resolved_url).hostname or "")
     limit = int(config.get("publisher_hourly_limit", rate_limit.DEFAULT_LIMIT) or 0)
     wait = rate_limit.wait_seconds(rate_key, limit)
     if wait:
-        log.info("   [Institutional] %s: %d articles in the last hour, next in %d s", rate_key, limit, wait)
+        log.info("   [Institutional] %s: %d articles this hour, a new hour in %d s", rate_key, limit, wait)
         return {"success": False, "identifier": doi, "doi": doi, "source": "institutional:rate_limit",
                 "error_type": "rate_limited", "reason": "publisher_hourly_limit", "action": "wait",
                 "retry_after_sec": wait, "publisher": rate_key, "limit": limit}

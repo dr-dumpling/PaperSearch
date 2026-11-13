@@ -87,16 +87,32 @@ def test_serial_downloads_reuse_browser_until_the_batch_closes(tmp_path, monkeyp
 
 
 class _Page:
-    def __init__(self, fail=False):
-        self.visited, self.fail, self.closed = [], fail, False
+    def __init__(self, fail=False, check=None, lands=()):
+        # check: the Cloudflare check the article page meets ("clears" after a click, or "stays");
+        # lands: where the article page goes instead, one page per wait (the last one stays).
+        self.visited, self.fail, self.closed, self.check, self.url = [], fail, False, check, ""
+        self.lands, self.clock = list(lands), None
 
     def is_closed(self):
         return self.closed
 
     def goto(self, url, **_):
-        if self.fail:
+        if self.fail and url != "about:blank":
             raise TimeoutError("slow")
         self.visited.append(url)
+        self.url = url + "?__cf_chl_rt_tk=x" if self.check and url != "about:blank" else url
+        if self.lands and url != "about:blank":
+            self.url = self.lands[0]
+
+    def title(self):
+        return "Just a moment..." if "__cf_chl" in self.url else "An article"
+
+    def wait_for_timeout(self, ms):
+        if self.clock is not None:
+            self.clock[0] += ms / 1000
+        if len(self.lands) > 1:
+            self.lands.pop(0)
+            self.url = self.lands[0]
 
 
 def test_keep_session_loads_only_the_last_saved_papers_article_page():
@@ -109,7 +125,71 @@ def test_keep_session_loads_only_the_last_saved_papers_article_page():
     batch.article_url = "https://journals.example/doi/10.1000/a"
     assert batch.keep_session() == {"kept": True}
     assert batch.page.visited == ["https://journals.example/doi/10.1000/a"]
-    batch.page = _Page(fail=True)
+    batch.page = _Page(fail=True)  # a load that hangs: the tab is left blank
     assert batch.keep_session() == {"kept": False, "reason": "TimeoutError"}
+    assert batch.page.visited == ["about:blank"] and batch.article_url == ""
     batch.page.closed = True
     assert batch.keep_session() == {"kept": False, "reason": "no_publisher_page"}
+
+
+def test_keep_session_clears_a_cloudflare_check_or_leaves_it(monkeypatch):
+    """The article page loaded again met a Cloudflare check, and the tab sat on it,
+    spinning, for the rest of the wait (Elsevier, Windows, 2026-11-13). Its checkbox is
+    clicked as in a download; one that does not clear leaves the tab blank, and no
+    keep-alive runs again until a paper saves."""
+    from types import SimpleNamespace
+
+    from paper_search_school.browser import batch_session, challenge_interaction
+
+    clicks = []
+
+    def click(page, **_):
+        clicks.append(page.url)
+        if page.check == "clears":
+            page.url = page.url.split("?")[0]
+        return "clicked"
+
+    monkeypatch.setattr(challenge_interaction, "click_checkbox", click)
+    clock = [0.0]
+    monkeypatch.setattr(batch_session, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+
+    batch = BatchBrowser()
+    batch.context, batch.page = object(), _Page(check="clears")
+    batch.article_url = "https://journals.example/article/a"
+    assert batch.keep_session() == {"kept": True}
+    assert batch.page.url == "https://journals.example/article/a" and len(clicks) == 1
+
+    page = _Page(check="stays")
+    page.clock = clock
+    batch.page = page
+    assert batch.keep_session() == {"kept": False, "reason": "verification"}
+    assert len(clicks) == 1 + 3  # three clicks, three seconds apart, then left
+    assert page.visited[-1] == "about:blank" and batch.article_url == ""
+    assert batch.keep_session() == {"kept": False, "reason": "no_publisher_page"}  # until a paper saves
+
+
+def test_keep_session_waits_out_the_publishers_own_sign_in_or_leaves_it(monkeypatch):
+    """Loaded again, the article page went to Elsevier's sign-in (id.elsevier.com), which
+    never loaded; the tab sat on it, spinning, for the rest of the wait (Windows,
+    2026-11-13). A sign-in the publisher runs by itself and that comes back to the
+    article's site keeps the session; one that does not is left, the tab blank."""
+    from types import SimpleNamespace
+
+    from paper_search_school.browser import batch_session
+
+    clock = [0.0]
+    monkeypatch.setattr(batch_session, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    article = "https://www.journal.example/article/S1/fulltext"
+    sign_in = "https://id.publisher.example/as/authorization.oauth2?client=journal"
+
+    batch = BatchBrowser()
+    batch.context, batch.article_url = object(), article
+    batch.page = _Page(lands=[sign_in, sign_in, "https://journal.example/article/S1/fulltext"])
+    batch.page.clock = clock
+    assert batch.keep_session() == {"kept": True}  # back on the article's site (with or without www)
+
+    clock[0] = 0.0
+    batch.page = _Page(lands=[sign_in])
+    batch.page.clock = clock
+    assert batch.keep_session() == {"kept": False, "reason": "signin"}
+    assert batch.page.visited == [article, "about:blank"] and batch.article_url == ""

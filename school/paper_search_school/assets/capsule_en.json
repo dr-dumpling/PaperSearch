@@ -521,16 +521,16 @@
    "Resumes $1"
   ],
   [
-   "^(.+) 已达设置的每小时 (\\d+) 篇，(\\d{1,2}:\\d{2}) 继续$",
-   "$1: your $2/hour limit; resumes $3"
+   "^(.+) 已达设置的每小时 (\\d+) 篇，(\\d{1,2}:\\d{2}) 重新计数$",
+   "$1: your $2/hour limit; resets $3"
   ],
   [
-   "^已达设置的每小时 (\\d+) 篇，(\\d{1,2}:\\d{2}) 继续$",
-   "Your $1/hour limit reached; resumes $2"
+   "^已达设置的每小时 (\\d+) 篇，(\\d{1,2}:\\d{2}) 重新计数$",
+   "Your $1/hour limit reached; resets $2"
   ],
   [
-   "^已达设置的每小时上限，(\\d{1,2}:\\d{2}) 继续$",
-   "Your hourly limit reached; resumes $1"
+   "^已达设置的每小时上限，(\\d{1,2}:\\d{2}) 重新计数$",
+   "Your hourly limit reached; resets $1"
   ],
   [
    "^(.+) 一小时内已打开 (\\d+) 篇（每小时上限），(\\d{1,2}:\\d{2}) 继续这一篇$",

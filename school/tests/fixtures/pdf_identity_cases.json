@@ -1005,5 +1005,55 @@
   "title": "Issue Information",
   "source": "https://acrjournals.onlinelibrary.wiley.com/doi/pdfdirect/10.1000/issue?hmac=1794499836-abc",
   "expected": "source"
+ },
+ {
+  "group": "type",
+  "name": "a requested letter whose DOI is only in its footer, which the text puts after the references (Elsevier, Osteoarthritis and Cartilage)",
+  "text": "Letter to the Editor\nMethodological gaps in exposure and joint disease risk research\nWe read with interest the study by Author et al., which reports an association in a large cohort. We read with interest the study by Author et al., which reports an association in a large cohort. We read with interest the study by Author et al., which reports an association in a large cohort. We read with interest the study by Author et al., which reports an association in a large cohort. \nConflicts of interest\nThe authors declare no competing interests.\nReferences\n1. Author A, Author B. A decade of exposure and joint disease: a nationwide cohort study. Example Journal 2025. https://doi.org/10.1000/original\n2. Author C. A review of exposure models. J Example 2005;15(2):185-204.\nExample Journal 34 (2026) 188-189\nhttps://doi.org/10.1000/letter \n1063-4584/© 2025 Example Society. Published by Elsevier Ltd. All rights are reserved.\nDOI of original article: https://doi.org/10.1000/original.\nA. Author, B. Author\nDepartment of Rheumatology, Example Hospital\n13 June 2025\nLetter to the Editor / Example Journal 34 (2026) 188-189 189",
+  "doi": "10.1000/letter",
+  "title": "Methodological gaps in exposure and joint disease risk research",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "a requested reply whose footer DOI comes after references citing other DOIs (Elsevier, Osteoarthritis and Cartilage)",
+  "text": "Letter to the Editor\nResponse to the commentary on ‘The association between exposure and joint disease in women: a population-based cohort study’\nWe read with interest the study by Author et al., which reports an association in a large cohort. We read with interest the study by Author et al., which reports an association in a large cohort. We read with interest the study by Author et al., which reports an association in a large cohort. We read with interest the study by Author et al., which reports an association in a large cohort. \nReferences\n1. Author A. The association between exposure and joint disease in women: a population-based cohort study. Example Journal 2025. https://doi.org/10.\n1000/original.\n2. Author D. The devil is in the detail. Example Journal 2025. https://doi.org/10.1000/comment.\nExample Journal 33 (2025) 1268-1269\nhttps://doi.org/10.1000/reply \n1063-4584/© 2025 Example Society. Published by Elsevier Ltd. All rights are reserved.\nDOI of original article: https://doi.org/10.1000/original.\n3. Author E. Associations in the general population. Example Journal 2025. https://doi.org/10.1000/third.\n4. Author F. Concentrations and replacement in older women. Maturitas 2025;193:108174. https://doi.org/10.1016/j.example.2024.108174\n13 June 2025\nLetter to the Editor / Example Journal 33 (2025) 1268-1269 1269",
+  "doi": "10.1000/reply",
+  "title": "Response to the commentary on ‘The association between exposure and joint disease in women: a population-based cohort study’",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "the article a letter comments on is not taken for the letter, though the letter prints its title (its DOI above no copyright line)",
+  "text": "Letter to the Editor\nComment on ‘A decade of exposure and joint disease: a nationwide cohort study of adults’\nWe read with interest the study by Author et al., which reports an association in a large cohort. We read with interest the study by Author et al., which reports an association in a large cohort. We read with interest the study by Author et al., which reports an association in a large cohort. We read with interest the study by Author et al., which reports an association in a large cohort. \nReferences\n1. Author A. A decade of exposure and joint disease: a nationwide cohort study of adults. Example Journal 2025. https://doi.org/10.1000/original\nExample Journal 34 (2026) 190-191\nhttps://doi.org/10.1000/letter \n1063-4584/© 2025 Example Society. Published by Elsevier Ltd. All rights are reserved.\nDOI of original article: https://doi.org/10.1000/original.\n13 June 2025",
+  "doi": "10.1000/original",
+  "title": "A decade of exposure and joint disease: a nationwide cohort study of adults",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a requested letter with a short title, its DOI above its copyright line after the references (Elsevier)",
+  "text": "Letter to the Editor\nScott's parabola redux\nScott's parabola reminds us that practice too often adopts innovations faster than the evidence justifies. Scott's parabola reminds us that practice too often adopts innovations faster than the evidence justifies. Scott's parabola reminds us that practice too often adopts innovations faster than the evidence justifies. Scott's parabola reminds us that practice too often adopts innovations faster than the evidence justifies. Scott's parabola reminds us that practice too often adopts innovations faster than the evidence justifies. \nReferences\n[1] A. Author, Scott's parabola: the rise and fall of a technique, BMJ 323 (2001) 1477, https://doi.org/10.1136/bmj.323.7327.1477\n[2] B. Author, Innovation stages, BMJ 346 (2013) f3012, https://doi.org/10.1136/bmj.f3012\nA. Author\nDepartment of Clinical Sciences, Example University\n12 March 2026\nExample Journal 34 (2026) 997-997\nhttps://doi.org/10.1000/shortletter \n1063-4584/© 2026 Example Society. Published by Elsevier Ltd.",
+  "doi": "10.1000/shortletter",
+  "title": "Scott's parabola redux",
+  "expected": "verified"
+ },
+ {
+  "group": "source",
+  "name": "a one-line advert from an address that names its DOI's long suffix, an Elsevier PII",
+  "text": "Delivers trusted, accessible and relevant engineering answers & insights",
+  "doi": "10.1016/S1063-4584(25)01284-1",
+  "title": "Filler advert: knovel_210x280.pdf",
+  "source": "https://www.journal.example/article/S1063-4584(25)01284-1/pdf",
+  "expected": "source"
+ },
+ {
+  "group": "source",
+  "name": "a short suffix in the address is no evidence alone",
+  "text": "Delivers trusted, accessible and relevant engineering answers & insights",
+  "doi": "10.1000/ad1",
+  "title": "Filler advert",
+  "source": "https://www.journal.example/article/ad1/pdf",
+  "expected": "unverified"
  }
 ]

@@ -385,16 +385,22 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
             pass
     # Held by the hourly limit the user set: the capsule and the card say so, and that
     # it is the user's setting, not the publisher's (2026-11-12).
+    line = status_text(state, running) if running else ""
     hold = _hourly_hold(state, now) if running and not attention else None
     if hold:
         name, limit, resume = hold
+        # The phase recorded with the hold says it again below the notice; a line of
+        # the other lane (open download) stays (2026-11-13).
+        if line == str(state["hourly_wait"].get("phase") or ""):
+            line = ""
         part, publisher = "已达每小时上限", f"{resume} 继续"
         # One line on the card in either language: a longer publisher name (or a site's
         # host) is left out; the status line above already says what holds.
         name = name if len(name) <= HOLD_NAME_MAX else ""
-        notice = (f"{name} 已达设置的每小时 {limit} 篇，{resume} 继续" if name and limit
-                  else f"已达设置的每小时 {limit} 篇，{resume} 继续" if limit
-                  else f"已达设置的每小时上限，{resume} 继续")
+        # The hour is over then and the count starts again (2026-11-13).
+        notice = (f"{name} 已达设置的每小时 {limit} 篇，{resume} 重新计数" if name and limit
+                  else f"已达设置的每小时 {limit} 篇，{resume} 重新计数" if limit
+                  else f"已达设置的每小时上限，{resume} 重新计数")
 
     return {
         "mode": mode, "tone": tone, "headline": headline,
@@ -406,8 +412,8 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
         "where": " · ".join(v for v in (journal, publisher) if v),
         "title": str(state.get("title") or ""), "current": current,
         "run_id": str(state.get("run_id") or ""),
-        "step": step, "steps": list(STEPS), "line": status_text(state, running) if running else "",
-        "elapsed": elapsed, "attention": prompt, "notice": notice,
+        "step": step, "steps": list(STEPS), "line": line,
+        "elapsed": elapsed, "attention": prompt, "notice": notice, "hold": bool(hold),
         "completion_detail": str(state.get("phase") or "")
             if not running and state.get("stage") == "supplements_checked" else "",
         "summary": summary_view(state.get("results")) if mode == "done" else None,

@@ -264,19 +264,22 @@ class BatchProgressTests(unittest.TestCase):
         self.new_process()
         with pr.tracked_download("10.1000/2", None, batch) as outcome:
             outcome["paused"] = "Wiley 一小时内已打开 100 篇（每小时上限），01:09 继续这一篇"
-            outcome["hourly_wait"] = {"publisher": "Wiley", "limit": 100, "until": until}
-        # The open-access lane goes on reporting meanwhile.
+            outcome["hourly_wait"] = {"publisher": "Wiley", "limit": 100, "until": until, "phase": outcome["paused"]}
+        # The notice says it; the same words do not follow it as the status line (2026-11-13).
+        self.assertEqual(progress_view.view(pr.read_snapshot()[0], time.time())["line"], "")
+        # The open-access lane goes on reporting meanwhile, and its line shows.
         self.assertTrue(pr.sync_batch("b1", 3, 2, 2, 0, current="10.1000/3",
                                       phase="开放下载：已查 3/3 篇，找到 1 篇", channel="开放下载"))
         resume = time.strftime("%H:%M", time.localtime(until))
         shown = progress_view.view(pr.read_snapshot()[0], time.time())
         self.assertEqual((shown["part"], shown["publisher"], shown["notice"]),
-                         ("已达每小时上限", f"{resume} 继续", f"Wiley 已达设置的每小时 100 篇，{resume} 继续"))
+                         ("已达每小时上限", f"{resume} 继续", f"Wiley 已达设置的每小时 100 篇，{resume} 重新计数"))
+        self.assertEqual(shown["line"], "开放下载：已查 3/3 篇，找到 1 篇")
         later = progress_view.view(pr.read_snapshot()[0], until + 1)
         self.assertEqual((later["part"], later["notice"]), ("正文", ""))
         # A longer publisher name is left out, to keep the card's line to one line.
         long_name = {**pr.read_snapshot()[0], "hourly_wait": {"publisher": "Springer Nature", "limit": 100, "until": until}}
-        self.assertEqual(progress_view.view(long_name, time.time())["notice"], f"已达设置的每小时 100 篇，{resume} 继续")
+        self.assertEqual(progress_view.view(long_name, time.time())["notice"], f"已达设置的每小时 100 篇，{resume} 重新计数")
         # The held article runs again: the hold is gone.
         with pr.tracked_download("10.1000/2", None, pr.BatchContext.from_args("b1", 3, 3, 2, 2, 0)) as outcome:
             self.assertNotIn("hourly_wait", self.state())

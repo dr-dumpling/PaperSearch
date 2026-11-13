@@ -13,7 +13,7 @@ One sentence and your AI searches, verifies and downloads full texts and supplem
   <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch?style=flat-square" alt="npm"></a>
   <a href="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml"><img src="https://img.shields.io/github/actions/workflow/status/dr-dumpling/PaperSearch/publish.yml?style=flat-square&amp;label=publish" alt="Publish workflow status"></a>
   <a href="https://nodejs.org/"><img src="https://img.shields.io/node/v/papersearch?style=flat-square" alt="Required Node.js version"></a>
-  <a href="#1-school-subscription-downloads"><img src="https://img.shields.io/badge/school%20login-Asia%20(6%20federations%20%2B%20OpenAthens)-7284CE?style=flat-square" alt="School subscription downloads: six academic identity federations in Asia and OpenAthens"></a>
+  <a href="#1-school-subscription-downloads"><img src="https://img.shields.io/badge/school%20login-eduGAIN%20%2B%20OpenAthens-7284CE?style=flat-square" alt="School subscription downloads: academic identity federations in eduGAIN, and OpenAthens"></a>
   <a href="docs/guide.en.md#agent-skill"><img src="https://img.shields.io/badge/Agent%20Skill-bundled-D97757?style=flat-square" alt="Bundled Agent Skill"></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-555555?style=flat-square" alt="Runs on macOS and Windows"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2F9E44?style=flat-square" alt="MIT license"></a>

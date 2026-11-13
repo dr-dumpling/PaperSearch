@@ -42,13 +42,15 @@ export type PdfIdentityStatus =
  * disclosure form) and a notice about it (correction, retraction, briefing,
  * letter to the editor). A notice is itself the requested item when the
  * requested title says it is a notice, or when the pages name it (its DOI in
- * the header, or its whole title and its DOI) and print no other DOI: a notice
+ * the header or right above its copyright line, or its whole title and its
+ * DOI) and print no other DOI: a notice
  * about an article prints its own as well. A DOI the pages label as the article
  * a notice is about ("DOI of original article:", "Correction to:") is no other
  * DOI for the notice itself (a letter that names the article it discusses);
  * when that label points at the requested DOI, the PDF is a notice about it.
  * A scan without a text layer cannot be read: the URL it came from, when that
- * names the DOI, is the evidence, unless what little it prints is a notice, an
+ * names the DOI (or its suffix, long enough to name one article: an Elsevier
+ * PII), is the evidence, unless what little it prints is a notice, an
  * attachment or another DOI. So is it for pages that print no DOI at all and are
  * no notice or attachment, when the requested item is named like a section rather
  * than an article (a one-page "Journal Club" note, "Issue Information", Wiley 2026-11-12).
@@ -235,6 +237,17 @@ function doiNamed(pages: string, target: string): boolean {
   return new RegExp(`(?<![0-9.])${head}${pattern(suffix)}(?![0-9a-z_/-]|\\.[0-9a-z])`).test(pages);
 }
 
+// The copyright line right after a DOI ("https://doi.org/…" then "1063-4584/© 2025 …"):
+// the item's own footer. Text extraction can put the footer after the reference list
+// (Elsevier letters and replies, 2026-11-13).
+const COPYRIGHT_AFTER = /^\s*(?:\d{4}-\d{3}[\dx]\s*\/\s*)?©/i;
+
+/** The target DOI with the copyright line right after it: its own footer, wherever the text extraction put it. */
+function doiAboveCopyright(text: string, target: string): boolean {
+  return [...text.matchAll(DOI_IN_TEXT)].some((match) => bare(cleanDoi(match[0])) === bare(target)
+    && COPYRIGHT_AFTER.test(text.slice((match.index ?? 0) + match[0].length)));
+}
+
 function cleanDoi(match: string): string {
   return match.replace(/\s+/g, "").replace(/[.,;:)\]]+$/, "");
 }
@@ -315,7 +328,8 @@ export function identityEvidence(
   const text = normalise(firstPages);
   const front = text.split(REFERENCES_HEADING)[0];
   const target = targetDoi(identifier);
-  const doi = doiNamed(front, target);
+  const ownFooter = doiAboveCopyright(text, target);
+  const doi = doiNamed(front, target) || ownFooter;
   let found = title?.trim() ? titleEvidence(front, letters(front), title) : null;
   if (found === null && doi && shortTitleBesideDoi(front, target, title ?? "")) found = "single";
   let others = otherDois(front, target);
@@ -327,7 +341,9 @@ export function identityEvidence(
   // the editor" heading) and print no other DOI. A notice about an article
   // prints its own DOI as well ("Author Correction" then "Correction to: Nature
   // https://doi.org/<the article>"; a Frontiers corrigendum, 2026-11-02).
-  const named = (doiNamed(front.slice(0, HEAD_CHARS), target) || (doi && found === "strong")) && others.length === 0;
+  // Its DOI above its copyright line names it as well as its header does (a letter with
+  // a short title, 2026-11-13).
+  const named = (doiNamed(front.slice(0, HEAD_CHARS), target) || ownFooter || (doi && found === "strong")) && others.length === 0;
   return {
     notArticle: notTheArticle(text.slice(0, HEAD_CHARS), title ?? "", named),
     doi,
@@ -348,8 +364,14 @@ function decoded(url: string): string {
 /** The URL a PDF came from names the DOI, not as part of a longer DOI (a ".pdf" may follow). */
 function sourceNamesDoi(source: string, target: string): boolean {
   if (!/^10\.\d{4,9}\/\S/.test(target)) return false;
-  const doi = target.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
-  return new RegExp(`(?<![0-9.])${doi}(?![0-9a-z_/-]|\\.(?!pdf(?![0-9a-z]))[0-9a-z])`).test(decoded(source).toLowerCase());
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+  const url = decoded(source).toLowerCase();
+  if (new RegExp(`(?<![0-9.])${escape(target)}(?![0-9a-z_/-]|\\.(?!pdf(?![0-9a-z]))[0-9a-z])`).test(url)) return true;
+  // A suffix long enough to name one article on its own, as a path segment: an Elsevier
+  // PII ("/article/S1063-4584(25)01284-1/pdf" for 10.1016/S1063-4584(25)01284-1, 2026-11-13).
+  const suffix = suffixOf(target);
+  return bare(suffix).length >= SHARED_SUFFIX
+    && new RegExp(`/${escape(suffix)}(?![0-9a-z_-]|\\.(?!pdf(?![0-9a-z]))[0-9a-z])`).test(url);
 }
 
 /**

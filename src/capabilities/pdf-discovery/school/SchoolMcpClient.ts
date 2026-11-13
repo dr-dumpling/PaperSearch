@@ -46,6 +46,8 @@ import type {
 
 export const SCHOOL_STARTUP_TIMEOUT_MS = 15_000;
 export const SCHOOL_TOOL_TIMEOUT_MS = 15_000;
+/** school_keep_session: the article page loaded again (25 s), settling back on its site (22 s), a blank tab (5 s). */
+const KEEP_SESSION_TOOL_TIMEOUT_MS = 60_000;
 // Entitled access waits for a person (verification, login); the backend bounds
 // each wait itself, so this outer limit only catches a hung backend.
 export const SCHOOL_DOWNLOAD_TIMEOUT_MS = 1_200_000;
@@ -53,7 +55,7 @@ export const SCHOOL_CLEANUP_TIMEOUT_MS = 5_000;
 
 const SCHOOL_BACKEND_SOURCE = "school";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.6.2";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.6.3";
 
 interface ActiveSession {
   client: Client;
@@ -461,7 +463,8 @@ export class SchoolMcpClient implements SchoolBackend {
       const result = await session.client.callTool(
         { name: "school_keep_session", arguments: {} },
         undefined,
-        requestOptions(this.toolTimeoutMs, signal),
+        // Loading the page and letting it settle back on the article's site take up to 52 s.
+        requestOptions(Math.max(this.toolTimeoutMs, KEEP_SESSION_TOOL_TIMEOUT_MS), signal),
       );
       assertProtocolIntegrity(session.protocolState);
       return sessionKept(result);

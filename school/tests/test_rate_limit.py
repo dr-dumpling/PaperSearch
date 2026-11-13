@@ -1,4 +1,4 @@
-"""At most ``publisher_hourly_limit`` articles per publisher in any hour (rate_limit.py)."""
+"""At most ``publisher_hourly_limit`` articles per publisher in each hour (rate_limit.py)."""
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,17 +13,36 @@ class HourlyLimitTests(unittest.TestCase):
         rate_limit.ledger_path().unlink(missing_ok=True)
         self.addCleanup(rate_limit.ledger_path().unlink, missing_ok=True)
 
-    def test_the_next_article_waits_until_the_oldest_of_the_hour_is_an_hour_old(self):
+    def test_an_hour_starts_with_its_first_article_and_its_count_starts_again_after_it(self):
+        """Counted over any 60 minutes, a full hour let one article on as each aged out,
+        which read as stopping again and again (the user, 2026-11-13)."""
         for at in (1000, 1100, 1200):
             rate_limit.record("Elsevier", now=at)
         rate_limit.record("Wiley", now=1200)
         self.assertEqual(rate_limit.wait_seconds("Elsevier", 3, now=1300), 1000 + 3600 - 1300 + 1)
         self.assertEqual(rate_limit.wait_seconds("Elsevier", 4, now=1300), 0)
         self.assertEqual(rate_limit.wait_seconds("Wiley", 3, now=1300), 0)  # each publisher on its own
-        self.assertEqual(rate_limit.wait_seconds("Elsevier", 3, now=4601), 0)
         self.assertEqual(rate_limit.wait_seconds("Elsevier", 0, now=1300), 0)  # 0 = no limit
-        rate_limit.record("Elsevier", now=4900)  # entries older than an hour are dropped
-        self.assertEqual(rate_limit._read_json(rate_limit.ledger_path()), {"Elsevier": [4900]})
+        # The hour is over at 4600: the count starts again, with nothing of the last hour in it.
+        self.assertEqual(rate_limit.wait_seconds("Elsevier", 3, now=4601), 0)
+        for at in (4601, 4650):
+            rate_limit.record("Elsevier", now=at)
+        self.assertEqual(rate_limit.wait_seconds("Elsevier", 3, now=4700), 0)  # 2 of 3 in the new hour
+        rate_limit.record("Elsevier", now=4700)
+        self.assertEqual(rate_limit.wait_seconds("Elsevier", 3, now=4800), 4601 + 3600 - 4800 + 1)
+        self.assertEqual(rate_limit._read_json(rate_limit.ledger_path()),
+                         {"Elsevier": {"start": 4601, "count": 3}, "Wiley": {"start": 1200, "count": 1}})
+        rate_limit.record("Elsevier", now=8300)  # hours over are dropped (Wiley's ended at 4800)
+        self.assertEqual(rate_limit._read_json(rate_limit.ledger_path()), {"Elsevier": {"start": 8300, "count": 1}})
+
+    def test_a_ledger_of_the_times_opened_goes_on_as_an_hour_from_the_oldest(self):
+        """Before 0.6.3 the ledger kept each article's time; an update in the middle of an
+        hour goes on counting it."""
+        rate_limit._write_json(rate_limit.ledger_path(), {"Elsevier": [100, 1000, 1100, 1200]})
+        self.assertEqual(rate_limit.wait_seconds("Elsevier", 3, now=3900), 1000 + 3600 - 3900 + 1)
+        rate_limit.record("Wiley", now=3900)
+        self.assertEqual(rate_limit._read_json(rate_limit.ledger_path()),
+                         {"Elsevier": {"start": 1000, "count": 3}, "Wiley": {"start": 3900, "count": 1}})
 
     def test_the_backend_answers_rate_limited_before_any_browser(self):
         profile = SimpleNamespace(name="Elsevier")

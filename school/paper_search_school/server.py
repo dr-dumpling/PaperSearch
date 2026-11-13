@@ -129,7 +129,8 @@ def school_download(
                     f"{result.get('publisher')} 一小时内已打开 {result.get('limit')} 篇（每小时上限），{resume} 继续这一篇")
                 # The window says so until then, beside the other lane's lines (2026-11-12).
                 outcome["hourly_wait"] = {"publisher": str(result.get("publisher") or ""),
-                                          "limit": result.get("limit"), "until": until}
+                                          "limit": result.get("limit"), "until": until,
+                                          "phase": outcome["paused"]}
             if result.get("error_type") == "paywall" or result.get("action") == "login_required":
                 result["agent_hint"] = (
                     "此论文需要机构登录。请让用户在弹出的下载浏览器窗口里完成登录或人工验证后重试；"
