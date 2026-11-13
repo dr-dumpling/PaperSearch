@@ -155,8 +155,10 @@ def institutional_configured(config: dict[str, Any]) -> bool:
 # --------------------------------------------------------------------------- finding
 
 def _key(text: str) -> str:
-    """Case, spaces, hyphens, punctuation and a leading "The" do not count."""
-    return re.sub(r"[\W_]+", "", re.sub(r"^the\s+", "", str(text or "").casefold().strip()))
+    """Case, spaces, hyphens, punctuation and a leading "The" do not count; "&"
+    is "and" (a school listed as "Science & Technology", 2026-11-12)."""
+    text = re.sub(r"^the\s+", "", str(text or "").casefold().strip())
+    return re.sub(r"[\W_]+", "", text.replace("&", " and "))
 
 
 def _host(text: str) -> str:
@@ -180,13 +182,11 @@ class _Found:
             self.rows[school.entity_id] = (school, exact)
 
     def _primary(self) -> None:
-        """A school also listed in a secondary route (OpenAthens) under the same
-        domain or name signs in through its federation: that entry goes."""
+        """A school also listed in a secondary route (OpenAthens) signs in through
+        its federation: that entry goes (``_same_school``)."""
         primary = [s for s, _ in self.rows.values() if not _secondary(s)]
-        domains = {d for s in primary for d in s.scopes}
-        names = {_key(s.name_en) for s in primary}
         for entity, (school, _) in list(self.rows.items()):
-            if _secondary(school) and (set(school.scopes) & domains or _key(school.name_en) in names):
+            if _secondary(school) and any(_same_school(school, p) for p in primary):
                 del self.rows[entity]
 
     def decide(self) -> tuple[School | None, list[School]]:
@@ -203,6 +203,20 @@ class _Found:
         return None, sorted(partial, key=lambda s: (len(s.name), s.name))
 
 
+def _same_school(other: School, school: School) -> bool:
+    """``other`` is ``school`` listed again: under its domain or a host of it (its
+    library's), or under its name, an abbreviation in brackets aside, with a domain
+    of the same country (2026-11-12: two countries' universities share a name)."""
+    if any(o == d or o.endswith("." + d) for o in other.scopes for d in school.scopes):
+        return True
+    name = _key(_BRACKET.sub(" ", other.name_en))
+    if not name or name != _key(_BRACKET.sub(" ", school.name_en)):
+        return False
+    if not (other.scopes and school.scopes):
+        return True
+    return bool({d.rsplit(".", 1)[-1] for d in other.scopes} & {d.rsplit(".", 1)[-1] for d in school.scopes})
+
+
 def _secondary(school: School) -> bool:
     federation = by_code(school.federation)
     return bool(federation and federation.secondary)
@@ -213,24 +227,50 @@ _RETIRED = re.compile(r"\bdo not use\b|\btest\b|\blegacy\b", re.I)
 
 
 _PARTS = re.compile(r"\s+[-\u2013\u2014]\s+")
-_BRACKETED = re.compile(r"^(.*?)\s*\(([^()]+)\)\s*$")
+_BRACKET = re.compile(r"\(([^()]+)\)")
+# Chinese, Japanese and Korean writing, beside a name in Latin letters.
+_CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af][\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\s・·]*")
 
 
 def _names(titles: Iterable[str]) -> list[str]:
     """The names a school is listed under, and their parts: "NHU - National
     Harbour University" (an abbreviation before the name), "北大学 (Kita
-    University) – OpenAthens" (a second name in brackets, the route after a dash)."""
+    University) – OpenAthens" (a second name in brackets, the route after a dash),
+    "National Harbour Bay University (NHBU) 海灣大學" (brackets inside, and a name in
+    another script beside the English one: OpenAthens in Taiwan, 2026-11-12)."""
     names = [str(t).strip() for t in titles if str(t or "").strip()]
     found = list(names)
     for name in names:
         for part in _PARTS.split(name):
-            bracketed = _BRACKETED.match(part.strip())
-            found += [part.strip(), *([bracketed.group(1).strip(), bracketed.group(2).strip()] if bracketed else [])]
+            part = part.strip()
+            outside = re.sub(r"\s+", " ", _BRACKET.sub(" ", part)).strip()
+            found += [part, outside, *(m.strip() for m in _BRACKET.findall(part))]
+            if _CJK.search(outside) and re.search(r"[A-Za-z]{2}", _CJK.sub(" ", outside)):
+                found += [m.strip() for m in _CJK.findall(outside)] + [re.sub(r"\s+", " ", _CJK.sub(" ", outside)).strip()]
     return list(dict.fromkeys(n for n in found if n))
+
+
+def _words(text: str) -> list[str]:
+    """The words of a name, as ``_key`` compares them."""
+    words = [w for w in re.split(r"[\W_]+", str(text or "").casefold().replace("&", " and ")) if w]
+    return words[1:] if words[:1] == ["the"] else words
+
+
+def _listed_inside(text: str, listed_names: Iterable[str]) -> bool:
+    """A listed name of two words or more found word for word in what was given:
+    a school listed shorter than its full name ("Kita Bay" for "Kita Bay
+    University", 2026-11-12), only ever asked about."""
+    given = _words(text)
+    for name in listed_names:
+        part = _words(name)
+        if len(part) >= 2 and any(given[i:i + len(part)] == part for i in range(len(given) - len(part) + 1)):
+            return True
+    return False
 
 
 def _matches(given: Iterable[str], listed_names: Iterable[str], scopes: Iterable[str], entity: str) -> tuple[bool, bool]:
     """(exact, partial) for what was given against one listed school."""
+    listed_names = list(listed_names)
     keys = {_key(n) for n in listed_names} - {""}
     hosts = {s.lower() for s in scopes if s}
     exact = partial = False
@@ -240,7 +280,8 @@ def _matches(given: Iterable[str], listed_names: Iterable[str], scopes: Iterable
             continue
         if text == entity or key in keys or host in hosts:
             exact = True
-        elif any(key in k for k in keys) or any(host and host in h for h in hosts):
+        elif (any(key in k for k in keys) or any(host and host in h for h in hosts)
+              or _listed_inside(text, listed_names)):
             partial = True
     return exact, partial and not exact
 

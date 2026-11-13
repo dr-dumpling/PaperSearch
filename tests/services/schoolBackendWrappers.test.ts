@@ -8,7 +8,7 @@ import { withCliSchoolProgress } from "../../src/management/school/cliProgress.j
  * method they pass on: one left out is silently gone, as the papers' report was
  * until an integration test missed its calls (2026-11-10).
  */
-const METHODS = ["probe", "downloadLegalDoi", "withBatchSession", "reportBatchProgress", "reportBatchPapers"] as const;
+const METHODS = ["probe", "downloadLegalDoi", "withBatchSession", "reportBatchProgress", "reportBatchPapers", "keepSession"] as const;
 // Fails to compile when SchoolBackend gains a method this list does not name.
 const unlisted: Record<Exclude<keyof SchoolBackend, (typeof METHODS)[number]>, never> = {};
 
@@ -34,6 +34,10 @@ function backend(calls: string[]): SchoolBackend {
       calls.push("reportBatchPapers");
       return true;
     },
+    keepSession: async () => {
+      calls.push("keepSession");
+      return true;
+    },
   };
 }
 
@@ -46,6 +50,7 @@ async function callEach(wrapped: SchoolBackend, methods: readonly (typeof METHOD
       await wrapped.reportBatchProgress!({ id: "b", total: 1, done: 0, succeeded: 0, failed: 0, finished: false });
     }
     if (method === "reportBatchPapers") await wrapped.reportBatchPapers!({ id: "b", folder: "/tmp", papers: [] });
+    if (method === "keepSession") await wrapped.keepSession!();
   }
 }
 

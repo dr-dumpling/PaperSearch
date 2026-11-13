@@ -1,0 +1,11 @@
+{
+  "code": "tigerfed",
+  "name": "TIGERfed",
+  "country": "BD",
+  "registration_authorities": ["https://tigerfed.net.bd"],
+  "chooser_labels": ["TIGERfed"],
+  "chooser_pattern": "\\bTIGERfed\\b",
+  "discovery_hosts": [],
+  "service_domains": ["tigerfed.net.bd"],
+  "metadata_url": "https://fedmanager.tigerfed.net.bd/edugain-export-metadata.xml"
+}

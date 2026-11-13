@@ -156,3 +156,29 @@ def test_idp_redirect_and_unknown_relay_are_not_human_steps_but_real_controls_ar
         finally:
             context.close()
             browser.close()
+
+
+def test_a_username_first_page_is_the_schools_login_and_a_portal_search_box_is_not():
+    # The school's site stays the user's while it asks for a username before any
+    # password (a school's Okta page was ended as a portal, 2026-11-12).
+    from patchright.sync_api import sync_playwright
+    with sync_playwright() as driver:
+        browser = driver.chromium.launch(channel="chrome", headless=True)
+        context = browser.new_context(service_workers="block")
+        page = context.new_page()
+        try:
+            d = PublisherBatchDownloader({"publisher_institution_federation": "carsi"})
+            state = lambda: page.evaluate(d._SCHOOL_PAGE_STATE_JS)
+            page.set_content('<form><label>Username<input type="text" name="identifier"></label>'
+                             '<input type="submit" value="Next"></form>')
+            assert state()["login"] is True
+            page.set_content('<form><input type="email" name="loginfmt"></form>')
+            assert state()["login"] is True
+            page.set_content('<h1>Fixture University portal</h1><form><input type="text" name="q" placeholder="Search">'
+                             '</form><a href="/logout">Log out</a>')
+            assert state()["login"] is False
+            page.set_content('<input type="text" name="username" style="display:none"><p>Welcome back</p>')
+            assert state()["login"] is False
+        finally:
+            context.close()
+            browser.close()

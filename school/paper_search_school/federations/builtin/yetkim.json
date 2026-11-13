@@ -1,0 +1,11 @@
+{
+  "code": "yetkim",
+  "name": "YETKİM",
+  "country": "TR",
+  "registration_authorities": ["https://yetkim.org.tr/"],
+  "chooser_labels": ["YETKİM Identity Federation"],
+  "chooser_pattern": "\\bYETK[İI]M\\b",
+  "discovery_hosts": [],
+  "service_domains": ["yetkim.org.tr"],
+  "metadata_url": "http://md.yetkim.org.tr/yetkim-upstream.xml"
+}

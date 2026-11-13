@@ -165,13 +165,28 @@ function rateLimitWait(result) {
     const attempt = result.attempts.find((a) => a.stage === "entitled_access" && a.code === "rate_limited");
     return attempt ? Math.max(1, Math.min(3600, attempt.retryAfterSec ?? 60)) : 0;
 }
-/** Runs the item again after each wait the publisher's hourly limit asks for. */
-async function pastHourlyLimit(run, log, pause) {
+/**
+ * How often a batch waiting for the hourly limit keeps the publisher's session alive:
+ * Wiley's institutional session lapsed after about half an hour without a request,
+ * and the school's login had expired by then too (Windows, 2026-11-12).
+ */
+export const KEEP_SESSION_EVERY_MS = 10 * 60_000;
+/**
+ * Runs the item again after each wait the publisher's hourly limit asks for. During a
+ * wait, ``keep`` (the backend's keepSession) runs every KEEP_SESSION_EVERY_MS.
+ */
+async function pastHourlyLimit(run, log, pause, keep) {
     let result = await run();
     for (let wait = rateLimitWait(result); wait; wait = rateLimitWait(result)) {
         const resume = new Date(Date.now() + wait * 1000).toTimeString().slice(0, 5);
         log(`[批量] 这家出版社一小时内的下载已到上限（防止学校被暂停访问），${resume} 继续这一篇`);
-        await pause(wait * 1000);
+        for (let left = wait * 1000; left > 0;) {
+            const step = Math.min(left, KEEP_SESSION_EVERY_MS);
+            await pause(step);
+            left -= step;
+            if (left > 0 && keep)
+                await keep().catch(() => false);
+        }
         result = await run();
     }
     return result;
@@ -346,7 +361,7 @@ async function downloadPerItem(searchers, options, backend, log, createTiers, pa
         const entry = runItem(index, request);
         log(`[批量] 第 ${index}/${total} 篇：${request.doi || request.paperId}`);
         const batch = { id: batchId, index, total, done: offset, succeeded, failed };
-        const result = await pastHourlyLimit(() => downloadWithFallback(searchers, recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entry), createTiers(backend)), log, pause);
+        const result = await pastHourlyLimit(() => downloadWithFallback(searchers, recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entry), createTiers(backend)), log, pause, () => backend?.keepSession?.() ?? Promise.resolve(false));
         if (result.status === "ok")
             succeeded += 1;
         else
@@ -526,7 +541,7 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
             const batch = { id: batchId, index: done + 1, total, done, succeeded: settledOk(), failed };
             let result;
             try {
-                result = await pastHourlyLimit(() => downloadBatchItem(searchers, recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entries[offset]), createTiers(backend).filter((tier) => tier.stage === "entitled_access" || mode !== "entitled_only" && tier.stage === "preprint"), backend), log, pause);
+                result = await pastHourlyLimit(() => downloadBatchItem(searchers, recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entries[offset]), createTiers(backend).filter((tier) => tier.stage === "entitled_access" || mode !== "entitled_only" && tier.stage === "preprint"), backend), log, pause, () => backend?.keepSession?.() ?? Promise.resolve(false));
             }
             catch (error) {
                 result = laneError("entitled_access", error);

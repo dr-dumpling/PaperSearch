@@ -1,0 +1,11 @@
+{
+  "code": "infed",
+  "name": "INFED",
+  "country": "IN",
+  "registration_authorities": ["http://inflibnet.ac.in"],
+  "chooser_labels": ["INFLIBNET Access Management Federation (INFED)"],
+  "chooser_pattern": "\\bINFED\\b|\\bINFLIBNET\\s+Access\\s+Management\\s+Federation\\b",
+  "discovery_hosts": [],
+  "service_domains": ["inflibnet.ac.in"],
+  "metadata_url": "https://parichay.inflibnet.ac.in/metadata/edugain.xml"
+}

@@ -1,7 +1,9 @@
 /**
  * - verified: the PDF names this article;
- * - source: a scan without readable text, fetched from a URL that names the DOI
- *   (only when a source URL is given);
+ * - source: a scan without readable text, or pages that print no DOI at all and
+ *   are no notice or attachment for an item named like a section ("Journal Club",
+ *   "Issue Information"), fetched from a URL that names the DOI (only when a source
+ *   URL is given);
  * - mismatch: it names other articles and not this one;
  * - unverified: no decision (kept for review);
  * - unreadable: not a parseable PDF.

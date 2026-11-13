@@ -11,7 +11,8 @@ misread letters, reading order) does not matter, and the evidence is weighed:
 
 - strong: the whole title, exactly (letters only, at least 50 of them),
   standing as a title (an exact match inside a longer line counts one level lower);
-- single: the target DOI; the title with a few misread letters; a shorter title.
+- single: the target DOI; the title with a few misread letters; a shorter title; a title
+  too short to count alone ("Reply") on its own line right next to the target DOI's line.
 
 Strong evidence, or two single pieces, verify the PDF; one single piece verifies
 it while the pages print no other DOI. Other DOIs and no evidence at all:
@@ -20,9 +21,14 @@ another article. A title's numbers must always be exact. An attachment
 (correction, retraction, briefing, letter to the editor), each known by its own
 heading line, are not the article, unless the notice is itself the requested
 item: its title says so, or the pages name it (its DOI in the header, or its
-whole title and its DOI) and print no other DOI. A scan without a text layer is
+whole title and its DOI) and print no other DOI. A DOI the pages label as the article
+a notice is about ("DOI of original article:", "Correction to:") is no other DOI for
+the notice itself (a letter that names the article it discusses); when that label
+points at the requested DOI, the PDF is a notice about it. A scan without a text layer is
 ``"source"`` when the URL it came from names the DOI (``assess`` with ``source``;
-the frontend passes it, the engine does not).
+the frontend passes it, the engine does not); so is a page that prints no DOI at all and is
+no notice or attachment, for an item named like a section rather than an article (a
+one-page "Journal Club" note, "Issue Information").
 
 ``classify`` gives ``"match"`` (verified), ``"other"`` (another article),
 ``"unknown"`` (no decision: no text layer, or nothing printed) or ``"invalid"``
@@ -66,6 +72,14 @@ _NOTICE = re.compile(
     r"|:[ \t]*(?:correction|erratum|corrigendum|retraction|expression of concern)[ \t]*$", re.I | re.M)
 # A requested item whose title says it is a notice ("…: Erratum", "Reply to …").
 _NOTICE_TITLE = re.compile(r"\b(?:erratum|corrigendum|correction|retraction|retracted|withdrawn|expression of concern|reply to|letter)\b", re.I)
+# A label for the article a notice is about, followed by its DOI ("DOI of original article:
+# https://doi.org/…" under an Elsevier letter or reply, 2026-11-12; "Correction to: Nature
+# https://doi.org/…"; "The original article can be found online at …").
+_ABOUT_LABEL = re.compile(
+    r"\b(?:doi\s+of\s+(?:the\s+)?original\s+article|(?:the\s+)?original\s+article(?:\s+can\s+be\s+found\s+online\s+at|\s+is\s+available\s+(?:online\s+)?at)?"
+    r"|(?:correction|erratum|corrigendum|addendum)\s+to|retraction\s+(?:note\s+|notice\s+)?(?:to|of)|comment(?:ary)?\s+on"
+    r"|(?:in\s+)?(?:reply|response)\s+to|see\s+the\s+article|refers\s+to|linked\s+article)\s*:?", re.I)
+_ABOUT_REACH = 200  # how far after its label the DOI of the article a notice is about may be
 # A DOI may break right after its prefix ("https://doi.org/10.1016/" then "S0140-…", The Lancet).
 _DOI_IN_TEXT = re.compile(r"10\.\d{4,9}/(?:[ \t]*\n[ \t]*)?[^\s\"<>]+")
 _LETTER = re.compile(r"[a-zЀ-ӿ一-鿿]")
@@ -162,6 +176,19 @@ def _title_evidence(text: str, chars: str, at: list[int], title: str) -> str | N
     return "single" if end > 0 and _numbers_match(window(end, len(key) + errors), plain) else None
 
 
+def _short_title_beside_doi(text: str, target: str, title: str) -> bool:
+    """A title too short to count alone ("Reply") on its own line within two lines of the
+    target DOI's line (Wiley letters: "DOI 10.1002/…" then "Reply", 2026-11-12)."""
+    key = _letters(normalize_doi_text(_plain_title(title)))[0]
+    if not key or _weight(key) >= SHORT_TITLE:
+        return False
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        if _doi_named(line, target) and any(_letters(near)[0] == key for near in lines[max(0, i - 2):i] + lines[i + 1:i + 3]):
+            return True
+    return False
+
+
 def _target_doi(identifier: str) -> str:
     return re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", "", (identifier or "").strip().lower())
 
@@ -184,12 +211,30 @@ def _doi_named(pages: str, target: str) -> bool:
     return re.search(rf"(?<![0-9.]){head}{pattern(suffix)}(?![0-9a-z_/-]|\.[0-9a-z])", pages) is not None
 
 
+def _clean_doi(match: re.Match[str]) -> str:
+    return re.sub(r"[.,;:)\]]+$", "", re.sub(r"\s+", "", match.group(0)))
+
+
+def _same_article(doi: str, target: str) -> bool:
+    """``doi`` is the target, or a piece, an extension, a misprint or an older prefix of it."""
+    own, own_suffix = _bare(target), _bare(_suffix(target))
+    return (own.startswith(_bare(doi)) or _bare(doi).startswith(own)
+            or (len(own_suffix) >= SHARED_SUFFIX and _bare(_suffix(doi)) == own_suffix))
+
+
 def _other_dois(pages: str, target: str) -> list[str]:
     """DOIs printed that are not the target, nor a piece, an extension, a misprint or an older prefix of it."""
-    own, own_suffix = _bare(target), _bare(_suffix(target))
-    found = [re.sub(r"[.,;:)\]]+$", "", re.sub(r"\s+", "", m.group(0))) for m in _DOI_IN_TEXT.finditer(pages)]
-    return [doi for doi in found if not own.startswith(_bare(doi)) and not _bare(doi).startswith(own)
-            and not (len(own_suffix) >= SHARED_SUFFIX and _bare(_suffix(doi)) == own_suffix)]
+    return [doi for doi in map(_clean_doi, _DOI_IN_TEXT.finditer(pages)) if not _same_article(doi, target)]
+
+
+def _about_dois(pages: str) -> list[str]:
+    """DOIs the pages label as the article a notice is about: the first DOI after each label."""
+    found = []
+    for label in _ABOUT_LABEL.finditer(pages):
+        doi = _DOI_IN_TEXT.search(pages, label.end(), label.end() + _ABOUT_REACH)
+        if doi:
+            found.append(_clean_doi(doi))
+    return found
 
 
 def _title_before(text: str, title: str) -> bool:
@@ -225,7 +270,13 @@ def evidence(first_pages: str, identifier: str, title: str = "") -> dict | None:
     chars, at = _letters(front)
     doi = _doi_named(front, target)
     found = _title_evidence(front, chars, at, title) if (title or "").strip() else None
+    if found is None and doi and _short_title_beside_doi(front, target, title or ""):
+        found = "single"
     others = _other_dois(front, target)
+    about = _about_dois(front)
+    if not any(_same_article(doi, target) for doi in about):
+        # The article a notice discusses is not another article on these pages.
+        others = [doi for doi in others if doi not in about]
     # A notice is itself the requested item when the pages name it (its DOI in the
     # header, Neurology; its whole title and its DOI, a letter under a "Letter to the
     # editor" heading) and print no other DOI. A notice about an article prints its
@@ -271,7 +322,14 @@ def assess(first_pages: str, identifier: str, title: str = "", source: str = "")
             return "mismatch"
     scan = (sum(char.isalpha() for char in first_pages or "") < SCAN_MAX_LETTERS
             and not (found and (found["not_article"] or found["other_dois"])))
-    return "source" if source and scan and _source_names_doi(source, _target_doi(identifier)) else "unverified"
+    # Pages that print no DOI at all and are no notice or attachment, for an item named
+    # like a section rather than an article (under CLOSE_TITLE letters: Wiley's "Journal
+    # Club" and "Issue Information", 2026-11-12): the URL is the evidence, as for a scan.
+    # An article's title not printed is a reason for doubt (an issue's front matter at
+    # the article's address).
+    short = _weight(_letters(normalize_doi_text(_plain_title(title)))[0]) < CLOSE_TITLE
+    no_doi = bool(found) and short and not (found["not_article"] or found["doi"] or found["other_dois"] or found["title"])
+    return "source" if source and (scan or no_doi) and _source_names_doi(source, _target_doi(identifier)) else "unverified"
 
 
 def first_pages_text(body: bytes) -> str | None:

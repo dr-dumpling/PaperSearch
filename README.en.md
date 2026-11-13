@@ -133,7 +133,7 @@ Papers the open channels cannot get can come through your school's subscriptions
 1. Through the federations interconnected via [eduGAIN](https://edugain.org/), such as CARSI in China, HKAF in Hong Kong and SGAF in Singapore;
 2. Schools in no national federation that have [OpenAthens](https://www.openathens.net/) access can sign in through it as well.
 
-**Supported academic identity federations** (first stage: Asia)
+**Supported academic identity federations** (Asia, the US)
 
 | Region | Federation | Full name |
 |---|---|---|
@@ -143,10 +143,17 @@ Papers the open channels cannot get can come through your school's subscriptions
 | Japan | GakuNin | Academic Access Management Federation in Japan |
 | South Korea | KAFE | Korean Access Federation |
 | Malaysia | SIFULAN | SIFULAN Malaysian Access Federation |
+| India | INFED | INFLIBNET Access Management Federation |
+| Turkey | YETKİM | YETKİM Identity Federation |
+| Sri Lanka | LIAF | LEARN Identity Access Federation |
+| Bangladesh | TIGERfed | Trust, Identity and Group management for Education and Research Federation |
+| Pakistan | PKIFED | Pakistan Identity Federation |
+| Oman | OMREN | OMREN Identity Federation |
+| United States | InCommon | InCommon Federation |
 | Schools in no national federation (most universities in Southeast Asia and others) | OpenAthens | OpenAthens institutional sign-in |
 
 - What each federation supports: [federation support table](skills/paper-search/references/federation-support.md) (Chinese).
-- Planned: the US (InCommon), the UK (UK federation), Australia (AAF) and the federations of European countries, then the other countries in eduGAIN; see the [roadmap](docs/ROADMAP.zh.md) (Chinese).
+- Planned: the UK (UK federation), Australia (AAF) and the federations of European countries, then the other countries in eduGAIN; see the [roadmap](docs/ROADMAP.zh.md) (Chinese).
 
 - **Your school account is enough**: no keys to apply for; publisher API keys only cover Elsevier and Springer.
 - **Deep publisher adaptation**: the general download flow is deeply optimized, and more than 30 publishers have dedicated rules, one by one: where the institutional login is and how to fetch the PDF and supplementary files follow each publisher as it really is, so downloads are more accurate and fewer papers are missed. The main publishers:

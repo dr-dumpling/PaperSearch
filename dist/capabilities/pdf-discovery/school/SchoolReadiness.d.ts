@@ -28,6 +28,8 @@ export interface SchoolBatchSupport {
     progressLanes?: boolean;
     /** school_batch_papers exists (the papers behind the window's 成功, 失败 and 剩余). */
     papersTool?: boolean;
+    /** school_keep_session exists (a batch's wait keeps the publisher's session alive). */
+    keepSessionTool?: boolean;
 }
 export declare function selectSchoolBatchSupport(tools: readonly SchoolToolDefinition[], strategy: SchoolDownloadStrategy): SchoolBatchSupport;
 export declare function validateSchoolContract(serverName: string | undefined, tools: readonly SchoolToolDefinition[]): SchoolReadiness;

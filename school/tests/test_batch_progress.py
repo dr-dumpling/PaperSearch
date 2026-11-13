@@ -252,6 +252,58 @@ class BatchProgressTests(unittest.TestCase):
         self.assertEqual((snap["status"], snap["done"], snap["failed"]), ("done", 1, 1))
         self.assertEqual(snap["results"]["failures"][0]["reason"], "到了每小时下载上限")
 
+    def test_the_hourly_limit_holds_the_window_until_its_time(self):
+        """An article held by the hourly limit the user set keeps the capsule saying so,
+        whatever the other lane reports, until its time or the next article (2026-11-12)."""
+        import time
+        from paper_search_school import progress_view
+
+        self.item(1, 3, True)
+        batch = pr.BatchContext.from_args("b1", 2, 3, 1, 1, 0)
+        until = time.time() + 600
+        self.new_process()
+        with pr.tracked_download("10.1000/2", None, batch) as outcome:
+            outcome["paused"] = "Wiley 一小时内已打开 100 篇（每小时上限），01:09 继续这一篇"
+            outcome["hourly_wait"] = {"publisher": "Wiley", "limit": 100, "until": until}
+        # The open-access lane goes on reporting meanwhile.
+        self.assertTrue(pr.sync_batch("b1", 3, 2, 2, 0, current="10.1000/3",
+                                      phase="开放下载：已查 3/3 篇，找到 1 篇", channel="开放下载"))
+        resume = time.strftime("%H:%M", time.localtime(until))
+        shown = progress_view.view(pr.read_snapshot()[0], time.time())
+        self.assertEqual((shown["part"], shown["publisher"], shown["notice"]),
+                         ("已达每小时上限", f"{resume} 继续", f"Wiley 已达设置的每小时 100 篇，{resume} 继续"))
+        later = progress_view.view(pr.read_snapshot()[0], until + 1)
+        self.assertEqual((later["part"], later["notice"]), ("正文", ""))
+        # A longer publisher name is left out, to keep the card's line to one line.
+        long_name = {**pr.read_snapshot()[0], "hourly_wait": {"publisher": "Springer Nature", "limit": 100, "until": until}}
+        self.assertEqual(progress_view.view(long_name, time.time())["notice"], f"已达设置的每小时 100 篇，{resume} 继续")
+        # The held article runs again: the hold is gone.
+        with pr.tracked_download("10.1000/2", None, pr.BatchContext.from_args("b1", 3, 3, 2, 2, 0)) as outcome:
+            self.assertNotIn("hourly_wait", self.state())
+            outcome["result"] = {"success": True}
+
+    def test_a_wait_for_the_hourly_limit_is_not_read_as_stopped(self):
+        """A batch held by the hourly limit waits up to an hour without a report; it was
+        read as stopped ("下载中断") after 30 minutes (Windows, 2026-11-13)."""
+        import time
+
+        self.item(1, 3, True)
+        batch = pr.BatchContext.from_args("b1", 2, 3, 1, 1, 0)
+        self.new_process()
+        with pr.tracked_download("10.1000/2", None, batch) as outcome:
+            outcome["paused"] = "Wiley 一小时内已打开 100 篇（每小时上限），10:00 继续这一篇"
+            outcome["hourly_wait"] = {"publisher": "Wiley", "limit": 100, "until": time.time() + 25 * 60}
+        data = self.state()
+        # Its last report 35 minutes ago, held until 25 minutes from now.
+        data["updated_at"] = (datetime.now() - timedelta(minutes=35)).isoformat(timespec="seconds")
+        data["hourly_wait"]["until"] = time.time() + 25 * 60
+        pr.progress_path().write_text(json.dumps(data), encoding="utf-8")
+        self.assertEqual(pr.read_snapshot()[0]["status"], "running")
+        # Without the hold the same silence still reads as stopped.
+        data.pop("hourly_wait")
+        pr.progress_path().write_text(json.dumps(data), encoding="utf-8")
+        self.assertEqual(pr.read_snapshot()[0]["status"], "interrupted")
+
     def test_a_stopped_batch_ends_as_stopped(self):
         self.item(1, 3, False)
         self.new_process()

@@ -13,7 +13,8 @@ import { extractPages } from "./PdfFirstPage.cjs";
  *   inside a longer line (another, longer title; a sentence) counts one level
  *   lower;
  * - single: the target DOI; the title with a few misread letters; a shorter
- *   title exactly.
+ *   title exactly; a title too short to count alone ("Reply") on its own line
+ *   right next to the target DOI's line.
  * Strong evidence, or two single pieces, verify the PDF; one single piece
  * verifies it while the pages print no other DOI (a cited or related article).
  * Other DOIs and no evidence at all: another article. A title's numbers must
@@ -24,10 +25,15 @@ import { extractPages } from "./PdfFirstPage.cjs";
  * letter to the editor). A notice is itself the requested item when the
  * requested title says it is a notice, or when the pages name it (its DOI in
  * the header, or its whole title and its DOI) and print no other DOI: a notice
- * about an article prints its own as well.
+ * about an article prints its own as well. A DOI the pages label as the article
+ * a notice is about ("DOI of original article:", "Correction to:") is no other
+ * DOI for the notice itself (a letter that names the article it discusses);
+ * when that label points at the requested DOI, the PDF is a notice about it.
  * A scan without a text layer cannot be read: the URL it came from, when that
  * names the DOI, is the evidence, unless what little it prints is a notice, an
- * attachment or another DOI.
+ * attachment or another DOI. So is it for pages that print no DOI at all and are
+ * no notice or attachment, when the requested item is named like a section rather
+ * than an article (a one-page "Journal Club" note, "Issue Information", Wiley 2026-11-12).
  * The backend's pdf_guard.classify reads PDFs by the same evidence.
  */
 /** Pages read: the title and DOI are on page 1, or on page 2 after a cover or an opener page. */
@@ -56,6 +62,12 @@ const ATTACHMENT_HEADING = /^\s*(?:electronic\s+)?(?:supplement(?:ary|al)?|suppo
 // Erratum"); not a sentence that uses it ("Upper eyelid retraction…",
 // "Correction of hallux valgus…").
 const NOTICE = /^\s*(?:(?:author|publisher|editorial|notice\s+of|statement\s+of)\s+)?(?:correction|erratum|corrigendum|retraction|retracted|expression of concern|research briefing|letter to the editor)(?:\s+(?:note|notice|article))?\s*(?::|\bto\b|$)|^\s*withdrawn\s*:|:[ \t]*(?:correction|erratum|corrigendum|retraction|expression of concern)[ \t]*$/im;
+// A label for the article a notice is about, followed by its DOI ("DOI of original article:
+// https://doi.org/…" under an Elsevier letter or reply, 2026-11-12; "Correction to: Nature
+// https://doi.org/…"; "The original article can be found online at …").
+const ABOUT_LABEL = /\b(?:doi\s+of\s+(?:the\s+)?original\s+article|(?:the\s+)?original\s+article(?:\s+can\s+be\s+found\s+online\s+at|\s+is\s+available\s+(?:online\s+)?at)?|(?:correction|erratum|corrigendum|addendum)\s+to|retraction\s+(?:note\s+|notice\s+)?(?:to|of)|comment(?:ary)?\s+on|(?:in\s+)?(?:reply|response)\s+to|see\s+the\s+article|refers\s+to|linked\s+article)\s*:?/gi;
+/** How far after its label the DOI of the article a notice is about may be. */
+const ABOUT_REACH = 200;
 // A DOI may break right after its prefix ("https://doi.org/10.1016/" then "S0140-…", The Lancet).
 const DOI_IN_TEXT = /10\.\d{4,9}\/(?:[ \t]*\n[ \t]*)?[^\s"<>]+/g;
 /** Case, invisible characters, typographic dashes and control characters do not matter. */
@@ -187,14 +199,42 @@ function doiNamed(pages, target) {
     const head = bare(suffix).length >= SHARED_SUFFIX ? "10\\.\\d{4,9}\\/\\s*" : `${pattern(target.slice(0, -suffix.length))}\\s*`;
     return new RegExp(`(?<![0-9.])${head}${pattern(suffix)}(?![0-9a-z_/-]|\\.[0-9a-z])`).test(pages);
 }
-/** DOIs printed that are not the target, nor a piece, an extension, a misprint or an older prefix of it. */
-function otherDois(pages, target) {
+function cleanDoi(match) {
+    return match.replace(/\s+/g, "").replace(/[.,;:)\]]+$/, "");
+}
+/** `doi` is the target, or a piece, an extension, a misprint or an older prefix of it. */
+function sameArticle(doi, target) {
     const own = bare(target);
     const ownSuffix = bare(suffixOf(target));
-    return [...pages.matchAll(DOI_IN_TEXT)]
-        .map((match) => match[0].replace(/\s+/g, "").replace(/[.,;:)\]]+$/, ""))
-        .filter((doi) => !own.startsWith(bare(doi)) && !bare(doi).startsWith(own)
-        && !(ownSuffix.length >= SHARED_SUFFIX && bare(suffixOf(doi)) === ownSuffix));
+    return own.startsWith(bare(doi)) || bare(doi).startsWith(own)
+        || (ownSuffix.length >= SHARED_SUFFIX && bare(suffixOf(doi)) === ownSuffix);
+}
+/** DOIs printed that are not the target, nor a piece, an extension, a misprint or an older prefix of it. */
+function otherDois(pages, target) {
+    return [...pages.matchAll(DOI_IN_TEXT)].map((match) => cleanDoi(match[0])).filter((doi) => !sameArticle(doi, target));
+}
+/** DOIs the pages label as the article a notice is about: the first DOI after each label. */
+function aboutDois(pages) {
+    const found = [];
+    for (const label of pages.matchAll(ABOUT_LABEL)) {
+        const from = (label.index ?? 0) + label[0].length;
+        const doi = new RegExp(DOI_IN_TEXT.source).exec(pages.slice(from, from + ABOUT_REACH));
+        if (doi)
+            found.push(cleanDoi(doi[0]));
+    }
+    return found;
+}
+/**
+ * A title too short to count alone ("Reply") on its own line within two lines of
+ * the target DOI's line (Wiley letters: "DOI 10.1002/…" then "Reply", 2026-11-12).
+ */
+function shortTitleBesideDoi(text, target, title) {
+    const key = letters(normalise(plainTitle(title))).chars;
+    if (!key || weight(key) >= SHORT_TITLE)
+        return false;
+    const lines = text.split("\n");
+    return lines.some((line, i) => doiNamed(line, target)
+        && [...lines.slice(Math.max(0, i - 2), i), ...lines.slice(i + 1, i + 3)].some((near) => letters(near).chars === key));
 }
 // A requested item whose title says it is a notice ("…: Erratum", "Reply to …").
 const NOTICE_TITLE = /\b(?:erratum|corrigendum|correction|retraction|retracted|withdrawn|expression of concern|reply to|letter)\b/i;
@@ -224,8 +264,14 @@ export function identityEvidence(firstPages, identifier, title) {
     const front = text.split(REFERENCES_HEADING)[0];
     const target = targetDoi(identifier);
     const doi = doiNamed(front, target);
-    const found = title?.trim() ? titleEvidence(front, letters(front), title) : null;
-    const others = otherDois(front, target);
+    let found = title?.trim() ? titleEvidence(front, letters(front), title) : null;
+    if (found === null && doi && shortTitleBesideDoi(front, target, title ?? ""))
+        found = "single";
+    let others = otherDois(front, target);
+    const about = aboutDois(front);
+    // The article a notice discusses is not another article on these pages.
+    if (!about.some((doi) => sameArticle(doi, target)))
+        others = others.filter((doi) => !about.includes(doi));
     // A notice is itself the requested item when the pages name it (its DOI in the
     // header, Neurology; its whole title and its DOI, a letter under a "Letter to
     // the editor" heading) and print no other DOI. A notice about an article
@@ -271,7 +317,15 @@ export function assessPdfIdentity(firstPages, identifier, title, source) {
     }
     const scan = (firstPages.match(/\p{L}/gu) ?? []).length < SCAN_MAX_LETTERS
         && !(evidence && (evidence.notArticle || evidence.otherDois.length));
-    return source && scan && sourceNamesDoi(source, targetDoi(identifier)) ? "source" : "unverified";
+    // Pages that print no DOI at all and are no notice or attachment, for an item named
+    // like a section rather than an article (under CLOSE_TITLE letters: Wiley's "Journal
+    // Club" and "Issue Information", 2026-11-12): the URL is the evidence, as for a scan.
+    // An article's title not printed is a reason for doubt (an issue's front matter at
+    // the article's address).
+    const short = weight(letters(normalise(plainTitle(title ?? ""))).chars) < CLOSE_TITLE;
+    const noDoi = Boolean(evidence) && short
+        && !(evidence.notArticle || evidence.doi || evidence.otherDois.length || evidence.title);
+    return source && (scan || noDoi) && sourceNamesDoi(source, targetDoi(identifier)) ? "source" : "unverified";
 }
 /** Isolate pdf-parse diagnostics and CPU work from CLI JSON output. */
 export async function verifyPdfIdentity(filePath, identifier, title, source) {

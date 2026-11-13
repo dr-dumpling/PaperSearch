@@ -1,0 +1,11 @@
+{
+  "code": "incommon",
+  "name": "InCommon",
+  "country": "US",
+  "registration_authorities": ["https://incommon.org"],
+  "chooser_labels": ["InCommon Federation"],
+  "chooser_pattern": "\\bInCommon\\b",
+  "discovery_hosts": [],
+  "service_domains": ["incommon.org", "incommonfederation.org"],
+  "metadata_url": "https://mdq.incommon.org/entities/exports/edugain"
+}

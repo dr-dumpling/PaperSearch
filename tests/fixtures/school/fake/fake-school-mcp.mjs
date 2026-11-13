@@ -125,6 +125,12 @@ if (
       return { content: [{ type: "text", text: '{"closed":true}' }] };
     });
   }
+  if (scenario === "batch_browser_keep") {
+    server.registerTool("school_keep_session", { description: "Keep the publisher's session", inputSchema: {} }, async () => {
+      log("call", { tool: "school_keep_session" });
+      return { content: [{ type: "text", text: '{"kept":true}' }] };
+    });
+  }
 
   if (scenario !== "missing_download") {
     server.registerTool(

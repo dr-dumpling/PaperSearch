@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse
 
 from .. import federations
 from ..federations import schools
+from . import access_rules
 from .batch_common import (DownloadResult, _is_browser_error, _is_navigation_cut, logger, open_page,
                            pump_until, settle)
 
@@ -1192,15 +1193,127 @@ class InstitutionMixin:
         return schools.on_login_page(self.config, url)
 
     def _is_idp_host(self, host: str) -> bool:
-        """True for the configured school's identity provider or any generic campus IdP hostname."""
+        """True for the configured school's identity provider or any generic campus IdP
+        hostname, and for a host this item's login reached on the school's side
+        (``_follow_login_route``)."""
         host = (host or "").lower().split(":")[0]
         if not host:
             return False
+        return host in getattr(self, "_school_side_hosts", ()) or self._known_school_host(host)
+
+    def _known_school_host(self, host: str) -> bool:
+        """The school's side by the host alone: its login hosts and domains, the
+        identity services schools sign in with, a generic campus IdP hostname."""
         if any(token in host for token in _school_auth_patterns(self.config)):
             return True
         if any(host == d or host.endswith("." + d) for d in (*schools.domains(self.config), *self._IDENTITY_SERVICE_HOSTS)):
             return True
         return bool(self._IDP_HOST_RE.match(host))
+
+    # ---- the school's side, by the way this item's login went there
+
+    def _follow_login_route(self, page: Any, result: DownloadResult):
+        """Watch this item's main-frame navigations, every redirect hop included, by
+        their addresses only (never form data); returns the function that stops.
+
+        A login that went from the publisher through a federation, a login service
+        or an address asking for an identity provider (``_route_hop``) and reached a
+        host that is none of these, before it came back to the publisher, is on the
+        school's side: its identity provider on a host of another domain, and what
+        that signs in with. The host counts as the school's for the rest of the item
+        (``_is_idp_host``), so nothing is chosen or typed there (2026-11-12: a
+        school's OpenAthens sign-in went on to its university system's login host,
+        where the school's name was typed into a field)."""
+        self._school_side_hosts: set[str] = set()
+        self._route_hosts: set[str] = set()
+        self._publisher_hosts: set[str] = set()
+        self._route_away = False
+        self._route_last_host = ""
+        self._school_unreachable = ""
+
+        def requested(request: Any) -> None:
+            if request.is_navigation_request() and request.frame == page.main_frame:
+                self._note_route_hop(str(request.url or ""), result)
+
+        def failed(request: Any) -> None:
+            # A navigation to the school's side that the network ended (its login
+            # server did not answer): the browser shows its own error page next.
+            if request.is_navigation_request() and request.frame == page.main_frame:
+                failure = str(request.failure or "")
+                host = (urlparse(str(request.url or "")).hostname or "").lower()
+                if "net::ERR_" in failure and "ERR_ABORTED" not in failure and self._is_idp_host(host):
+                    self._school_unreachable = f"{host}: {failure}"
+
+        page.on("request", requested)
+        page.on("requestfailed", failed)
+
+        def stop() -> None:
+            page.remove_listener("request", requested)
+            page.remove_listener("requestfailed", failed)
+            self._school_side_hosts = set()
+            self._school_unreachable = ""
+
+        return stop
+
+    def _note_route_hop(self, url: str, result: DownloadResult) -> None:
+        kind = self._route_hop(url)
+        if not kind:
+            return
+        host = (urlparse(url).hostname or "").lower()
+        if kind in ("school", "route"):
+            self._route_away = True
+            if kind == "route" and self._names_identity_provider(url) and not self._login_service_host(host):
+                # A publisher's or its platform's sign-in hub: its later pages are not the school's.
+                self._route_hosts.add(host)
+        elif kind == "publisher":
+            self._route_away = False
+            # Its other pages too (a journal site's sign-in step after its article).
+            self._publisher_hosts.add(host)
+        elif self._route_away and host not in self._route_hosts and host not in self._school_side_hosts:
+            self._school_side_hosts.add(host)
+            self._event(result, "school_side_host", f"{host} after {self._route_last_host}")
+        self._route_last_host = host
+
+    def _route_hop(self, url: str) -> str:
+        """What one navigation hop is to the login: ``school`` (the school's side by
+        its host or its login page on a shared service), ``route`` (a federation's
+        or login service's page, or an address asking for an identity provider),
+        ``publisher`` (its pages, its own chooser, a host this item saw as its own),
+        ``other``; "" for no web address. The publisher's own chooser is no route:
+        a page the browser passed on its way back to the journal site was taken for
+        the school's (2026-11-12)."""
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme not in ("http", "https") or not host:
+            return ""
+        if self._known_school_host(host) or self._on_school_login_page(url):
+            return "school"
+        if self._names_identity_provider(url) or self._login_service_host(host) or federations.on_discovery_page(url):
+            return "route"
+        if (host in getattr(self, "_publisher_hosts", ()) or self._on_publisher_host(url)
+                or self.adapter.is_institution_chooser(url)):
+            return "publisher"
+        return "other"
+
+    # Query parameters by which a service provider or discovery service asks for
+    # an identity provider (SAML discovery's ``entityID``, sign-in hubs' ``idp``).
+    _IDP_PARAMS = frozenset({"entityid", "idp"})
+
+    def _names_identity_provider(self, url: str) -> bool:
+        """An address asking for an identity provider: it names the school's
+        entityID, or an identity provider in ``_IDP_PARAMS``. An identity
+        provider's own pages name none."""
+        if self._carries_entity_id(url, self._entity_id()):
+            return True
+        return any(key.lower() in self._IDP_PARAMS and value.startswith(("http", "urn:"))
+                   for key, values in parse_qs(urlparse(url).query).items() for value in values)
+
+    @staticmethod
+    def _login_service_host(host: str) -> bool:
+        """A federation's own services or a login service shared by schools: never
+        the school's side by its host."""
+        return any(host == d or host.endswith("." + d)
+                   for d in (*federations.service_domains(), *access_rules.AUTH_HOSTS))
 
     def _institution_result_selectors(self) -> tuple[str, ...]:
         """Result locators built from the configured institution name.

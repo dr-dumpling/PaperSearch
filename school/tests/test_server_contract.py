@@ -42,7 +42,7 @@ class ServerContractTests(unittest.TestCase):
         self.assertEqual(
             set(self.out["tools"]),
             {"school_download", "school_cache_clear", "school_list_publishers",
-             "school_batch_progress", "school_batch_papers", "school_close_batch_browser"},
+             "school_batch_progress", "school_batch_papers", "school_close_batch_browser", "school_keep_session"},
         )
 
     def test_batch_papers_takes_the_list_and_its_folder(self):

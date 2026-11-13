@@ -489,6 +489,7 @@ class PublisherBatchDownloader(
                 result._open_access_current = False
 
         page.on("framenavigated", invalidate_open_access)
+        stop_following_route = self._follow_login_route(page, result)
         try:
             preparation = self._prepare_article(page, result, run_dir)
             if preparation is not None:
@@ -697,6 +698,7 @@ class PublisherBatchDownloader(
             return result
         finally:
             page.remove_listener("framenavigated", invalidate_open_access)
+            stop_following_route()
             user_watch.set()
             watchdog.on_slow_call = None
             if isinstance(watchdog.interrupted, UserMarkedNoEntitlement) and result.ok:

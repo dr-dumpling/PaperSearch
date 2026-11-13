@@ -215,6 +215,58 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
         self.assertEqual((athens.kind, athens.secondary, athens.openathens_entries), ("service", True, True))
         self.assertTrue(athens.matches("OpenAthens Federation"))
 
+    def test_south_and_west_asia_and_the_united_states(self):
+        # India, Turkey, Sri Lanka, Bangladesh, Pakistan, Oman; the United States (2026-11-12).
+        for code, authority, label in (
+                ("infed", "http://inflibnet.ac.in", "INFLIBNET Access Management Federation (INFED)"),
+                ("yetkim", "https://yetkim.org.tr", "YETKIM Identity Federation"),
+                ("liaf", "https://liaf.ac.lk/", "LEARN Identity Access Federation"),
+                ("tigerfed", "https://tigerfed.net.bd", "TIGERfed"),
+                ("pkifed", "https://pkifed.pk", "Pakistan Identity Federation"),
+                ("omren", "http://www.omren.om", "OMREN Identity Federation"),
+                ("incommon", "https://incommon.org/", "InCommon Federation")):
+            federation = federations.by_code(code)
+            self.assertIs(federations.by_registration_authority(authority), federation, code)
+            self.assertTrue(federation.matches(label), code)
+            others = [f.code for f in federations.all_federations() if f.code != code and f.matches(label)]
+            self.assertEqual(others, [], code)
+        listed = {"type": "idp", "title": "Harbour University",
+                  "title_langs": {"en": "Harbour University", "tr": "Liman Üniversitesi"},
+                  "entity_id": "https://kimlik.liman.edu.tr/idp", "registrationAuthority": ["https://yetkim.org.tr/"],
+                  "scope": "liman.edu.tr"}
+        found = self.find({"Liman Üniversitesi": [listed]}, "Liman Üniversitesi")
+        self.assertEqual((found.school.federation, found.school.name), ("yetkim", "Harbour University"))
+
+    def test_a_school_listed_shorter_than_its_full_name_is_asked_about(self):
+        short = {"type": "idp", "title": "Kita Bay", "entity_id": "urn:mace:incommon:kitabay.edu",
+                 "registrationAuthority": ["https://incommon.org"], "scope": "kitabay.edu"}
+        press = {"type": "idp", "title": "The Kita Bay University Press", "entity_id": "https://idp.press.kbu.edu/entity",
+                 "registrationAuthority": ["https://openathens.net"], "scope": "press.kbu.edu"}
+        found = self.find({"Kita Bay University": [short, press]}, "Kita Bay University")
+        self.assertIsNone(found.school)
+        self.assertEqual([s.name for s in found.candidates], ["Kita Bay", "The Kita Bay University Press"])
+        # One word alone is not enough: "Kita" is inside many names.
+        one = {**short, "title": "Kita"}
+        self.assertEqual(self.find({"Kita Bay University": [one]}, "Kita Bay University").candidates, [])
+
+    def test_the_same_school_on_openathens_under_its_librarys_host_goes(self):
+        federation = {"type": "idp", "title": "Harbour University of Engineering", "entity_id": "https://idp.hue.ac.bd/idp",
+                      "registrationAuthority": ["https://tigerfed.net.bd"], "scope": "hue.ac.bd"}
+        athens = {"type": "idp", "title": "Harbour University of Engineering (HUE)", "entity_id": "https://idp.lib.hue.ac.bd/oa",
+                  "registrationAuthority": ["https://openathens.net"], "scope": "lib.hue.ac.bd"}
+        found = self.find({"Harbour University of Engineering": [federation, athens]}, "Harbour University of Engineering")
+        self.assertEqual((found.school.federation, found.candidates), ("tigerfed", []))
+
+    def test_and_written_as_an_ampersand_is_the_same_name(self):
+        # Two schools of this name in two countries are both asked about, not the one written with "and".
+        here = {"type": "idp", "title": "National University of Harbour & Bay (NUHB)", "entity_id": "https://sso.nuhb.edu.pk/idp",
+                "registrationAuthority": ["https://pkifed.pk"], "scope": "nuhb.edu.pk"}
+        there = {"type": "idp", "title": "National University of Harbour and Bay", "entity_id": "https://idp.nuhb.ac.zw/entity",
+                 "registrationAuthority": ["https://openathens.net"], "scope": "nuhb.ac.zw"}
+        found = self.find({"National University of Harbour and Bay": [here, there]}, "National University of Harbour and Bay")
+        self.assertIsNone(found.school)
+        self.assertEqual({s.federation for s in found.candidates}, {"pkifed", "openathens"})
+
     def test_an_abbreviated_listing_is_exact_and_a_retired_entry_is_skipped(self):
         listed = {"type": "idp", "title": "NHU - National Harbour University", "entity_id": "https://idp.nhu.edu.sg/idp",
                   "registrationAuthority": ["https://www.singaren.net.sg"], "scope": "nhu.edu.sg"}
@@ -228,6 +280,17 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
                   "registrationAuthority": ["https://openathens.net"], "scope": "kita.ac.jp"}
         for query in ("北大学", "Kita University"):
             self.assertEqual(self.find({query: [athens]}, query).school.federation, "openathens", query)
+
+    def test_brackets_inside_and_a_name_in_another_script_count(self):
+        # OpenAthens in Taiwan lists "English (ABBR) 中文" in one title (2026-11-12).
+        athens = {"type": "idp", "title": "National Harbour Bay University (NHBU) 海灣大學",
+                  "entity_id": "https://idp.nhbu.edu.tw/entity", "registrationAuthority": ["https://openathens.net"],
+                  "scope": "nhbu.edu.tw"}
+        for query in ("National Harbour Bay University", "海灣大學", "NHBU"):
+            found = self.find({query: [athens]}, query)
+            self.assertEqual((found.school and found.school.federation, found.candidates), ("openathens", []), query)
+        # A longer name in the other script is still only near: it is asked, never taken alone.
+        self.assertIsNone(self.find({"國立海灣大學": [athens]}, "國立海灣大學").school)
 
     def test_the_federation_entry_goes_before_the_same_schools_openathens_entry(self):
         federation = {"type": "idp", "title": "Kita University", "title_langs": {"en": "Kita University", "ja": "北大学"},
@@ -348,6 +411,95 @@ class SchoolSideTests(unittest.TestCase):
         d._assist_configured_institution = Mock(return_value=True)
         self.assertFalse(d._select_institution(page, Mock(events=[])))
         d._assist_configured_institution.assert_not_called()
+
+
+class LoginRouteTests(unittest.TestCase):
+    """A host the login reached after it left the publisher through a federation,
+    a login service or an address asking for the school, before it came back, is
+    the school's side (2026-11-12)."""
+
+    ENTITY = "https://idp.kita.edu.tw/openathens"
+    SYSTEM_LOGIN = "https://idm.kita.unisys.edu.tw/sso/KITA/saml2/login/?SAMLRequest=fVJN"
+    TO_SCHOOL = (
+        "https://www.sciencedirect.com/science/article/pii/S0000000000000000",
+        "https://id.elsevier.com/as/authorization.oauth2?client_id=SDFE",
+        "https://auth.elsevier.com/ShibAuth/institutionLogin?entityID=https%3A%2F%2Fidp.kita.edu.tw%2Fopenathens",
+        "https://login.openathens.net/saml/2/sso/kita.edu.tw?SAMLRequest=fZFN",
+        "https://login.openathens.net/auth/kita.edu.tw/o/12345678?t=abc",
+    )
+
+    def setUp(self):
+        config = {"publisher_institution_federation": "openathens", "school_name": "Kita University",
+                  "school_name_en": "Kita University", "idp_entity_id": self.ENTITY, "idp_domains": ["kita.edu.tw"],
+                  "idp_login_pages": ["https://login.openathens.net/auth/*/o/"]}
+        self.d = PublisherBatchDownloader(config, profile=ELSEVIER_PROFILE, institution_query="Kita University")
+        self.result = Mock(events=[])
+        self.d._event = lambda result, state, detail: result.events.append({"state": state, "detail": detail})
+        self.page, self.handlers = Mock(), {}
+        self.page.on.side_effect = lambda event, handler: self.handlers.__setitem__(event, handler)
+        self.stop = self.d._follow_login_route(self.page, self.result)
+
+    def go(self, *urls):
+        for url in urls:
+            self.handlers["request"](Mock(url=url, frame=self.page.main_frame,
+                                          **{"is_navigation_request.return_value": True}))
+
+    def test_the_host_after_the_schools_openathens_sign_in_is_the_schools(self):
+        self.assertFalse(self.d._is_idp_host("idm.kita.unisys.edu.tw"))
+        self.go(*self.TO_SCHOOL, self.SYSTEM_LOGIN)
+        self.assertTrue(self.d._is_idp_host("idm.kita.unisys.edu.tw"))
+        self.assertEqual([e["detail"] for e in self.result.events if e["state"] == "school_side_host"],
+                         ["idm.kita.unisys.edu.tw after login.openathens.net"])
+        page = Mock(url=self.SYSTEM_LOGIN)
+        self.d._assist_configured_institution = Mock(return_value=True)
+        self.d.adapter.leave_email_step = lambda page, result: False
+        self.assertFalse(self.d._select_institution(page, self.result))
+        self.d._assist_configured_institution.assert_not_called()
+
+    def test_the_way_back_and_the_publishers_other_hosts_are_not(self):
+        self.go("https://doi.org/10.1016/j.example.2024.01.001", "https://www.example-society.org/article/1")
+        self.go(*self.TO_SCHOOL, "https://login.openathens.net/saml/2/consume",
+                "https://www.sciencedirect.com/science/article/pii/S0000000000000000",
+                "https://pdf.sciencedirectassets.com/271/1-s2.0-S0000/main.pdf")
+        for host in ("doi.org", "www.example-society.org", "pdf.sciencedirectassets.com"):
+            self.assertFalse(self.d._is_idp_host(host), host)
+        self.assertFalse(any(e["state"] == "school_side_host" for e in self.result.events))
+
+    def test_a_sign_in_hub_asking_for_the_school_is_not(self):
+        asking = "/action/ssostart?idp=https%3A%2F%2Fidp.kita.edu.tw%2Fopenathens"
+        self.go("https://www.example-society.org" + asking, "https://iam.hub.example" + asking,
+                "https://iam.hub.example/sso/landing", "https://login.openathens.net/auth/kita.edu.tw/o/12345678",
+                self.SYSTEM_LOGIN)
+        self.assertFalse(self.d._is_idp_host("iam.hub.example"))
+        self.assertTrue(self.d._is_idp_host("idm.kita.unisys.edu.tw"))
+        self.assertFalse(self.d._names_identity_provider(self.SYSTEM_LOGIN))
+
+    def test_the_publishers_own_chooser_and_its_journal_site_are_not(self):
+        chooser = "https://id.elsevier.com/as/authorization.oauth2?client_id=JBS"
+        self.go("https://doi.org/10.1016/j.example.2024.01.001",
+                "https://www.harbourjournal.org/article/S0883-5403(24)00627-2/abstract", chooser,
+                "https://www.harbourjournal.org/action/consumeSsoCookie?redirectUri=x")
+        self.go(chooser, "https://www.bayjournal.org/action/consumeSsoCookie?redirectUri=x")
+        self.assertFalse(any(e["state"] == "school_side_host" for e in self.result.events))
+
+    def test_the_schools_login_server_not_answering_ends_the_login(self):
+        self.go(*self.TO_SCHOOL, self.SYSTEM_LOGIN)
+        aborted = Mock(url=self.SYSTEM_LOGIN, failure="net::ERR_ABORTED", frame=self.page.main_frame,
+                       **{"is_navigation_request.return_value": True})
+        self.handlers["requestfailed"](aborted)
+        error_page = Mock(url="chrome-error://chromewebdata/", **{"is_closed.return_value": False})
+        self.assertFalse(self.d._on_browser_error_page(error_page))
+        self.handlers["requestfailed"](Mock(url=self.SYSTEM_LOGIN, failure="net::ERR_CONNECTION_TIMED_OUT",
+                                            frame=self.page.main_frame, **{"is_navigation_request.return_value": True}))
+        self.assertEqual(self.d._login_block_reason(error_page), "idp_login_error")
+        self.assertIn("idm.kita.unisys.edu.tw: net::ERR_CONNECTION_TIMED_OUT", self.d._block_evidence)
+
+    def test_the_next_item_starts_afresh(self):
+        self.go(*self.TO_SCHOOL, self.SYSTEM_LOGIN)
+        self.stop()
+        self.assertEqual({c.args for c in self.page.remove_listener.call_args_list},
+                         {(event, handler) for event, handler in self.handlers.items()})
+        self.assertFalse(self.d._is_idp_host("idm.kita.unisys.edu.tw"))
 
 
 class SearchListsNoSchoolTests(unittest.TestCase):

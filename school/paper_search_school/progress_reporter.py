@@ -558,7 +558,9 @@ def tracked_download(current: str, output_dir: Any = None, batch: BatchContext |
     ``content`` (main / supplements / both) is shown as a small label.
     ``outcome["paused"]`` (a phase text) means the article has not run yet and
     the batch tries it again later (publisher's hourly limit): nothing is
-    counted and the window stays open.
+    counted and the window stays open; ``outcome["hourly_wait"]`` (publisher,
+    limit, until) keeps the window saying so until then, whatever the batch's
+    other lane reports meanwhile. The next article clears it.
     """
     if batch is None:
         start_task("机构 PDF 下载", total=1, current=current, phase="进入机构访问")
@@ -568,6 +570,8 @@ def tracked_download(current: str, output_dir: Any = None, batch: BatchContext |
                      current=current, stage="starting", channel="",
                      phase=f"第 {batch.index}/{batch.total} 篇：进入机构访问" if batch.total > 1 else "进入机构访问")
         _notify_stage("starting", current)
+    with _LOCK:
+        _STATE.pop("hourly_wait", None)  # this article runs: no longer held by the hourly limit
     update(content=content if content in ("main", "supplements", "both") else "main")
     if output_dir:
         set_output_dir(output_dir)
@@ -578,7 +582,8 @@ def tracked_download(current: str, output_dir: Any = None, batch: BatchContext |
         if outcome.get("paused") and batch is not None:
             with _LOCK:
                 if _STATE:
-                    _STATE.update(awaiting_next=True, phase=str(outcome["paused"]))
+                    _STATE.update(awaiting_next=True, phase=str(outcome["paused"]),
+                                  **({"hourly_wait": outcome["hourly_wait"]} if outcome.get("hourly_wait") else {}))
                     _write_state()
         else:
             _finish_download(outcome, current, batch, content)
@@ -840,12 +845,19 @@ def read_snapshot() -> tuple[dict[str, Any] | None, str]:
         return None, "invalid_state"
     if state.get("status") == "running" and state.get("awaiting_next") is True:
         # Between batch items no process owns the task; only time ends the wait.
+        allowed = BATCH_WAIT_STALE_SECONDS
         try:
             ts = datetime.fromisoformat(str(state.get("updated_at")))
             waited = (datetime.now(ts.tzinfo) - ts).total_seconds()
+            # Held by the hourly limit the user set: the wait lasts until its time (up
+            # to an hour; read as stopped after 30 minutes, Windows 2026-11-13).
+            hold = state.get("hourly_wait")
+            until = hold.get("until") if isinstance(hold, dict) else None
+            if isinstance(until, (int, float)) and not isinstance(until, bool):
+                allowed = max(allowed, until - ts.timestamp() + BATCH_WAIT_STALE_SECONDS)
         except Exception:
             waited = 0.0
-        if waited > BATCH_WAIT_STALE_SECONDS:
+        if waited > allowed:
             return {**state, "status": "interrupted", "stage": "interrupted", "awaiting_next": False,
                     "phase": "批量下载已停止，结果未确认", "attention": {}}, "available"
         return state, "available"

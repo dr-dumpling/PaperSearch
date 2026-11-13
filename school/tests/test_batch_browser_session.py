@@ -50,7 +50,7 @@ def test_serial_downloads_reuse_browser_until_the_batch_closes(tmp_path, monkeyp
         popups.append(page.context.new_page())
         pdf = run_dir / "fixture.pdf"
         pdf.write_bytes(article_pdf(record.doi))
-        return DownloadResult(doi=record.doi, status="success", state="pdf_saved",
+        return DownloadResult(doi=record.doi, status="success", state="pdf_saved", final_url=page.url,
                               pdf_path=str(pdf), verified_match=True, size_bytes=pdf.stat().st_size)
 
     def download(doi, output_dir, **_):
@@ -73,9 +73,43 @@ def test_serial_downloads_reuse_browser_until_the_batch_closes(tmp_path, monkeyp
                     assert doi in pdf[0].get_text()
             assert len(launches) == 1
             assert pages[0] is pages[1] and not pages[1].is_closed()
+            # While the batch waits (the hourly limit), the last article page is loaded again.
+            # (Playwright calls belong to the batch's worker thread.)
+            await asyncio.get_running_loop().run_in_executor(server._batch_worker, lambda: pages[0].goto("about:blank"))
+            assert json.loads(await server.school_keep_session()) == {"kept": True}
+            assert pages[0].url == "https://link.springer.com/article/10.1007/second"
         finally:
             await server.school_close_batch_browser()
         assert pages[0].is_closed()
         assert all(popup.is_closed() for popup in popups)
 
     asyncio.run(exercise())
+
+
+class _Page:
+    def __init__(self, fail=False):
+        self.visited, self.fail, self.closed = [], fail, False
+
+    def is_closed(self):
+        return self.closed
+
+    def goto(self, url, **_):
+        if self.fail:
+            raise TimeoutError("slow")
+        self.visited.append(url)
+
+
+def test_keep_session_loads_only_the_last_saved_papers_article_page():
+    """A wait of the batch keeps the publisher's session with the last paper that saved its
+    PDF; after one that did not (a school's login page in the tab), the tab is left alone."""
+    batch = BatchBrowser()
+    assert batch.keep_session() == {"kept": False, "reason": "no_publisher_page"}  # no browser
+    batch.context, batch.page = object(), _Page()
+    assert batch.keep_session() == {"kept": False, "reason": "no_publisher_page"}  # no saved paper yet
+    batch.article_url = "https://journals.example/doi/10.1000/a"
+    assert batch.keep_session() == {"kept": True}
+    assert batch.page.visited == ["https://journals.example/doi/10.1000/a"]
+    batch.page = _Page(fail=True)
+    assert batch.keep_session() == {"kept": False, "reason": "TimeoutError"}
+    batch.page.closed = True
+    assert batch.keep_session() == {"kept": False, "reason": "no_publisher_page"}

@@ -12,6 +12,7 @@ const DOWNLOAD_TOOL = "school_download";
 const CACHE_CLEAR_TOOL = "school_cache_clear";
 const BATCH_PROGRESS_TOOL = "school_batch_progress";
 const BATCH_PAPERS_TOOL = "school_batch_papers";
+const KEEP_SESSION_TOOL = "school_keep_session";
 export const CLOSE_BATCH_BROWSER = "school_close_batch_browser";
 const COMPATIBILITY_BATCH: SchoolBatchPosition = {
   id: "paper-search-compatibility",
@@ -91,6 +92,8 @@ export interface SchoolBatchSupport {
   progressLanes?: boolean;
   /** school_batch_papers exists (the papers behind the window's 成功, 失败 and 剩余). */
   papersTool?: boolean;
+  /** school_keep_session exists (a batch's wait keeps the publisher's session alive). */
+  keepSessionTool?: boolean;
 }
 
 export function selectSchoolBatchSupport(
@@ -101,6 +104,7 @@ export function selectSchoolBatchSupport(
   const progress = tools.filter((tool) => tool.name === BATCH_PROGRESS_TOOL);
   const close = tools.filter((tool) => tool.name === CLOSE_BATCH_BROWSER);
   const papers = tools.filter((tool) => tool.name === BATCH_PAPERS_TOOL);
+  const keep = tools.filter((tool) => tool.name === KEEP_SESSION_TOOL);
   const keepBrowser = !!download && close.length === 1 && acceptsDeclaredArguments(close[0].inputSchema, {}) &&
     acceptsDeclaredArguments(download.inputSchema, {
       ...createSchoolDownloadArguments(COMPATIBILITY_DOI, "output", strategy, COMPATIBILITY_BATCH),
@@ -157,6 +161,7 @@ export function selectSchoolBatchSupport(
       ? { progressLanes: true } : {}),
     ...(papers.length === 1 && ["batch_id", "folder", "papers"].every((name) =>
       Object.hasOwn(papers[0].inputSchema.properties ?? {}, name)) ? { papersTool: true } : {}),
+    ...(keep.length === 1 && acceptsDeclaredArguments(keep[0].inputSchema, {}) ? { keepSessionTool: true } : {}),
     progressTool:
       progress.length === 1 &&
       acceptsDeclaredArguments(progress[0].inputSchema, {

@@ -203,6 +203,13 @@ export interface SchoolBackend {
      * start one, as the finished card's report after it would.
      */
     reportBatchPapers?(update: SchoolBatchPapers, last?: boolean): Promise<boolean>;
+    /**
+     * Optional: while a batch waits (the publisher's hourly limit the user set), the
+     * batch's browser loads the last saved paper's article page again, so the
+     * publisher's institutional session does not lapse. Only on a backend the batch
+     * already has; resolves false when there is none or it cannot. Never throws.
+     */
+    keepSession?(signal?: AbortSignal): Promise<boolean>;
 }
 export interface SchoolMcpClientOptions {
     /** The backend executable, or how to read it when a process starts (the config can change

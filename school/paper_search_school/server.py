@@ -123,9 +123,13 @@ def school_download(
             if result.get("error_type") == "access_blocked":
                 outcome["failure_phase"] = "网站已阻止当前访问，未取得 PDF"
             if result.get("error_type") == "rate_limited":
-                resume = time.strftime("%H:%M", time.localtime(time.time() + int(result.get("retry_after_sec") or 0)))
+                until = time.time() + int(result.get("retry_after_sec") or 0)
+                resume = time.strftime("%H:%M", time.localtime(until))
                 outcome["paused"] = outcome["failure_phase"] = (
                     f"{result.get('publisher')} 一小时内已打开 {result.get('limit')} 篇（每小时上限），{resume} 继续这一篇")
+                # The window says so until then, beside the other lane's lines (2026-11-12).
+                outcome["hourly_wait"] = {"publisher": str(result.get("publisher") or ""),
+                                          "limit": result.get("limit"), "until": until}
             if result.get("error_type") == "paywall" or result.get("action") == "login_required":
                 result["agent_hint"] = (
                     "此论文需要机构登录。请让用户在弹出的下载浏览器窗口里完成登录或人工验证后重试；"
@@ -199,6 +203,16 @@ async def school_close_batch_browser() -> str:
     """Close the window retained by this client's serial download batch."""
     await asyncio.get_running_loop().run_in_executor(_batch_worker, _batch_browser.close)
     return json.dumps({"closed": True})
+
+
+@mcp_app.tool()
+async def school_keep_session() -> str:
+    """While a serial batch waits (the publisher's hourly limit the user set), load the
+    last paper's article page again in the batch's window, so the publisher's
+    institutional session does not lapse. Opens no browser; does nothing after a paper
+    that did not save its PDF. Answers {"kept": true} or {"kept": false, "reason": ...}."""
+    result = await asyncio.get_running_loop().run_in_executor(_batch_worker, _batch_browser.keep_session)
+    return json.dumps(result)
 
 
 @mcp_app.tool()

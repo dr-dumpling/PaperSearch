@@ -53,7 +53,7 @@ export const SCHOOL_CLEANUP_TIMEOUT_MS = 5_000;
 
 const SCHOOL_BACKEND_SOURCE = "school";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.6.1";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.6.2";
 
 interface ActiveSession {
   client: Client;
@@ -445,6 +445,29 @@ export class SchoolMcpClient implements SchoolBackend {
       assertProtocolIntegrity(session.protocolState);
       return batchProgressUpdated(result);
     });
+  }
+
+  /**
+   * While the batch waits (the hourly limit the user set): its browser loads the last
+   * saved paper's article page again, so the publisher's institutional session does
+   * not lapse (Wiley: about half an hour without a request, 2026-11-12). Only on the
+   * backend the batch already has, never starting one.
+   */
+  async keepSession(signal?: AbortSignal): Promise<boolean> {
+    const session = this.retainedSession;
+    if (!session || session.readiness.state !== "available" || !session.batchSupport.keepSessionTool) return false;
+    try {
+      assertProtocolIntegrity(session.protocolState);
+      const result = await session.client.callTool(
+        { name: "school_keep_session", arguments: {} },
+        undefined,
+        requestOptions(this.toolTimeoutMs, signal),
+      );
+      assertProtocolIntegrity(session.protocolState);
+      return sessionKept(result);
+    } catch {
+      return false;
+    }
   }
 
   /** The batch's papers for the window's lists, on the backend the batch already has. */
@@ -1117,6 +1140,18 @@ function assertProtocolIntegrity(state: { failed: boolean }): void {
 }
 
 /** The batch progress tool answers {"updated": boolean} as one text block. */
+function sessionKept(result: unknown): boolean {
+  const content = (result as { content?: unknown; isError?: unknown })?.content;
+  if ((result as { isError?: unknown })?.isError === true || !Array.isArray(content) || content.length !== 1) return false;
+  const block = content[0] as { type?: unknown; text?: unknown };
+  if (block?.type !== "text" || typeof block.text !== "string") return false;
+  try {
+    return (JSON.parse(block.text) as { kept?: unknown }).kept === true;
+  } catch {
+    return false;
+  }
+}
+
 function batchProgressUpdated(result: unknown): boolean {
   const content = (result as { content?: unknown; isError?: unknown })
     ?.content;

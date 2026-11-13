@@ -411,6 +411,41 @@ describe("serial download batch", () => {
     expect(lines.some((line) => line.includes("继续这一篇"))).toBe(true);
   });
 
+  it("keeps the publisher's session alive every ten minutes of a long hourly wait", async () => {
+    // Wiley's institutional session lapsed after about half an hour without a request,
+    // and the school's login had expired by then (Windows, 2026-11-12).
+    const pauses: number[] = [];
+    const events: string[] = [];
+    let limited = true;
+    const tiers = (): DownloadTier[] => [{
+      id: "entitled_access",
+      stage: "entitled_access",
+      run: async (context) => {
+        events.push(`run ${context.doi}`);
+        if (limited) {
+          limited = false;
+          return { status: "error", message: "limit", code: "rate_limited", retryAfterSec: 1500 };
+        }
+        return { status: "ok", verified: true, path: `/tmp/${context.doi}.pdf`, message: "ok" };
+      },
+    }];
+    const backend: SchoolBackend = {
+      ...fakeBackend([]),
+      keepSession: async () => {
+        events.push("keep");
+        return true;
+      },
+    };
+    const result = await downloadBatch({} as never, { items: [{ doi: "10.1016/a" }], mode: "entitled_only" },
+      backend, () => {}, tiers, async (ms) => {
+        pauses.push(ms);
+        events.push(`pause ${ms / 60_000}`);
+      });
+    expect(pauses).toEqual([600_000, 600_000, 300_000]);
+    expect(events).toEqual(["run 10.1016/a", "pause 10", "keep", "pause 10", "keep", "pause 5", "run 10.1016/a"]);
+    expect(result).toEqual(expect.objectContaining({ status: "ok", succeeded: 1 }));
+  });
+
   it("goes on after a journal's site blocks the current network", async () => {
     for (const mode of ["entitled_only", "per_item"] as const) {
       const seen: string[] = [];

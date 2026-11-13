@@ -271,17 +271,33 @@ function rateLimitWait(result: DownloadWithFallbackResult): number {
   return attempt ? Math.max(1, Math.min(3600, attempt.retryAfterSec ?? 60)) : 0;
 }
 
-/** Runs the item again after each wait the publisher's hourly limit asks for. */
+/**
+ * How often a batch waiting for the hourly limit keeps the publisher's session alive:
+ * Wiley's institutional session lapsed after about half an hour without a request,
+ * and the school's login had expired by then too (Windows, 2026-11-12).
+ */
+export const KEEP_SESSION_EVERY_MS = 10 * 60_000;
+
+/**
+ * Runs the item again after each wait the publisher's hourly limit asks for. During a
+ * wait, ``keep`` (the backend's keepSession) runs every KEEP_SESSION_EVERY_MS.
+ */
 async function pastHourlyLimit(
   run: () => Promise<DownloadWithFallbackResult>,
   log: (line: string) => void,
   pause: (ms: number) => Promise<void>,
+  keep?: () => Promise<unknown>,
 ): Promise<DownloadWithFallbackResult> {
   let result = await run();
   for (let wait = rateLimitWait(result); wait; wait = rateLimitWait(result)) {
     const resume = new Date(Date.now() + wait * 1000).toTimeString().slice(0, 5);
     log(`[批量] 这家出版社一小时内的下载已到上限（防止学校被暂停访问），${resume} 继续这一篇`);
-    await pause(wait * 1000);
+    for (let left = wait * 1000; left > 0;) {
+      const step = Math.min(left, KEEP_SESSION_EVERY_MS);
+      await pause(step);
+      left -= step;
+      if (left > 0 && keep) await keep().catch(() => false);
+    }
     result = await run();
   }
   return result;
@@ -516,6 +532,7 @@ async function downloadPerItem(
         ),
       log,
       pause,
+      () => backend?.keepSession?.() ?? Promise.resolve(false),
     );
     if (result.status === "ok") succeeded += 1;
     else failed += 1;
@@ -708,6 +725,7 @@ async function downloadTwoPhase(
             ),
           log,
           pause,
+          () => backend?.keepSession?.() ?? Promise.resolve(false),
         );
       } catch (error) {
         result = laneError("entitled_access", error);

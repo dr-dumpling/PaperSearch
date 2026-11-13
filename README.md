@@ -133,7 +133,7 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 1.通过 [eduGAIN](https://edugain.org/) 互联，如中国CARSI、香港HKAF，新加坡SGAF等；
 2.没有加入本国联盟的学校，有 [OpenAthens](https://www.openathens.net/) 权限的，也能经它登录。
 
-**支持的学术身份联盟**（第一阶段：亚洲）
+**支持的学术身份联盟**（亚洲、美国）
 
 | 地区 | 学术身份联盟 | 全称 |
 |---|---|---|
@@ -143,10 +143,17 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 | 日本 | GakuNin（学認） | 学術認証フェデレーション（Academic Access Management Federation in Japan） |
 | 韩国 | KAFE | Korean Access Federation |
 | 马来西亚 | SIFULAN | SIFULAN Malaysian Access Federation |
+| 印度 | INFED | INFLIBNET Access Management Federation |
+| 土耳其 | YETKİM | YETKİM Identity Federation |
+| 斯里兰卡 | LIAF | LEARN Identity Access Federation |
+| 孟加拉 | TIGERfed | Trust, Identity and Group management for Education and Research Federation |
+| 巴基斯坦 | PKIFED | Pakistan Identity Federation |
+| 阿曼 | OMREN | OMREN Identity Federation |
+| 美国 | InCommon | InCommon Federation |
 | 未加入本国联盟的学校（东南亚多数大学等） | OpenAthens | OpenAthens 机构登录服务 |
 
 - 每个联盟的支持情况，见 [学术联盟支持表](skills/paper-search/references/federation-support.md)。
-- 计划中：美国（InCommon）、英国（UK federation）、澳大利亚（AAF）、欧洲各国联盟，之后是 eduGAIN 里的其他国家，见 [路线图](docs/ROADMAP.zh.md)。
+- 计划中：英国（UK federation）、澳大利亚（AAF）、欧洲各国联盟，之后是 eduGAIN 里的其他国家，见 [路线图](docs/ROADMAP.zh.md)。
 
 - **学校账号就能用**：不用另外申请 key；出版社 API key 只覆盖 Elsevier、Springer 两家。
 - **深度适配出版社**：深度优化了下载的通用流程，并且针对 30 多家出版社逐家写了专门规则，机构登录入口在哪、PDF 和补充材料怎么取，都按各自出版社的实际情况来，下载更准、更少漏篇。优化的出版社主要有：

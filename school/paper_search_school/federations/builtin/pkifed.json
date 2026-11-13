@@ -1,0 +1,11 @@
+{
+  "code": "pkifed",
+  "name": "PKIFED",
+  "country": "PK",
+  "registration_authorities": ["https://pkifed.pk"],
+  "chooser_labels": ["Pakistan Identity Federation (PKIFED)"],
+  "chooser_pattern": "\\bPKIFED\\b|\\bPakistan\\s+Identity\\s+Federation\\b",
+  "discovery_hosts": [],
+  "service_domains": ["pkifed.pk"],
+  "metadata_url": "https://rr.pern.edu.pk/rr3/signedmetadata/federation/PKIFED_eduGAIN/metadata.xml"
+}

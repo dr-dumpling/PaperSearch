@@ -98,6 +98,8 @@ export function withAutoUpdate(backend, update) {
                     return inner.reportBatchPapers(papers, last);
                 } }
             : {}),
+        // Only on a backend the batch already has, which the update ran before.
+        ...(inner.keepSession ? { keepSession: (signal) => inner.keepSession(signal) } : {}),
     });
     return wrap(backend);
 }

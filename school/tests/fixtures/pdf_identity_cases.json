@@ -937,5 +937,73 @@
   "title": "Nutrition and health in a long article title",
   "source": "https://journals.example/doi/pdf/10.1000/target",
   "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a requested letter that labels the article it discusses (Elsevier, DOI of original article)",
+  "text": "Osteoarthritis and Cartilage xxx (xxxx) xxx-xxx\nLetter to the Editor\nA comparator enriched for one procedure in a randomized trial: implications for its conclusion\nDear Editor,\nI read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. \nDOI of original article: https://doi.org/10.1000/original.\nhttps://doi.org/10.1000/letter\nPlease cite this article as: A. Author, A comparator enriched for one procedure in a randomized trial: implications for its conclusion, https://doi.org/10.1000/letter",
+  "doi": "10.1000/letter",
+  "title": "A comparator enriched for one procedure in a randomized trial: implications for its conclusion",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "a reply whose label points at the requested article is not that article",
+  "text": "Letter to the Editor\nReply to: Nutrition and health in a long article title\nDear Editor,\nI read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. \nDOI of original article: https://doi.org/10.1000/target.\nhttps://doi.org/10.1000/reply",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a short title right under the target DOI, other letters on the same page (Wiley Reply)",
+  "text": "LETTER\nAuthor disclosures are available at https://onlinelibrary.wiley.com/doi/\n10.1000/neighbour.\n1. A. Author. An earlier study. J Example 2024;1:1-2.\n\nDOI 10.1000/reply\nReply\nTo the Editor:\nWe thank the authors of both letters for their interest in our article. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. \nDOI 10.1000/nextletter\nAnother letter heading",
+  "doi": "10.1000/reply",
+  "title": "Reply",
+  "expected": "verified"
+ },
+ {
+  "group": "type",
+  "name": "a short title far from the target DOI is no evidence while other DOIs are printed",
+  "text": "Reply\nI read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. \nAuthor disclosures are available at https://onlinelibrary.wiley.com/doi/10.1000/neighbour.\nI read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. I read with great interest the report on the trial and offer three considerations on how its conclusion should be read. \nDOI 10.1000/reply\nTo the Editor:\nDOI 10.1000/nextletter",
+  "doi": "10.1000/reply",
+  "title": "Reply",
+  "expected": "unverified"
+ },
+ {
+  "group": "source",
+  "name": "a one-page note that prints no DOI, from the DOI's own PDF URL (Wiley Journal Club)",
+  "text": "Increased risk for events after a new diagnosis\nIn this issue, the authors report that individuals newly diagnosed with the disease had an increased risk of events in the following month compared with baseline. The investigators used a nationwide dataset of primary care records. In this issue, the authors report that individuals newly diagnosed with the disease had an increased risk of events in the following month compared with baseline. The investigators used a nationwide dataset of primary care records. In this issue, the authors report that individuals newly diagnosed with the disease had an increased risk of events in the following month compared with baseline. The investigators used a nationwide dataset of primary care records. ",
+  "doi": "10.1000/note",
+  "title": "Journal Club",
+  "source": "https://acrjournals.onlinelibrary.wiley.com/doi/pdfdirect/10.1000/note?hmac=1794499836-abc",
+  "expected": "source"
+ },
+ {
+  "group": "source",
+  "name": "the same note from a URL under the DOI (a supplement) is not taken from its URL",
+  "text": "Increased risk for events after a new diagnosis\nIn this issue, the authors report that individuals newly diagnosed with the disease had an increased risk of events in the following month compared with baseline. The investigators used a nationwide dataset of primary care records. In this issue, the authors report that individuals newly diagnosed with the disease had an increased risk of events in the following month compared with baseline. The investigators used a nationwide dataset of primary care records. In this issue, the authors report that individuals newly diagnosed with the disease had an increased risk of events in the following month compared with baseline. The investigators used a nationwide dataset of primary care records. ",
+  "doi": "10.1000/note",
+  "title": "Journal Club",
+  "source": "https://onlinelibrary.wiley.com/doi/suppl/10.1000/note/suppl_file/note-sup-0001.pdf",
+  "expected": "unverified"
+ },
+ {
+  "group": "source",
+  "name": "a note that prints another DOI is not taken from its URL",
+  "text": "Increased risk for events after a new diagnosis\nIn this issue, the authors report that individuals newly diagnosed with the disease had an increased risk of events in the following month compared with baseline. The investigators used a nationwide dataset of primary care records. In this issue, the authors report that individuals newly diagnosed with the disease had an increased risk of events in the following month compared with baseline. The investigators used a nationwide dataset of primary care records. In this issue, the authors report that individuals newly diagnosed with the disease had an increased risk of events in the following month compared with baseline. The investigators used a nationwide dataset of primary care records. \ndoi:10.1000/other",
+  "doi": "10.1000/note",
+  "title": "Journal Club",
+  "source": "https://acrjournals.onlinelibrary.wiley.com/doi/pdfdirect/10.1000/note?hmac=1794499836-abc",
+  "expected": "mismatch"
+ },
+ {
+  "group": "source",
+  "name": "an Issue Information item (the masthead, no DOI printed) from its own PDF URL (Wiley)",
+  "text": "Arthritis & Rheumatology\nAn Official Journal of the Society\nEditor\nA. Editor, MD, Boston\nDeputy Editors\nB. Editor, MD, PhD, New Haven\nC. Editor, MD, Bethesda\nB. Editor, MD, PhD, New Haven\nC. Editor, MD, Bethesda\nB. Editor, MD, PhD, New Haven\nC. Editor, MD, Bethesda\nB. Editor, MD, PhD, New Haven\nC. Editor, MD, Bethesda\nB. Editor, MD, PhD, New Haven\nC. Editor, MD, Bethesda\nB. Editor, MD, PhD, New Haven\nC. Editor, MD, Bethesda\nB. Editor, MD, PhD, New Haven\nC. Editor, MD, Bethesda\nB. Editor, MD, PhD, New Haven\nC. Editor, MD, Bethesda\nB. Editor, MD, PhD, New Haven\nC. Editor, MD, Bethesda\nB. Editor, MD, PhD, New Haven\nC. Editor, MD, Bethesda\nB. Editor, MD, PhD, New Haven\nC. Editor, MD, Bethesda\nB. Editor, MD, PhD, New Haven\nC. Editor, MD, Bethesda\n",
+  "doi": "10.1000/issue",
+  "title": "Issue Information",
+  "source": "https://acrjournals.onlinelibrary.wiley.com/doi/pdfdirect/10.1000/issue?hmac=1794499836-abc",
+  "expected": "source"
  }
 ]

@@ -280,7 +280,8 @@
   "下载时找免费全文": "Finds free full texts",
   "检索论文、核对 DOI 是否真实": "Search papers; check DOIs are real",
   "填你常用的邮箱就行，不用注册": "Your usual email will do; no sign-up",
-  "网站暂不支持自动下载附录": "No supp. rule; get by hand"
+  "网站暂不支持自动下载附录": "No supp. rule; get by hand",
+  "已达每小时上限": "Hourly limit reached"
  },
  "patterns": [
   [
@@ -514,6 +515,30 @@
   [
    "^测试通知没有发出：(.+)$",
    "Test not sent: $1"
+  ],
+  [
+   "^(\\d{1,2}:\\d{2}) 继续$",
+   "Resumes $1"
+  ],
+  [
+   "^(.+) 已达设置的每小时 (\\d+) 篇，(\\d{1,2}:\\d{2}) 继续$",
+   "$1: your $2/hour limit; resumes $3"
+  ],
+  [
+   "^已达设置的每小时 (\\d+) 篇，(\\d{1,2}:\\d{2}) 继续$",
+   "Your $1/hour limit reached; resumes $2"
+  ],
+  [
+   "^已达设置的每小时上限，(\\d{1,2}:\\d{2}) 继续$",
+   "Your hourly limit reached; resumes $1"
+  ],
+  [
+   "^(.+) 一小时内已打开 (\\d+) 篇（每小时上限），(\\d{1,2}:\\d{2}) 继续这一篇$",
+   "$1: $2 opened this hour (your hourly limit); resumes $3"
+  ],
+  [
+   "^开放下载：已查 (\\d+)/(\\d+) 篇，找到 (\\d+) 篇$",
+   "Open download: $1/$2 checked, $3 found"
   ]
  ]
 }

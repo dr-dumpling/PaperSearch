@@ -852,6 +852,30 @@ describe("SchoolMcpClient", () => {
     await expectAllChildrenExited();
   });
 
+  it("keeps the publisher's session on the batch's backend only, never starting one", async () => {
+    const batch = { id: "batch-keep", index: 1, total: 2, done: 0, succeeded: 0, failed: 0 };
+    await fakeClient("batch_browser_keep").withBatchSession(async (backend) => {
+      // No backend yet: nothing to keep, and none is started for it.
+      expect(await backend.keepSession!()).toBe(false);
+      expect(readLog().filter((row) => row.event === "start")).toHaveLength(0);
+      expect(await backend.downloadLegalDoi({ identifier: "10.1000/first", outputDir: tempDir, batch }))
+        .toMatchObject({ kind: "success" });
+      expect(await backend.keepSession!()).toBe(true);
+    });
+    expect(readLog().filter((row) => row.event === "start")).toHaveLength(1);
+    expect(readLog().filter((row) => row.event === "call" && row.tool === "school_keep_session")).toHaveLength(1);
+    await expectAllChildrenExited();
+
+    // A backend without the tool is not asked.
+    rmSync(logPath, { force: true });
+    await fakeClient("batch_browser").withBatchSession(async (backend) => {
+      await backend.downloadLegalDoi({ identifier: "10.1000/first", outputDir: tempDir, batch });
+      expect(await backend.keepSession!()).toBe(false);
+    });
+    expect(readLog().some((row) => row.tool === "school_keep_session")).toBe(false);
+    await expectAllChildrenExited();
+  });
+
   it("sends a batch's papers on its backend, starting one only for the last list", async () => {
     const update = { id: "batch-papers", folder: tempDir,
       papers: [{ index: 1, doi: "10.1000/one", title: "One", journal: "", state: "open" as const }] };

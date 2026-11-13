@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import time
 from datetime import datetime
 from typing import Any
 
@@ -283,6 +284,24 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
     return {"ok": first_open(saved), "failed": missing, "left": first_open(left)}
 
 
+# The longest publisher name the hourly-limit notice keeps on one line, in zh and en,
+# with a limit of 1000 and 23:59 (measured in the capsule: "Copernicus", 2026-11-12).
+HOLD_NAME_MAX = 10
+
+
+def _hourly_hold(state: dict[str, Any], now: float) -> tuple[str, int | None, str] | None:
+    """The hourly limit the user set per publisher holding the school's downloads:
+    (publisher, limit, "HH:MM" it goes on), until that time (2026-11-12)."""
+    raw = state.get("hourly_wait")
+    if not isinstance(raw, dict):
+        return None
+    until, limit = raw.get("until"), raw.get("limit")
+    if not isinstance(until, (int, float)) or isinstance(until, bool) or until <= now:
+        return None
+    limit = limit if isinstance(limit, int) and not isinstance(limit, bool) and limit > 0 else None
+    return str(raw.get("publisher") or ""), limit, time.strftime("%H:%M", time.localtime(until))
+
+
 def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
     """Everything the capsule shows for one snapshot of the progress file.
 
@@ -364,6 +383,18 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
                 notice = str(raw.get("text") or "")
         except (TypeError, ValueError):
             pass
+    # Held by the hourly limit the user set: the capsule and the card say so, and that
+    # it is the user's setting, not the publisher's (2026-11-12).
+    hold = _hourly_hold(state, now) if running and not attention else None
+    if hold:
+        name, limit, resume = hold
+        part, publisher = "已达每小时上限", f"{resume} 继续"
+        # One line on the card in either language: a longer publisher name (or a site's
+        # host) is left out; the status line above already says what holds.
+        name = name if len(name) <= HOLD_NAME_MAX else ""
+        notice = (f"{name} 已达设置的每小时 {limit} 篇，{resume} 继续" if name and limit
+                  else f"已达设置的每小时 {limit} 篇，{resume} 继续" if limit
+                  else f"已达设置的每小时上限，{resume} 继续")
 
     return {
         "mode": mode, "tone": tone, "headline": headline,

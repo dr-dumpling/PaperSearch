@@ -75,6 +75,12 @@ export declare function downloadBatchItem(searchers: Searchers, options: Downloa
  * into the paper's folder beside them (the returned ``path``).
  */
 export declare function downloadSupplementsOnly(request: DownloadWithFallbackOptions, backend: SchoolBackend | undefined, searchers?: Searchers, mainPath?: string): Promise<DownloadWithFallbackResult>;
+/**
+ * How often a batch waiting for the hourly limit keeps the publisher's session alive:
+ * Wiley's institutional session lapsed after about half an hour without a request,
+ * and the school's login had expired by then too (Windows, 2026-11-12).
+ */
+export declare const KEEP_SESSION_EVERY_MS: number;
 /** Download a list serially; one batch id ties it to one progress window. */
 export declare function downloadBatch(searchers: Searchers, options: DownloadBatchOptions, backend?: SchoolBackend, log?: (line: string) => void, createTiers?: (backend?: SchoolBackend) => DownloadTier[], pause?: (ms: number) => Promise<void>): Promise<DownloadBatchResult>;
 //# sourceMappingURL=batch.d.ts.map

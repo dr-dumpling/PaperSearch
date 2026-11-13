@@ -565,6 +565,9 @@ def _try_browser_batch_download(
                 # The browser call never returned and the driver was stopped:
                 # whatever the engine reported after that is a consequence.
                 result.reason = result.state = watchdog.failure_code()
+            if batch is not None:
+                # What a wait of the batch keeps the publisher's session alive with.
+                batch.article_url = (result.final_url or result.article_url) if result.ok else ""
             if supplements_mode in ("with", "only"):
                 if result.state in ("browser_unresponsive", "browser_operation_timeout"):
                     result.supplements = [{"status": "skipped", "reason": result.state,

@@ -1,0 +1,11 @@
+{
+  "code": "omren",
+  "name": "OMREN",
+  "country": "OM",
+  "registration_authorities": ["http://www.omren.om"],
+  "chooser_labels": ["OMREN Identity Federation"],
+  "chooser_pattern": "\\bOMREN\\b",
+  "discovery_hosts": [],
+  "service_domains": ["fed.omren.om", "federation.omren.om"],
+  "metadata_url": "https://fed.omren.om/OMREN_export.xml"
+}

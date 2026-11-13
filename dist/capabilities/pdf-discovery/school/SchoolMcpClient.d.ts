@@ -31,6 +31,13 @@ export declare class SchoolMcpClient implements SchoolBackend {
      * session if the browser has not been opened.
      */
     reportBatchProgress(update: SchoolBatchUpdate, signal?: AbortSignal): Promise<boolean>;
+    /**
+     * While the batch waits (the hourly limit the user set): its browser loads the last
+     * saved paper's article page again, so the publisher's institutional session does
+     * not lapse (Wiley: about half an hour without a request, 2026-11-12). Only on the
+     * backend the batch already has, never starting one.
+     */
+    keepSession(signal?: AbortSignal): Promise<boolean>;
     /** The batch's papers for the window's lists, on the backend the batch already has. */
     reportBatchPapers(update: SchoolBatchPapers, last?: boolean): Promise<boolean>;
     /**

@@ -577,7 +577,10 @@ class LoginMixin:
     # Shibboleth's attribute-release and terms-of-use forms, whatever the language.
     _IDP_CONFIRMATION_JS = """() => document.querySelector('[name="_eventId_TermsRejected"]') ? 'terms-of-use'
         : document.querySelector('[name="_shib_idp_consentOptions"], [name="_shib_idp_consentIds"]') ? 'attribute-release' : ''"""
-    _IDP_ERROR_RE = re.compile(r"未知错误|系统错误|服务异常|认证失败|出错了|\b5\d{4}\b.{0,20}错误|an unexpected error|error code|system error", re.I)
+    # Shibboleth's "Message Security Error": the identity provider could not trust the
+    # publisher's request (a school's IdP to Elsevier, 2026-11-12).
+    _IDP_ERROR_RE = re.compile(r"未知错误|系统错误|服务异常|认证失败|出错了|\b5\d{4}\b.{0,20}错误|an unexpected error|error code|system error"
+                               r"|message security error", re.I)
 
     # A publisher's own terms form on the way to the school: SIAM's SAML consent
     # ("I have read and agree to the Terms and Conditions and Privacy Policy.",
@@ -730,7 +733,7 @@ class LoginMixin:
         r"|sorry, you have been blocked|no institutions found|not registered for use with this service"
         r"|application you have accessed is not registered|may not be enabled for this type of authentication"
         r"|can't find your institution|access to this resource has been restricted by your organization|oa-ap-4032"
-        r"|不支持的请求|does not have access to this resource"
+        r"|不支持的请求|does not have access to this resource|message security error|reported an idp error"
         r"|temporarily unavailable|verify you are human|are you a robot|checking your browser|正在进行安全验证", re.I)
 
     def _login_block_reason(self, page: Any) -> str:
@@ -743,6 +746,8 @@ class LoginMixin:
     def _block_evidence_for(self, code: str, page: Any) -> str:
         if code == "login_page_closed":
             return "the browser window was closed"
+        if code == "idp_login_error" and self._on_browser_error_page(page):
+            return f"the school's login server could not be reached: {self._school_unreachable}"
         if code == "institution_pdf_entitlement_missing":
             line = self._denial_line(page)
             if line:
@@ -758,9 +763,18 @@ class LoginMixin:
             return f'{url.hostname or ""}: "{quoted[:200]}"'
         return f"{url.hostname or ''}{url.path[:80]} | {self._title(page)[:80]} ({type(self.adapter).__name__} rule)"
 
+    def _on_browser_error_page(self, page: Any) -> bool:
+        """The browser's own error page after a navigation to the school's login
+        server failed (``_follow_login_route``): nobody can sign in there."""
+        return bool(getattr(self, "_school_unreachable", "")) and str(getattr(page, "url", "") or "").startswith(
+            "chrome-error://")
+
     def _login_block_check(self, page: Any) -> str:
         if page.is_closed() is True:
             return "login_page_closed"  # the user closed the window
+        if self._on_browser_error_page(page):
+            # Two schools' login servers did not answer from abroad (2026-11-12).
+            return "idp_login_error"
         try:
             parsed_idp = urlparse(str(getattr(page, "url", "") or ""))
             if self._is_idp_host(parsed_idp.netloc):
@@ -803,6 +817,10 @@ class LoginMixin:
             return override
         if "unsupported request" in haystack and "not registered for use with this service" in haystack:
             return "institution_not_registered"
+        # A publisher's Shibboleth saying the school's identity provider answered with
+        # an error ("SAML response reported an IdP error ... AuthnFailed", 2026-11-12).
+        if "saml response reported an idp error" in haystack:
+            return "idp_login_error"
         # The same Shibboleth page in Chinese: "Web登陆服务 - 不支持的请求" on the
         # school's IdP, the school has not enabled this publisher (JAMA, 2026-11-07).
         if "不支持的请求" in haystack and self._is_idp_host(urlparse(current_url).netloc):
@@ -833,9 +851,16 @@ class LoginMixin:
     # school has not enabled (2026-11-02). A page there that is no login form, no
     # SAML hand-over and no "please wait" page, unchanged this long, ends the item.
     SCHOOL_SITE_STAY_SEC = 12
+    # A username-first page (Okta's "identifier" field, no password box yet: a
+    # school's login was taken for its portal and ended, 2026-11-12) is a login;
+    # a portal's search box is not.
     _SCHOOL_PAGE_STATE_JS = r"""() => ({
         ready: document.readyState === 'complete',
         login: !!document.querySelector('input[type="password"], input[autocomplete="one-time-code"]')
+            || [...document.querySelectorAll('input')].some(el => el.getClientRects().length > 0 && !el.disabled
+                && !el.readOnly && ['text', 'email'].includes(el.type) && (el.type === 'email'
+                || /username|email/i.test(el.autocomplete || '')
+                || /user|login|identifier|account|email|netid|学号|工号|账号|帐号/i.test(`${el.name} ${el.id}`)))
             || /扫码|二维码|QR ?code|验证码|verification code/i.test((document.body && document.body.innerText || '').slice(0, 4000)),
         handover: !!document.querySelector('input[name="SAMLResponse"], input[name="SAMLRequest"], input[name="RelayState"]')
             || /^\s*(?:loading|please wait|redirecting|正在跳转|跳转中|请稍候|处理中)/i.test(document.title || '')})"""

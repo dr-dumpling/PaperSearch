@@ -1,0 +1,11 @@
+{
+  "code": "liaf",
+  "name": "LIAF",
+  "country": "LK",
+  "registration_authorities": ["https://liaf.ac.lk"],
+  "chooser_labels": ["LEARN Identity Access Federation (LIAF)"],
+  "chooser_pattern": "\\bLIAF\\b|\\bLEARN\\s+Identity\\s+(?:and\\s+)?Access\\s+Federation\\b",
+  "discovery_hosts": [],
+  "service_domains": ["liaf.ac.lk"],
+  "metadata_url": "https://fr.ac.lk/signedmetadata/LIAF_to_edugain.xml"
+}

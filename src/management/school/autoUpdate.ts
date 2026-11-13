@@ -103,6 +103,8 @@ export function withAutoUpdate(backend: SchoolBackend, update: () => Promise<unk
           return inner.reportBatchPapers!(papers, last);
         } }
       : {}),
+    // Only on a backend the batch already has, which the update ran before.
+    ...(inner.keepSession ? { keepSession: (signal?: AbortSignal) => inner.keepSession!(signal) } : {}),
   });
   return wrap(backend);
 }

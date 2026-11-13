@@ -149,3 +149,15 @@ class DecisionEvidenceTests(unittest.TestCase):
         self.assertIn("Your account is locked. Contact the help desk.", d._block_evidence)
         self.assertEqual(d._login_block_reason(page("Abstract")), "")
         self.assertEqual(d._block_evidence, "")
+
+    def test_the_schools_identity_provider_answering_with_an_error_ends_the_login(self):
+        # 2026-11-12: one school's IdP could not trust the publisher's request; another
+        # sent an error back that the publisher's Shibboleth shows.
+        d = PublisherBatchDownloader({"publisher_institution_federation": "carsi",
+                                      "idp_entity_id": "https://idp.example.edu.cn/idp/shibboleth"}, profile=PROFILE)
+        idp = page("Web Login Service - Message Security Error", url="https://idp.example.edu.cn/idp/profile/SAML2/Redirect/SSO")
+        self.assertEqual(d._login_block_reason(idp), "idp_login_error")
+        back = page("opensaml::FatalProfileException\nSAML response reported an IdP error. Error from identity provider: "
+                    "Status: urn:oasis:names:tc:SAML:2.0:status:Requester", url="https://auth.fixture-press.example/SAML2/POST")
+        self.assertEqual(d._login_block_reason(back), "idp_login_error")
+        self.assertIn("reported an IdP error", d._block_evidence)
