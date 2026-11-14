@@ -1,0 +1,11 @@
+{
+  "code": "rif",
+  "name": "RIF",
+  "country": "UG",
+  "registration_authorities": ["https://www.renu.ac.ug"],
+  "chooser_labels": ["RIF", "RENU Identity Federation"],
+  "chooser_pattern": "(?-i:\\bRIF\\b)|\\bRENU\\s+Identity\\s+Federation\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://rif.renu.ac.ug/rr/signedmetadata/federation/RIF/metadata.xml"
+}

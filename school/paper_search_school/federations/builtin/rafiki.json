@@ -1,0 +1,11 @@
+{
+  "code": "rafiki",
+  "name": "RAFIKI",
+  "country": "KE",
+  "registration_authorities": ["https://rafiki.ke"],
+  "chooser_labels": ["Kenyan Identity Federation - RAFIKI", "RAFIKI"],
+  "chooser_pattern": "(?-i:\\bRAFIKI\\b)|\\bKenyan\\s+Identity\\s+Federation\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://rr.rafiki.ke/signedmetadata/federation/rafiki/metadata.xml"
+}

@@ -1,0 +1,11 @@
+{
+  "code": "garnet",
+  "name": "GARNET",
+  "country": "GH",
+  "registration_authorities": ["https://garnet.edu.gh"],
+  "chooser_labels": ["GARNET Identity Federation", "GARNET"],
+  "chooser_pattern": "(?-i:\\bGARNET\\b)",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://metareg.garnet.edu.gh/rr3/signedmetadata/federation/GARNET-Identity-Federation/metadata.xml"
+}

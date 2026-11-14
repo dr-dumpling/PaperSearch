@@ -129,6 +129,10 @@ class FindSchoolTests(unittest.TestCase):
         self.assertEqual((config["publisher_institution_federation"], config["carsi_enabled"]), ("hkaf", False))
         self.assertEqual(schools.login_hosts(config), ("idp.harbour.edu.hk", "login.harbour.edu.hk"))
         self.assertEqual(schools.names(config), ("The Harbour University",))
+        # Its own OpenAthens sign-in page, named by its domain, is its login page too (2026-11-14).
+        self.assertEqual(config["idp_login_pages"], ["https://login.openathens.net/auth/harbour.edu.hk/o/"])
+        self.assertTrue(schools.on_login_page(config, "https://login.openathens.net/auth/harbour.edu.hk/o/805?t=x"))
+        self.assertFalse(schools.on_login_page(config, "https://login.openathens.net/auth/other.edu.hk/o/805"))
 
     def test_a_carsi_school_by_its_chinese_name(self):
         found = self.find("示例大学")
@@ -158,7 +162,9 @@ class FindSchoolTests(unittest.TestCase):
         self.assertEqual(found.unsupported, [("Northern University", "https://federation.example.org")])
 
     def test_the_federations_own_list_when_seamlessaccess_cannot_be_read(self):
-        found = self.find("harbour.edu.hk", unavailable=True)
+        # Offline: the other federations' lists are not read from the network here.
+        with patch("paper_search_school.network.fetch", side_effect=OSError("offline")):
+            found = self.find("harbour.edu.hk", unavailable=True)
         self.assertEqual((found.school.federation, found.school.login_hosts), ("hkaf", ("login.harbour.edu.hk",)))
         self.assertIn("SeamlessAccess", found.unavailable)
 
@@ -316,7 +322,18 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
         rows.update({"Univerzitet Liman": [staff], "Liman University": [staff]})
         with patch.object(schools, "_seamlessaccess", side_effect=lambda text, config: rows.get(text, [])):
             found = schools.find("Univerzitet Liman", {}, self.data_dir, also=["Liman University"])
-        self.assertEqual((found.school.name, found.school.name_en), ("Liman University - Staff", "Liman University"))
+        self.assertEqual((found.school.name, found.school.name_en, found.school.entry_name),
+                         ("Liman University", "Liman University", "Liman University - Staff"))
+        # Listed with an abbreviation or a code beside the school's name: named as given, the
+        # English name given (accents allowed) searched first, the listed name last (2026-11-14).
+        for title, local, english in (("ULB - Universidade de Sao Liman", "Universidade de São Liman", "University of São Liman"),
+                                      ("Escuela Politécnica de Liman - epl", "Escuela Politécnica de Liman",
+                                       "Liman Polytechnic School")):
+            abbreviated = {**listed, "title": title, "title_langs": {"en": title}}
+            rows.update({local: [abbreviated], schools._plain(local): [abbreviated], english: []})
+            with patch.object(schools, "_seamlessaccess", side_effect=lambda text, config: rows.get(text, [])):
+                found = schools.find(local, {}, self.data_dir, also=[english])
+            self.assertEqual((found.school.name, found.school.name_en, found.school.entry_name), (local, english, title))
 
     def test_a_local_name_is_saved_with_single_spaces(self):
         listed = {"type": "idp", "title": "Harbour University",

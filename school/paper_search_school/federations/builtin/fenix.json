@@ -1,0 +1,11 @@
+{
+  "code": "fenix",
+  "name": "FENIX",
+  "country": "MX",
+  "registration_authorities": ["http://www.fenix.org.mx"],
+  "chooser_labels": ["FENIX", "Federación Nacional de Identidades Mexicanas"],
+  "chooser_pattern": "(?-i:\\bFENIX\\b)|\\bFederaci[oó]n\\s+Nacional\\s+de\\s+Identidades\\b",
+  "discovery_hosts": [],
+  "service_domains": ["wayf.fenix.org.mx"],
+  "metadata_url": "https://wayf.fenix.org.mx/simplesaml/module.php/aggregator2/get.php?id=FENIX"
+}

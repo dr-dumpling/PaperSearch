@@ -1,0 +1,11 @@
+{
+  "code": "safire",
+  "name": "SAFIRE",
+  "country": "ZA",
+  "registration_authorities": ["https://safire.ac.za"],
+  "chooser_labels": ["SAFIRE", "South African Identity Federation"],
+  "chooser_pattern": "(?-i:\\bSAFIRE\\b)|\\bSouth\\s+African\\s+Identity\\s+Federation\\b",
+  "discovery_hosts": [],
+  "service_domains": ["iziko.safire.ac.za", "proxy.safire.ac.za"],
+  "metadata_url": "https://metadata.safire.ac.za/safire-edugain.xml"
+}

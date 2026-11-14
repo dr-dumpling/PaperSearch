@@ -146,6 +146,12 @@ def save(config: dict[str, Any], school: School) -> None:
     pages = [page for template in (federation.school_login_pages if federation else ())
              for page in ([template.replace("{scope}", scope) for scope in scopes] if "{scope}" in template
                           else [template])]
+    # Its own sign-in page on a login service shared by schools (OpenAthens), named by
+    # its domain: a publisher may list only that entry of the school (its library's,
+    # 2026-11-14).
+    pages += [template.replace("*", scope, 1) for service in all_federations()
+              if service.kind == "service" and service is not federation
+              for template in service.school_login_pages if "*" in template for scope in scopes if "." in scope]
     config.update(school_name=school.name, school_name_en=school.name_en, school_entry_name=school.entry_name,
                   idp_entity_id=school.entity_id, idp_login_hosts=list(school.login_hosts), idp_login_pages=pages,
                   idp_domains=[d for d in scopes if "." in d],
@@ -377,16 +383,19 @@ def _from_seamlessaccess(given: list[str], config: dict[str, Any], found: _Found
             if federation.member_list == "carsi" and carsi_listed:
                 continue  # CARSI's own list is the source for its schools
             english = listed_english = _SERVER_WORD.sub("", str((row.get("title_langs") or {}).get("en") or title)).strip()
+            part = ""
             if exact:
                 # The English name given, publishers' likelier name for the school, when the
                 # list has none of its own: the school only as part of a longer name ("<school>
-                # - Staff"), or one name in every language ("Universitat de Liman", 2026-11-13).
+                # - Staff", "<ABBR> - <school>"), or one name in every language ("Universitat de
+                # Liman", 2026-11-13). The names given beside the first are the English ones;
+                # accents allowed ("University of São Liman", 2026-11-14).
                 listed = {_key(v) for v in [*(row.get("title_langs") or {}).values(), title] if str(v or "").strip()}
                 own = _own_names(given)
-                other = [t for t in [*own[1:], *own[:1]] if t.isascii() and _key(t) not in listed]
                 parts = {_key(n) for n in titles}
-                english = next((t for t in other if _key(t) in parts), None) or (
-                    other[0] if other and len(listed) == 1 else listed_english)
+                part = next((" ".join(t.split()) for t in own if _key(t) in parts and _key(t) not in listed), "")
+                other = [t for t in [*own[1:], *own[:1]] if _plain(t).isascii() and _key(t) not in listed]
+                english = other[0] if other and (part or len(listed) == 1) else listed_english
             # The name in the school's own language when that is the one given: publishers
             # may list it so (a French name searched in English found nothing, 2026-11-13).
             # Spaces as written once (a Greek name listed with a trailing space, 2026-11-13).
@@ -491,6 +500,17 @@ def _named_as_given(school: School, given: list[str]) -> School:
     return replace(school, name=own[0], name_en=english, entry_name=school.name)
 
 
+def _named_by_its_part(school: School, given: list[str]) -> School:
+    """A school listed under a longer name, an abbreviation or code beside the
+    school's ("<ABBR> - <school>", "<school> - <code>", 2026-11-14), and found by
+    that part: named as given, the name publishers list it under; the listed name
+    is its entry's own, searched last."""
+    parts = {_key(n) for n in _names([school.name])}
+    part = next((" ".join(t.split()) for t in _own_names(given)
+                 if _key(t) in parts and _key(t) != _key(school.name)), "")
+    return replace(school, name=part, entry_name=school.name) if part else school
+
+
 def find(query: str, config: dict[str, Any], data_dir: Path, *, also: Iterable[str] = ()) -> Lookup:
     """The school named ``query`` (any language, its domain or entityID), with
     ``also`` its other names (the English one, given by the caller)."""
@@ -505,6 +525,8 @@ def find(query: str, config: dict[str, Any], data_dir: Path, *, also: Iterable[s
     school, candidates = found.decide()
     if school is not None and school.entity_id not in found.named:
         school = _named_as_given(school, given)
+    elif school is not None:
+        school = _named_by_its_part(school, given)
     lookup.school = _with_login_hosts(school, config, data_dir) if school else None
     lookup.candidates = candidates[:10]
     return lookup

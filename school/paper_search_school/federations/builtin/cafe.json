@@ -1,0 +1,11 @@
+{
+  "code": "cafe",
+  "name": "CAFe",
+  "country": "BR",
+  "registration_authorities": ["http://cafe.rnp.br"],
+  "chooser_labels": ["CAFe", "Comunidade Acadêmica Federada"],
+  "chooser_pattern": "(?-i:\\bCAFe\\b)|\\bComunidade\\s+Acad[eê]mica\\s+Federada\\b",
+  "discovery_hosts": [],
+  "service_domains": ["ds.cafe.rnp.br"],
+  "metadata_url": "https://ds.cafe.rnp.br/metadata/edugain/edugain-metadata.signed.xml"
+}

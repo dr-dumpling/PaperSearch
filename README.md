@@ -146,10 +146,17 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 | 欧洲 | 中欧 | 德国：DFN-AAI；瑞士：Switch edu-ID；奥地利：ACOnet；波兰：PIONIER.Id；捷克：eduID.cz；斯洛伐克：safeID；匈牙利：eduId.hu |
 | 欧洲 | 南欧 | 西班牙：SIR；葡萄牙：RCTSaai；意大利：IDEM；希腊：GRNET；马耳他：RiċerkaNET；斯洛文尼亚：ArnesAAI；克罗地亚：AAI@EduHr；塞尔维亚：iAMRES；黑山：IDeduME；北马其顿：AAIEduMk；阿尔巴尼亚：RASH；保加利亚：BIF；罗马尼亚：RoEduNetID |
 | 欧洲 | 东欧 | 爱沙尼亚：TAAT；拉脱维亚：LAIFE；立陶宛：LITNET FEDI；白俄罗斯：FEBAS；乌克兰：PEANO；摩尔多瓦：LEAF |
-| 美洲 | 北美洲 | 美国：InCommon |
+| 美洲 | 北美洲 | 美国：InCommon；加拿大：CAF |
+| 美洲 | 中美洲 | 墨西哥：FENIX |
+| 美洲 | 南美洲 | 巴西：CAFe；智利：COFRe；哥伦比亚：COLFIRE；厄瓜多尔：MINGA |
+| 大洋洲 | 澳大利亚与新西兰 | 澳大利亚：AAF；新西兰：Tuakiri |
+| 非洲 | 东部非洲 | 乌干达：RIF；肯尼亚：RAFIKI；坦桑尼亚：TERNET IF；马拉维：MAREN；赞比亚：FIDERN |
+| 非洲 | 西部非洲 | 尼日利亚：NgRENID；加纳：GARNET；布基纳法索：eduID.bf；多哥：eduID.tg |
+| 非洲 | 北部、南部非洲 | 摩洛哥：eduIDM；南非：SAFIRE |
 
 - 各联盟的全称、学校数和实测过的学校，见 [学术联盟支持表](skills/paper-search/references/federation-support.md)。
-- 计划中，按这个顺序推进：美洲（加拿大，再拉丁美洲和加勒比）、大洋洲，最后非洲，见 [路线图](docs/ROADMAP.zh.md)。
+- 非洲各联盟尚未实测。中亚、加勒比等地暂无可用的联盟（联盟里没有学校入口，或尚未正式运行），这些地方的学校有 OpenAthens 权限的可经它登录。
+- 学校登录不上，或想支持你的学校，请用“学校登录不上”模板[提 Issue](https://github.com/dr-dumpling/PaperSearch/issues/new?template=school-login.yml)，写明学校名称、官网域名，以及出问题的出版社和文章 DOI。
 
 - **学校账号就能用**：不用另外申请 key；出版社 API key 只覆盖 Elsevier、Springer 两家。
 - **深度适配出版社**：深度优化了下载的通用流程，并且针对 30 多家出版社逐家写了专门规则，机构登录入口在哪、PDF 和补充材料怎么取，都按各自出版社的实际情况来，下载更准、更少漏篇。优化的出版社主要有：
@@ -241,8 +248,7 @@ paper-search school status --format text   # 查看是否装好
 1. **进度胶囊优化**：提醒时机更准，学校登录页能自动放行时不提前打扰；减少 Windows 上浏览器启动、换页时短暂跳到前台的情况，优化显示效果。
 2. **并行下载**：不同出版社之间并行下载，同时处理多篇，缩短几十上百篇的总耗时；每家出版社仍遵守下载上限。
 3. **Markdown 全文包**：除了 PDF，再交付原始 XML/HTML、Markdown 阅读副本和正文图片，图号、图注和正文引用一一对应，方便直接交给 AI 阅读和引用。
-4. **全球学校登录**：亚洲、欧洲和美国的学术身份联盟已支持；接下来是加拿大、拉丁美洲和加勒比、大洋洲，最后非洲，覆盖 eduGAIN 里的所有国家；有条件的话再接入 WebVPN、EZProxy 等访问方式。
-5. **检索论文、搜正文片段再优化**：参考同类工具的做法，进一步提升检索论文和搜正文片段的效果。
+4. **检索论文、搜正文片段再优化**：参考同类工具的做法，进一步提升检索论文和搜正文片段的效果。
 
 完整计划见 [路线图](docs/ROADMAP.zh.md)，原理和代码结构见 [架构说明](docs/ARCHITECTURE.zh.md)。还想要什么功能，欢迎提 [Issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) 和 PR；下载失败或想支持某家出版社，请用对应的 Issue 模板，想自己加出版社规则见 [school/CONTRIBUTING.md](school/CONTRIBUTING.md)。
 

@@ -146,10 +146,17 @@ Papers the open channels cannot get can come through your school's subscriptions
 | Europe | Central Europe | Germany: DFN-AAI; Switzerland: Switch edu-ID; Austria: ACOnet; Poland: PIONIER.Id; Czechia: eduID.cz; Slovakia: safeID; Hungary: eduId.hu |
 | Europe | Southern Europe | Spain: SIR; Portugal: RCTSaai; Italy: IDEM; Greece: GRNET; Malta: RiċerkaNET; Slovenia: ArnesAAI; Croatia: AAI@EduHr; Serbia: iAMRES; Montenegro: IDeduME; North Macedonia: AAIEduMk; Albania: RASH; Bulgaria: BIF; Romania: RoEduNetID |
 | Europe | Eastern Europe | Estonia: TAAT; Latvia: LAIFE; Lithuania: LITNET FEDI; Belarus: FEBAS; Ukraine: PEANO; Moldova: LEAF |
-| Americas | North America | United States: InCommon |
+| Americas | North America | United States: InCommon; Canada: CAF |
+| Americas | Central America | Mexico: FENIX |
+| Americas | South America | Brazil: CAFe; Chile: COFRe; Colombia: COLFIRE; Ecuador: MINGA |
+| Oceania | Australia and New Zealand | Australia: AAF; New Zealand: Tuakiri |
+| Africa | Eastern Africa | Uganda: RIF; Kenya: RAFIKI; Tanzania: TERNET IF; Malawi: MAREN; Zambia: FIDERN |
+| Africa | Western Africa | Nigeria: NgRENID; Ghana: GARNET; Burkina Faso: eduID.bf; Togo: eduID.tg |
+| Africa | Northern and Southern Africa | Morocco: eduIDM; South Africa: SAFIRE |
 
 - Full names, school counts and tested schools of each federation: [federation support table](skills/paper-search/references/federation-support.md) (Chinese).
-- Planned, in this order: the Americas (Canada, then Latin America and the Caribbean), Oceania, and Africa last; see the [roadmap](docs/ROADMAP.zh.md) (Chinese).
+- The African federations have not been tested yet. Central Asia, the Caribbean and some other places have no usable federation (none with school entries, or none in operation yet); schools there with OpenAthens access can sign in through it.
+- If your school cannot sign in, or you would like your school supported, [open an issue](https://github.com/dr-dumpling/PaperSearch/issues/new?template=school-login.yml) with the school sign-in template, giving the school's name and website domain, and the publisher and paper DOI where it failed.
 
 - **Your school account is enough**: no keys to apply for; publisher API keys only cover Elsevier and Springer.
 - **Deep publisher adaptation**: the general download flow is deeply optimized, and more than 30 publishers have dedicated rules, one by one: where the institutional login is and how to fetch the PDF and supplementary files follow each publisher as it really is, so downloads are more accurate and fewer papers are missed. The main publishers:
@@ -241,8 +248,7 @@ Next on the list:
 1. **A better progress capsule**: better-timed reminders, with no early prompt when the school login page lets you through by itself; less of the browser briefly jumping to the front on Windows when it starts or changes pages; a cleaner look.
 2. **Parallel downloads**: papers from different publishers download at the same time, cutting the total time for dozens or hundreds of papers; each publisher's download limits still apply.
 3. **A Markdown full-text package**: besides the PDF, the original XML/HTML, a Markdown reading copy and the figures, with figure numbers, captions and in-text references matched, ready to hand to an AI for reading and citing.
-4. **School sign-in worldwide**: the academic identity federations of Asia, Europe and the US are supported; next come Canada, Latin America and the Caribbean, Oceania, and Africa last, covering every country in eduGAIN; WebVPN, EZProxy and similar where possible.
-5. **Better paper search and full-text snippets**: learn from similar tools and improve how papers and passages are found.
+4. **Better paper search and full-text snippets**: learn from similar tools and improve how papers and passages are found.
 
 The full plan is in the [roadmap](docs/ROADMAP.zh.md) (Chinese); how it works inside is in the [architecture](docs/ARCHITECTURE.zh.md) (Chinese). Feature ideas are welcome as [issues](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) and pull requests; for failed downloads or publisher requests use the matching issue template, and to add publisher rules yourself see [school/CONTRIBUTING.md](school/CONTRIBUTING.md).
 

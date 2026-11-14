@@ -1,0 +1,11 @@
+{
+  "code": "maren",
+  "name": "MAREN",
+  "country": "MW",
+  "registration_authorities": ["https://maren.ac.mw"],
+  "chooser_labels": ["MAREN Identity Federation", "MAREN"],
+  "chooser_pattern": "(?-i:\\bMAREN\\b)",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "http://federation.maren.ac.mw/metadata/national-fede-metadata.xml"
+}

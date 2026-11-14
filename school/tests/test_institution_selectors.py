@@ -1,6 +1,7 @@
 """Institution selection is driven by the user's configured name; the package names no school."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import unittest
@@ -103,6 +104,12 @@ class EntityIdEntryTests(unittest.TestCase):
         for text in (ENTITY + "2", ENTITY.replace("example", "other"), "https://idp.example.edu.cn/idp", ""):
             self.assertFalse(carries(text, ENTITY), text)
         self.assertFalse(carries(ENTITY, ""))
+        # By its SHA-1, as discovery services name entries (2026-11-14).
+        hashed = "{sha1}" + hashlib.sha1(ENTITY.encode()).hexdigest()
+        for text in (hashed, f'data-id="{hashed}"', "%7Bsha1%7D" + hashed[6:]):
+            self.assertTrue(carries(text, ENTITY), text)
+        self.assertFalse(carries("{sha1}" + hashlib.sha1(b"https://idp.other.edu.cn/idp/shibboleth").hexdigest(), ENTITY))
+        self.assertFalse(carries(hashed + "0", ENTITY))
 
     def chooser(self, items, config=None):
         d = downloader("示例大学", config=config or {"school_name": "示例大学", "school_name_en": "Example University",

@@ -1,0 +1,11 @@
+{
+  "code": "aaf",
+  "name": "AAF",
+  "country": "AU",
+  "registration_authorities": ["https://aaf.edu.au"],
+  "chooser_labels": ["Australian Access Federation", "AAF"],
+  "chooser_pattern": "\\bAustralian\\s+Access\\s+Federation\\b|(?-i:\\bAAF\\b)",
+  "discovery_hosts": [],
+  "service_domains": ["ds.aaf.edu.au"],
+  "metadata_url": "https://md.aaf.edu.au/aaf-edugain-export-metadata.xml"
+}

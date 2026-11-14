@@ -1,0 +1,11 @@
+{
+  "code": "caf",
+  "name": "CAF",
+  "country": "CA",
+  "registration_authorities": ["http://www.canarie.ca"],
+  "chooser_labels": ["Canadian Access Federation", "CAF", "Fédération canadienne d'accès"],
+  "chooser_pattern": "\\bCanadian\\s+Access\\s+Federation\\b|F[ée]d[ée]ration\\s+canadienne\\s+d.acc[eè]s|(?-i:\\bCAF\\b)",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://caf-shib2ops.ca/CoreServices/edugain_caf_metadata_signed.xml"
+}

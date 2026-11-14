@@ -1,0 +1,11 @@
+{
+  "code": "fidern",
+  "name": "FIDERN",
+  "country": "ZM",
+  "registration_authorities": ["https://fidern.ac.zm"],
+  "chooser_labels": ["FIDERN"],
+  "chooser_pattern": "\\bFIDERN\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://rr.fidern.ac.zm/signedmetadata/federation/fidern/metadata.xml"
+}

@@ -1,0 +1,11 @@
+{
+  "code": "minga",
+  "name": "MINGA",
+  "country": "EC",
+  "registration_authorities": ["https://minga.cedia.org.ec"],
+  "chooser_labels": ["MINGA"],
+  "chooser_pattern": "(?-i:\\bMINGA\\b)",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://minga.cedia.org.ec/metadata/minga-metadata-edugain.xml"
+}

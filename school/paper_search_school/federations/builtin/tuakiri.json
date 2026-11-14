@@ -1,0 +1,11 @@
+{
+  "code": "tuakiri",
+  "name": "Tuakiri",
+  "country": "NZ",
+  "registration_authorities": ["https://tuakiri.ac.nz/"],
+  "chooser_labels": ["Tuakiri New Zealand Access Federation", "Tuakiri"],
+  "chooser_pattern": "\\bTuakiri\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://directory.tuakiri.ac.nz/metadata/tuakiri-edugain-export.xml"
+}

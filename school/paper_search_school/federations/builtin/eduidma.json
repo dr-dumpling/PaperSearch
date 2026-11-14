@@ -1,0 +1,11 @@
+{
+  "code": "eduidma",
+  "name": "eduIDM",
+  "country": "MA",
+  "registration_authorities": ["https://eduidm.ma"],
+  "chooser_labels": ["eduIDM.ma", "eduIDM"],
+  "chooser_pattern": "\\beduIDM\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://www.eduidm.ma/metadata/eduidm.xml"
+}

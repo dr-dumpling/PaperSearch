@@ -4,6 +4,7 @@ Part of ``PublisherBatchDownloader`` (batch.py), which combines the mixins."""
 
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 import unicodedata
@@ -1314,14 +1315,17 @@ class InstitutionMixin:
     @staticmethod
     def _carries_entity_id(text: str, entity_id: str) -> bool:
         """True when ``text`` (an entry's link, data attributes and hidden fields) names
-        exactly ``entity_id``, plain, URL-encoded once or twice, or JSON-escaped."""
+        exactly ``entity_id``, plain, URL-encoded once or twice, or JSON-escaped, or by
+        its SHA-1 as discovery services write it ("{sha1}<hex>": a chooser listing a
+        school's federation entry and its OpenAthens one under one name, 2026-11-14)."""
         if not entity_id or not text:
             return False
         decoded = [text]
         for _ in range(2):
             decoded.append(unquote(decoded[-1]))
         pattern = re.compile(r"(?<![\w.:/-])" + re.escape(entity_id) + r"(?![\w.:/-])")
-        return any(pattern.search(t.replace("\\/", "/")) for t in decoded)
+        hashed = re.compile(r"\{sha1\}" + hashlib.sha1(entity_id.encode()).hexdigest() + r"(?![0-9a-f])", re.I)
+        return any(pattern.search(t.replace("\\/", "/")) or hashed.search(t) for t in decoded)
 
     def _on_school_login_page(self, url: str) -> bool:
         """The configured school's own login page on a service shared by many

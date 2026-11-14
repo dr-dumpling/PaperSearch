@@ -1,0 +1,11 @@
+{
+  "code": "eduidbf",
+  "name": "eduID.bf",
+  "country": "BF",
+  "registration_authorities": ["https://www.eduid.bf"],
+  "chooser_labels": ["eduID.bf", "Burkina Faso Identity Federation"],
+  "chooser_pattern": "\\beduID\\.bf\\b|\\bBurkina\\s+Faso\\s+Identity\\s+Federation\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://registry.eduid.africa/signedmetadata/federation/FASOREN/metadata.xml"
+}

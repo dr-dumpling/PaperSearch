@@ -1,0 +1,11 @@
+{
+  "code": "ternet",
+  "name": "TERNET IF",
+  "country": "TZ",
+  "registration_authorities": ["https://tif.ternet.or.tz/"],
+  "chooser_labels": ["TERNET Identity Federation", "TERNET IF"],
+  "chooser_pattern": "\\bTERNET\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://tif.ternet.or.tz/metadata.xml"
+}

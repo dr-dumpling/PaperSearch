@@ -1,0 +1,11 @@
+{
+  "code": "eduidtg",
+  "name": "eduID.tg",
+  "country": "TG",
+  "registration_authorities": ["https://www.eduid.tg"],
+  "chooser_labels": ["eduID.tg"],
+  "chooser_pattern": "\\beduID\\.tg\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://registry.eduid.africa/signedmetadata/federation/eduid_tg/metadata.xml"
+}
