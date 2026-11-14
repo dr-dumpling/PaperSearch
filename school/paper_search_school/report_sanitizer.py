@@ -49,7 +49,7 @@ class Redactor:
         self.terms: set[str] = set()
         self.school_hosts: set[str] = set()
         cfg = config or {}
-        for key in ('school_name', 'school_name_en', 'idp_entity_id', 'institution_domain', 'idp_domain'):
+        for key in ('school_name', 'school_name_en', 'school_entry_name', 'idp_entity_id', 'institution_domain', 'idp_domain'):
             value = str(cfg.get(key) or '').strip()
             if len(value) > 2:
                 self.terms.add(value)

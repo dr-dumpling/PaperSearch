@@ -24,12 +24,12 @@ def ledger_path() -> Path:
 
 
 def school_key(config: dict[str, Any]) -> str:
-    """The configured school: its entityID, else its CARSI name; "" without one."""
-    for field in ("idp_entity_id", "school_name", "school_name_en"):
-        value = " ".join(str(config.get(field) or "").split())
-        if value:
-            return value.lower()
-    return ""
+    """The configured school: its entityID and its name, else either; "" without
+    one. The name keeps apart schools signing in through one shared entry (a
+    national one: Norway's, 2026-11-13), whose entityID is the same for all."""
+    entity, name, english = (" ".join(str(config.get(field) or "").split())
+                             for field in ("idp_entity_id", "school_name", "school_name_en"))
+    return " | ".join(part for part in (entity, name or english) if part).lower()
 
 
 def _key(publisher: str, school: str) -> str:

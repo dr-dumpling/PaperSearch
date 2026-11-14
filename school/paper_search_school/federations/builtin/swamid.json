@@ -1,0 +1,11 @@
+{
+  "code": "swamid",
+  "name": "SWAMID",
+  "country": "SE",
+  "registration_authorities": ["http://www.swamid.se/"],
+  "chooser_labels": ["SWAMID"],
+  "chooser_pattern": "\\bSWAMID\\b",
+  "discovery_hosts": [],
+  "service_domains": ["swamid.se"],
+  "metadata_url": "http://mds.swamid.se/md/swamid-edugain-1.0.xml"
+}

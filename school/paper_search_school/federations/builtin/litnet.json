@@ -1,0 +1,11 @@
+{
+  "code": "litnet",
+  "name": "LITNET FEDI",
+  "country": "LT",
+  "registration_authorities": ["https://fedi.litnet.lt"],
+  "chooser_labels": ["LITNET FEDI"],
+  "chooser_pattern": "\\bLITNET\\b",
+  "discovery_hosts": [],
+  "service_domains": ["fedi.litnet.lt"],
+  "metadata_url": "https://fedi.litnet.lt/md/metadata.litnet-edugain.xml"
+}

@@ -1,0 +1,11 @@
+{
+  "code": "haka",
+  "name": "HAKA",
+  "country": "FI",
+  "registration_authorities": ["http://www.csc.fi/haka"],
+  "chooser_labels": ["HAKA", "Haka Federation"],
+  "chooser_pattern": "\\bHaka\\b",
+  "discovery_hosts": [],
+  "service_domains": ["haka.funet.fi"],
+  "metadata_url": "https://haka.funet.fi/metadata/edugain-metadata.xml"
+}

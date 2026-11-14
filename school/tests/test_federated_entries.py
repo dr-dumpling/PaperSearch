@@ -384,6 +384,22 @@ class FederatedEntryTests(unittest.TestCase):
         self.assertEqual(self.requests, [article, sso])
 
 
+    def test_sage_institution_tab_already_open_under_an_overlay_is_left_as_it_is(self):
+        # 2026-11-14: the tab was open (aria-expanded="true"), a click on it timed out and ended the article.
+        article = "https://journals.sagepub.com/doi/10.1177/0000000001"
+        sso = "https://journals.sagepub.com/action/ssostart?redirectUri=%2Fdoi%2F10.1177%2F0000000001"
+        self.html = f"""<a href="#core-collateral-purchase-access" style="position:relative"
+              onclick="document.querySelector('#panel').innerHTML='<button type=&quot;button&quot; aria-expanded=&quot;true&quot;>Institution</button>';
+                       setTimeout(() => document.querySelector('#panel').insertAdjacentHTML('beforeend',
+                         '<a href=&quot;{sso}&quot;>Access through your institution</a>'), 1500)">Access</a>
+            <div style="position:fixed;inset:0;background:transparent;z-index:9"></div><div id="panel"></div>"""
+        self.page.goto(article)
+        result = DownloadResult(doi="10.1177/0000000001", status="failed")
+        self.downloader("sage")._click_sso_entry(self.page, result)
+        self.assertEqual([e["state"] for e in result.events], ["sage_access_click_dispatched", "sso_entry_clicked"])
+        self.assertEqual(self.requests, [article, sso])
+
+
 class ChooserPageTests(unittest.TestCase):
     def page(self, url, password=False):
         page = Mock(); page.url = url

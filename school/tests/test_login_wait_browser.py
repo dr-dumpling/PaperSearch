@@ -179,6 +179,13 @@ def test_a_username_first_page_is_the_schools_login_and_a_portal_search_box_is_n
             assert state()["login"] is False
             page.set_content('<input type="text" name="username" style="display:none"><p>Welcome back</p>')
             assert state()["login"] is False
+            # Choosing how to sign in (SimpleSAMLphp): one box per way, its button hidden.
+            page.set_content('<form><div class="auth-box"><h2>Fixture account</h2>'
+                             '<input type="submit" name="sourceChoice[fixture]" style="display:none"></div>'
+                             '<div class="auth-box"><h2>National ID</h2>'
+                             '<input type="submit" name="sourceChoice[national]" style="display:none"></div></form>')
+            assert state()["login"] is True
+            assert d._idp_controls(page) is True
         finally:
             context.close()
             browser.close()

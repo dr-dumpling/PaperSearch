@@ -1,0 +1,11 @@
+{
+  "code": "roedunetid",
+  "name": "RoEduNetID",
+  "country": "RO",
+  "registration_authorities": ["http://eduid.roedu.net"],
+  "chooser_labels": ["RoEduNetID"],
+  "chooser_pattern": "\\bRoEduNet\\s*ID\\b",
+  "discovery_hosts": [],
+  "service_domains": ["eduid.roedu.net"],
+  "metadata_url": "https://sp.roedu.net/roedunetid-metadata-idp-signed.xml"
+}

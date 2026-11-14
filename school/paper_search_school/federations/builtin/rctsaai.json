@@ -1,0 +1,11 @@
+{
+  "code": "rctsaai",
+  "name": "RCTSaai",
+  "country": "PT",
+  "registration_authorities": ["https://www.fccn.pt"],
+  "chooser_labels": ["RCTSaai"],
+  "chooser_pattern": "\\bRCTS\\s*aai\\b",
+  "discovery_hosts": [],
+  "service_domains": ["rctsaai.pt"],
+  "metadata_url": "https://registry.rctsaai.pt/rr/signedmetadata/federation/edugain/metadata.xml"
+}

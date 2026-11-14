@@ -53,9 +53,9 @@ paper-search school login --doi <学校订阅的一篇文章的 DOI>
 paper-search-school setup --institution "用户说的校名" [--also-name "学校的英文正式名称"]
 ```
 
-- 目前支持中国内地和澳门（CARSI）、香港（HKAF）、新加坡（SGAF）、日本（GakuNin）、韩国（KAFE）、马来西亚（SIFULAN）、印度（INFED）、土耳其（YETKİM）、斯里兰卡（LIAF）、孟加拉（TIGERfed）、巴基斯坦（PKIFED）、阿曼（OMREN）、中国内地科研机构（CSTCloud）、沙特阿拉伯（Maeen）、塞浦路斯（CyNet）、以色列（IUCC）、伊朗（IRFED）、阿塞拜疆（AzScienceNet）、英国（UK federation）、爱尔兰（Edugate）、法国（RENATER）、荷兰（SURFconext）、比利时（Belnet）、卢森堡（eduID Luxembourg）、美国（InCommon）的学术身份联盟，以及只经 OpenAthens 登录的学校。`--institution` 可以是校名（任何语言）、学校域名或 entityID；后端在各联盟的学校名单里查，确定是哪一所才保存，并保存它所属的联盟。
-- 联盟名单里的校名是当地语言和英文（中国内地、澳门有中文，日本有日文，土耳其有土耳其文，法国、荷兰、比利时等欧洲国家多有当地语言名，香港、韩国、新加坡、马来西亚、南亚和美国多只有英文）。用户说的校名不是这两种时，加 `--also-name` 给出学校的英文正式名称；不确定英文名就不加。
-- 有些学校经多校共用的登录入口登录（如以色列的大学、中国内地的科研院所、巴基斯坦的部分学校），联盟名单里只有它们的域名：按校名查不到时，用 `--institution <校名> --also-name <学校官网域名>` 再查一次，程序会按域名找到入口，并按所给校名在出版社搜索。
+- 目前支持中国内地和澳门（CARSI）、香港（HKAF）、新加坡（SGAF）、日本（GakuNin）、韩国（KAFE）、马来西亚（SIFULAN）、印度（INFED）、土耳其（YETKİM）、斯里兰卡（LIAF）、孟加拉（TIGERfed）、巴基斯坦（PKIFED）、阿曼（OMREN）、中国内地科研机构（CSTCloud）、沙特阿拉伯（Maeen）、塞浦路斯（CyNet）、以色列（IUCC）、伊朗（IRFED）、阿塞拜疆（AzScienceNet）、英国（UK federation）、爱尔兰（Edugate）、法国（RENATER）、荷兰（SURFconext）、比利时（Belnet）、卢森堡（eduID Luxembourg）、北欧、中欧、南欧和东欧各国（各联盟见 `federation-support.md`）、美国（InCommon）的学术身份联盟，以及只经 OpenAthens 登录的学校。`--institution` 可以是校名（任何语言）、学校域名或 entityID；后端在各联盟的学校名单里查，确定是哪一所才保存，并保存它所属的联盟。
+- 联盟名单里的校名是当地语言和英文（中国内地、澳门有中文，日本有日文，土耳其有土耳其文，欧洲各国多有当地语言名，香港、韩国、新加坡、马来西亚、南亚和美国多只有英文）。用户说的校名不是英文时，加 `--also-name` 给出学校的英文正式名称（出版社多按英文名列学校）；不确定英文名就不加。
+- 有些学校经多校共用的登录入口登录（如以色列、挪威、克罗地亚的大学，中国内地的科研院所，巴基斯坦、拉脱维亚的部分学校），联盟名单里只有它们的域名：按校名查不到时，用 `--institution <校名> --also-name <学校官网域名>` 再查一次，程序会按域名找到入口，并按所给校名在出版社搜索。
 - 返回 `school_ambiguous` 时，把 `candidates`（含学校名、联盟、域名）列给用户选，再用所选学校的 `entity_id` 作为 `--institution` 重新运行；只有一个候选也要问，那是名字不完全一致的学校。`school_not_found` 时请用户换成学校正式名称、英文名或学校域名，仍找不到就按回复里的 `reasons` 如实说明：这所学校可能没有接入学术身份联盟或 OpenAthens，学校订阅下载无法为它登录；`federation_not_supported` 是找到了学校但它所属的联盟还不支持，如实告诉用户；`school_list_unavailable` 是名单取不到，稍后重试。
 - `--carsi --institution` 只在 CARSI 名单里查（错误码 `carsi_school_*`）；查 CARSI 名单：`paper-search-school setup --list-carsi-schools 关键词`。
 - `setup --check` 的 `school` 项为 `missing` 时，说明只存了学校名，按提示重新运行上面的命令。

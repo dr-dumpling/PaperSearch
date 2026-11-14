@@ -1,0 +1,11 @@
+{
+  "code": "wayf",
+  "name": "WAYF",
+  "country": "DK",
+  "registration_authorities": ["https://www.wayf.dk"],
+  "chooser_labels": ["WAYF"],
+  "chooser_pattern": "\\bWAYF\\b",
+  "discovery_hosts": [],
+  "service_domains": ["wayf.dk"],
+  "metadata_url": "https://metadata.wayf.dk/wayf-edugain-metadata.xml"
+}

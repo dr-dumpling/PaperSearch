@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 import time
+import unicodedata
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse
 
@@ -526,6 +527,22 @@ class InstitutionMixin:
 
     # CARSI writes some English names with a curly apostrophe ("Xi’an"), publisher lists a straight one.
     _QUOTES = str.maketrans({"\u2019": "'", "\u2018": "'"})
+    _FULL_WIDTH_BRACKETS = str.maketrans({"\uff08": "(", "\uff09": ")"})
+
+    @classmethod
+    def _comparable(cls, text: str) -> str:
+        """A name as entries and the school's names are compared: lower case, with
+        no accent (Latin, Greek) or punctuation, brackets kept (they hold a school's
+        other names). Publishers write names their own way: "Kita University St
+        Hanako" for a school listed as 'Kita University "St. Hanako"' (2026-11-13)."""
+        text = str(text or "").translate(cls._FULL_WIDTH_BRACKETS).replace("&", " and ")
+        text = re.sub(r"[\u0300-\u036f]", "", unicodedata.normalize("NFD", text))
+        text = re.sub(r"[^\w\s()]+|_", " ", unicodedata.normalize("NFC", text))
+        return " ".join(text.split()).lower()
+
+    # A login server's words after the school's name ("<entry> Single Sign-On Service",
+    # a national entry on Springer Nature's list, 2026-11-14), as ``_comparable`` writes them.
+    _LOGIN_SERVER_WORDS = r"(?: (?:idp|sso|identity provider|single sign on(?: service)?|login service))?"
 
     def _institution_match_score(self, text: str) -> int:
         """3 = exactly the configured school, 2 = "<school> University" or "<school>,
@@ -535,7 +552,7 @@ class InstitutionMixin:
         Parentheses that only repeat the school's other names keep the score of
         the name before them: Elsevier lists a school as "<Chinese name>(<English
         name>) (<English name>)", next to other schools whose names contain its own."""
-        text = " ".join(str(text or "").translate(self._QUOTES).split()).lower().strip(" .,:;")
+        text = self._comparable(text)
         # Long English names fit: "华中科技大学(Huazhong University of Science and Technology) (...)".
         aliased = re.fullmatch(r"([^()]+?)((?:\s*\([^()]{1,120}\))+)", text)
         if aliased:
@@ -548,12 +565,13 @@ class InstitutionMixin:
         if self._name_residue(text) == "":
             return 3  # only the school's own names ("<Chinese name> <English name>")
         for name in self._institution_names():
-            name = re.sub(r"^the ", "", " ".join(name.translate(self._QUOTES).split()).lower())
+            name = re.sub(r"^the ", "", self._comparable(name))
             if not name:
                 continue
             if text == name:
                 best = max(best, 3)
-            elif re.fullmatch(re.escape(name) + r"(?: university)?(?:,? (?:the )?librar(?:y|ies))?(?: \([^)]{1,40}\))?", text):
+            elif re.fullmatch(re.escape(name) + r"(?: university)?(?:,? (?:the )?librar(?:y|ies))?(?: \([^)]{1,40}\))?"
+                              + self._LOGIN_SERVER_WORDS, text):
                 best = max(best, 2)
             elif name in text:
                 best = max(best, 1)
@@ -593,9 +611,9 @@ class InstitutionMixin:
     def _name_residue(self, text: str) -> str | None:
         """What is left of ``text`` (lower case) once the school's names are taken
         out, as words; None when it holds none of them."""
-        names = sorted({re.sub(r"^the ", "", " ".join(n.translate(self._QUOTES).split()).lower())
-                        for n in self._institution_names()} - {""}, key=len, reverse=True)
-        rest, found = f" {text} ", False
+        names = sorted({re.sub(r"^the ", "", self._comparable(n)) for n in self._institution_names()} - {""},
+                       key=len, reverse=True)
+        rest, found = f" {self._comparable(text)} ", False
         for name in names:
             if name in rest:
                 rest, found = rest.replace(name, " "), True
@@ -628,7 +646,7 @@ class InstitutionMixin:
         def searched_here(event: dict) -> bool:
             # A record keeps 500 characters: a long address (Elsevier ID's) is cut short in it.
             where = str(event.get("detail", "")).split(" @ ", 1)[-1]
-            return event["state"] == "auto_institution_search" and len(where) > 10 and url.startswith(where)
+            return event["state"] == "auto_institution_search" and self._same_address(where, url)
 
         if not any(searched_here(e) for e in result.events):
             return False  # nothing searched here: a page's other lists say nothing
@@ -637,7 +655,7 @@ class InstitutionMixin:
         # unless its publisher marks it as signing in no one (IP, VPN, email).
         may_sign_in = [str(it.get("t") or "") for score, it in scored if score == 1
                        and self.adapter.institution_entry_signs_in(unquote(str(it.get("ids") or ""))) is not False]
-        residues = [self._name_residue(" ".join(o.translate(self._QUOTES).split()).lower()) for o in may_sign_in]
+        residues = [self._name_residue(o) for o in may_sign_in]
         if any(r is not None and self._OWN_UNIT.match(r) for r in residues):
             return False  # perhaps the school's own library or campus: left to the user
         settled = self.SEARCH_SETTLED_SEC
@@ -651,7 +669,7 @@ class InstitutionMixin:
                     raise
                 return False
             baseline = getattr(result, "_search_baseline", None)
-            before = baseline[1] if isinstance(baseline, tuple) and baseline[0] == url else set()
+            before = baseline[1] if isinstance(baseline, tuple) and self._same_address(baseline[0], url) else set()
             # Only what the search added: the page's own links listed before it are no results
             # (2026-11-13: "About Elsevier", "Cookie settings" ended four searches still loading).
             unrelated = sorted({str(it.get("t") or "")[:60] for score, it in scored if score == 0
@@ -667,10 +685,14 @@ class InstitutionMixin:
                 return False  # results not shown yet: looked at again next pass
         now = time.time()
         seen = getattr(result, "_search_miss", None)
-        if not seen or seen[0] != url or seen[1] != evidence:
+        if not seen or not self._same_address(seen[0], url) or seen[1] != evidence:
             result._search_miss = (url, evidence, now)
             return False
         if now - seen[2] < settled:
+            return False
+        # The publisher may list the school by another of its names (2026-11-13: a
+        # Swedish name found twenty other schools; the school is listed in English).
+        if self._search_again_by_another_name(page, result, url, list(self._institution_names()), settled=True):
             return False
         self._event(result, "auto_institution_not_found",
                     f"{self.institution_query} (search: {evidence[:160]}) @ {url}")
@@ -680,32 +702,51 @@ class InstitutionMixin:
     # How long a search by one of the school's names may show nothing before the next is typed.
     SEARCH_RETRY_SEC = 6
 
-    def _search_queries(self, names: list[str]) -> list[str]:
-        """The school's names to search by, in Latin letters first (straight apostrophes)."""
-        typed = [n.translate(self._QUOTES) for n in names]
-        return list(dict.fromkeys([q for q in typed if q.isascii()] + [q for q in typed if not q.isascii()]))
+    @staticmethod
+    def _same_address(recorded: str, url: str) -> bool:
+        """``url`` is the page at ``recorded`` (a record may cut a long address
+        short), percent-encoding aside: a chooser rewrote its own address without
+        it once the school was typed (2026-11-14)."""
+        recorded, url = unquote(str(recorded or "")), unquote(str(url or ""))
+        return len(recorded) > 10 and url.startswith(recorded)
 
-    def _search_again_by_another_name(self, page: Any, result: DownloadResult, url: str, names: list[str]) -> bool:
+    def _search_queries(self, names: list[str]) -> list[str]:
+        """The school's names to search by (straight apostrophes): its English name
+        first, then the others in Latin letters, then the rest, its shared login
+        entry's own name last. A school's own language may be written in Latin
+        letters with no accent ("Kitan yliopisto", 2026-11-13), and publishers
+        list schools in English more often."""
+        typed = [n.translate(self._QUOTES) for n in names]
+        english, entry = (str(self.config.get(key) or "").strip().translate(self._QUOTES)
+                          for key in ("school_name_en", "school_entry_name"))
+        schools_own = [q for q in typed if q != entry]
+        return list(dict.fromkeys([q for q in schools_own if q == english] + [q for q in schools_own if q.isascii()]
+                                  + [q for q in schools_own if not q.isascii()] + [q for q in typed if q == entry]))
+
+    def _search_again_by_another_name(self, page: Any, result: DownloadResult, url: str, names: list[str],
+                                      settled: bool = False) -> bool:
         """The search by one of the school's names has shown nothing for
-        ``SEARCH_RETRY_SEC`` (its list closed, or no entry beyond the page's own):
+        ``SEARCH_RETRY_SEC`` (its list closed, or no entry beyond the page's own),
+        or ``settled`` results without the school (``_search_lists_no_school``):
         the box is cleared and the next name typed, once each (2026-11-13: a school
         listed by its French name, searched by its English one, found nothing).
         A box holding anything but our own query is the user's and stays."""
         box_at = getattr(result, "_search_box", None)
-        if (not isinstance(box_at, tuple) or box_at[0] != url
-                or time.time() - float(getattr(result, "_search_typed_at", 0) or 0) < self.SEARCH_RETRY_SEC):
+        if (not isinstance(box_at, tuple) or not self._same_address(box_at[0], url)
+                or (not settled and time.time() - float(getattr(result, "_search_typed_at", 0) or 0)
+                    < self.SEARCH_RETRY_SEC)):
             return False
         tried = []
         for event in result.events:
             query, _, where = str(event.get("detail", "")).partition(" @ ")
-            if event["state"] == "auto_institution_search" and len(where) > 10 and url.startswith(where):
+            if event["state"] == "auto_institution_search" and self._same_address(where, url):
                 tried.append(query)
         left = [q for q in self._search_queries(names) if q not in tried]
         if not left:
             return False
         baseline = getattr(result, "_search_baseline", None)
-        before = baseline[1] if isinstance(baseline, tuple) and baseline[0] == url else set()
-        if not self._search_list_closed(page, result, url) and self._entry_texts(page) - before:
+        before = baseline[1] if isinstance(baseline, tuple) and self._same_address(baseline[0], url) else set()
+        if not settled and not self._search_list_closed(page, result, url) and self._entry_texts(page) - before:
             return False  # results shown: they decide
         box = page.locator(box_at[1]).first
         try:
@@ -727,7 +768,7 @@ class InstitutionMixin:
         no results are shown, whatever else the page lists (2026-11-13: a search
         showing nothing, its page's links taken for results)."""
         box = getattr(result, "_search_box", None)
-        if not isinstance(box, tuple) or box[0] != url:
+        if not isinstance(box, tuple) or not self._same_address(box[0], url):
             return False
         try:
             return page.evaluate("""(selector) => {
@@ -778,9 +819,10 @@ class InstitutionMixin:
             if without:
                 scored = [(score, it) for score, it in scored if not any(it is w for w in without)]
                 if not any(score >= 2 for score, _ in scored):
-                    self._event(result, "auto_institution_not_found",
-                                f"{self.institution_query} (listed only without a school sign-in: "
-                                f"{len(without)} entr{'y' if len(without) == 1 else 'ies'}) @ {url}")
+                    if getattr(result, "_institution_not_listed", False) is not True:  # once, not every pass
+                        self._event(result, "auto_institution_not_found",
+                                    f"{self.institution_query} (listed only without a school sign-in: "
+                                    f"{len(without)} entr{'y' if len(without) == 1 else 'ies'}) @ {url}")
                     result._institution_not_listed = True
                     return False
         top = max([score for score, _ in scored] or [0])

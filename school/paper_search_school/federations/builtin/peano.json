@@ -1,0 +1,11 @@
+{
+  "code": "peano",
+  "name": "PEANO",
+  "country": "UA",
+  "registration_authorities": ["https://peano.uran.ua"],
+  "chooser_labels": ["PEANO"],
+  "chooser_pattern": "\\bPEANO\\b",
+  "discovery_hosts": [],
+  "service_domains": ["peano.uran.ua"],
+  "metadata_url": "https://idp.uran.ua/rr3/signedmetadata/federation/PEANO/metadata.xml"
+}

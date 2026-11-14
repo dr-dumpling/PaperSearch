@@ -1,0 +1,11 @@
+{
+  "code": "iamres",
+  "name": "iAMRES",
+  "country": "RS",
+  "registration_authorities": ["https://federacija.iamres.ac.rs/"],
+  "chooser_labels": ["iAMRES"],
+  "chooser_pattern": "\\biAMRES\\b",
+  "discovery_hosts": [],
+  "service_domains": ["iamres.ac.rs"],
+  "metadata_url": "http://md.iamres.ac.rs/iamres_fed/iamres-edugain-metadata.xml"
+}

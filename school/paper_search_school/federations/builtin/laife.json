@@ -1,0 +1,11 @@
+{
+  "code": "laife",
+  "name": "LAIFE",
+  "country": "LV",
+  "registration_authorities": ["https://idp.laife.lv/"],
+  "chooser_labels": ["LAIFE"],
+  "chooser_pattern": "\\bLAIFE\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://idp.laife.lv/metadata/laife-2-up.xml"
+}

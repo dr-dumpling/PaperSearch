@@ -1,0 +1,11 @@
+{
+  "code": "feide",
+  "name": "Feide",
+  "country": "NO",
+  "registration_authorities": ["http://feide.no/"],
+  "chooser_labels": ["FEIDE", "Feide"],
+  "chooser_pattern": "\\bFeide\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://metadata.feide.no/feide-edugain-metadata.xml"
+}

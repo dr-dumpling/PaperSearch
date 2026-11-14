@@ -1,0 +1,11 @@
+{
+  "code": "taat",
+  "name": "TAAT",
+  "country": "EE",
+  "registration_authorities": ["http://taat.edu.ee"],
+  "chooser_labels": ["TAAT"],
+  "chooser_pattern": "(?-i:\\bTAAT\\b)",
+  "discovery_hosts": [],
+  "service_domains": ["taat.edu.ee"],
+  "metadata_url": "https://taat.ee/metadata/metadata.taat-to-edugain-idp%2Bsp.xml"
+}

@@ -142,10 +142,14 @@ Papers the open channels cannot get can come through your school's subscriptions
 | Asia | South Asia | India: INFED; Sri Lanka: LIAF; Bangladesh: TIGERfed; Pakistan: PKIFED |
 | Asia | West Asia | Turkey: YETKİM; Saudi Arabia: Maeen; Cyprus: CyNet; Israel: IUCC; Iran: IRFED; Azerbaijan: AzScienceNet; Oman: OMREN |
 | Europe | Western Europe | United Kingdom: UK federation; Ireland: Edugate; France: RENATER; Netherlands: SURFconext; Belgium: Belnet; Luxembourg: eduID Luxembourg |
+| Europe | Northern Europe | Denmark (with Iceland and Greenland): WAYF; Sweden: SWAMID; Finland: Haka; Norway: Feide |
+| Europe | Central Europe | Germany: DFN-AAI; Switzerland: Switch edu-ID; Austria: ACOnet; Poland: PIONIER.Id; Czechia: eduID.cz; Slovakia: safeID; Hungary: eduId.hu |
+| Europe | Southern Europe | Spain: SIR; Portugal: RCTSaai; Italy: IDEM; Greece: GRNET; Malta: RiċerkaNET; Slovenia: ArnesAAI; Croatia: AAI@EduHr; Serbia: iAMRES; Montenegro: IDeduME; North Macedonia: AAIEduMk; Albania: RASH; Bulgaria: BIF; Romania: RoEduNetID |
+| Europe | Eastern Europe | Estonia: TAAT; Latvia: LAIFE; Lithuania: LITNET FEDI; Belarus: FEBAS; Ukraine: PEANO; Moldova: LEAF |
 | Americas | North America | United States: InCommon |
 
 - Full names, school counts and tested schools of each federation: [federation support table](skills/paper-search/references/federation-support.md) (Chinese).
-- Planned, in this order: the rest of Europe (Northern, Central, Southern, Eastern), the Americas (Canada, then Latin America and the Caribbean), Oceania, and Africa last; see the [roadmap](docs/ROADMAP.zh.md) (Chinese).
+- Planned, in this order: the Americas (Canada, then Latin America and the Caribbean), Oceania, and Africa last; see the [roadmap](docs/ROADMAP.zh.md) (Chinese).
 
 - **Your school account is enough**: no keys to apply for; publisher API keys only cover Elsevier and Springer.
 - **Deep publisher adaptation**: the general download flow is deeply optimized, and more than 30 publishers have dedicated rules, one by one: where the institutional login is and how to fetch the PDF and supplementary files follow each publisher as it really is, so downloads are more accurate and fewer papers are missed. The main publishers:
@@ -237,7 +241,7 @@ Next on the list:
 1. **A better progress capsule**: better-timed reminders, with no early prompt when the school login page lets you through by itself; less of the browser briefly jumping to the front on Windows when it starts or changes pages; a cleaner look.
 2. **Parallel downloads**: papers from different publishers download at the same time, cutting the total time for dozens or hundreds of papers; each publisher's download limits still apply.
 3. **A Markdown full-text package**: besides the PDF, the original XML/HTML, a Markdown reading copy and the figures, with figure numbers, captions and in-text references matched, ready to hand to an AI for reading and citing.
-4. **School sign-in worldwide**: the academic identity federations of Asia are supported; next come the US, the UK, Australia and the federations of European countries, then every country in eduGAIN; WebVPN, EZProxy and similar where possible.
+4. **School sign-in worldwide**: the academic identity federations of Asia, Europe and the US are supported; next come Canada, Latin America and the Caribbean, Oceania, and Africa last, covering every country in eduGAIN; WebVPN, EZProxy and similar where possible.
 5. **Better paper search and full-text snippets**: learn from similar tools and improve how papers and passages are found.
 
 The full plan is in the [roadmap](docs/ROADMAP.zh.md) (Chinese); how it works inside is in the [architecture](docs/ARCHITECTURE.zh.md) (Chinese). Feature ideas are welcome as [issues](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) and pull requests; for failed downloads or publisher requests use the matching issue template, and to add publisher rules yourself see [school/CONTRIBUTING.md](school/CONTRIBUTING.md).

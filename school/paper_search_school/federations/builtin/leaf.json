@@ -1,0 +1,11 @@
+{
+  "code": "leaf",
+  "name": "LEAF",
+  "country": "MD",
+  "registration_authorities": ["http://federations.renam.md/"],
+  "chooser_labels": ["LEAF"],
+  "chooser_pattern": "(?-i:\\bLEAF\\b)",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://manage.federations.renam.md/signedmetadata/federation/LEAF-MD/metadata.xml"
+}

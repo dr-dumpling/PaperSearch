@@ -1,0 +1,11 @@
+{
+  "code": "idem",
+  "name": "IDEM",
+  "country": "IT",
+  "registration_authorities": ["http://www.idem.garr.it/"],
+  "chooser_labels": ["IDEM", "IDEM GARR AAI"],
+  "chooser_pattern": "(?-i:\\bIDEM\\b)",
+  "discovery_hosts": [],
+  "service_domains": ["idem.garr.it"],
+  "metadata_url": "http://md.idem.garr.it/metadata/idem2edugain-metadata-sha256.xml"
+}

@@ -1,0 +1,11 @@
+{
+  "code": "pionierid",
+  "name": "PIONIER.Id",
+  "country": "PL",
+  "registration_authorities": ["https://aai.pionier.net.pl"],
+  "chooser_labels": ["PIONIER.Id"],
+  "chooser_pattern": "\\bPIONIER\\.?\\s*Id\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://aai.pionier.net.pl/pionier-to-edugain.xml"
+}

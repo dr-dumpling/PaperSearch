@@ -1,0 +1,11 @@
+{
+  "code": "arnesaai",
+  "name": "ArnesAAI",
+  "country": "SI",
+  "registration_authorities": ["http://aai.arnes.si"],
+  "chooser_labels": ["ArnesAAI Slovenska izobraževalno raziskovalna federacija"],
+  "chooser_pattern": "\\bArnes\\s*AAI\\b",
+  "discovery_hosts": [],
+  "service_domains": ["ds.aai.arnes.si"],
+  "metadata_url": "https://ds.aai.arnes.si/metadata/arnesaai2edugain.signed.xml"
+}

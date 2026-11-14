@@ -1,0 +1,11 @@
+{
+  "code": "eduidcz",
+  "name": "eduID.cz",
+  "country": "CZ",
+  "registration_authorities": ["http://www.eduid.cz/"],
+  "chooser_labels": ["eduID.cz"],
+  "chooser_pattern": "\\beduID\\.cz\\b",
+  "discovery_hosts": [],
+  "service_domains": ["eduid.cz"],
+  "metadata_url": "https://metadata.eduid.cz/entities/eduid2edugain"
+}

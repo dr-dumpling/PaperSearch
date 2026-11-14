@@ -97,8 +97,16 @@ class SageAdapter(PublisherAdapter):
                            and not page.locator('a[href*="/action/ssostart"]').count()):
                         institution = page.get_by_role("button", name="Institution", exact=True)
                         if not institution_opened and institution.count() and institution.first.is_visible():
-                            institution.first.click(timeout=5_000, no_wait_after=True)
                             institution_opened = True
+                            # Open already: a click would close it, and under an overlay it
+                            # timed out and ended the article (2026-11-14).
+                            if institution.first.get_attribute("aria-expanded") != "true":
+                                try:
+                                    institution.first.click(timeout=5_000, no_wait_after=True)
+                                except Exception as exc:
+                                    if not _is_browser_error(exc, "TimeoutError"):
+                                        raise
+                                    institution.first.evaluate("el => el.click()")  # covered, as above
                         page.wait_for_timeout(500)
                     if not page.locator('a[href*="/action/ssostart"]').count():
                         d._event(result, "sage_institution_link_missing", self._panel_text(page))

@@ -1,0 +1,11 @@
+{
+  "code": "eduidhu",
+  "name": "eduId.hu",
+  "country": "HU",
+  "registration_authorities": ["http://eduid.hu"],
+  "chooser_labels": ["eduId.hu"],
+  "chooser_pattern": "\\beduID\\.hu\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://metadata.eduid.hu/2025/href-edugain.xml"
+}

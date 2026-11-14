@@ -1,0 +1,11 @@
+{
+  "code": "ricerkanet",
+  "name": "RiċerkaNET",
+  "country": "MT",
+  "registration_authorities": ["https://id.ricerka.net.mt"],
+  "chooser_labels": ["RiċerkaNET Identity Federation"],
+  "chooser_pattern": "\\bRi[cċ]erka\\s*NET\\b",
+  "discovery_hosts": [],
+  "service_domains": ["ricerka.net.mt"],
+  "metadata_url": "https://id.ricerka.net.mt/metadata/edugain-upstream.xml"
+}

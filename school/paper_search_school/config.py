@@ -28,6 +28,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # Empty: the user picks in the window.
     "school_name": "",
     "school_name_en": "",
+    # A shared login entry's own name (a national one), when the school is saved by the user's name.
+    "school_entry_name": "",
     "idp_entity_id": "",
     "idp_login_hosts": [],
     # The school's own login pages on a service shared by many schools (OpenAthens).

@@ -1,0 +1,11 @@
+{
+  "code": "rash",
+  "name": "RASH",
+  "country": "AL",
+  "registration_authorities": ["https://eduid.rash.al"],
+  "chooser_labels": ["RASH"],
+  "chooser_pattern": "(?-i:\\bRASH\\b)",
+  "discovery_hosts": [],
+  "service_domains": ["eduid.rash.al"],
+  "metadata_url": "https://eduid.rash.al/rash-metadata-agregator.xml"
+}

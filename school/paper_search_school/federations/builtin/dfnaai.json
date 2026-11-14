@@ -1,0 +1,11 @@
+{
+  "code": "dfnaai",
+  "name": "DFN-AAI",
+  "country": "DE",
+  "registration_authorities": ["https://www.aai.dfn.de"],
+  "chooser_labels": ["DFN-AAI", "DFN AAI"],
+  "chooser_pattern": "\\bDFN(?:[- ]AAI)?\\b",
+  "discovery_hosts": [],
+  "service_domains": ["aai.dfn.de"],
+  "metadata_url": "https://www.aai.dfn.de/fileadmin/metadata/dfn-aai-4edugain-metadata.xml"
+}

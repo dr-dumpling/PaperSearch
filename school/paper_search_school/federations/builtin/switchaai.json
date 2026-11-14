@@ -1,0 +1,11 @@
+{
+  "code": "switchaai",
+  "name": "Switch edu-ID",
+  "country": "CH",
+  "registration_authorities": ["http://rr.aai.switch.ch/"],
+  "chooser_labels": ["Switch edu-ID", "SWITCHaai"],
+  "chooser_pattern": "\\bSWITCH\\s*aai\\b|\\bSwitch\\s+edu-?ID\\b",
+  "discovery_hosts": [],
+  "service_domains": ["switch.ch"],
+  "metadata_url": "http://metadata.aai.switch.ch/metadata.edugain.xml"
+}

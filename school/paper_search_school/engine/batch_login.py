@@ -704,10 +704,16 @@ class LoginMixin:
             return f"{name}: {', '.join(label[:40] for label in entries[:6])}"
         if self._on_publisher_host(str(getattr(page, "url", "") or "")):
             listing = page.locator(self._FEDERATION_LINK_LIST).first
-            if listing.is_visible() is True:
-                entries = [label.strip() for label in listing.get_by_role("link").all_text_contents() if label.strip()]
-                if len(entries) >= 2 and not any(federation.matches(label) for label in entries):
-                    return f"federation links: {', '.join(label[:40] for label in entries[:6])}"
+            try:
+                if listing.is_visible() is True:
+                    entries = [label.strip() for label in listing.get_by_role("link").all_text_contents() if label.strip()]
+                    if len(entries) >= 2 and not any(federation.matches(label) for label in entries):
+                        return f"federation links: {', '.join(label[:40] for label in entries[:6])}"
+            except Exception as exc:
+                # A read the browser could not answer while the page changed (a
+                # publisher's chooser, 2026-11-14): settles nothing, looked at again next pass.
+                if not _is_browser_error(exc):
+                    raise
         return ""
 
     def _openathens_lacks_school(self, page: Any) -> bool:
@@ -736,6 +742,7 @@ class LoginMixin:
         r"|can't find your institution|access to this resource has been restricted by your organization|oa-ap-4032"
         r"|不支持的请求|does not have access to this resource|message security error|reported an idp error"
         r"|an error occurred\. contact your administrator|application not authorized to use cas"
+        r"|metadata ?not ?found|没有找到元信息"
         r"|temporarily unavailable|verify you are human|are you a robot|checking your browser|正在进行安全验证", re.I)
 
     def _login_block_reason(self, page: Any) -> str:
@@ -838,6 +845,12 @@ class LoginMixin:
         # ("Application Not Authorized to Use CAS", 2026-11-13).
         if "application not authorized to use cas" in haystack and self._is_idp_host(urlparse(current_url).netloc):
             return "institution_not_registered"
+        # SimpleSAMLphp as the school's identity provider, the publisher not listed there:
+        # "Metadata not found" in the browser's language, its "MetadataNotFound" line in
+        # any ("没有找到元信息" on a Chinese browser, 2026-11-13).
+        if (re.search(r"metadata ?not ?found|没有找到元信息", haystack)
+                and self._is_idp_host(urlparse(current_url).netloc)):
+            return "institution_not_registered"
         if "your institution may not be enabled for this type of authentication" in haystack:
             return "institution_not_registered"
         if "can't find your institution" in haystack and "institution sign in" in haystack:
@@ -867,7 +880,10 @@ class LoginMixin:
                 && !el.readOnly && ['text', 'email'].includes(el.type) && (el.type === 'email'
                 || /username|email/i.test(el.autocomplete || '')
                 || /user|login|identifier|account|email|netid|学号|工号|账号|帐号/i.test(`${el.name} ${el.id}`)))
-            || /扫码|二维码|QR ?code|验证码|verification code/i.test((document.body && document.body.innerText || '').slice(0, 4000)),
+            || /扫码|二维码|QR ?code|验证码|verification code/i.test((document.body && document.body.innerText || '').slice(0, 4000))
+            // SimpleSAMLphp's page for choosing how to sign in, one box per way (its
+            // "multiauth" module; the buttons hidden in the boxes, 2026-11-13).
+            || !!document.querySelector('form [name^="sourceChoice["]'),
         handover: !!document.querySelector('input[name="SAMLResponse"], input[name="SAMLRequest"], input[name="RelayState"]')
             || /^\s*(?:loading|please wait|redirecting|正在跳转|跳转中|请稍候|处理中)/i.test(document.title || '')})"""
 
@@ -1456,7 +1472,9 @@ class LoginMixin:
             // account: a school's Okta page, 2026-11-11).
             const button = [...document.querySelectorAll('button,input[type=submit],input[type=button],[role=button]')]
                 .some(el => visible(el) && !el.disabled && (el.innerText || el.value || el.getAttribute('aria-label') || '').trim());
-            return input || qr || button;
+            // SimpleSAMLphp's choice of ways to sign in: boxes whose buttons are hidden (2026-11-13).
+            const choice = !!document.querySelector('form [name^="sourceChoice["]');
+            return input || qr || button || choice;
         }""") is True
 
     def _login_wait_page(self, page: Any) -> str:

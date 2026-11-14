@@ -1,0 +1,11 @@
+{
+  "code": "grnet",
+  "name": "GRNET",
+  "country": "GR",
+  "registration_authorities": ["http://aai.grnet.gr/"],
+  "chooser_labels": ["GRNET"],
+  "chooser_pattern": "\\bGRNET\\b",
+  "discovery_hosts": [],
+  "service_domains": ["aai.grnet.gr"],
+  "metadata_url": "http://md.aai.grnet.gr/aggregates/edugain-metadata.xml"
+}

@@ -1,0 +1,11 @@
+{
+  "code": "aaiedumk",
+  "name": "AAIEduMk",
+  "country": "MK",
+  "registration_authorities": ["https://rr.aaiedu.mk"],
+  "chooser_labels": ["AAIEduMk"],
+  "chooser_pattern": "\\bAAI\\s*Edu\\s*Mk\\b",
+  "discovery_hosts": [],
+  "service_domains": ["aaiedu.mk"],
+  "metadata_url": "http://aaiedu.mk/metadata.aaiedumk.xml"
+}

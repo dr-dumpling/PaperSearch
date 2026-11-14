@@ -47,6 +47,9 @@ class School:
     login_hosts: tuple[str, ...] = ()
     # Every domain the school's entry is registered for (tells the same school in two routes).
     scopes: tuple[str, ...] = field(default=(), compare=False)
+    # The login entry's own name, when the school is named as the user named it: a
+    # shared entry (a national one, "Feide") is listed by it on some choosers.
+    entry_name: str = field(default="", compare=False)
 
     def summary(self) -> dict[str, str]:
         federation = by_code(self.federation)
@@ -67,8 +70,10 @@ class Lookup:
 # --------------------------------------------------------------------------- saved
 
 def names(config: dict[str, Any]) -> tuple[str, ...]:
-    """The saved school's names: as its federation lists it, then in English."""
-    found = [str(config.get(key) or "").strip() for key in ("school_name", "school_name_en")]
+    """The saved school's names: as its federation lists it, then in English, then
+    its shared login entry's own name (a publisher's chooser listing login entries
+    lists a national one by it, 2026-11-13)."""
+    found = [str(config.get(key) or "").strip() for key in ("school_name", "school_name_en", "school_entry_name")]
     return tuple(dict.fromkeys(n for n in found if n))
 
 
@@ -141,8 +146,8 @@ def save(config: dict[str, Any], school: School) -> None:
     pages = [page for template in (federation.school_login_pages if federation else ())
              for page in ([template.replace("{scope}", scope) for scope in scopes] if "{scope}" in template
                           else [template])]
-    config.update(school_name=school.name, school_name_en=school.name_en, idp_entity_id=school.entity_id,
-                  idp_login_hosts=list(school.login_hosts), idp_login_pages=pages,
+    config.update(school_name=school.name, school_name_en=school.name_en, school_entry_name=school.entry_name,
+                  idp_entity_id=school.entity_id, idp_login_hosts=list(school.login_hosts), idp_login_pages=pages,
                   idp_domains=[d for d in scopes if "." in d],
                   publisher_institution_federation=school.federation, carsi_enabled=school.federation == "carsi")
 
@@ -254,8 +259,8 @@ _PARTS = re.compile(r"\s+[-\u2013\u2014]\s+")
 _BRACKET = re.compile(r"\(([^()]+)\)")
 # Chinese, Japanese and Korean writing, beside a name in Latin letters.
 # A word naming the login server, not the school, at the end of a listed name
-# ("<School> IdP", 2026-11-13).
-_SERVER_WORD = re.compile(r"\s+(?:IdP|Identity\s+Provider|SSO)$", re.I)
+# ("<School> IdP", "<entry> Single Sign-On Service": 2026-11-13).
+_SERVER_WORD = re.compile(r"\s+(?:IdP|Identity\s+Provider|SSO|Single\s+Sign[- ]?On(?:\s+Service)?)$", re.I)
 _CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af][\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\s・·]*")
 
 
@@ -371,11 +376,22 @@ def _from_seamlessaccess(given: list[str], config: dict[str, Any], found: _Found
                 continue
             if federation.member_list == "carsi" and carsi_listed:
                 continue  # CARSI's own list is the source for its schools
-            english = _SERVER_WORD.sub("", str((row.get("title_langs") or {}).get("en") or title)).strip()
+            english = listed_english = _SERVER_WORD.sub("", str((row.get("title_langs") or {}).get("en") or title)).strip()
+            if exact:
+                # The English name given, publishers' likelier name for the school, when the
+                # list has none of its own: the school only as part of a longer name ("<school>
+                # - Staff"), or one name in every language ("Universitat de Liman", 2026-11-13).
+                listed = {_key(v) for v in [*(row.get("title_langs") or {}).values(), title] if str(v or "").strip()}
+                own = _own_names(given)
+                other = [t for t in [*own[1:], *own[:1]] if t.isascii() and _key(t) not in listed]
+                parts = {_key(n) for n in titles}
+                english = next((t for t in other if _key(t) in parts), None) or (
+                    other[0] if other and len(listed) == 1 else listed_english)
             # The name in the school's own language when that is the one given: publishers
             # may list it so (a French name searched in English found nothing, 2026-11-13).
-            local = next((str(v) for k, v in (row.get("title_langs") or {}).items()
-                          if k != "en" and any(_key(t) == _key(v) for t in given)), english)
+            # Spaces as written once (a Greek name listed with a trailing space, 2026-11-13).
+            local = next((" ".join(str(v).split()) for k, v in (row.get("title_langs") or {}).items()
+                          if k != "en" and any(_key(t) == _key(v) for t in given)), listed_english)
             found.add(School(local, english, entity, federation.code, scopes[0] if scopes else "",
                              scopes=tuple(scopes)), exact, named=_named(given, titles))
 
@@ -447,8 +463,7 @@ def _with_login_hosts(school: School, config: dict[str, Any], data_dir: Path) ->
     listed = next((s for s, _, _ in _metadata_schools(federation, root) if s.entity_id == school.entity_id), None)
     if listed is None:
         return school
-    return School(school.name, school.name_en, school.entity_id, school.federation,
-                  school.domain or listed.domain, listed.login_hosts, school.scopes)
+    return replace(school, domain=school.domain or listed.domain, login_hosts=listed.login_hosts)
 
 
 def _named(given: Iterable[str], listed_names: Iterable[str]) -> bool:
@@ -457,16 +472,23 @@ def _named(given: Iterable[str], listed_names: Iterable[str]) -> bool:
     return any(_key(t) in keys for t in given)
 
 
+def _own_names(given: Iterable[str]) -> list[str]:
+    """What was given as the school's names: no entityID, no domain."""
+    return [t for t in given if not _is_entity_id(t) and not re.fullmatch(r"[\w-]+(?:\.[\w-]+)+", t)]
+
+
 def _named_as_given(school: School, given: list[str]) -> School:
     """A school found only by its domain, under a login entry many schools share
     (a school system's ID, a national entry: 2026-11-13), is named as the user named it: that
-    name is what publishers' choosers list it under; the user's English name
-    second when given, else the entry's."""
-    own = [t for t in given if not _is_entity_id(t) and not re.fullmatch(r"[\w-]+(?:\.[\w-]+)+", t)]
+    name is what publishers' choosers list it under. Its English name is the one
+    given beside it, accents allowed, else the first name if in Latin letters, else
+    the entry's: a name in the school's own language may be ASCII ("Kitan
+    yliopisto" beside "Kita University", 2026-11-13)."""
+    own = _own_names(given)
     if not own:
         return school
-    english = next((t for t in own if t.isascii()), school.name_en)
-    return replace(school, name=own[0], name_en=english)
+    english = next((t for t in [*own[1:], own[0]] if _plain(t).isascii()), school.name_en)
+    return replace(school, name=own[0], name_en=english, entry_name=school.name)
 
 
 def find(query: str, config: dict[str, Any], data_dir: Path, *, also: Iterable[str] = ()) -> Lookup:

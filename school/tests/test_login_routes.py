@@ -23,7 +23,11 @@ class LoginRoutesTests(unittest.TestCase):
 
     def test_kept_by_publisher_and_school_for_half_an_hour(self):
         school = login_routes.school_key(CONFIG)
-        self.assertEqual(school, "https://idp.example.edu.cn/idp/shibboleth")
+        self.assertEqual(school, "https://idp.example.edu.cn/idp/shibboleth | 红木兰大学")
+        # Schools signing in through one shared entry are kept apart by their names.
+        shared = {"idp_entity_id": "https://idp.example.no", "school_name": "Universitetet i Kita"}
+        self.assertNotEqual(login_routes.school_key(shared), login_routes.school_key({**shared, "school_name": "Bay University"}))
+        self.assertEqual(login_routes.school_key({"school_name_en": "Kita University"}), "kita university")
         self.assertTrue(login_routes.remember("Science", school, "10.1126/science.aed8207", now=1000))
         self.assertEqual(login_routes.missing_since("science", school, now=1060), "10.1126/science.aed8207")
         self.assertEqual(login_routes.missing_since("Science", "another school", now=1060), "")

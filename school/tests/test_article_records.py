@@ -168,3 +168,10 @@ class DecisionEvidenceTests(unittest.TestCase):
         cas = page("CAS Central Authentication Service\nApplication Not Authorized to Use CAS",
                    url="https://idp.example.edu.cn/cas/idp/profile/SAML2/Redirect/SSO?SAMLRequest=x")
         self.assertEqual(d._login_block_reason(cas), "institution_not_registered")
+        for text in ("Metadata not found\nUnable to locate metadata for 'https://sp.fixture-press.example/'",
+                     "没有找到元信息\n无法为https://sp.fixture-press.example/定位元信息\n"
+                     "SimpleSAML\\Error\\MetadataNotFound: METADATANOTFOUND"):
+            sso = page(text, url="https://idp.example.edu.cn/simplesaml/saml2/idp/SSOService.php?SAMLRequest=x")
+            self.assertEqual(d._login_block_reason(sso), "institution_not_registered", text)
+        # The same words on the publisher's own pages decide nothing.
+        self.assertEqual(d._login_block_reason(page("Metadata not found", url="https://www.fixture-press.example/a")), "")

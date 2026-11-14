@@ -1,0 +1,11 @@
+{
+  "code": "bif",
+  "name": "BIF",
+  "country": "BG",
+  "registration_authorities": ["https://bif.bren.bg"],
+  "chooser_labels": ["BIF"],
+  "chooser_pattern": "(?-i:\\bBIF\\b)",
+  "discovery_hosts": [],
+  "service_domains": ["bif.bren.bg"],
+  "metadata_url": "http://metadata.cc.bas.bg/rr3/signedmetadata/federation/BIF-BREN/metadata.xml"
+}

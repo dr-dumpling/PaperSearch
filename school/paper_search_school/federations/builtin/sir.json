@@ -1,0 +1,11 @@
+{
+  "code": "sir",
+  "name": "SIR",
+  "country": "ES",
+  "registration_authorities": ["http://www.rediris.es/"],
+  "chooser_labels": ["SIR", "SIR (RedIRIS)"],
+  "chooser_pattern": "(?-i:\\bSIR\\b)|\\bRedIRIS\\b",
+  "discovery_hosts": [],
+  "service_domains": ["sir.rediris.es", "sir2.rediris.es"],
+  "metadata_url": "https://www.rediris.es/sir/edugain-sir-metadata.xml"
+}

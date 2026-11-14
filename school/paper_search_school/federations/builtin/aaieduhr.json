@@ -1,0 +1,11 @@
+{
+  "code": "aaieduhr",
+  "name": "AAI@EduHr",
+  "country": "HR",
+  "registration_authorities": ["http://www.srce.hr"],
+  "chooser_labels": ["AAI@EduHr"],
+  "chooser_pattern": "\\bAAI@Edu\\.?Hr\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://login.aaiedu.hr/edugain/aaieduhr_edugain.xml"
+}

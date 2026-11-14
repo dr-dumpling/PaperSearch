@@ -60,12 +60,19 @@ class PublisherLayersNameNoFederationTests(unittest.TestCase):
     """Guard (the layering): engine/ and adapters/ never name a federation, its
     hosts or its code; they ask the configured one. Docstrings and comments may."""
 
+    # Denmark's federation is called WAYF, the general name of a school-choosing
+    # page ("Where Are You From"), which the publisher layers know on their own.
+    GENERAL_WORDS = {"wayf"}
+
     def terms(self):
         # National federations; an identity service across them (OpenAthens) is the engine's own knowledge.
         found = [f for f in federations.all_federations() if f.kind == "federation"]
-        words = re.compile(r"\b(?:" + "|".join(re.escape(f.name) for f in found) + r"|CERNET)\b")
-        texts = [label.lower() for f in found for label in f.chooser_labels]
+        names = [f.name for f in found if f.name.lower() not in self.GENERAL_WORDS]
+        words = re.compile(r"\b(?:" + "|".join(re.escape(n) for n in names) + r"|CERNET)\b")
+        texts = [label.lower() for f in found for label in f.chooser_labels if label.lower() not in self.GENERAL_WORDS]
         texts += [h for f in found for h in (*f.discovery_hosts, *f.service_domains)]
+        # Whole words only: a short name ("RASH") inside a longer word ("Crashpad") is no name.
+        texts = re.compile(r"(?<![\w-])(?:" + "|".join(re.escape(t) for t in texts) + r")(?![\w-])")
         return words, texts, {f.code for f in found}
 
     def test_engine_and_adapters(self):
@@ -80,7 +87,7 @@ class PublisherLayersNameNoFederationTests(unittest.TestCase):
                           and isinstance(node.body[0].value, ast.Constant)}
             for node in ast.walk(tree):
                 if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings:
-                    if words.search(node.value) or any(t in node.value.lower() for t in texts):
+                    if words.search(node.value) or texts.search(node.value.lower()):
                         problems.append(f"{path.name}:{node.lineno} {node.value[:60]!r}")
                 elif isinstance(node, ast.Compare):
                     for side in (node.left, *node.comparators):
@@ -218,7 +225,8 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
     def test_federations_added_by_region(self):
         # India, Turkey, Sri Lanka, Bangladesh, Pakistan, Oman; the United States (2026-11-12);
         # China's CSTCloud, Saudi Arabia, Cyprus, Israel, Iran, Azerbaijan (2026-11-13);
-        # Western Europe: the UK, Ireland, France, the Netherlands, Belgium, Luxembourg (2026-11-13).
+        # Western Europe: the UK, Ireland, France, the Netherlands, Belgium, Luxembourg (2026-11-13);
+        # Northern, Central, Southern and Eastern Europe (2026-11-13).
         for code, authority, label in (
                 ("infed", "http://inflibnet.ac.in", "INFLIBNET Access Management Federation (INFED)"),
                 ("yetkim", "https://yetkim.org.tr", "YETKIM Identity Federation"),
@@ -238,12 +246,46 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
                 ("renater", "https://federation.renater.fr", "Fédération Éducation-Recherche (Renater)"),
                 ("surfconext", "http://www.surfconext.nl", "SURFconext"),
                 ("belnet", "http://federation.belnet.be", "Belnet Federation"),
-                ("eduidlu", "http://eduid.lu", "eduID Luxembourg")):
+                ("eduidlu", "http://eduid.lu", "eduID Luxembourg"),
+                ("wayf", "https://www.wayf.dk", "WAYF"),
+                ("swamid", "http://www.swamid.se/", "SWAMID"),
+                ("haka", "http://www.csc.fi/haka", "Haka Federation"),
+                ("feide", "http://feide.no/", "FEIDE"),
+                ("dfnaai", "https://www.aai.dfn.de", "DFN-AAI"),
+                ("switchaai", "http://rr.aai.switch.ch/", "Switch edu-ID"),
+                ("aconet", "http://eduid.at", "ACOnet Identity Federation"),
+                ("pionierid", "https://aai.pionier.net.pl", "PIONIER.Id"),
+                ("eduidcz", "http://www.eduid.cz/", "eduID.cz"),
+                ("safeid", "http://safeid.sk", "safeID"),
+                ("eduidhu", "http://eduid.hu", "eduId.hu"),
+                ("sir", "http://www.rediris.es/", "SIR (RedIRIS)"),
+                ("rctsaai", "https://www.fccn.pt", "RCTSaai"),
+                ("idem", "http://www.idem.garr.it/", "IDEM GARR AAI"),
+                ("grnet", "http://aai.grnet.gr/", "GRNET"),
+                ("ricerkanet", "https://id.ricerka.net.mt", "RiċerkaNET Identity Federation"),
+                ("arnesaai", "http://aai.arnes.si", "ArnesAAI Slovenska izobraževalno raziskovalna federacija"),
+                ("aaieduhr", "http://www.srce.hr", "AAI@EduHr"),
+                ("iamres", "https://federacija.iamres.ac.rs/", "iAMRES"),
+                ("idedume", "https://federacija-idedume.ucg.ac.me/", "IDeduME"),
+                ("aaiedumk", "https://rr.aaiedu.mk", "AAIEduMk"),
+                ("rash", "https://eduid.rash.al", "RASH"),
+                ("bif", "https://bif.bren.bg", "BIF"),
+                ("roedunetid", "http://eduid.roedu.net", "RoEduNetID"),
+                ("taat", "http://taat.edu.ee", "TAAT"),
+                ("laife", "https://idp.laife.lv/", "LAIFE"),
+                ("litnet", "https://fedi.litnet.lt", "LITNET FEDI"),
+                ("febas", "https://febas.basnet.by", "FEBAS"),
+                ("peano", "https://peano.uran.ua", "PEANO"),
+                ("leaf", "http://federations.renam.md/", "LEAF")):
             federation = federations.by_code(code)
             self.assertIs(federations.by_registration_authority(authority), federation, code)
             self.assertTrue(federation.matches(label), code)
             others = [f.code for f in federations.all_federations() if f.code != code and f.matches(label)]
             self.assertEqual(others, [], code)
+        # Short all-capital names match only as written: the same words in other names do not.
+        for code, label in (("sir", "Sir Harbour College"), ("idem", "Idem Library"), ("leaf", "Leaf Institute"),
+                            ("rash", "Rash Institute"), ("bif", "Bif Network"), ("taat", "Taat College")):
+            self.assertFalse(federations.by_code(code).matches(label), code)
         listed = {"type": "idp", "title": "Harbour University",
                   "title_langs": {"en": "Harbour University", "tr": "Liman Üniversitesi"},
                   "entity_id": "https://kimlik.liman.edu.tr/idp", "registrationAuthority": ["https://yetkim.org.tr/"],
@@ -251,6 +293,38 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
         found = self.find({"Liman Üniversitesi": [listed]}, "Liman Üniversitesi")
         self.assertEqual((found.school.federation, found.school.name, found.school.name_en),
                          ("yetkim", "Liman Üniversitesi", "Harbour University"))
+
+    def test_a_school_listed_under_one_name_in_every_language_keeps_the_english_name_given(self):
+        listed = {"type": "idp", "title": "Universitat de Liman",
+                  "title_langs": {"es": "Universitat de Liman", "ca": "Universitat de Liman", "en": "Universitat de Liman"},
+                  "entity_id": "https://www.example.es/sir/limanidp", "registrationAuthority": ["http://www.rediris.es/"],
+                  "scope": "liman.es"}
+        rows = {"Universitat de Liman": [listed], "University of Liman": []}
+        with patch.object(schools, "_seamlessaccess", side_effect=lambda text, config: rows.get(text, [])):
+            found = schools.find("Universitat de Liman", {}, self.data_dir, also=["University of Liman", "liman.es"])
+        self.assertEqual((found.school.federation, found.school.name, found.school.name_en),
+                         ("sir", "Universitat de Liman", "University of Liman"))
+        # A school listed with an English name of its own keeps it.
+        english = {**listed, "title_langs": {"es": "Universitat de Liman", "en": "Liman University"}}
+        rows["Universitat de Liman"] = [english]
+        with patch.object(schools, "_seamlessaccess", side_effect=lambda text, config: rows.get(text, [])):
+            found = schools.find("Universitat de Liman", {}, self.data_dir, also=["University of Liman"])
+        self.assertEqual(found.school.name_en, "Liman University")
+        # Listed only as part of a longer name: the English name given is searched first.
+        staff = {**listed, "title": "Liman University - Staff",
+                 "title_langs": {"en": "Liman University - Staff", "sr": "Univerzitet Liman - Zaposleni"}}
+        rows.update({"Univerzitet Liman": [staff], "Liman University": [staff]})
+        with patch.object(schools, "_seamlessaccess", side_effect=lambda text, config: rows.get(text, [])):
+            found = schools.find("Univerzitet Liman", {}, self.data_dir, also=["Liman University"])
+        self.assertEqual((found.school.name, found.school.name_en), ("Liman University - Staff", "Liman University"))
+
+    def test_a_local_name_is_saved_with_single_spaces(self):
+        listed = {"type": "idp", "title": "Harbour University",
+                  "title_langs": {"en": "Harbour University", "el": "Πανεπιστήμιο  Λιμανιού "},
+                  "entity_id": "https://idp.limani.gr/idp", "registrationAuthority": ["http://aai.grnet.gr/"],
+                  "scope": "limani.gr"}
+        found = self.find({"Πανεπιστήμιο Λιμανιού": [listed]}, "Πανεπιστήμιο Λιμανιού")
+        self.assertEqual((found.school.federation, found.school.name), ("grnet", "Πανεπιστήμιο Λιμανιού"))
 
     def test_a_school_listed_shorter_than_its_full_name_is_asked_about(self):
         short = {"type": "idp", "title": "Kita Bay", "entity_id": "urn:mace:incommon:kitabay.edu",
@@ -270,6 +344,9 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
         found = self.find({"Harbour Technical University": [listed]}, "Harbour Technical University")
         self.assertEqual((found.school and found.school.federation, found.candidates), ("azsciencenet", []))
         self.assertEqual(found.school.name, "Harbour Technical University")  # saved, and searched for, without it
+        sso = {**listed, "title": "Harbour Technical University Single Sign-On Service"}
+        self.assertEqual(self.find({"Harbour Technical University": [sso]}, "Harbour Technical University").school.name,
+                         "Harbour Technical University")
 
     def test_a_school_found_by_its_domain_under_a_shared_entry_keeps_the_given_name(self):
         shared = {"type": "idp", "title": "Harbour Research ID", "entity_id": "https://passport.harbour.cn/idp",
@@ -279,8 +356,23 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
             found = schools.find("港湾生物所", {}, self.data_dir, also=["Kita Bay Institute", "kbi.ac.cn"])
         self.assertEqual((found.school.name, found.school.name_en, found.school.entity_id),
                          ("港湾生物所", "Kita Bay Institute", "https://passport.harbour.cn/idp"))
+        # The entry's own name is kept, searched last: some choosers list the shared entry by it.
+        self.assertEqual(found.school.entry_name, "Harbour Research ID")
+        config = {}
+        schools.save(config, found.school)
+        self.assertEqual(schools.names(config), ("港湾生物所", "Kita Bay Institute", "Harbour Research ID"))
+        d = PublisherBatchDownloader(config, profile=ELSEVIER_PROFILE, institution_query="港湾生物所")
+        self.assertEqual(d._search_queries(list(d._institution_names())),
+                         ["Kita Bay Institute", "港湾生物所", "Harbour Research ID"])
         # Only its domain given: the entry's own name stays.
         self.assertEqual(self.find({"kbi.ac.cn": [shared]}, "kbi.ac.cn").school.name, "Harbour Research ID")
+        # The English name is the one given beside the school's own, even when that
+        # one is ASCII too, or the English one has accents.
+        for also, english in ((["Kita Bay Institute"], "Kita Bay Institute"), (["Kīta Bāy Institute"], "Kīta Bāy Institute"),
+                              ([], "Kitan tutkimuslaitos")):
+            with patch.object(schools, "_seamlessaccess", side_effect=lambda text, config: rows.get(text, [])):
+                found = schools.find("Kitan tutkimuslaitos", {}, self.data_dir, also=[*also, "kbi.ac.cn"])
+            self.assertEqual((found.school.name, found.school.name_en), ("Kitan tutkimuslaitos", english), also)
 
     def test_accents_do_not_count(self):
         listed = {"type": "idp", "title": "Universite du Port (UP)", "entity_id": "https://idp.port.be/idp",
@@ -438,6 +530,9 @@ class SchoolSignInRoutesTests(unittest.TestCase):
         self.assertFalse(d._click_unique_institution_entry(page, result, page.url))
         self.assertTrue(result._institution_not_listed)
         self.assertEqual([e["state"] for e in result.events], ["auto_institution_not_found"])
+        # Recorded once, however often the page is looked at before the login ends.
+        self.assertFalse(d._click_unique_institution_entry(page, result, page.url))
+        self.assertEqual(len(result.events), 1)
 
     def test_the_entry_with_the_schools_sign_in_is_still_chosen(self):
         d = self.downloader()
@@ -686,6 +781,42 @@ class SearchListsNoSchoolTests(unittest.TestCase):
         with patch.object(batch_institution.time, "time", return_value=300.0):
             self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["北大学", "Kita University"]))
 
+    def test_settled_results_without_the_school_try_its_next_name_first(self):
+        # Its own name in Latin letters with no accent: the English one is searched first.
+        d, result = self.downloader(name="Kita University", local="Kitan yliopisto")
+        self.assertEqual(d._search_queries(["Kitan yliopisto", "Kita University"]), ["Kita University", "Kitan yliopisto"])
+        result.events = [{"state": "auto_institution_search", "detail": f"Kita University @ {self.URL}"}]
+        result._search_box, result._search_baseline = (self.URL, "#search"), (self.URL, {"Help"})
+        box = Mock(**{"input_value.return_value": "Kita University"})
+        page = Mock(**{"locator.return_value.first": box, "evaluate.return_value": False})
+        d._body_text = lambda page, limit=2000: ""
+        scored = [(1, {"t": "Kita University of Advanced Science"})]
+        from paper_search_school.engine import batch_institution
+        for at in (100.0, 100.0 + d.SEARCH_SETTLED_SEC):
+            with patch.object(batch_institution.time, "time", return_value=at):
+                self.assertFalse(d._search_lists_no_school(page, result, self.URL, scored))
+        box.press_sequentially.assert_called_once_with("Kitan yliopisto", delay=40)
+        self.assertFalse(getattr(result, "_institution_not_listed", False) is True)
+        # The next name settles the same: no name is left, the school is not listed.
+        box.input_value.return_value = "Kitan yliopisto"
+        for at, ends in ((200.0, False), (200.0 + d.SEARCH_SETTLED_SEC, True)):
+            with patch.object(batch_institution.time, "time", return_value=at):
+                self.assertIs(d._search_lists_no_school(page, result, self.URL, scored), ends)
+        self.assertEqual(box.press_sequentially.call_count, 1)
+
+    def test_an_address_rewritten_without_its_percent_encoding_is_the_same_page(self):
+        d, result = self.downloader()
+        typed_at = self.URL + "?return=https%3A%2F%2Fsp.fixture-press.example%2FLogin"
+        result.events = [{"state": "auto_institution_search", "detail": f"Kita University @ {typed_at}"}]
+        page = Mock()
+        from paper_search_school.engine import batch_institution
+        scored = [(1, {"t": "Kita University of Advanced Science"})]
+        shown = self.URL + "?return=https://sp.fixture-press.example/Login"
+        with patch.object(batch_institution.time, "time", return_value=100.0):
+            self.assertFalse(d._search_lists_no_school(page, result, shown, scored))
+        with patch.object(batch_institution.time, "time", return_value=100.0 + d.SEARCH_SETTLED_SEC):
+            self.assertTrue(d._search_lists_no_school(page, result, shown, scored))
+
     def test_a_long_address_cut_short_in_the_record_is_the_same_page(self):
         d, result = self.downloader()
         long_url = self.URL + "?state=" + "x" * 600
@@ -702,6 +833,17 @@ class SearchListsNoSchoolTests(unittest.TestCase):
         d, result = self.downloader()
         result.events = []
         self.assertEqual(self.settle(d, result, [(1, {"t": "Kita University of Advanced Science"})]), (False, False))
+
+    def test_punctuation_and_accents_do_not_count(self):
+        d, _ = self.downloader(name='Kita University "St. Hanako"', local="Universitat de Kità")
+        self.assertEqual(d._institution_match_score("Kita University St Hanako"), 3)
+        self.assertEqual(d._institution_match_score("Universitat de Kita"), 3)
+        self.assertEqual(d._institution_match_score("Kita University St Hanako, Library"), 2)
+        self.assertEqual(d._institution_match_score("Kita University St Hanako Bitola"), 1)
+        # A login server's words after the name: the school's entry ("<entry> Single Sign-On Service").
+        self.assertEqual(d._institution_match_score("Universitat de Kita Single Sign-On Service"), 2)
+        self.assertEqual(d._institution_match_score("Universitat de Kita IdP"), 2)
+        self.assertEqual(d._institution_match_score("Universitat de Kita Login Portal Bitola"), 1)
 
     def test_the_schools_own_names_and_a_leading_the(self):
         d, _ = self.downloader(name="Kita University", local="北大学")

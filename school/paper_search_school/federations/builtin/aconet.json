@@ -1,0 +1,11 @@
+{
+  "code": "aconet",
+  "name": "ACOnet",
+  "country": "AT",
+  "registration_authorities": ["http://eduid.at"],
+  "chooser_labels": ["ACOnet Identity Federation"],
+  "chooser_pattern": "\\bACOnet\\b",
+  "discovery_hosts": [],
+  "service_domains": ["eduid.at"],
+  "metadata_url": "http://eduid.at/md/upstream-edugain.xml"
+}

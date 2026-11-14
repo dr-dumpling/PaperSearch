@@ -1,0 +1,11 @@
+{
+  "code": "idedume",
+  "name": "IDeduME",
+  "country": "ME",
+  "registration_authorities": ["https://federacija-idedume.ucg.ac.me/"],
+  "chooser_labels": ["IDeduME"],
+  "chooser_pattern": "\\bIDeduME\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://md-idedume.ucg.ac.me/edugain/idedume-metadata.xml"
+}

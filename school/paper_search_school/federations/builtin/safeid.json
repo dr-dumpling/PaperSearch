@@ -1,0 +1,11 @@
+{
+  "code": "safeid",
+  "name": "safeID",
+  "country": "SK",
+  "registration_authorities": ["http://safeid.sk"],
+  "chooser_labels": ["safeID"],
+  "chooser_pattern": "\\bsafeID\\b",
+  "discovery_hosts": [],
+  "service_domains": ["safeid.sk"],
+  "metadata_url": "https://metadata.safeid.sk/metadata/edugain-upstream.xml"
+}

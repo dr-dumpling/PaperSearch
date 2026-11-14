@@ -136,7 +136,7 @@ def _set_carsi_school(cfg: dict[str, Any], query: str) -> dict[str, Any] | None:
         return {"error": "carsi_school_ambiguous", "query": query, "count": len(candidates),
                 "candidates": [s.summary() for s in candidates[:10]],
                 "hint": "run again with the full name, the domain or the entityID of one candidate"}
-    cfg.update(school_name=school.name, school_name_en=school.name_en, idp_entity_id=school.entity_id,
+    cfg.update(school_name=school.name, school_name_en=school.name_en, school_entry_name="", idp_entity_id=school.entity_id,
                idp_login_hosts=[], idp_login_pages=[], idp_domains=[school.domain] if school.domain else [])
     return None
 

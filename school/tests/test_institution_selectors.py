@@ -359,6 +359,16 @@ class FederationListWithoutCarsiTests(unittest.TestCase):
         unfilled = {"i": 0, "name": "#federation", "options": [["", "Select your federation"], ["uk", "UK federation"]]}
         self.assertEqual(self.lists(unfilled), "")
 
+    def test_a_link_list_the_browser_cannot_read_now_settles_nothing(self):
+        from patchright._impl._errors import Error
+
+        d = downloader("Example University", config={"publisher_institution_federation": "carsi"})
+        d._page_selects = lambda page: []
+        d._on_publisher_host = lambda url: True
+        page = Mock(url="https://chooser.fixture-press.example/wayf")
+        page.locator.return_value.first.is_visible.side_effect = Error("Locator.is_visible: value: expected boolean, got object")
+        self.assertEqual(d._federation_list_lacks_ours(page), "")
+
     def test_only_in_school_mode(self):
         d = downloader("Example University", config={})
         d._page_selects = Mock()

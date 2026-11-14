@@ -1,0 +1,11 @@
+{
+  "code": "febas",
+  "name": "FEBAS",
+  "country": "BY",
+  "registration_authorities": ["https://febas.basnet.by"],
+  "chooser_labels": ["FEBAS"],
+  "chooser_pattern": "\\bFEBAS\\b",
+  "discovery_hosts": [],
+  "service_domains": [],
+  "metadata_url": "https://febas.basnet.by/shared/upload.xml"
+}
