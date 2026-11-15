@@ -1,6 +1,6 @@
 /**
  * The settings window's environment: the platform basics (as for the backend's
- * MCP process), its screen and proxy, and its paths; never PaperSearch's keys.
+ * MCP process), UTF-8 pipes, its screen and proxy, and its paths; never PaperSearch's keys.
  */
 export declare function settingsWindowEnv(paths: {
     dataDir: string;

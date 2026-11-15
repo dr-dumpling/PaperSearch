@@ -1,0 +1,114 @@
+/**
+ * 接着下: what an earlier batch left undone, from its run ledger, for one more batch into
+ * the same download folder (user, 2026-11-15). A paper not saved is downloaded again with
+ * the batch's content; a paper saved without all its supplementary files (missing, failed,
+ * not reached when the batch stopped) gets only those, beside its PDF. The runs that went
+ * on with a batch name it (``resumeOf``): the batch and those runs are read together, the
+ * latest record of each paper counting, so going on again asks only for what is still missing.
+ */
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { resolveRunLogRoot } from "../../infrastructure/runlog/RunLedger.js";
+/** A file not to ask for again: the site has no rule for its files, or listed none. */
+const FINAL_FILE_REASONS = new Set(["supplements_not_supported", "no_supplements"]);
+function readJson(file) {
+    try {
+        const value = JSON.parse(readFileSync(file, "utf8"));
+        return value && typeof value === "object" ? value : undefined;
+    }
+    catch {
+        return undefined;
+    }
+}
+function readPapers(dir) {
+    const file = join(dir, "items.jsonl");
+    if (!existsSync(file))
+        return [];
+    const papers = [];
+    for (const line of readFileSync(file, "utf8").split("\n")) {
+        if (!line.trim())
+            continue;
+        try {
+            const item = JSON.parse(line);
+            papers.push({
+                index: Number(item.index) || 0,
+                doi: String(item.doi ?? ""),
+                paperId: String(item.paperId ?? item.doi ?? ""),
+                title: String(item.title ?? ""),
+                status: String(item.status ?? ""),
+                path: String(item.path ?? ""),
+                ...(Array.isArray(item.supplements) ? { supplements: item.supplements } : {}),
+            });
+        }
+        catch {
+            // A line cut short (a run ended mid-write): that paper is not counted as saved.
+        }
+    }
+    return papers;
+}
+/** Download batches in the ledger root, oldest first (their folders sort by start time). */
+function batchRuns(root) {
+    if (!existsSync(root))
+        return [];
+    return readdirSync(root, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && /^\d{8}-\d{6}-/.test(entry.name))
+        .map((entry) => entry.name)
+        .sort()
+        .map((name) => ({ name, run: readJson(join(root, name, "run.json")) ?? {} }))
+        .filter(({ run }) => run.kind === "download_batch");
+}
+/**
+ * What ``which`` ("latest", or a run id as ``paper-search failures`` names it) left undone;
+ * a string saying why there is nothing to go on with otherwise.
+ */
+export function planResume(which, env = process.env) {
+    const root = resolveRunLogRoot(env);
+    if (!root)
+        return "运行记录已关闭（PAPER_SEARCH_RUNLOG=0），无法接着下。";
+    const runs = batchRuns(root);
+    const picked = which === "latest" ? runs.at(-1) : runs.find(({ name }) => name === which);
+    if (!picked)
+        return which === "latest" ? "没有找到批量下载的运行记录。" : `没有找到运行记录 ${which}。`;
+    const first = String(picked.run.resumeOf || picked.name);
+    const chain = runs.filter(({ name, run }) => name === first || run.resumeOf === first);
+    const original = chain.find(({ name }) => name === first)?.run ?? picked.run;
+    const folder = String(original.savePath ?? "");
+    if (!folder)
+        return `运行记录 ${first} 没有记下载文件夹，无法接着下。`;
+    // The latest record of each paper. A saved paper is gone on with only for its files: those
+    // runs change what files it has, the saved PDF stands.
+    const papers = new Map();
+    for (const { name } of chain) {
+        for (const paper of readPapers(join(root, name))) {
+            const key = (paper.doi || paper.paperId).toLowerCase();
+            if (!key)
+                continue;
+            const before = papers.get(key);
+            papers.set(key, before?.status === "ok"
+                ? { ...before, path: paper.path || before.path, ...(paper.supplements !== undefined ? { supplements: paper.supplements } : {}) }
+                : { ...paper, path: paper.path || before?.path || "", title: paper.title || before?.title || "" });
+        }
+    }
+    const content = ["main", "supplements", "both"].find((kind) => kind === original.content)
+        ?? ([...papers.values()].some((paper) => paper.supplements !== undefined) ? "both" : "main");
+    const retry = [];
+    const files = [];
+    let complete = 0;
+    const item = (paper) => ({
+        ...(paper.doi ? { doi: paper.doi } : {}), paperId: paper.paperId, ...(paper.title ? { title: paper.title } : {}),
+    });
+    for (const paper of [...papers.values()].sort((a, b) => a.index - b.index)) {
+        if (paper.status !== "ok") {
+            retry.push(item(paper));
+            continue;
+        }
+        const filesMissing = content === "both" && (paper.supplements === undefined
+            || paper.supplements.some((file) => file.status !== "saved" && !FINAL_FILE_REASONS.has(String(file.reason ?? ""))));
+        if (filesMissing)
+            files.push({ ...item(paper), ...(paper.path ? { mainPath: paper.path } : {}) });
+        else
+            complete += 1;
+    }
+    return { runId: first, folder, content, retry, files, complete };
+}
+//# sourceMappingURL=resume.js.map

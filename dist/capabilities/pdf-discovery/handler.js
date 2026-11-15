@@ -4,8 +4,9 @@ import { dirname, join, parse, resolve, sep } from "node:path";
 import { resolvePlatformId } from "../../registry/platformMetadata.js";
 import { createDefaultDownloadTiers, downloadWithFallback, } from "./OpenAccessFallbackService.js";
 import { RunLedger, resolveRunLogRoot } from "../../infrastructure/runlog/RunLedger.js";
-import { downloadBatch, downloadBatchItem, downloadSupplementsOnly, } from "./batch.js";
+import { batchStopped, downloadBatch, downloadBatchItem, downloadSupplementsOnly, } from "./batch.js";
 import { asWindowBatch } from "./batchSummary.js";
+import { planResume } from "./resume.js";
 function jsonTextResponse(text) {
     return {
         content: [
@@ -134,7 +135,32 @@ export async function handleDownloadWithFallback(args, searchers, schoolBackend)
     return jsonTextResponse(`Download with fallback ${result.status}.\n\n${JSON.stringify(result, null, 2)}`);
 }
 export async function handleDownloadBatch(args, searchers, schoolBackend) {
+    if (args.resume?.trim())
+        return resumeBatch(args, args.resume.trim(), searchers, schoolBackend);
     const result = await downloadBatch(searchers, { ...args, savePath: batchSaveFolder(args) }, schoolBackend);
     return jsonTextResponse(`Download batch ${result.status}: ${result.succeeded}/${result.total} succeeded.\n\n${JSON.stringify(result, null, 2)}`);
+}
+/**
+ * 接着下 (resume.ts): an earlier batch's papers not saved, again, then the files of those
+ * saved without all of them, into its download folder (user, 2026-11-15).
+ */
+async function resumeBatch(args, which, searchers, schoolBackend) {
+    const plan = planResume(which);
+    if (typeof plan === "string")
+        return jsonTextResponse(`Nothing to go on with: ${plan}`);
+    const common = { savePath: plan.folder, resumeOf: plan.runId, useEntitledAccess: args.useEntitledAccess,
+        useSciHub: args.useSciHub, mode: args.mode };
+    const papers = plan.retry.length
+        ? await downloadBatch(searchers, { ...common, items: plan.retry, content: plan.content }, schoolBackend) : undefined;
+    // Stopped in the window: nothing more after it.
+    const files = plan.files.length && !(papers && batchStopped(papers))
+        ? await downloadBatch(searchers, { ...common, items: plan.files, content: "supplements" }, schoolBackend) : undefined;
+    const summary = { from: plan.runId, folder: plan.folder, content: plan.content,
+        complete: plan.complete, retried: plan.retry.length, filesOnly: plan.files.length };
+    const said = !papers && !files ? "every paper of it is complete"
+        : [papers && `${papers.succeeded}/${papers.total} papers saved`, files && `${files.succeeded}/${files.total} papers got their files`]
+            .filter(Boolean).join("; ");
+    return jsonTextResponse(`Went on with ${plan.runId}: ${said}.\n\n${JSON.stringify({ resume: summary,
+        ...(papers ? { papers } : {}), ...(files ? { files } : {}) }, null, 2)}`);
 }
 //# sourceMappingURL=handler.js.map

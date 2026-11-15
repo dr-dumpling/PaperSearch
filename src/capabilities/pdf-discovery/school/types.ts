@@ -41,6 +41,31 @@ export interface SchoolBatchUpdate {
    * line; a backend that does not declare it is not sent the update at all.
    */
   lanes?: string;
+  /**
+   * Publishers whose school login stopped working mid-batch, their papers held: the window
+   * shows them with a button to go on ([] clears them). Only to a backend that declares it.
+   */
+  held?: SchoolHeldPublisher[];
+  /**
+   * Nothing is left but the held publishers' papers and the batch waits for the user
+   * (登录并继续 or 终止): the window says so, collapsed too. Only to a backend that declares it.
+   */
+  heldWait?: boolean;
+}
+
+/** A publisher a batch holds: its DOI prefix, its name, how many papers wait. */
+export interface SchoolHeldPublisher {
+  key: string;
+  name: string;
+  count: number;
+}
+
+/** What the user asked of a batch in its window since the last report. */
+export interface SchoolBatchRequests {
+  /** Held publishers (DOI prefixes) to go on with. */
+  resume: string[];
+  /** The batch was ended in the window. */
+  stop: boolean;
 }
 
 /**
@@ -172,6 +197,11 @@ export interface SchoolTrace {
   state?: string;
   /** The school's site a login stopped on (idp_no_return_to_publisher): a host name only. */
   stoppedHost?: string;
+  /**
+   * Where a wait on a school login ended (school_login: the school's own sign-in page;
+   * also school_choice, institution_chooser, authentication_redirect, publisher, other, closed).
+   */
+  loginWaitPage?: string;
   record?: string;
   diagnostic?: string;
 }
@@ -216,6 +246,13 @@ export interface SchoolBackend {
     update: SchoolBatchUpdate,
     signal?: AbortSignal,
   ): Promise<boolean>;
+  /** Optional: whether the window can show held publishers with a button to go on (``held``). */
+  holdSupported?(): Promise<boolean>;
+  /**
+   * Optional: what the user asked of this batch in its window, as the answers to its
+   * progress reports brought it (each request once).
+   */
+  takeBatchRequests?(batchId: string): SchoolBatchRequests;
   /**
    * Optional: the batch's papers for the progress window's lists. Resolves true once
    * the backend has them, false when it does not take them or this report did not

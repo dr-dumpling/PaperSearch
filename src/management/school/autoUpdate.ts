@@ -105,6 +105,14 @@ export function withAutoUpdate(backend: SchoolBackend, update: () => Promise<unk
       : {}),
     // Only on a backend the batch already has, which the update ran before.
     ...(inner.keepSession ? { keepSession: (signal?: AbortSignal) => inner.keepSession!(signal) } : {}),
+    ...(inner.holdSupported
+      ? { holdSupported: async () => {
+          await ready();
+          return inner.holdSupported!();
+        } }
+      : {}),
+    // What its reports' answers brought: nothing to update for.
+    ...(inner.takeBatchRequests ? { takeBatchRequests: (batchId: string) => inner.takeBatchRequests!(batchId) } : {}),
   });
   return wrap(backend);
 }

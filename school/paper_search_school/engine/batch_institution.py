@@ -649,8 +649,14 @@ class InstitutionMixin:
             where = str(event.get("detail", "")).split(" @ ", 1)[-1]
             return event["state"] == "auto_institution_search" and self._same_address(where, url)
 
-        if not any(searched_here(e) for e in result.events):
+        searches = [index for index, e in enumerate(result.events) if searched_here(e)]
+        if not searches:
             return False  # nothing searched here: a page's other lists say nothing
+        if any(e["state"] == "institution_selected" for e in result.events[searches[-1]:]):
+            # Its entry was chosen after that search: the list has the school, and the
+            # page is on its way to the school's login (Science sent its login page back,
+            # the second choice was still leaving it, 2026-11-15).
+            return False
         others = sorted({str(it.get("t") or "")[:80] for score, it in scored if score == 1})
         # A unit of the school (its library, campus, a faculty) may be its way in,
         # unless its publisher marks it as signing in no one (IP, VPN, email).
@@ -781,10 +787,21 @@ class InstitutionMixin:
                 raise
             return True  # not readable now: nothing concluded from it
 
+    # The site's own line naming the institution it serves the reader for ("brought to
+    # you by <school>" in Science's header, 2026-11-15) is no entry of a list.
+    _SESSION_BANNER = re.compile(r"\s*(?:brought to you by|access (?:provided|funded) by)", re.I)
+
+    def _listed_entries(self, page: Any) -> Any:
+        """The entries a page lists now (``_ENTRIES_JS``), the site's session banner aside."""
+        items = page.evaluate(self._ENTRIES_JS, self._ENTRY_SELECTOR)
+        if not isinstance(items, list):
+            return items
+        return [it for it in items if not (isinstance(it, dict) and self._SESSION_BANNER.match(str(it.get("t") or "")))]
+
     def _entry_texts(self, page: Any) -> set[str]:
         """The entries a page lists now, by their text (``_ENTRIES_JS``)."""
         try:
-            items = page.evaluate(self._ENTRIES_JS, self._ENTRY_SELECTOR)
+            items = self._listed_entries(page)
         except Exception as exc:
             if not _is_browser_error(exc):
                 raise
@@ -803,7 +820,7 @@ class InstitutionMixin:
         list, 2026-11-01).
         """
         try:
-            items = page.evaluate(self._ENTRIES_JS, self._ENTRY_SELECTOR)
+            items = self._listed_entries(page)
         except Exception:
             return False
         if not isinstance(items, list):

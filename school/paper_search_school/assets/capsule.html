@@ -73,6 +73,16 @@ body.grow-up #root.animating > .surface { top: auto; bottom: 0; }
 .dim { color: var(--dim); }
 .faint { color: var(--faint); }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+/* A publisher paused (held): a quiet amber tag beside the progress from the moment it is
+   held, not the breathing prompt of a step the browser waits on (user, 2026-11-15). */
+.held-tag { appearance: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 6px;
+  border-radius: 999px; border: 0.5px solid var(--warn-line); background: var(--warn-bg); color: var(--warn);
+  font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.held-tag svg.i { width: 12px; height: 12px; stroke-width: 2.4; }
+.held-tag:focus-visible { outline: 2px solid var(--warn-dot); outline-offset: 1px; }
+.held-tag.asked { color: var(--ok); }
+.held .btn.done { display: inline-flex; align-items: center; gap: 4px; color: var(--ok); border-color: transparent; cursor: default; }
+.held .btn.done svg.i { width: 14px; height: 14px; }
 svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .ring circle { fill: none; }
 .ring .track { stroke: var(--track); }
@@ -101,6 +111,13 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .steps .bars span.now { background: var(--accent); }
 .steps .label { font-size: 12px; color: var(--accent); white-space: nowrap; }
 .line { font-size: 12px; color: var(--dim); margin-top: 8px; }
+.held { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--warn-bg); border: 1px solid var(--warn-line);
+  color: var(--warn); font-size: 12px; }
+.held .head { display: flex; align-items: center; gap: 8px; }
+/* Each of its lines one line: a wrapped line looked broken (user, 2026-11-15). */
+.held .copy { flex: 1; min-width: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.held .names { margin-top: 3px; font-size: 11px; opacity: .8; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.held .btn { color: var(--warn); border-color: var(--warn-line); white-space: nowrap; flex: none; }
 .stats { display: flex; padding: 12px 0; border-top: 0.5px solid var(--line); border-bottom: 0.5px solid var(--line); }
 .stats div, .stats .stat { flex: 1; }
 .stats .stat { padding: 0; border: none; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
@@ -289,6 +306,7 @@ const ICONS = {
   folder: '<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>',
   skip: '<path d="M6 6l8 6-8 6z"/><path d="M18 6v12"/>',
   stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2"/>',
+  pause: '<path d="M9 6.5v11M15 6.5v11"/>',
   dots: '<circle cx="6" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="18" cy="12" r="1"/>',
   left: '<path d="M15 6l-6 6 6 6"/>',
   right: '<path d="M9 6l6 6-6 6"/>',
@@ -325,6 +343,9 @@ let V = { mode: "idle" };
 let open = false;          // the card is showing
 let panel = "";            // "", "menu", "report", "confirm", "settings": kept until the user leaves it
 let flash = { text: "", until: 0 };
+// 登录并继续 pressed: the held publishers then ({run, keys}); the button says so at once,
+// as the papers go on only after the paper running, or within seconds (user, 2026-11-15).
+let heldAsked = null;
 let settings = null, settingsErrors = {}, notifyOn = true;
 // What is typed on this settings page and not yet saved. Any redraw shows it instead of the
 // saved value: a click on the card's background is a drag, and its end redraws the card
@@ -348,6 +369,10 @@ function pill() {
       + '<button type="button" class="pill-prompt attention-target" data-act="show_browser" title="点击切到下载浏览器" aria-label="打开下载浏览器">'
       + '<b>' + esc(a.short) + '</b><span class="attention-countdown"></span></button></div>';
   }
+  if (v.held_wait) {
+    // Nothing left but the held publishers: what the user is to do, not the last paper (2026-11-15).
+    return '<div class="pillrow icon-first capsule-drag-region"><b>' + (resumeAsked() ? "正在继续下载" : "请重新登录学校") + "</b>" + heldTag() + "</div>";
+  }
   if (v.mode === "done") {
     // "完成 38/40  2 篇失败": papers saved out of all; a check unless nothing was saved.
     const good = v.ok > 0 || !v.total;
@@ -360,7 +385,8 @@ function pill() {
     const where = [v.part, v.publisher].filter(Boolean).join(" · ");
     return '<div class="pillrow capsule-drag-region">' + ring(v.pct, 24, 3)
       + '<span class="count">' + (v.total ? v.done + "/" + v.total : v.done) + "</span>"
-      + (where ? '<span class="dim">' + esc(where) + "</span>" : "") + '<span class="dot"></span></div>';
+      + (where ? '<span class="dim">' + esc(where) + "</span>" : "") + '<span class="dot"></span>'
+      + ((v.held || []).length ? heldTag() : "") + "</div>";
   }
   return '<div class="pillrow icon-first capsule-drag-region"><b>PaperSearch</b><span class="dim">暂无下载任务</span></div>';
 }
@@ -409,6 +435,9 @@ function actionsBlock() {
     html += '<button class="btn" data-act="skip_item">' + icon("skip") + "跳过</button>"
       + '<button class="btn" data-act="confirm">' + icon("stop") + "终止</button>"
       + '<button class="btn" data-act="menu" aria-label="更多">' + icon("dots") + "</button>";
+  } else if ((V.held || []).length) {
+    // Waiting for the user with held publishers: they go on (登录并继续 above) or the batch ends here.
+    html += '<button class="btn" data-act="confirm">' + icon("stop") + "终止</button>";
   }
   html += "</div>";
   if (panel === "menu") {
@@ -428,11 +457,39 @@ function stat(list, value, label, color) {
     : "<div>" + inner + "</div>";
 }
 
+// Publishers whose school login stopped working mid-batch: their papers wait, the others go
+// on. "学校登录中途失败，已暂停 N 篇" and one button, "登录并继续" (the user is back: all go on,
+// signing in again where asked), the publishers listed below it (user, 2026-11-15).
+const heldCount = () => (V.held || []).reduce((sum, h) => sum + h.count, 0);
+const heldKeys = () => (V.held || []).map((h) => h.key).join(",");
+// Until the held publishers change (gone on with, or another one held).
+const resumeAsked = () => !!heldAsked && heldAsked.run === V.run_id && heldAsked.keys === heldKeys();
+// The collapsed capsule's tag for held publishers; a click opens the card with their button.
+const heldTag = () => '<button type="button" class="held-tag' + (resumeAsked() ? " asked" : "") + '" data-act="expand" title="点开查看暂停的篇目" aria-label="展开进度窗口">'
+  + (resumeAsked() ? icon("check") + esc("待继续 " + heldCount() + " 篇") : icon("pause") + esc("已暂停 " + heldCount() + " 篇")) + "</button>";
+function heldBlock() {
+  const held = V.held || [];
+  if (!held.length) return "";
+  if (resumeAsked()) {
+    // The button says 已确认; the line, when they go on.
+    const copy = V.held_wait ? "正在继续下载 " + heldCount() + " 篇" : "本篇完成后继续下载 " + heldCount() + " 篇";
+    return '<div class="held"><div class="head"><span class="copy">' + esc(copy) + '</span><span class="btn done">' + icon("check") + "已确认</span></div>"
+      + '<div class="names">' + esc(held.map((h) => h.name).join(lang === "en" ? ", " : "、")) + "</div></div>";
+  }
+  return '<div class="held"><div class="head"><span class="copy">' + esc("学校登录中途失败，已暂停 " + heldCount() + " 篇")
+    + '</span><button class="btn" data-act="resume_held">登录并继续</button></div>'
+    + '<div class="names">' + esc(held.map((h) => h.name).join(lang === "en" ? ", " : "、")) + "</div></div>";
+}
+
 function runningCard() {
   const v = V;
   // Held by the hourly limit, the time used gives way: the line stays one line (2026-11-13).
   const sub = [v.total ? v.done + "/" + v.total : "", v.part, v.elapsed && !v.hold ? "已用 " + v.elapsed : ""].filter(Boolean).join(" · ");
-  return '<div class="card-body">' + header(v.headline, sub, false) + paperBlock()
+  // Waiting for the user with only the held publishers left: the batch's line, not the last
+  // paper; once 登录并继续 is pressed, what comes next (user, 2026-11-15).
+  const asked = v.held_wait && resumeAsked();
+  const paper = v.held_wait ? '<div class="paper"><div class="line">' + esc(asked ? "如需登录，会打开学校登录页" : v.line) + "</div></div>" : paperBlock();
+  return '<div class="card-body">' + header(asked ? "正在继续下载" : v.headline, sub, false) + paper + heldBlock()
     + '<div class="stats">' + stat("ok", v.ok, "成功", "var(--ok)") + stat("failed", v.bad, "失败", "var(--bad)")
     + stat("left", v.left == null ? "—" : v.left, "剩余") + "</div>"
     + actionsBlock() + "</div>";
@@ -570,6 +627,10 @@ function taskStrip() {
   if (V.mode === "attention") {
     return '<button type="button" class="strip warn-strip" data-act="show_browser">' + icon(V.attention.login ? "lock" : "alert")
       + '<span class="grow">' + esc(V.attention.short) + "</span><span>去处理 ›</span></button>";
+  }
+  if (V.held_wait) {
+    return '<button type="button" class="strip warn-strip" data-act="progress">' + icon("pause")
+      + '<span class="grow">请重新登录学校</span><span>去处理 ›</span></button>';
   }
   if (V.mode === "running") {
     return '<button type="button" class="strip" data-act="progress"><span class="grow">正在下载 '
@@ -909,6 +970,7 @@ async function tick() {
   if (busy()) settingsOnly = false;  // a download started: this is its progress window now
   const switched = Boolean(V.lang) && V.lang !== lang;
   if (switched) lang = V.lang;
+  if (heldAsked && !resumeAsked()) heldAsked = null;  // gone on with, or another publisher held
   if (V.open_settings) return openSettings(V.open_settings);
   // A prompt only turns the capsule amber (with a system notification); hovering opens it.
   // Once the prompt is handled an open card folds back unless the pointer is on it.
@@ -929,6 +991,7 @@ async function act(action, target) {
     case "minimize": open = false; panel = ""; render(true); return api().minimize();  // back as a capsule when restored
     case "close": closing = true; ++fitGeneration; clearInterval(pollTimer); clearTimeout(hoverTimer); clearTimeout(leaveTimer); return api().request_close();  // no call left waiting on a closed page
     case "folder": return api().open_folder();
+    case "expand": open = true; panel = ""; return render(true);
     case "open_article": return say(await api().open_article(target.dataset.doi));
     case "papers": papersKind = target.dataset.list; panel = "papers"; listOpen = null; papersList = null; render(true);
       await loadPapers(); return render(true);
@@ -953,6 +1016,14 @@ async function act(action, target) {
     case "stop": panel = ""; return say(await api().act("stop_batch", v.current, v.run_id));
     case "skip_item": case "skip_journal": case "skip_publisher":
       panel = ""; return say(await api().act(action, v.current, v.run_id));
+    case "resume_held": {
+      heldAsked = { run: v.run_id, keys: heldKeys() };
+      render(true);
+      const said = await api().act("resume_held", "", v.run_id);
+      if (String(said).startsWith("已收到")) return;  // the held block says so
+      heldAsked = null;
+      return say(said);
+    }
     case "settings": return openSettings({ page: "home" });
     case "language": {
       const result = await api().set_language(target.dataset.lang);

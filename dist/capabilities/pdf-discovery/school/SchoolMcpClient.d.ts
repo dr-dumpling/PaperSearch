@@ -1,8 +1,15 @@
-import type { SchoolBatchPapers, SchoolBatchUpdate, SchoolDownloadRequest, SchoolBackend, SchoolInvocationOutcome, SchoolMcpClientOptions, SchoolReadiness } from "./types.js";
+import type { SchoolBatchPapers, SchoolBatchUpdate, SchoolBatchRequests, SchoolDownloadRequest, SchoolBackend, SchoolInvocationOutcome, SchoolMcpClientOptions, SchoolReadiness } from "./types.js";
 export declare const SCHOOL_STARTUP_TIMEOUT_MS = 15000;
 export declare const SCHOOL_TOOL_TIMEOUT_MS = 15000;
 export declare const SCHOOL_DOWNLOAD_TIMEOUT_MS = 1200000;
 export declare const SCHOOL_CLEANUP_TIMEOUT_MS = 5000;
+/**
+ * For every backend process PaperSearch starts: its pipes in UTF-8, as PaperSearch
+ * reads and writes them. Piped, Python otherwise uses the system code page (cp1252,
+ * GBK on Windows), where a reply with Chinese or accented letters stops the backend
+ * with UnicodeEncodeError or arrives garbled.
+ */
+export declare const SCHOOL_BACKEND_UTF8_ENV: Readonly<Record<string, string>>;
 export declare class SchoolMcpClient implements SchoolBackend {
     private readonly commandSource;
     private readonly args;
@@ -15,6 +22,8 @@ export declare class SchoolMcpClient implements SchoolBackend {
     private retainedSession?;
     /** Inside a batch, the session progress reports reuse until the first download. */
     private progressSession?;
+    /** The user's requests of a batch from its window, by batch id, until the batch takes them. */
+    private readonly batchRequests;
     /** Downloads under way: a progress report then opens no backend process of its own. */
     private downloads;
     /** The backend answered once that it takes no paper lists: none are sent again. */
@@ -31,6 +40,11 @@ export declare class SchoolMcpClient implements SchoolBackend {
      * session if the browser has not been opened.
      */
     reportBatchProgress(update: SchoolBatchUpdate, signal?: AbortSignal): Promise<boolean>;
+    /** Whether the window can show held publishers with a button to go on (``held``). */
+    holdSupported(): Promise<boolean>;
+    takeBatchRequests(batchId: string): SchoolBatchRequests;
+    /** The user's requests a progress report's answer brought ("resume", "stop"), kept until taken. */
+    private noteBatchRequests;
     /**
      * While the batch waits (the hourly limit the user set): its browser loads the last
      * saved paper's article page again, so the publisher's institutional session does

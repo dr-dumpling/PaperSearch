@@ -146,6 +146,20 @@ describe("Entitled PDF acceptance", () => {
     },
   );
 
+  it("keeps where a wait on a school login ended, a fixed word only", async () => {
+    for (const [page, kept] of [["school_login", "school_login"], ["publisher", "publisher"], ["somewhere?token=x", undefined]] as const) {
+      const payload = { success: false, error_type: "login_timeout", action: "review_browser",
+        artifacts: { driver: "publisher", state: "login_timeout", login_wait_page: page } };
+      const backend = {
+        downloadLegalDoi: jest.fn(async () =>
+          normalizeDownloadResult({ content: [{ type: "text", text: JSON.stringify(payload) }] }, context.paperId),
+        ),
+      } as unknown as SchoolBackend;
+      const result = await createEntitledAccessTier(backend).run(context);
+      expect(result.trace?.loginWaitPage).toBe(kept);
+    }
+  });
+
   it.each([
     ["uis.example.edu.cn", "（uis.example.edu.cn）"],
     ["uis.example.edu.cn/?token=private", "（学校的网站）"],

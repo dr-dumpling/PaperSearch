@@ -90,6 +90,10 @@ export interface SchoolBatchSupport {
   progressPhase?: boolean;
   /** school_batch_progress declares ``lanes`` (the open-access lane beside a running download). */
   progressLanes?: boolean;
+  /** school_batch_progress declares ``held`` (publishers held, a button to go on with them). */
+  progressHeld?: boolean;
+  /** school_batch_progress declares ``held_wait`` (only the held publishers left, waiting for the user). */
+  progressHeldWait?: boolean;
   /** school_batch_papers exists (the papers behind the window's 成功, 失败 and 剩余). */
   papersTool?: boolean;
   /** school_keep_session exists (a batch's wait keeps the publisher's session alive). */
@@ -159,6 +163,10 @@ export function selectSchoolBatchSupport(
       ? { progressPhase: true } : {}),
     ...(progress.length === 1 && Object.hasOwn(progress[0].inputSchema.properties ?? {}, "lanes")
       ? { progressLanes: true } : {}),
+    ...(progress.length === 1 && Object.hasOwn(progress[0].inputSchema.properties ?? {}, "held")
+      ? { progressHeld: true } : {}),
+    ...(progress.length === 1 && Object.hasOwn(progress[0].inputSchema.properties ?? {}, "held_wait")
+      ? { progressHeldWait: true } : {}),
     ...(papers.length === 1 && ["batch_id", "folder", "papers"].every((name) =>
       Object.hasOwn(papers[0].inputSchema.properties ?? {}, name)) ? { papersTool: true } : {}),
     ...(keep.length === 1 && acceptsDeclaredArguments(keep[0].inputSchema, {}) ? { keepSessionTool: true } : {}),

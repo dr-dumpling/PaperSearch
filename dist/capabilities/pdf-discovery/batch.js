@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { RunLedger } from "../../infrastructure/runlog/RunLedger.js";
 import { classifyFailureCode, FAILURE_CLASS_NAMES, } from "../../infrastructure/runlog/failureClass.js";
 import { createDefaultDownloadTiers, downloadWithFallback, } from "./OpenAccessFallbackService.js";
-import { schoolShortReason } from "./school/index.js";
+import { schoolAttemptDetails, schoolShortReason } from "./school/index.js";
 import { fetchSupplementsOnly } from "./tiers/entitledAccess.js";
 import { batchPaper, reportBatchResults, supplementShortfall } from "./batchSummary.js";
 import { PaperList } from "./batchPapers.js";
@@ -145,6 +145,20 @@ async function supplementsForOpenItem(result, request, backend, searchers) {
         result.path = extra.path; // moved into its folder beside the files
     return extra;
 }
+/**
+ * A school login that lapsed, and nothing else: the paper's wait ran out (login_timeout) on
+ * the school's own sign-in page, a password box or the school's sign-in step, as the backend
+ * says where the wait ended (trace.loginWaitPage). After the publisher's earlier articles came
+ * through the school, one such paper holds its papers (user, 2026-11-15). A wait that ended
+ * on the publisher's pages or a redirect, the network, a verification or a timeout elsewhere
+ * is no lapsed login: Science once stalled on its sign-in redirect and 152 papers waited for
+ * nothing (Windows, 2026-11-15). A backend that does not say where its wait ended holds none.
+ */
+const LOGIN_LAPSED_CODE = "login_timeout";
+const SCHOOL_SIGN_IN_PAGE = "school_login";
+/** How often a batch waiting for the user to go on with held publishers asks its window. */
+const HOLD_POLL_MS = 3_000;
+const HOLD_WAIT_PHASE = "其他篇目已完成，等你回来点“登录并继续”";
 const AWAY_NOTICE = "[批量] 这一篇等你登录或验证已到时限；后面的篇目遇到登录或验证只等 60 秒，你在登录页开始输入就照常等";
 /**
  * Entitled access waited on the user (school login, verification) until its
@@ -200,6 +214,10 @@ function stoppedByUser(result) {
         !!result.supplements?.some((file) => file.reason === "batch_stopped");
 }
 const STOP_NOTICE = "[批量] 已在进度窗口终止任务，剩下的篇目不再下载";
+/** The user pressed 终止 in the batch's window (papers not reached, or still paused, show it). */
+export function batchStopped(result) {
+    return result.items.some((item) => stoppedByUser(item) || item.attempts.some((attempt) => attempt.code === "login_paused"));
+}
 /** The attempt recorded for an item the batch did not reach because the user stopped it. */
 function notReached() {
     return { stage: "entitled_access", status: "skipped", message: "已终止任务，未下载", code: "batch_stopped" };
@@ -234,6 +252,8 @@ function openLedger(mode, batchId, options, log) {
         batchId,
         total: options.items.length,
         ...(options.savePath ? { savePath: options.savePath } : {}),
+        content: options.content ?? "main",
+        ...(options.resumeOf ? { resumeOf: options.resumeOf } : {}),
     });
     if (ledger)
         log(`[批量] 运行记录：${ledger.dir}`);
@@ -301,6 +321,10 @@ export async function downloadBatch(searchers, options, backend, log = (line) =>
     log(`[批量] 完成：成功 ${result.succeeded}，失败 ${result.failed}，共 ${result.total} 篇` +
         (byClass ? `。失败分类：${byClass}；详情：paper-search failures --format text` : "") +
         (missed ? `。附录未下全 ${missed} 篇：${[...shortfalls].map(([reason, n]) => `${reason} ${n}`).join("、")}` : ""));
+    // What is left goes on later with one word (user, 2026-11-15).
+    if ((result.failed || missed) && result.runLog) {
+        log("[批量] 没下全的篇目：回来后对 AI 说“接着下”即可补（download_batch 的 resume: \"latest\"，同一套环境变量）");
+    }
     return result;
 }
 /** content "supplements": every item, one after another, supplementary files only. */
@@ -316,7 +340,7 @@ async function downloadSupplementsBatch(options, backend, log, searchers) {
         const request = { ...itemOptions(item, options), batch };
         const entry = runItem(offset + 1, request);
         log(`[批量] 补充材料 ${offset + 1}/${total}：${request.doi || request.paperId}`);
-        const result = await downloadSupplementsOnly(recorded(request, ledger, entry), backend, searchers);
+        const result = await downloadSupplementsOnly(recorded(request, ledger, entry), backend, searchers, item.mainPath);
         await reportBatchItem(request, result, backend);
         if (result.status === "ok")
             succeeded += 1;
@@ -512,6 +536,7 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
                     notify();
                 }
                 await reportProgress(id(offset));
+                takeRequests();
                 await sendPapers();
             }
         }
@@ -525,6 +550,77 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
             ledger?.phase(`开放来源查完：${missed.length} 篇转机构下载`);
         }
     };
+    // A publisher whose school login stops working mid-batch (its papers came through the
+    // school, then one stops at the school's own sign-in page): its papers wait, the others go on, and they go on
+    // when the user presses 登录并继续 in the window (the user, 2026-11-15: Science's session
+    // lapsed after 84 articles and a misread login page failed the other 540). Publishers by
+    // the DOI's prefix.
+    const viaSchool = new Set();
+    const held = new Map();
+    /** Where each paper's wait on a school login ended, as the backend said (trace.loginWaitPage). */
+    const waitEnded = new Map();
+    const prefixOf = (offset) => (/^10\.\d{4,9}\//.exec(requests[offset].doi.toLowerCase()) ?? [""])[0];
+    /** Open-access papers of a held publisher still to get their supplementary files. */
+    const heldFiles = new Map();
+    // Held only where the window can show it with its button; else they fail as before.
+    let holdOk;
+    const canHold = async () => (holdOk ??= await backend?.holdSupported?.().catch(() => false) ?? false);
+    /** Each publisher's name as the school's stage named it ("Science"), by DOI prefix. */
+    const publishers = new Map();
+    const heldList = () => [...new Set([...held.keys(), ...heldFiles.keys()])].map((key) => ({
+        key, name: publishers.get(key) ?? key,
+        count: (held.get(key)?.length ?? 0) + (heldFiles.get(key)?.length ?? 0),
+    }));
+    /** The window's line and button for the held publishers (none: cleared). */
+    const reportHeld = (waiting = false) => {
+        if (!backend?.reportBatchProgress || !holdOk)
+            return reports;
+        const update = { id: batchId, total, done: settledOk() + failed, succeeded: settledOk(), failed, current: "",
+            finished: false, held: heldList(), ...(waiting ? { phase: HOLD_WAIT_PHASE, heldWait: true } : { lanes: lanes() }) };
+        reports = reports.then(() => backend.reportBatchProgress(update)).catch(() => false);
+        return reports;
+    };
+    /** The user pressed 登录并继续 (or 终止) in the window: held papers go on first. */
+    const takeRequests = () => {
+        const asked = backend?.takeBatchRequests?.(batchId);
+        if (!asked)
+            return;
+        if (asked.stop)
+            stopped = true;
+        let resumed = 0;
+        for (const key of asked.resume) {
+            const offsets = held.get(key) ?? [];
+            held.delete(key);
+            queue.unshift(...offsets);
+            resumed += offsets.length;
+        }
+        if (resumed) {
+            log(`[批量] 已点“登录并继续”：暂停的 ${resumed} 篇接着下载`);
+            ledger?.phase(`接着下载暂停的 ${resumed} 篇`);
+            void reportHeld();
+            notify();
+        }
+    };
+    /**
+     * The request, its school stage also naming the publisher of its DOI prefix (``publishers``)
+     * and where its wait on a school login ended (``waitEnded``).
+     */
+    const watchingSchool = (request, prefix, offset) => {
+        const forward = request.onStage;
+        return { ...request, onStage: (record) => {
+                if (record.stage === "entitled_access") {
+                    const name = record.trace?.publisher;
+                    if (prefix && typeof name === "string" && name)
+                        publishers.set(prefix, name);
+                    const page = record.trace?.loginWaitPage;
+                    if (typeof page === "string")
+                        waitEnded.set(offset, page);
+                    else
+                        waitEnded.delete(offset);
+                }
+                forward?.(record);
+            } };
+    };
     const entitledLane = async () => {
         for (;;) {
             while (!queue.length && openRunning && !stopped)
@@ -532,6 +628,11 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
             const offset = stopped ? undefined : queue.shift();
             if (offset === undefined)
                 return;
+            const prefix = prefixOf(offset);
+            if (prefix && held.has(prefix)) {
+                held.get(prefix).push(offset);
+                continue;
+            }
             const request = requests[offset];
             const step = succeeded + failed + 1;
             log(openRunning
@@ -541,16 +642,12 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
             const batch = { id: batchId, index: done + 1, total, done, succeeded: settledOk(), failed };
             let result;
             try {
-                result = await pastHourlyLimit(() => downloadBatchItem(searchers, recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entries[offset]), createTiers(backend).filter((tier) => tier.stage === "entitled_access" || mode !== "entitled_only" && tier.stage === "preprint"), backend), log, pause, () => backend?.keepSession?.() ?? Promise.resolve(false));
+                result = await pastHourlyLimit(() => downloadBatchItem(searchers, watchingSchool(recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entries[offset]), prefix, offset), createTiers(backend).filter((tier) => tier.stage === "entitled_access" || mode !== "entitled_only" && tier.stage === "preprint"), backend), log, pause, () => backend?.keepSession?.() ?? Promise.resolve(false));
             }
             catch (error) {
                 result = laneError("entitled_access", error);
                 log(`[批量] 机构下载出错（${id(offset)}）：${result.attempts[0].message}`);
             }
-            if (result.status === "ok")
-                succeeded += 1;
-            else
-                failed += 1;
             if (result.status === "ok" && result.version === "preprint")
                 preprints += 1;
             if (!away && waitedOutOnUser(result)) {
@@ -563,8 +660,28 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
                 attempts: [...open.attempts, ...result.attempts],
                 ...(result.review ?? open.review ? { review: result.review ?? open.review } : {}),
             }, offset + 1, request);
-            record(offset);
-            settle(offset);
+            const school = result.attempts.find((attempt) => attempt.stage === "entitled_access");
+            const lapsed = result.status !== "ok" && !!prefix && viaSchool.has(prefix) && school?.code === LOGIN_LAPSED_CODE
+                && waitEnded.get(offset) === SCHOOL_SIGN_IN_PAGE && !stoppedByUser(result) && await canHold();
+            if (result.status === "ok") {
+                succeeded += 1;
+                record(offset);
+                settle(offset);
+                if (school?.status === "ok" && prefix)
+                    viaSchool.add(prefix);
+            }
+            else if (lapsed) {
+                held.set(prefix, [offset]);
+                log(`[批量] ${prefix} 的文章前面经学校登录下到了，这一篇停在学校登录页没有完成登录：` +
+                    "这家出版社的篇目先暂停，其他照常下载；回来后在进度窗口点“登录并继续”");
+                ledger?.phase(`暂停 ${prefix}：学校登录中途失效`);
+                void reportHeld();
+            }
+            else {
+                failed += 1;
+                record(offset);
+                settle(offset);
+            }
             if (publisherBlocked(result))
                 log(blockedNotice(id(offset)));
             if (stoppedByUser(result)) {
@@ -574,6 +691,9 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
             // More to come: the lanes line goes on (after the last item the window has its end).
             if (openRunning || queue.length)
                 await reportProgress("");
+            if (held.size)
+                await reportHeld();
+            takeRequests();
             await sendPapers();
         }
     };
@@ -591,8 +711,30 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
     void sendPapers();
     await Promise.all([mode === "entitled_only" ? undefined : openLane(), entitledLane()]);
     await reports;
-    // Stopped in the window: the items neither lane reached end as not downloaded.
-    if (stopped) {
+    // Papers still held when the batch ends (stopped in the window): not tried, paused.
+    const markPaused = () => {
+        for (const offsets of held.values()) {
+            for (const offset of offsets) {
+                const item = results[offset];
+                results[offset] = itemResult({ ...item, status: "error", attempts: [...item.attempts,
+                        { stage: "entitled_access", status: "error", ...schoolAttemptDetails("login_paused") }] }, offset + 1, requests[offset]);
+            }
+        }
+        for (const offsets of heldFiles.values()) {
+            for (const offset of offsets)
+                results[offset].supplements = [{ status: "skipped", label: "", reason: "batch_stopped" }];
+        }
+        held.clear();
+        heldFiles.clear();
+    };
+    // Stopped in the window (during the lanes, the files, or the wait for the held), once: the
+    // items not reached end as not downloaded, the held as paused.
+    let endedStopped = false;
+    const endStopped = () => {
+        if (endedStopped)
+            return;
+        endedStopped = true;
+        markPaused();
         for (const [offset, request] of requests.entries()) {
             const item = results[offset];
             if (!item)
@@ -606,7 +748,9 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
             record(offset);
         }
         log(STOP_NOTICE);
-    }
+    };
+    if (stopped)
+        endStopped();
     const items = results;
     const remaining = missed.length;
     // Then supplementary files for the items the open stages already got.
@@ -617,6 +761,11 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
         let supplementsSucceeded = 0;
         let supplementsFailed = 0;
         for (const [step, offset] of open.entries()) {
+            const prefix = prefixOf(offset);
+            if (prefix && held.has(prefix)) {
+                heldFiles.set(prefix, [...(heldFiles.get(prefix) ?? []), offset]);
+                continue;
+            }
             log(`[批量] 补充材料 ${step + 1}/${open.length}：${id(offset)}`);
             // Every item of the entitled lane has settled; these come after them.
             const batch = { id: batchId, index: remaining + step + 1, total, done: remaining + step,
@@ -635,15 +784,50 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
             settle(offset);
             await sendPapers();
             if (stoppedByUser(items[offset])) {
-                for (const rest of open.slice(step + 1)) {
-                    items[rest].supplements = [{ status: "skipped", label: "", reason: "batch_stopped" }];
-                    record(rest);
-                }
-                log(STOP_NOTICE);
+                stopped = true; // the rest of them end as not reached, below
                 break;
             }
         }
     }
+    // The held publishers wait for the user as long as it takes (user, 2026-11-15): the
+    // window shows 登录并继续 and 终止. 登录并继续 downloads them, the school's login asking
+    // the user where it lapsed; held again, the wait starts over. 终止 ends them as paused.
+    if ((held.size || heldFiles.size) && !stopped) {
+        const waiting = [...held.values(), ...heldFiles.values()].reduce((sum, offsets) => sum + offsets.length, 0);
+        log(`[批量] 其他篇目已完成，暂停的 ${waiting} 篇等你回来：在进度窗口点“登录并继续”，或点“终止”结束`);
+        ledger?.phase(`等你回来：暂停的 ${waiting} 篇`);
+    }
+    while ((held.size || heldFiles.size) && !stopped) {
+        await reportHeld(true);
+        await pause(HOLD_POLL_MS);
+        takeRequests();
+        if (queue.length && !stopped) {
+            await entitledLane();
+        }
+        // A publisher gone on with: its open-access papers' files too.
+        for (const [key, offsets] of [...heldFiles.entries()]) {
+            if (held.has(key) || stopped)
+                continue;
+            heldFiles.delete(key);
+            for (const offset of offsets) {
+                if (stopped)
+                    break;
+                log(`[批量] 补充材料：${id(offset)}`);
+                const done = settledOk() + failed;
+                const request = { ...requests[offset], batch: { id: batchId, index: done + 1, total, done, succeeded: settledOk(), failed } };
+                const extra = await supplementsForOpenItem(items[offset], recorded(request, ledger, entries[offset]), backend, searchers);
+                if (extra)
+                    await reportBatchItem(request, extra, backend);
+                record(offset);
+                settle(offset);
+                await sendPapers();
+                if (stoppedByUser(items[offset]))
+                    stopped = true;
+            }
+        }
+    }
+    if (stopped)
+        endStopped();
     // Every paper as it ended, before the window's finished card.
     requests.forEach((_, offset) => settle(offset));
     await sendPapers(true);

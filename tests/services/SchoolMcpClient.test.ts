@@ -35,6 +35,7 @@ interface FakeLogEntry {
   pid?: number;
   dataDir?: string | null;
   parentSecretPresent?: boolean;
+  ioEncoding?: string | null;
   argv?: string[];
   tool?: string;
   arguments?: Record<string, unknown>;
@@ -234,6 +235,7 @@ describe("SchoolMcpClient", () => {
       expect.objectContaining({
         dataDir: resolve(profileDir),
         parentSecretPresent: false,
+        ioEncoding: "utf-8",
       }),
     );
     expect(start.argv).toContain(logPath);

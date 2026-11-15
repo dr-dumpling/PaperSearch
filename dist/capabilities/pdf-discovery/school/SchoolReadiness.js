@@ -74,6 +74,10 @@ export function selectSchoolBatchSupport(tools, strategy) {
             ? { progressPhase: true } : {}),
         ...(progress.length === 1 && Object.hasOwn(progress[0].inputSchema.properties ?? {}, "lanes")
             ? { progressLanes: true } : {}),
+        ...(progress.length === 1 && Object.hasOwn(progress[0].inputSchema.properties ?? {}, "held")
+            ? { progressHeld: true } : {}),
+        ...(progress.length === 1 && Object.hasOwn(progress[0].inputSchema.properties ?? {}, "held_wait")
+            ? { progressHeldWait: true } : {}),
         ...(papers.length === 1 && ["batch_id", "folder", "papers"].every((name) => Object.hasOwn(papers[0].inputSchema.properties ?? {}, name)) ? { papersTool: true } : {}),
         ...(keep.length === 1 && acceptsDeclaredArguments(keep[0].inputSchema, {}) ? { keepSessionTool: true } : {}),
         progressTool: progress.length === 1 &&

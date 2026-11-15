@@ -66,11 +66,11 @@ describe("paper-search settings", () => {
 });
 
 describe("the settings window's environment", () => {
-  it("carries its screen, proxy and paths, and none of PaperSearch's keys", () => {
+  it("carries UTF-8 pipes, its screen, proxy and paths, and none of PaperSearch's keys", () => {
     const env = settingsWindowEnv({ dataDir: "/data", configFile: "/cfg.json", cli: '["node","cli.js"]' },
       { EASYSCHOLAR_KEY: "secret", ELSEVIER_API_KEY: "secret", DISPLAY: ":0", HTTPS_PROXY: "http://proxy:7890" });
     expect(env).toMatchObject({ SCHOOL_DATA_DIR: "/data", PAPER_SEARCH_CONFIG_FILE: "/cfg.json", PAPER_SEARCH_CLI: '["node","cli.js"]',
-      DISPLAY: ":0", HTTPS_PROXY: "http://proxy:7890" });
+      DISPLAY: ":0", HTTPS_PROXY: "http://proxy:7890", PYTHONIOENCODING: "utf-8" });
     expect(Object.values(env)).not.toContain("secret");
   });
 });

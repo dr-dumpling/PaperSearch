@@ -56,6 +56,28 @@ class SetupLoginCliTests(unittest.TestCase):
         code, out, _ = run_cli(self.data_dir, "setup", "--no-school")
         self.assertFalse(json.loads(out)["settings"]["carsi_enabled"])
 
+    def test_replies_are_utf8_when_the_system_code_page_is_not(self):
+        # Piped on Windows, Python writes in the system code page (here cp1252, as on an
+        # English Windows) unless told otherwise; PaperSearch reads the reply as UTF-8.
+        self.use_school_list()
+        env = {**os.environ, "SCHOOL_DATA_DIR": self.data_dir, "PYTHONPATH": str(ROOT), "SCHOOL_PROGRESS_BAR": "0",
+               "PYTHONIOENCODING": "cp1252"}
+        proc = subprocess.run(
+            [sys.executable, "-m", "paper_search_school.cli", "setup", "--carsi", "--institution", "Example University"],
+            capture_output=True, env=env, timeout=120,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8", "replace"))
+        self.assertEqual(json.loads(proc.stdout.decode("utf-8"))["settings"]["school_name"], "示例大学")
+
+    def test_missing_standard_streams_are_left_alone(self):
+        # pythonw starts the backend without standard streams.
+        from unittest import mock
+
+        from paper_search_school import cli
+
+        with mock.patch.object(sys, "stdin", None), mock.patch.object(sys, "stdout", None):
+            cli._utf8_stdio()
+
     def test_setup_carsi_school_must_be_one_member_school(self):
         self.use_school_list()
         run_cli(self.data_dir, "setup", "--carsi", "--institution", "example.edu.cn")

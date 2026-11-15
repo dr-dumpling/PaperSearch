@@ -245,8 +245,9 @@ const EXPECTED_SCHEMA_SUMMARY: Record<
     ],
   },
   download_batch: {
-    required: ["items"],
-    properties: ["items", "savePath", "useEntitledAccess", "useSciHub", "content", "mode"],
+    // items, or resume to go on with an earlier batch (接着下, 2026-11-15).
+    required: [],
+    properties: ["items", "savePath", "useEntitledAccess", "useSciHub", "content", "mode", "resume"],
   },
   search_dblp: {
     required: ["query"],

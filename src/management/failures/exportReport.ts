@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
+import { SCHOOL_BACKEND_UTF8_ENV } from "../../capabilities/pdf-discovery/school/index.js";
 import { selectFailures, type FailureQuery } from "./index.js";
 
 export interface ExportReportResult {
@@ -26,8 +27,9 @@ export async function exportFailureReport(options: {
   return new Promise((resolveResult, reject) => {
     const child = spawn(options.command, ["report-export", "--output", resolve(options.output)], {
       stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
-      env: Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+      env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) =>
         /^(PATH|HOME|USERPROFILE|SYSTEMROOT|WINDIR|TEMP|TMP|TMPDIR|LANG|LC_ALL|XDG_DATA_HOME|XDG_CONFIG_HOME|SCHOOL_DATA_DIR|SCHOOL_PYTHON|PYTHONPATH|OPENBLAS_NUM_THREADS)$/i.test(key))),
+        ...SCHOOL_BACKEND_UTF8_ENV },
     });
     const chunks: Buffer[] = [];
     let size = 0;

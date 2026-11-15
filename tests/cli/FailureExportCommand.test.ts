@@ -65,6 +65,15 @@ describe("failures export CLI", () => {
     expect(secret.stdout + secret.stderr).not.toContain("fixture_secret");
   });
 
+  (process.platform !== "win32" ? it : it.skip)("starts the backend with UTF-8 pipes", () => {
+    const seen = join(root, "encoding.txt");
+    const fake = join(root, "encoding-backend.cjs");
+    writeFileSync(fake, `#!/usr/bin/env node\nrequire("fs").writeFileSync(${JSON.stringify(seen)}, process.env.PYTHONIOENCODING || "");\n`);
+    chmodSync(fake, 0o755);
+    cli(["--export", join(root, "encoding.zip")], fake);
+    expect(readFileSync(seen, "utf8")).toBe("utf-8");
+  });
+
   (existsSync(python) && process.platform !== "win32" ? it : it.skip)("exports through the real offline Python command with a private temporary home", () => {
     const source = readFileSync(join(root, "diagnostic.json"));
     const output = join(root, "report.zip");

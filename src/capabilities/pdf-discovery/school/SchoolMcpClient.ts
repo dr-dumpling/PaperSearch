@@ -36,6 +36,7 @@ import {
 import type {
   SchoolBatchPapers,
   SchoolBatchUpdate,
+  SchoolBatchRequests,
   SchoolDownloadRequest,
   SchoolBackend,
   SchoolInvocationOutcome,
@@ -53,9 +54,17 @@ const KEEP_SESSION_TOOL_TIMEOUT_MS = 60_000;
 export const SCHOOL_DOWNLOAD_TIMEOUT_MS = 1_200_000;
 export const SCHOOL_CLEANUP_TIMEOUT_MS = 5_000;
 
+/**
+ * For every backend process PaperSearch starts: its pipes in UTF-8, as PaperSearch
+ * reads and writes them. Piped, Python otherwise uses the system code page (cp1252,
+ * GBK on Windows), where a reply with Chinese or accented letters stops the backend
+ * with UnicodeEncodeError or arrives garbled.
+ */
+export const SCHOOL_BACKEND_UTF8_ENV: Readonly<Record<string, string>> = { PYTHONIOENCODING: "utf-8" };
+
 const SCHOOL_BACKEND_SOURCE = "school";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.6.6";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.6.7";
 
 interface ActiveSession {
   client: Client;
@@ -213,6 +222,8 @@ export class SchoolMcpClient implements SchoolBackend {
   private retainedSession?: ActiveSession;
   /** Inside a batch, the session progress reports reuse until the first download. */
   private progressSession?: ActiveSession;
+  /** The user's requests of a batch from its window, by batch id, until the batch takes them. */
+  private readonly batchRequests = new Map<string, SchoolBatchRequests>();
   /** Downloads under way: a progress report then opens no backend process of its own. */
   private downloads = 0;
   /** The backend answered once that it takes no paper lists: none are sent again. */
@@ -439,14 +450,37 @@ export class SchoolMcpClient implements SchoolBackend {
             ...(!update.finished && session.batchSupport.progressPhase
               ? { phase: update.phase ?? "", channel: update.channel ?? "" } : {}),
             ...(!update.finished && update.lanes !== undefined ? { lanes: update.lanes } : {}),
+            ...(update.held !== undefined && session.batchSupport.progressHeld ? { held: update.held } : {}),
+            ...(update.heldWait && session.batchSupport.progressHeldWait ? { held_wait: true } : {}),
           },
         },
         undefined,
         requestOptions(this.toolTimeoutMs, signal),
       );
       assertProtocolIntegrity(session.protocolState);
+      this.noteBatchRequests(update.id, result);
       return batchProgressUpdated(result);
     });
+  }
+
+  /** Whether the window can show held publishers with a button to go on (``held``). */
+  async holdSupported(): Promise<boolean> {
+    return this.report(true, undefined, async (session) => session.batchSupport.progressHeld === true);
+  }
+
+  takeBatchRequests(batchId: string): SchoolBatchRequests {
+    const requests = this.batchRequests.get(batchId) ?? { resume: [], stop: false };
+    this.batchRequests.delete(batchId);
+    return requests;
+  }
+
+  /** The user's requests a progress report's answer brought ("resume", "stop"), kept until taken. */
+  private noteBatchRequests(batchId: string, result: unknown): void {
+    const answer = batchProgressAnswer(result);
+    const resume = Array.isArray(answer?.resume) ? answer.resume.filter((key): key is string => typeof key === "string") : [];
+    if (!resume.length && answer?.stop !== true) return;
+    const kept = this.batchRequests.get(batchId) ?? { resume: [], stop: false };
+    this.batchRequests.set(batchId, { resume: [...new Set([...kept.resume, ...resume])], stop: kept.stop || answer?.stop === true });
   }
 
   /**
@@ -665,6 +699,7 @@ export class SchoolMcpClient implements SchoolBackend {
         command: this.command,
         args: this.args,
         env: {
+          ...SCHOOL_BACKEND_UTF8_ENV,
           SCHOOL_DATA_DIR: this.profileDir,
           PAPER_SEARCH_CONFIG_FILE: getConfigPath(),
           // The progress window's key test runs this same CLI.
@@ -1155,16 +1190,21 @@ function sessionKept(result: unknown): boolean {
   }
 }
 
-function batchProgressUpdated(result: unknown): boolean {
+function batchProgressAnswer(result: unknown): { updated?: unknown; resume?: unknown; stop?: unknown } | undefined {
   const content = (result as { content?: unknown; isError?: unknown })
     ?.content;
-  if ((result as { isError?: unknown })?.isError === true) return false;
-  if (!Array.isArray(content) || content.length !== 1) return false;
+  if ((result as { isError?: unknown })?.isError === true) return undefined;
+  if (!Array.isArray(content) || content.length !== 1) return undefined;
   const block = content[0] as { type?: unknown; text?: unknown };
-  if (block?.type !== "text" || typeof block.text !== "string") return false;
+  if (block?.type !== "text" || typeof block.text !== "string") return undefined;
   try {
-    return (JSON.parse(block.text) as { updated?: unknown }).updated === true;
+    const answer = JSON.parse(block.text) as unknown;
+    return answer && typeof answer === "object" ? answer as { updated?: unknown; resume?: unknown; stop?: unknown } : undefined;
   } catch {
-    return false;
+    return undefined;
   }
+}
+
+function batchProgressUpdated(result: unknown): boolean {
+  return batchProgressAnswer(result)?.updated === true;
 }

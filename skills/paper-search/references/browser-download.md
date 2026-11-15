@@ -90,11 +90,22 @@ paper-search failures --format text
 | 类别 | 常见 code | 怎么说、怎么做 |
 | --- | --- | --- |
 | 没权限（有依据） | `entitlement_missing`、`institution_federation_unavailable`、`no_entitlement` | 附上汇总里的依据（页面原话或决定性的一步）。只说本篇、当前学校没有权限，不推断整个平台。出版社没有学校所在联盟的登录路线时，建议在校园网或学校 VPN 下下载。 |
-| 用户或外部原因 | `login_timeout`（停在学校登录页）、`login_page_closed`、`login_credentials_rejected`、`captcha_required`、`idp_login_error`、`institution_not_registered`（认证应用或入口未注册，不代表没有订阅）、`user_skipped`、`cancelled`、`access_blocked`、`cloudflare_blocked`、`publisher_content_error`、`article_not_yet_published`（论文已录用，出版社还没上线全文）、`rate_limited`、`batch_stopped`、`profile_busy` | 说明需要用户做什么（登录、验证、等待、联系图书馆），原调用结束、资源释放后再决定是否重试；不连续重新提交登录。 |
+| 用户或外部原因 | `login_timeout`（停在学校登录页）、`login_paused`（这家出版社的学校登录在本批中途失效，这篇暂停、没试；不代表没有权限）、`login_page_closed`、`login_credentials_rejected`、`captcha_required`、`idp_login_error`、`institution_not_registered`（认证应用或入口未注册，不代表没有订阅）、`user_skipped`、`cancelled`、`access_blocked`、`cloudflare_blocked`、`publisher_content_error`、`article_not_yet_published`（论文已录用，出版社还没上线全文）、`rate_limited`、`batch_stopped`、`profile_busy` | 说明需要用户做什么（登录、验证、等待、联系图书馆），原调用结束、资源释放后再决定是否重试；不连续重新提交登录。 |
 | 暂不支持的网站 | `unsupported_platform`（如只在 ClinicalKey 上的内容）、`unsupported_publisher`（DOI 没有指向能登录的出版社网站，没有打开浏览器）、`generic_institution_entry_missing`（这家出版社还没有专门的规则，按通用规则没找到机构登录入口） | 说明这类网站还不支持，不说成没有权限；后者可以建议用户把这篇报告给维护者补规则，或在校园网下下载。 |
 | 原因不明（需排查） | `download_failed`、`download_timeout`、`login_not_reached`（程序没进入学校登录页）、`login_required`、`source_exception`、`browser_unresponsive`、`pdf_identity_unverified`、`pdf_identity_mismatch`、`pdf_wrong_article` 等 | 不说成没有权限；说明原因待查，给出汇总里的“停在哪一步”和诊断文件位置。 |
 
 `pdf_identity_unverified` / `pdf_identity_mismatch`：不能报成功，`review.path` 只是待核查的文件。
+
+## 学校登录中途失效、接着下
+
+- 批量下载中，一家出版社前面的篇目经学校登录下到了，之后有一篇停在学校自己的登录页、没有完成登录（登录过期；跳转卡住、网络慢、人机验证这类没到学校登录页的失败都不算），程序把这家出版社的篇目暂停：PDF 和补充材料都先不下，其他出版社照常下载。收起的进度窗口在进度旁挂“已暂停 N 篇”，展开后有“学校登录中途失败，已暂停 N 篇”和“登录并继续”；用户随时可以点，其他篇目还在下载时也行，这一篇下完暂停的篇目就接着下，需要时会打开学校登录页。其他篇目都完成后，整批一直等用户点“登录并继续”或“终止”；这时命令还在运行，告诉用户回到进度窗口处理，不要另开下载。终止后这些篇目记为 `login_paused`。
+- 用户说“接着下”“继续下载”“重试失败的”时，不要自己从失败列表里挑 DOI，运行：
+
+```bash
+paper-search run download_batch --json-args '{"resume":"latest"}'
+```
+
+  它读上一批的运行记录：没下到的篇目按原来的内容重下，PDF 已有但补充材料没下全的只补补充材料，都放进原来那批的下载文件夹。要接着下更早的一批，把 `latest` 换成 `paper-search failures` 给出的运行 ID。原来那批设过环境变量（如 `XDG_DATA_HOME`，换学校的单独数据目录）时，用同样的环境变量运行。
 
 ## 导出失败记录
 

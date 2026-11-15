@@ -225,8 +225,17 @@ class Api:
     def act(self, action: str, current: str, run_id: str = "") -> str:
         """Control the running download, including showing its browser on request."""
         try:
-            from .entitlements import SHOW_BROWSER, request_action
+            from .entitlements import RESUME_HELD, SHOW_BROWSER, request_action, request_resume
 
+            if action == RESUME_HELD:
+                # The user is back: every publisher the batch holds goes on.
+                state = read_state() or {}
+                held = [str(entry["key"]) for entry in state.get("held") or [] if isinstance(entry, dict) and entry.get("key")]
+                if state.get("status") != "running" or str(state.get("run_id") or "") != run_id or not held:
+                    return "这批下载已没有暂停的篇目"
+                for key in held:
+                    request_resume(key, str(state.get("batch_id") or ""))
+                return progress_view.ACTION_FEEDBACK[RESUME_HELD]
             if action == SHOW_BROWSER:
                 # Asked for from a reminder, or from the paper on the card at any
                 # time while it has a browser (user request, 2026-11-08).

@@ -13,6 +13,8 @@ export interface DownloadBatchItem {
     title?: string;
     /** Overrides the batch savePath for this item. */
     savePath?: string;
+    /** Going on with a batch (resume.ts): the paper's main text saved earlier, its files go beside it. */
+    mainPath?: string;
 }
 /**
  * two_phase (default): every item first tries the open stages; the items they
@@ -32,6 +34,8 @@ export interface DownloadBatchOptions {
     mode?: DownloadBatchMode;
     /** main (default) / supplements / both (see DownloadWithFallbackOptions). */
     content?: DownloadContent;
+    /** The batch this one goes on with (resume.ts): its run ledger names it. */
+    resumeOf?: string;
 }
 export interface DownloadBatchItemResult extends Omit<DownloadWithFallbackResult, "status"> {
     index: number;
@@ -81,6 +85,8 @@ export declare function downloadSupplementsOnly(request: DownloadWithFallbackOpt
  * and the school's login had expired by then too (Windows, 2026-11-12).
  */
 export declare const KEEP_SESSION_EVERY_MS: number;
+/** The user pressed 终止 in the batch's window (papers not reached, or still paused, show it). */
+export declare function batchStopped(result: DownloadBatchResult): boolean;
 /** Download a list serially; one batch id ties it to one progress window. */
 export declare function downloadBatch(searchers: Searchers, options: DownloadBatchOptions, backend?: SchoolBackend, log?: (line: string) => void, createTiers?: (backend?: SchoolBackend) => DownloadTier[], pause?: (ms: number) => Promise<void>): Promise<DownloadBatchResult>;
 //# sourceMappingURL=batch.d.ts.map

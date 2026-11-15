@@ -42,6 +42,8 @@ class UserStoppedBatch(UserMarkedNoEntitlement):
 # Not an entitlement decision: nothing is recorded, the batch ends.
 STOP_BATCH = "stop_batch"
 SHOW_BROWSER = "show_browser"
+# The user is back: a publisher the batch held goes on (``resume_path``).
+RESUME_HELD = "resume_held"
 
 
 SKIP = "skip"
@@ -202,6 +204,31 @@ def request_action(current: str, action: str, run_id: str = "") -> None:
         _write_json(control_path().with_name("stop.json"), data)
     else:
         _write_json(control_path(), data)
+
+
+def resume_path() -> Path:
+    return control_path().with_name("resume.json")
+
+
+def request_resume(key: str, batch_id: str) -> None:
+    """The user asked the batch to go on with a publisher it holds (a DOI prefix)."""
+    data = _read_json(resume_path())
+    keys = list(data.get("keys") or []) if data.get("batch_id") == batch_id else []
+    if key not in keys:
+        keys.append(key)
+    _write_json(resume_path(), {"batch_id": batch_id, "keys": keys, "at": time.time()})
+
+
+def take_resumes(batch_id: str) -> list[str]:
+    """The publishers the user asked this batch to go on with, once (the caller's next report)."""
+    data = _read_json(resume_path())
+    if not batch_id or data.get("batch_id") != batch_id:
+        return []
+    try:
+        resume_path().unlink()
+    except OSError:
+        pass
+    return [str(key) for key in data.get("keys") or [] if isinstance(key, str)]
 
 
 def batch_stop_requested() -> bool:

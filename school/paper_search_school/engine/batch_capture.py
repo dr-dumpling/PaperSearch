@@ -36,6 +36,12 @@ from .batch_common import (
 )
 
 
+def _sent_as_attachment(headers: dict[str, str]) -> bool:
+    """The site sends the PDF to be saved, not shown (Content-Disposition: attachment):
+    Chrome downloads it besides the capture, which holds it already."""
+    return headers.get("content-disposition", "").strip().lower().startswith("attachment")
+
+
 class CaptureMixin:
     """Getting the PDF: the article's PDF control, the browser's viewer and downloads, fetching again."""
 
@@ -508,10 +514,12 @@ class CaptureMixin:
                         else payload["body"].encode("latin-1")
                     )
                     if self._accept_pdf_body(body, url):
-                        if self.adapter.keeps_pdf_out_of_downloads:
+                        if self.adapter.keeps_pdf_out_of_downloads or _sent_as_attachment(headers):
                             # We own the validated bytes and save them under the
                             # DOI below. Do not also hand the response to Chrome's
-                            # download manager, which exposes a UUID temp file.
+                            # download manager, which exposes a UUID temp file and,
+                            # for a PDF sent as an attachment, a full second copy in
+                            # its download list (Science's ?download=true, 2026-11-15).
                             cdp_session.send("Fetch.fulfillRequest", {
                                 "requestId": request_id, "responseCode": 204,
                                 "responseHeaders": [], "body": "",

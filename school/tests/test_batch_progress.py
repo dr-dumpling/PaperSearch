@@ -43,6 +43,69 @@ class BatchProgressTests(unittest.TestCase):
         data = self.state(); data["owner_pid"] = DEAD_PID
         pr.progress_path().write_text(json.dumps(data), encoding="utf-8")
 
+    def test_logging_in_to_go_on_while_another_paper_downloads(self):
+        """登录并继续 pressed while the batch's other papers still download: the next report,
+        sent beside the running download, carries it, and the paper keeps running (user, 2026-11-15)."""
+        from unittest.mock import MagicMock
+        from paper_search_school import entitlements, progress_capsule
+
+        entitlements.resume_path().unlink(missing_ok=True)
+        held = [{"key": "10.1126/", "name": "Science", "count": 1}]
+        lanes = "开放下载 2 篇 · 机构下载 2 篇"
+        self.new_process()
+        with pr.tracked_download("10.1002/now", None, pr.BatchContext.from_args("b7", 5, 10, 4, 4, 0)) as outcome:
+            self.assertEqual(json.loads(server.school_batch_progress("b7", 10, 4, 4, 0, lanes=lanes, held=held))["resume"], [])
+            state = self.state()
+            self.assertEqual((state["current"], state["held"]), ("10.1002/now", held))
+            api = progress_capsule.Api(MagicMock(), MagicMock(), MagicMock())
+            self.assertEqual(api.act("resume_held", "", state["run_id"]), "已收到：这一篇下完后接着下暂停的篇目")
+            reply = json.loads(server.school_batch_progress("b7", 10, 4, 4, 0, lanes=lanes, held=held))
+            self.assertEqual(reply["resume"], ["10.1126/"])
+            self.assertEqual(self.state()["current"], "10.1002/now")
+            outcome["result"] = {"success": True}
+
+    def test_a_held_publisher_shows_with_its_button_and_the_users_answer_comes_back_once(self):
+        # The caller holds a publisher whose school login stopped working mid-batch (2026-11-15).
+        import time
+        from paper_search_school import entitlements, progress_view
+
+        entitlements.resume_path().unlink(missing_ok=True)
+        entitlements.control_path().with_name("stop.json").unlink(missing_ok=True)
+        reply = json.loads(server.school_batch_progress("b9", 10, 4, 4, 0, phase="其他篇目已完成", held=[
+            {"key": "10.1126/", "name": "Science", "count": 3}, {"key": "not-a-doi", "name": "x", "count": 2},
+            {"key": "10.1098/", "name": "Royal Society Publishing", "count": 0}]))
+        self.assertEqual(reply, {"updated": True, "resume": [], "stop": False})
+        state = self.state()
+        self.assertEqual(state["held"], [{"key": "10.1126/", "name": "Science", "count": 3}])
+        self.assertEqual(progress_view.view(state, time.time())["held"], [{"key": "10.1126/", "name": "Science", "count": 3}])
+        # 登录并继续: the next report answers it, once; another batch's press is not this one's.
+        entitlements.request_resume("10.1126/", "b9")
+        entitlements.request_resume("10.1126/", "b8")
+        self.assertEqual(json.loads(server.school_batch_progress("b9", 10, 4, 4, 0, held=[]))["resume"], [])
+        entitlements.request_resume("10.1126/", "b9")
+        self.assertEqual(json.loads(server.school_batch_progress("b9", 10, 4, 4, 0, held=[]))["resume"], ["10.1126/"])
+        self.assertEqual(json.loads(server.school_batch_progress("b9", 10, 4, 4, 0))["resume"], [])
+        self.assertEqual(self.state()["held"], [])
+        # Nothing else left: the batch waits, which the window says instead of the last paper.
+        wait = "其他篇目已完成，等你回来点“登录并继续”"
+        held = [{"key": "10.1126/", "name": "Science", "count": 3}]
+        server.school_batch_progress("b9", 10, 7, 7, 0, current="10.1126/last", phase=wait, held=held, held_wait=True)
+        shown = progress_view.view(self.state(), time.time())
+        self.assertTrue(shown["held_wait"])
+        self.assertEqual((shown["mode"], shown["headline"], shown["line"]), ("running", "需要你操作", wait))
+        self.assertEqual((shown["current"], shown["title"], shown["where"]), ("", "", ""))
+        # Any other report ends it (登录并继续 pressed: the held go on); so does a download.
+        server.school_batch_progress("b9", 10, 7, 7, 0, held=[])
+        self.assertFalse(progress_view.view(self.state(), time.time())["held_wait"])
+        server.school_batch_progress("b9", 10, 7, 7, 0, phase=wait, held=held, held_wait=True)
+        with pr.tracked_download("10.1126/next", None, pr.BatchContext.from_args("b9", 8, 10, 7, 7, 0)) as outcome:
+            self.assertNotIn("held_wait", self.state())
+            outcome["result"] = {"success": True}
+        # 终止 while the batch waits: the next report says so.
+        entitlements.request_action("", entitlements.STOP_BATCH, self.state()["run_id"])
+        self.assertTrue(json.loads(server.school_batch_progress("b9", 10, 4, 4, 0, phase="其他篇目已完成"))["stop"])
+        entitlements.control_path().with_name("stop.json").unlink(missing_ok=True)
+
     def test_items_accumulate_and_the_window_waits_between_them(self):
         self.item(1, 3, True)
         snap, _ = pr.read_snapshot()
@@ -330,18 +393,18 @@ class BatchProgressTests(unittest.TestCase):
         snap, _ = pr.read_snapshot()
         self.assertEqual((snap["batch_id"], snap["done"], snap["total"], snap["status"]), ("b3", 1, 2, "running"))
         self.assertEqual(json.loads(server.school_batch_progress(
-            "b3", 2, 2, 2, 0, finished=True, results={"main": 2, "sources": [["开放获取", 2]]})), {"updated": True})
+            "b3", 2, 2, 2, 0, finished=True, results={"main": 2, "sources": [["开放获取", 2]]})), {"updated": True, "resume": [], "stop": False})
         snap = pr.read_snapshot()[0]
         self.assertEqual((snap["status"], snap["results"]["sources"]), ("done", [["开放获取", 2]]))
 
     def test_server_passes_the_phase_and_channel(self):
         self.assertEqual(json.loads(server.school_batch_progress(
             "b6", 10, 2, 2, 0, current="10.1000/2", phase="开放获取：已查 3/10 篇，找到 2 篇",
-            channel="开放获取")), {"updated": True})
+            channel="开放获取")), {"updated": True, "resume": [], "stop": False})
         snap = pr.read_snapshot()[0]
         self.assertEqual((snap["phase"], snap["channel"]), ("开放获取：已查 3/10 篇，找到 2 篇", "开放获取"))
         self.assertEqual(json.loads(server.school_batch_progress(
-            "b6", 10, 3, 3, 0, current="10.1000/4", lanes="开放下载 3 篇 · 机构下载 0 篇")), {"updated": True})
+            "b6", 10, 3, 3, 0, current="10.1000/4", lanes="开放下载 3 篇 · 机构下载 0 篇")), {"updated": True, "resume": [], "stop": False})
         self.assertEqual(pr.read_snapshot()[0]["lanes"], "开放下载 3 篇 · 机构下载 0 篇")
 
 

@@ -8,7 +8,8 @@ import { withCliSchoolProgress } from "../../src/management/school/cliProgress.j
  * method they pass on: one left out is silently gone, as the papers' report was
  * until an integration test missed its calls (2026-11-10).
  */
-const METHODS = ["probe", "downloadLegalDoi", "withBatchSession", "reportBatchProgress", "reportBatchPapers", "keepSession"] as const;
+const METHODS = ["probe", "downloadLegalDoi", "withBatchSession", "reportBatchProgress", "reportBatchPapers", "keepSession",
+  "holdSupported", "takeBatchRequests"] as const;
 // Fails to compile when SchoolBackend gains a method this list does not name.
 const unlisted: Record<Exclude<keyof SchoolBackend, (typeof METHODS)[number]>, never> = {};
 
@@ -38,6 +39,14 @@ function backend(calls: string[]): SchoolBackend {
       calls.push("keepSession");
       return true;
     },
+    holdSupported: async () => {
+      calls.push("holdSupported");
+      return true;
+    },
+    takeBatchRequests: () => {
+      calls.push("takeBatchRequests");
+      return { resume: [], stop: false };
+    },
   };
 }
 
@@ -51,6 +60,8 @@ async function callEach(wrapped: SchoolBackend, methods: readonly (typeof METHOD
     }
     if (method === "reportBatchPapers") await wrapped.reportBatchPapers!({ id: "b", folder: "/tmp", papers: [] });
     if (method === "keepSession") await wrapped.keepSession!();
+    if (method === "holdSupported") await wrapped.holdSupported!();
+    if (method === "takeBatchRequests") wrapped.takeBatchRequests!("b");
   }
 }
 

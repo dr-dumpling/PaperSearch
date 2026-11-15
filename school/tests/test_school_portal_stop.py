@@ -126,3 +126,8 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(artifacts["stopped_host"], "uis.example.edu.cn")
         result._stopped_host = "uis.example.edu.cn/?token=x"
         self.assertNotIn("stopped_host", bridge._browser_artifacts(result, SimpleNamespace(name="x")))
+        # Where a wait on a school login ended goes to the caller as one fixed word (2026-11-15).
+        result.login_wait_page = "school_login"
+        self.assertEqual(bridge._browser_artifacts(result, SimpleNamespace(name="x"))["login_wait_page"], "school_login")
+        result.login_wait_page = "school_login?token=x"
+        self.assertNotIn("login_wait_page", bridge._browser_artifacts(result, SimpleNamespace(name="x")))

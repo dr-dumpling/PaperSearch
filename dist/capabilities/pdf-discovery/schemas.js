@@ -60,13 +60,16 @@ export const DownloadBatchSchema = z
         .refine((item) => !!(item.doi?.trim() || item.paperId?.trim()), {
         message: "Each item needs a doi or paperId",
     }))
-        .min(1)
-        .max(1000),
+        .max(1000)
+        .optional()
+        .default([]),
+    resume: z.coerce.string().optional(),
     savePath: z.coerce.string().optional(),
     useEntitledAccess: z.boolean().optional().default(true),
     useSciHub: z.boolean().optional().default(true),
     content: z.enum(["main", "supplements", "both"]).optional().default("main"),
     mode: z.enum(["two_phase", "per_item", "entitled_only"]).optional().default("two_phase"),
 })
-    .strip();
+    .strip()
+    .refine((args) => args.items.length > 0 || !!args.resume?.trim(), { message: "items (at least one) or resume is required" });
 //# sourceMappingURL=schemas.js.map

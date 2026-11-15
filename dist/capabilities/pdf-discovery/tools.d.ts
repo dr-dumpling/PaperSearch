@@ -110,7 +110,6 @@ export declare const DOWNLOAD_BATCH_TOOL: {
         properties: {
             items: {
                 type: string;
-                minItems: number;
                 maxItems: number;
                 description: string;
                 items: {
@@ -163,8 +162,11 @@ export declare const DOWNLOAD_BATCH_TOOL: {
                 default: string;
                 description: string;
             };
+            resume: {
+                type: string;
+                description: string;
+            };
         };
-        required: string[];
     };
 };
 export declare const PDF_DISCOVERY_TOOLS: ({
@@ -277,7 +279,6 @@ export declare const PDF_DISCOVERY_TOOLS: ({
         properties: {
             items: {
                 type: string;
-                minItems: number;
                 maxItems: number;
                 description: string;
                 items: {
@@ -330,8 +331,11 @@ export declare const PDF_DISCOVERY_TOOLS: ({
                 default: string;
                 description: string;
             };
+            resume: {
+                type: string;
+                description: string;
+            };
         };
-        required: string[];
     };
 })[];
 //# sourceMappingURL=tools.d.ts.map

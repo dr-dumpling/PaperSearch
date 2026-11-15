@@ -31,7 +31,9 @@ export declare function handleDownloadWithFallback(args: Parameters<typeof downl
         text: string;
     }[];
 }>;
-export declare function handleDownloadBatch(args: DownloadBatchOptions, searchers: Searchers, schoolBackend?: SchoolBackend): Promise<{
+export declare function handleDownloadBatch(args: DownloadBatchOptions & {
+    resume?: string;
+}, searchers: Searchers, schoolBackend?: SchoolBackend): Promise<{
     content: {
         type: "text";
         text: string;

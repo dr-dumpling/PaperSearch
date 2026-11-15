@@ -100,6 +100,14 @@ export function withAutoUpdate(backend, update) {
             : {}),
         // Only on a backend the batch already has, which the update ran before.
         ...(inner.keepSession ? { keepSession: (signal) => inner.keepSession(signal) } : {}),
+        ...(inner.holdSupported
+            ? { holdSupported: async () => {
+                    await ready();
+                    return inner.holdSupported();
+                } }
+            : {}),
+        // What its reports' answers brought: nothing to update for.
+        ...(inner.takeBatchRequests ? { takeBatchRequests: (batchId) => inner.takeBatchRequests(batchId) } : {}),
     });
     return wrap(backend);
 }

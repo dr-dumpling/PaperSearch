@@ -376,7 +376,8 @@ def _try_builtin_institutional(
                   "action": primary["action"], "source_failures": failures}
         if primary["error_type"] == "access_blocked":
             _remember_blocked_journal(doi, identity)
-        if primary["error_type"] == "institution_federation_unavailable" and manual_school:
+        if (primary["error_type"] == "institution_federation_unavailable" and manual_school
+                and (primary.get("artifacts") or {}).get("route_missing")):
             _remember_missing_route(publisher_name, config, doi)
         if "reason_code" in primary:
             result["reason_code"] = primary["reason_code"]
@@ -711,6 +712,11 @@ def _write_exception_diagnostic(run_dir: Path, doi: str, exc: Exception, *,
     return str(path)
 
 
+#: Where a wait on a school login can end (``BatchLoginMixin._login_wait_page``).
+LOGIN_WAIT_PAGES = ("school_login", "school_choice", "institution_chooser", "authentication_redirect",
+                    "publisher", "other", "closed")
+
+
 def _browser_artifacts(result: Any, profile: Any) -> dict[str, str]:
     """Where the browser run left its record (success) or diagnostic packet (failure).
 
@@ -725,6 +731,18 @@ def _browser_artifacts(result: Any, profile: Any) -> dict[str, str]:
         "diagnostic": str(getattr(result, "diagnostic_path", "") or ""),
         "state": state if re.fullmatch(r"[a-z0-9_]{1,64}", state) else "",
     }
+    # The publisher's list was seen without the school in this run, and the school was
+    # chosen nowhere in it: only this is remembered as no route (``login_routes``); an
+    # article that ended on the earlier finding, or whose school was chosen, is not.
+    events = getattr(result, "events", None) or []
+    if getattr(result, "_institution_not_listed", False) is True and not any(
+            isinstance(e, dict) and e.get("state") == "institution_selected" for e in events):
+        artifacts["route_missing"] = True
+    # Where a wait on a school login ended (``_login_wait_page``): a fixed word. The caller
+    # holds a publisher only on the school's own sign-in page (2026-11-15).
+    wait_page = str(getattr(result, "login_wait_page", "") or "")
+    if wait_page in LOGIN_WAIT_PAGES:
+        artifacts["login_wait_page"] = wait_page
     # The school's site the login stopped on: a host name only, for the message.
     host = str(getattr(result, "_stopped_host", "") or "").lower()
     if state == "idp_no_return_to_publisher" and re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+", host) and len(host) <= 253:

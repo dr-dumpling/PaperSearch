@@ -421,6 +421,116 @@ class CapsulePageTests(unittest.TestCase):
                     finally:
                         browser.close()
 
+    def test_a_batch_waiting_for_held_publishers_says_so_collapsed_too(self):
+        """Nothing left but the held publishers: the collapsed capsule said 下载中 and the last
+        paper as if it still ran, not that the user is to come back (Windows, 2026-11-15). A
+        held publisher shows beside the progress as soon as it is held, as a tag apart from
+        the breathing prompt of a sign-in the browser waits on (Mac, 2026-11-15)."""
+        import time
+        from patchright.sync_api import sync_playwright
+        from paper_search_school.progress_view import view
+        now = time.time()
+        wait = "其他篇目已完成，等你回来点“登录并继续”"
+        state = dict(status='running', run_id='r', total=8, done=4, success=4, failed=0, current='10.1038/old',
+                     title='The paper that ran last', publisher='Springer Nature', stage='starting', awaiting_next=True,
+                     phase=wait, held_wait=True, held=[{'key': '10.1038/', 'name': 'Springer Nature', 'count': 4}])
+        with sync_playwright() as p:
+            for english in (False, True):
+                with self.subTest(english=english):
+                    browser, page = self.drag_page(p, 'win32', english=english)
+                    try:
+                        page.evaluate("s => { testState = s; open = false; tick(); }",
+                                      {**view(state, now), **({'lang': 'en'} if english else {})})
+                        page.wait_for_function("root.classList.contains('pill') && !root.classList.contains('animating')")
+                        self.assertNotIn('warn', page.evaluate("root.className"))
+                        self.assertEqual(page.locator('#root').inner_text().split('\n'),
+                                         ['Sign in to school again', '4 paused'] if english else ['请重新登录学校', '已暂停 4 篇'])
+                        self.assertEqual(page.locator('.held-tag').count(), 1)
+                        page.evaluate("open = true; tick()")
+                        page.wait_for_function("root.classList.contains('card') && !root.classList.contains('animating')")
+                        shown = page.locator('#root').inner_text()
+                        self.assertNotIn('The paper that ran last', shown)
+                        self.assertIn('Others done; press Sign in & resume' if english else wait, shown)
+                        self.assertEqual(page.locator('[data-act="resume_held"]').count(), 1)
+                        self.assertEqual(page.locator('[data-act="confirm"]').count(), 1)
+                        # Held while other papers still download: their progress, the tag beside it.
+                        running = dict(state, held_wait=False, awaiting_next=False, stage='fetching_pdf', part='main',
+                                       current='10.1002/now', title='Downloading now', publisher='Wiley')
+                        page.evaluate("s => { testState = s; open = false; tick(); }",
+                                      {**view(running, now), **({'lang': 'en'} if english else {})})
+                        page.wait_for_function("root.classList.contains('pill') && !root.classList.contains('animating')")
+                        self.assertNotIn('warn', page.evaluate("root.className"))
+                        pill = page.locator('#root').inner_text()
+                        self.assertIn('4/8', pill)
+                        self.assertIn('4 paused' if english else '已暂停 4 篇', pill)
+                        page.locator('.held-tag').click()
+                        page.wait_for_function("root.classList.contains('card') && !root.classList.contains('animating')")
+                        self.assertIn('Downloading now', page.locator('#root').inner_text())
+                        self.assertEqual(page.locator('[data-act="resume_held"]').count(), 1)
+                    finally:
+                        browser.close()
+
+    def test_logging_in_to_go_on_answers_at_once(self):
+        """登录并继续 looked as if nothing happened in the seconds before the papers went on
+        (Mac, 2026-11-15): the button, the line and the tag say it was taken at once, until
+        the held publishers change; a press that was not taken gives the button back."""
+        import time
+        from patchright.sync_api import sync_playwright
+        from paper_search_school.progress_view import view
+        now = time.time()
+        held = [{'key': '10.1038/', 'name': 'Springer Nature', 'count': 4}]
+        running = dict(status='running', run_id='r', total=8, done=3, success=3, failed=0, current='10.1002/now',
+                       title='Downloading now', publisher='Wiley', stage='fetching_pdf', part='main', held=held)
+        slow = """window.pywebview.api.act = async (...args) => { requestedActions.push(args);
+            await new Promise((done) => setTimeout(done, 3000)); return '已收到：这一篇下完后接着下暂停的篇目'; }"""
+        with sync_playwright() as p:
+            for english in (False, True):
+                with self.subTest(english=english):
+                    browser, page = self.drag_page(p, 'win32', english=english)
+                    lang = {'lang': 'en'} if english else {}
+                    try:
+                        page.evaluate(slow)
+                        page.evaluate("async s => { testState = s; open = true; await tick(); }", {**view(running, now), **lang})
+                        page.wait_for_function("root.querySelector('[data-act=\"resume_held\"]') && !root.classList.contains('animating')")
+                        page.locator('[data-act="resume_held"]').click()
+                        # At once, though the answer takes seconds.
+                        page.wait_for_function("root.querySelector('.held .btn.done')", timeout=500)
+                        held_text = page.locator('.held').inner_text()
+                        self.assertIn('Confirmed' if english else '已确认', held_text)
+                        self.assertIn('4 paused resume next' if english else '本篇完成后继续下载 4 篇', held_text)
+                        # Each line of the block is one line (user, 2026-11-15).
+                        self.assertEqual(page.evaluate("""() => [...root.querySelectorAll('.held .copy, .held .names')]
+                            .map((line) => { const range = document.createRange(); range.selectNodeContents(line);
+                              return range.getClientRects().length; })"""), [1, 1])
+                        self.assertEqual(page.locator('[data-act="resume_held"]').count(), 0)
+                        page.evaluate("async () => { open = false; await tick(); }")
+                        page.wait_for_function("root.classList.contains('pill') && !root.classList.contains('animating')")
+                        self.assertIn('4 to resume' if english else '待继续 4 篇', page.locator('.held-tag').inner_text())
+                        # Gone on with, then held again: the button is back.
+                        page.evaluate("async s => { testState = s; await tick(); }", {**view(dict(running, held=[]), now), **lang})
+                        page.evaluate("async s => { testState = s; open = true; await tick(); }", {**view(running, now), **lang})
+                        page.wait_for_function("root.querySelector('[data-act=\"resume_held\"]')")
+                        # Only the held left: the card's title and line change at once too.
+                        wait = dict(running, held_wait=True, awaiting_next=True, stage='starting',
+                                    phase='其他篇目已完成，等你回来点“登录并继续”')
+                        page.evaluate(slow)
+                        page.evaluate("async s => { testState = s; open = true; await tick(); }", {**view(wait, now), **lang})
+                        page.wait_for_function("root.querySelector('[data-act=\"resume_held\"]')")
+                        page.locator('[data-act="resume_held"]').click()
+                        page.wait_for_function("root.querySelector('.held .btn.done')", timeout=500)
+                        self.assertEqual(page.locator('.head .title').inner_text(), 'Resuming' if english else '正在继续下载')
+                        self.assertEqual(page.locator('.paper .line').inner_text(),
+                                         'Sign-in page opens if needed' if english else '如需登录，会打开学校登录页')
+                        page.evaluate("async s => { testState = s; await tick(); }", {**view(dict(wait, held=[]), now), **lang})
+                        page.evaluate("async s => { testState = s; await tick(); }", {**view(running, now), **lang})
+                        page.wait_for_function("root.querySelector('[data-act=\"resume_held\"]')")
+                        # A press not taken (nothing held any more) gives the button back, with why.
+                        page.evaluate("window.pywebview.api.act = async () => '这批下载已没有暂停的篇目'")
+                        page.locator('[data-act="resume_held"]').click()
+                        page.wait_for_function("root.querySelector('[data-act=\"resume_held\"]') && !root.querySelector('.held .btn.done')")
+                    finally:
+                        browser.close()
+
     def test_mac_window_motion_does_not_retrigger_hover_without_pointer_motion(self):
         from patchright.sync_api import sync_playwright
         with sync_playwright() as p:

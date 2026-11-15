@@ -77,6 +77,10 @@ export interface RunLedgerStart {
   mode?: string;
   batchId?: string;
   savePath?: string;
+  /** What the batch downloads (main, supplements, both): 接着下 asks for the same. */
+  content?: string;
+  /** The batch this run goes on with (接着下). */
+  resumeOf?: string;
 }
 
 export interface RunItem {

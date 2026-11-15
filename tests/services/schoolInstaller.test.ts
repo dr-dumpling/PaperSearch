@@ -17,6 +17,7 @@ import {
 } from "../../src/management/school/installer.js";
 import { UV_ARCHIVES } from "../../src/management/school/runtime.js";
 import { autoUpdateSchool, withAutoUpdate } from "../../src/management/school/autoUpdate.js";
+import { createNodeHost } from "../../src/management/school/host.js";
 import type { SchoolBackend } from "../../src/capabilities/pdf-discovery/school/index.js";
 
 const ARCHIVE = UV_ARCHIVES["darwin-arm64"];
@@ -722,5 +723,13 @@ describe("an install from before the rename (0.6.0, carsi-runtime)", () => {
     const outcome = await installSchool(m.host, { ...YES, yes: false, confirmed: true }, m.context);
     expect(outcome.status).toBe("installed");
     expect(existsSync(old)).toBe(true);
+  });
+});
+
+describe("the real machine's commands", () => {
+  it("run with UTF-8 pipes, so the backend's replies arrive intact", async () => {
+    const host = createNodeHost(async () => "");
+    const result = await host.run(process.execPath, ["-e", "process.stdout.write(process.env.PYTHONIOENCODING || '')"]);
+    expect(result).toEqual({ code: 0, stdout: "utf-8", stderr: "" });
   });
 });

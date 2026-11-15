@@ -17,7 +17,8 @@ def article_pdf():
 
 
 class ChromiumPDFCaptureTests(unittest.TestCase):
-    def capture(self, status=200, content_type="application/pdf", body=None, body_error=False, title=None):
+    def capture(self, status=200, content_type="application/pdf", body=None, body_error=False, title=None,
+                disposition=None):
         pdf_bytes = body if body is not None else article_pdf()
         pdf_url = "https://pdf.sciencedirectassets.com/example/main.pdf"
         downloader = PublisherBatchDownloader(config={}, profile=ELSEVIER_PROFILE)
@@ -46,7 +47,8 @@ class ChromiumPDFCaptureTests(unittest.TestCase):
                 "requestId": "test-response",
                 "request": {"url": pdf_url},
                 "responseStatusCode": status,
-                "responseHeaders": [{"name": "Content-Type", "value": content_type}],
+                "responseHeaders": [{"name": "Content-Type", "value": content_type}]
+                + ([{"name": "Content-Disposition", "value": disposition}] if disposition else []),
             })
 
         page.wait_for_timeout.side_effect = deliver_response
@@ -61,6 +63,24 @@ class ChromiumPDFCaptureTests(unittest.TestCase):
         session.send.assert_any_call("Fetch.continueRequest", {"requestId": "test-response"})
         session.send.assert_any_call("Fetch.disable")
         session.detach.assert_called_once()
+
+    def test_a_pdf_sent_as_an_attachment_is_kept_out_of_the_browsers_downloads(self):
+        # Science's ?download=true (2026-11-15): Chrome also downloaded the PDF the capture
+        # held, a full copy in its download list. Taken, it is answered with nothing; a PDF
+        # shown in the browser goes on as before.
+        captured, _, session, body, url = self.capture(disposition='attachment; filename="example.pdf"')
+        self.assertEqual(captured, (body, url, None))
+        session.send.assert_any_call("Fetch.fulfillRequest", {
+            "requestId": "test-response", "responseCode": 204, "responseHeaders": [], "body": ""})
+        self.assertNotIn(("Fetch.continueRequest", {"requestId": "test-response"}),
+                         [call.args for call in session.send.call_args_list])
+        captured, _, session, body, url = self.capture(disposition="inline")
+        self.assertEqual(captured, (body, url, None))
+        session.send.assert_any_call("Fetch.continueRequest", {"requestId": "test-response"})
+        # Not taken (not a PDF of this article): the browser has it as before.
+        captured, _, session, _, _ = self.capture(disposition="attachment", content_type="application/pdf", body=b"<html>" + b"x" * 6000)
+        self.assertIsNone(captured[0])
+        session.send.assert_any_call("Fetch.continueRequest", {"requestId": "test-response"})
 
     def test_a_pdf_naming_neither_doi_nor_title_is_saved_at_once_unconfirmed(self):
         # Science (2026-11-09): its PDF names neither on the first pages; trying the

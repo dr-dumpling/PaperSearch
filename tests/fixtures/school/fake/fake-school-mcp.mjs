@@ -28,6 +28,7 @@ log("start", {
   pid: process.pid,
   dataDir: process.env.SCHOOL_DATA_DIR || null,
   parentSecretPresent: Boolean(process.env.PAPER_SEARCH_FAKE_PARENT_SECRET),
+  ioEncoding: process.env.PYTHONIOENCODING || null,
   argv: process.argv.slice(2),
 });
 

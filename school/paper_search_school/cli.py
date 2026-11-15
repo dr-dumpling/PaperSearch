@@ -20,6 +20,8 @@ Credentials are never passed through this CLI: logins happen in the browser wind
 from __future__ import annotations
 
 import argparse
+import codecs
+import io
 import json
 import os
 import sys
@@ -538,7 +540,20 @@ def _cmd_settings(args: argparse.Namespace) -> int:
     return 0
 
 
+def _utf8_stdio() -> None:
+    """Read and write the standard streams in UTF-8, as PaperSearch does at the
+    other end of the pipes. Piped, Python otherwise uses the system code page
+    (cp1252, GBK on Windows): a reply with a character it cannot encode stops
+    the command with UnicodeEncodeError, and Chinese it can encode reaches
+    PaperSearch garbled. Each stream keeps its error handler; a missing stream
+    (pythonw) or a replaced one is left alone."""
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper) and codecs.lookup(stream.encoding).name != "utf-8":
+            stream.reconfigure(encoding="utf-8", errors=stream.errors)
+
+
 def main(argv: list[str] | None = None) -> int:
+    _utf8_stdio()
     # Fingerprint generation needs no parallel linear algebra. On Windows its
     # default OpenBLAS worker pool reserves hundreds of MiB in each backend.
     # Limit only this owned CLI process; keep an explicit caller override.

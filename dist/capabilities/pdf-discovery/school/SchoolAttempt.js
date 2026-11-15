@@ -2,6 +2,7 @@
 const MESSAGES = {
     login_required: "需要机构登录。请在 PaperSearch 专属下载环境完成登录后重试。",
     login_timeout: "等待机构登录超时。请检查下载浏览器并完成登录后重试；超时不代表没有全文权限。",
+    login_paused: "这家出版社在本批中途停在了学校登录页、没有完成登录（前面的篇目经学校登录下到了），这一篇先暂停、没有下载；不代表没有权限。重新登录学校后接着下即可。",
     login_not_reached: "程序没能进入学校登录页的输入步骤（停在出版社页面或跳转途中），这不是没有权限；已记为原因不明，待排查。",
     login_page_closed: "机构登录页面已关闭。请重新打开下载浏览器后重试。",
     browser_closed: "下载浏览器被关闭了，这一篇没有下完；需要时重新下载即可。",
@@ -49,6 +50,7 @@ const MESSAGES = {
 const SHORT_REASONS = {
     login_required: "需要学校登录",
     login_timeout: "等学校登录超时",
+    login_paused: "学校登录中途失效，已暂停",
     login_not_reached: "没进入学校登录页",
     login_page_closed: "登录页被关闭",
     browser_closed: "下载浏览器被关闭了",

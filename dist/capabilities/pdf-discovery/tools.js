@@ -93,9 +93,8 @@ export const DOWNLOAD_BATCH_TOOL = {
         properties: {
             items: {
                 type: "array",
-                minItems: 1,
                 maxItems: 1000,
-                description: "Papers to download, in order. Each needs a doi or a paperId.",
+                description: "Papers to download, in order. Each needs a doi or a paperId. Leave out with resume.",
                 items: {
                     type: "object",
                     properties: {
@@ -132,8 +131,11 @@ export const DOWNLOAD_BATCH_TOOL = {
                 default: "two_phase",
                 description: "two_phase (default): open stages for every item first, then entitled access only for the items still missing, so browser logins happen in one stretch at the end. per_item: the whole funnel per item. entitled_only: skip the open stages; every item goes straight to entitled access.",
             },
+            resume: {
+                type: "string",
+                description: "Go on with an earlier batch (the user says 接着下, 继续下载, 重试失败的): \"latest\" or a run id as paper-search failures names it. Its papers not saved are downloaded again with its content, those saved without all their supplementary files get only those, beside their PDF; everything goes into the earlier batch's download folder, and items and content are taken from its run ledger. Run it with the same environment as the earlier batch (its XDG_DATA_HOME, if one was set).",
+            },
         },
-        required: ["items"],
     },
 };
 export const PDF_DISCOVERY_TOOLS = [

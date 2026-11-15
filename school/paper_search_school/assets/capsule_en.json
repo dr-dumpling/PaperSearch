@@ -281,7 +281,19 @@
   "检索论文、核对 DOI 是否真实": "Search papers; check DOIs are real",
   "填你常用的邮箱就行，不用注册": "Your usual email will do; no sign-up",
   "网站暂不支持自动下载附录": "No supp. rule; get by hand",
-  "已达每小时上限": "Hourly limit reached"
+  "已达每小时上限": "Hourly limit reached",
+  "这批下载已没有暂停的篇目": "Nothing is paused",
+  "学校登录中途失效，已暂停": "School login lapsed; paused",
+  "继续": "Resume",
+  "已收到：这一篇下完后接着下暂停的篇目": "Got it: resuming the paused",
+  "登录并继续": "Sign in & resume",
+  "请重新登录学校": "Sign in to school again",
+  "点开查看暂停的篇目": "Show the paused papers",
+  "展开进度窗口": "Open the progress window",
+  "已确认": "Confirmed",
+  "正在继续下载": "Resuming",
+  "如需登录，会打开学校登录页": "Sign-in page opens if needed",
+  "其他篇目已完成，等你回来点“登录并继续”": "Others done; press Sign in & resume"
  },
  "patterns": [
   [
@@ -539,6 +551,26 @@
   [
    "^开放下载：已查 (\\d+)/(\\d+) 篇，找到 (\\d+) 篇$",
    "Open download: $1/$2 checked, $3 found"
+  ],
+  [
+   "^学校登录中途失败，已暂停 (\\d+) 篇$",
+   "Login lapsed: $1 paused"
+  ],
+  [
+   "^已暂停 (\\d+) 篇$",
+   "$1 paused"
+  ],
+  [
+   "^待继续 (\\d+) 篇$",
+   "$1 to resume"
+  ],
+  [
+   "^正在继续下载 (\\d+) 篇$",
+   "Resuming $1 paused"
+  ],
+  [
+   "^本篇完成后继续下载 (\\d+) 篇$",
+   "$1 paused resume next"
   ]
  ]
 }

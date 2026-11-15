@@ -7,6 +7,7 @@ import { dirname } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
+import { SCHOOL_BACKEND_UTF8_ENV } from "../../capabilities/pdf-discovery/school/index.js";
 import type { CommandResult, InstallerHost } from "./installer.js";
 
 /** The real machine: processes, downloads and the user's answers on the terminal. */
@@ -19,7 +20,8 @@ export function createNodeHost(prompt: (question: string) => Promise<string>): I
     run: (command, args, options = {}) =>
       new Promise<CommandResult>((resolve, reject) => {
         const child = spawn(command, args, {
-          env: { ...process.env, ...(options.env ?? {}) },
+          // The backend's replies (a school's name among them) are read as UTF-8.
+          env: { ...process.env, ...SCHOOL_BACKEND_UTF8_ENV, ...(options.env ?? {}) },
           stdio: ["ignore", "pipe", "pipe"],
           windowsHide: true,
         });

@@ -295,6 +295,8 @@ def _adopt_batch(batch_id: str, total: int, counts: tuple[int | None, int | None
                     and not _STATE.get("awaiting_next")):
                 done, succeeded, failed = counts
                 _STATE.update(total=int(total), lanes=fields.get("lanes", ""),
+                              **({"held": fields["held"]} if "held" in fields else {}),
+                              **({"held_wait": fields["held_wait"]} if "held_wait" in fields else {}),
                               **({"done": done} if done is not None else {}),
                               **({"success": succeeded} if succeeded is not None else {}),
                               **({"failed": failed} if failed is not None else {}))
@@ -335,9 +337,28 @@ def _adopt_batch(batch_id: str, total: int, counts: tuple[int | None, int | None
     return True
 
 
+_HELD_KEY = re.compile(r"10\.\d{4,9}/")
+
+
+def _held(raw: Any) -> list[dict[str, Any]]:
+    """The publishers whose papers the caller holds (their school login stopped working
+    mid-batch): [{key (a DOI prefix), name, count}], at most four, checked for the window."""
+    held: list[dict[str, Any]] = []
+    for entry in raw if isinstance(raw, list) else []:
+        if not isinstance(entry, dict) or not _HELD_KEY.fullmatch(str(entry.get("key") or "")):
+            continue
+        count = entry.get("count")
+        if not isinstance(count, int) or isinstance(count, bool) or not 0 < count <= 1_000_000:
+            continue
+        name = _short_line(entry.get("name"), 40) or entry["key"]
+        held.append({"key": entry["key"], "name": name, "count": count})
+    return held[:4]
+
+
 def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int, *,
                current: str = "", finished: bool = False, results: Any = None,
-               phase: str = "", channel: str = "", lanes: str = "") -> bool:
+               phase: str = "", channel: str = "", lanes: str = "", held: Any = None,
+               held_wait: bool = False) -> bool:
     """Record batch totals for items finished without the backend, or the batch end.
 
     ``results`` (the batch end only) is the caller's summary of every item,
@@ -348,7 +369,10 @@ def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int
     short single lines and are dropped at the batch end. ``lanes`` is one line on
     what each lane got in a batch whose open-access checks run beside its downloads;
     it may come while a download of the batch runs, which then keeps its paper,
-    stage and prompts (``_adopt_batch``)."""
+    stage and prompts (``_adopt_batch``). ``held``: the publishers the caller holds
+    (``_held``), each with a button to go on with them; an empty list clears them.
+    ``held_wait``: nothing else is left and the batch waits for the user to go on with
+    them or end it (each report says it again; any other report, or a download, ends it)."""
     ctx = BatchContext.from_args(batch_id, max(1, min(done, total)), total, done, succeeded, failed)
     if ctx is None or done > total:
         return False
@@ -361,6 +385,8 @@ def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int
                            beside_download=bool(lanes) and not finished,
                            **({"current": current} if current else {}),
                            **({"lanes": lanes} if lanes or finished else {}),
+                           **({"held": [] if finished else _held(held)} if held is not None or finished else {}),
+                           held_wait=bool(held_wait) and not finished,
                            stage="saved_pending_verification" if finished else "starting",
                            channel="" if finished else channel,
                            phase=(f"批量下载结束：成功 {succeeded}，失败 {failed}" if finished
@@ -572,6 +598,7 @@ def tracked_download(current: str, output_dir: Any = None, batch: BatchContext |
         _notify_stage("starting", current)
     with _LOCK:
         _STATE.pop("hourly_wait", None)  # this article runs: no longer held by the hourly limit
+        _STATE.pop("held_wait", None)  # nor waiting for the user to go on with held publishers
     update(content=content if content in ("main", "supplements", "both") else "main")
     if output_dir:
         set_output_dir(output_dir)

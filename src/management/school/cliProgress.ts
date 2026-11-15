@@ -16,6 +16,8 @@ export function withCliSchoolProgress(backend: SchoolBackend): SchoolBackend {
     reportBatchPapers: async (update, last) =>
       (await backend.reportBatchPapers?.(update, last)) ?? false,
     keepSession: async (signal) => (await backend.keepSession?.(signal)) ?? false,
+    holdSupported: async () => (await backend.holdSupported?.()) ?? false,
+    takeBatchRequests: (batchId) => backend.takeBatchRequests?.(batchId) ?? { resume: [], stop: false },
     downloadLegalDoi: async (request) => {
       const controller = new AbortController();
       const cancel = () => controller.abort();

@@ -112,7 +112,8 @@ describe("two lanes at once", () => {
                 limited.add(item);
                 return { status: "error", code: "rate_limited", retryAfterSec: 30, message: "hourly limit" };
               }
-              return school === "ok" || school === "limited" ? OK : { status: "error", code: "login_required", message: "failed" };
+              // A denial: a paper stopped at the school's sign-in page would hold the publisher (tested on its own).
+              return school === "ok" || school === "limited" ? OK : { status: "error", code: "entitlement_missing", message: "failed" };
             } finally {
               active -= 1;
             }

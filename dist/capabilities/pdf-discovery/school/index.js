@@ -7,6 +7,6 @@ export function createSchoolBackend(command) {
         command: command || (() => getConfigValue("PAPER_SEARCH_SCHOOL_EXECUTABLE")),
     });
 }
-export { browserProfileInUse, DOWNLOAD_LOCK_FILE, isStaleDownloadLock, LEGACY_SCHOOL_DATA_DIR, paperSearchDataHome, resolveDefaultSchoolProfileDir, takeDownloadLock, } from "./SchoolMcpClient.js";
+export { browserProfileInUse, DOWNLOAD_LOCK_FILE, isStaleDownloadLock, LEGACY_SCHOOL_DATA_DIR, paperSearchDataHome, resolveDefaultSchoolProfileDir, SCHOOL_BACKEND_UTF8_ENV, takeDownloadLock, } from "./SchoolMcpClient.js";
 export { schoolAttemptDetails, schoolShortReason } from "./SchoolAttempt.js";
 //# sourceMappingURL=index.js.map

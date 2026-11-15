@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { SCHOOL_BACKEND_UTF8_ENV } from "../../capabilities/pdf-discovery/school/index.js";
 
 // The window needs its screen (Linux), to know it runs over SSH, and the proxy for its key tests.
 const PASSED_THROUGH = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "SSH_CONNECTION",
@@ -8,14 +9,15 @@ const PASSED_THROUGH = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "SSH_CO
 
 /**
  * The settings window's environment: the platform basics (as for the backend's
- * MCP process), its screen and proxy, and its paths; never PaperSearch's keys.
+ * MCP process), UTF-8 pipes, its screen and proxy, and its paths; never PaperSearch's keys.
  */
 export function settingsWindowEnv(
   paths: { dataDir: string; configFile: string; cli: string },
   env: Record<string, string | undefined> = process.env,
 ): Record<string, string> {
   const passed = Object.fromEntries(PASSED_THROUGH.filter((name) => env[name]).map((name) => [name, env[name] as string]));
-  return { ...getDefaultEnvironment(), ...passed, SCHOOL_DATA_DIR: paths.dataDir, PAPER_SEARCH_CONFIG_FILE: paths.configFile,
+  return { ...getDefaultEnvironment(), ...passed, ...SCHOOL_BACKEND_UTF8_ENV,
+    SCHOOL_DATA_DIR: paths.dataDir, PAPER_SEARCH_CONFIG_FILE: paths.configFile,
     ...(paths.cli ? { PAPER_SEARCH_CLI: paths.cli } : {}) };
 }
 

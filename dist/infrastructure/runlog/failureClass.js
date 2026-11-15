@@ -31,6 +31,9 @@ const CLASS_OF_CODE = {
     user_skipped: "user_or_external",
     cancelled: "user_or_external",
     login_timeout: "user_or_external",
+    // The school's login stopped working mid-batch at a publisher it had worked at: the
+    // paper waited and was not tried (user, 2026-11-15).
+    login_paused: "user_or_external",
     login_page_closed: "user_or_external",
     browser_closed: "user_or_external",
     login_credentials_rejected: "user_or_external",

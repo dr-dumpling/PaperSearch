@@ -34,6 +34,7 @@ STAGE_STEP = {
 # The answer a button gets in the window, before the download confirms it.
 ACTION_FEEDBACK = {
     "show_browser": "正在切到下载浏览器",
+    "resume_held": "已收到：这一篇下完后接着下暂停的篇目",
     "stop_batch": "已终止任务：这一篇结束，剩下的不再下载",
     "skip_item": "已跳过本篇，进入下一篇",
     "skip_journal": "已记住：本刊无权限，以后自动跳过（可用 entitlements 撤销）",
@@ -316,9 +317,20 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
     done = min(total, done) if total else done
     ok, bad = _count(state.get("success")), _count(state.get("failed"))
     attention = attention_items(state) if running else []
+    awaiting = bool(state.get("awaiting_next"))
+    # Publishers whose school login stopped working mid-batch, held by the caller:
+    # a line and a button to go on with them once the user is back (2026-11-15).
+    held = [{"key": str(entry.get("key")), "name": str(entry.get("name") or entry.get("key")),
+             "count": int(entry.get("count") or 0)}
+            for entry in (state.get("held") or []) if running and isinstance(entry, dict) and entry.get("key")]
+    # Nothing else left: the batch waits for the user, which the collapsed capsule says
+    # too, not the last paper as if it still ran (user, 2026-11-15).
+    held_wait = bool(held) and awaiting and not attention and bool(state.get("held_wait"))
 
     if attention:
         mode, tone, headline = "attention", "warn", "需要你操作"
+    elif held_wait:
+        mode, tone, headline = "running", "warn", "需要你操作"
     elif running:
         mode, tone, headline = "running", "accent", "下载中"
     elif status == "cancelled":
@@ -332,7 +344,6 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
     else:
         mode, tone, headline = "done", "ok", "下载完成"
 
-    awaiting = bool(state.get("awaiting_next"))
     part_key = str(state.get("part") or "")
     if running and not awaiting and part_key in ("main", "supplements"):
         part = CONTENT_LABELS[part_key]
@@ -342,6 +353,9 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
     publisher = str(state.get("publisher") or "") or str(state.get("channel") or "")
     journal = str(state.get("journal") or "")
     current = str((attention[-1].get("current") if attention else "") or state.get("current") or "")
+    title = str(state.get("title") or "")
+    if held_wait:
+        publisher = journal = current = title = ""  # the last paper is over
 
     step = None
     if running and not attention and not awaiting:
@@ -410,7 +424,7 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
         "ok": ok, "bad": bad, "left": max(0, total - done) if running and total else None,
         "part": part, "publisher": publisher,
         "where": " · ".join(v for v in (journal, publisher) if v),
-        "title": str(state.get("title") or ""), "current": current,
+        "title": title, "current": current,
         "run_id": str(state.get("run_id") or ""),
         "step": step, "steps": list(STEPS), "line": line,
         "elapsed": elapsed, "attention": prompt, "notice": notice, "hold": bool(hold),
@@ -422,6 +436,7 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
         # the caller's open-access stretch (its channel), which opens none.
         "browser": running and bool(current) and not awaiting and not state.get("channel"),
         "stop_left": max(0, total - done - 1),
+        "held": held, "held_wait": held_wait,
         "folder": bool(state.get("output_dir")),
     }
 

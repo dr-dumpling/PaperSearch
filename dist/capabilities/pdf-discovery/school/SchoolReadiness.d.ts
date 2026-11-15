@@ -26,6 +26,10 @@ export interface SchoolBatchSupport {
     progressPhase?: boolean;
     /** school_batch_progress declares ``lanes`` (the open-access lane beside a running download). */
     progressLanes?: boolean;
+    /** school_batch_progress declares ``held`` (publishers held, a button to go on with them). */
+    progressHeld?: boolean;
+    /** school_batch_progress declares ``held_wait`` (only the held publishers left, waiting for the user). */
+    progressHeldWait?: boolean;
     /** school_batch_papers exists (the papers behind the window's 成功, 失败 and 剩余). */
     papersTool?: boolean;
     /** school_keep_session exists (a batch's wait keeps the publisher's session alive). */

@@ -229,6 +229,8 @@ def school_batch_progress(
     phase: str = "",
     channel: str = "",
     lanes: str = "",
+    held: list[dict[str, Any]] | None = None,
+    held_wait: bool = False,
 ) -> str:
     """Update the progress window of a serial batch without downloading.
 
@@ -244,14 +246,24 @@ def school_batch_progress(
     lanes: one line on the papers each lane got in a batch whose open-access checks run
     beside its institutional downloads ("开放下载 15 篇 · 机构下载 9 篇"). Sent beside a
     running download of the batch too: then only the counts and this line change.
+
+    held: the publishers whose papers the caller holds because their school login stopped
+    working mid-batch, [{key (DOI prefix), name, count}]; the window shows them with a
+    button to go on. The answer's "resume" lists those the user asked to go on with since
+    the last report (each once), and "stop" whether the user ended the batch in the window
+    (a batch waiting for the user downloads nothing that would hear of it).
+    held_wait: nothing is left but the held publishers' papers and the batch waits for the
+    user (登录并继续 or 终止); the window says so, collapsed too.
     """
-    from . import progress_reporter
+    from . import entitlements, progress_reporter
 
     label = current if _DOI_RE.fullmatch(current or "") else ""
     updated = progress_reporter.sync_batch(batch_id, total, done, succeeded, failed,
                                            current=label, finished=finished, results=results,
-                                           phase=phase, channel=channel, lanes=lanes)
-    return json.dumps({"updated": updated})
+                                           phase=phase, channel=channel, lanes=lanes, held=held,
+                                           held_wait=held_wait)
+    stop = entitlements.batch_stop_requested() and (progress_reporter.read_state() or {}).get("batch_id") == batch_id
+    return json.dumps({"updated": updated, "resume": entitlements.take_resumes(batch_id), "stop": bool(stop)})
 
 
 @mcp_app.tool()

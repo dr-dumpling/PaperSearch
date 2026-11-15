@@ -109,8 +109,8 @@ export declare const DownloadWithFallbackSchema: z.ZodObject<{
         succeeded?: number | undefined;
     } | undefined;
 }>;
-export declare const DownloadBatchSchema: z.ZodObject<{
-    items: z.ZodArray<z.ZodEffects<z.ZodObject<{
+export declare const DownloadBatchSchema: z.ZodEffects<z.ZodObject<{
+    items: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodEffects<z.ZodObject<{
         source: z.ZodOptional<z.ZodString>;
         paperId: z.ZodOptional<z.ZodString>;
         doi: z.ZodOptional<z.ZodString>;
@@ -140,7 +140,8 @@ export declare const DownloadBatchSchema: z.ZodObject<{
         source?: string | undefined;
         doi?: string | undefined;
         savePath?: string | undefined;
-    }>, "many">;
+    }>, "many">>>;
+    resume: z.ZodOptional<z.ZodString>;
     savePath: z.ZodOptional<z.ZodString>;
     useEntitledAccess: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
     useSciHub: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
@@ -158,8 +159,23 @@ export declare const DownloadBatchSchema: z.ZodObject<{
     content: "main" | "supplements" | "both";
     useEntitledAccess: boolean;
     useSciHub: boolean;
+    resume?: string | undefined;
     savePath?: string | undefined;
 }, {
+    items?: {
+        paperId?: string | undefined;
+        title?: string | undefined;
+        source?: string | undefined;
+        doi?: string | undefined;
+        savePath?: string | undefined;
+    }[] | undefined;
+    mode?: "two_phase" | "per_item" | "entitled_only" | undefined;
+    content?: "main" | "supplements" | "both" | undefined;
+    resume?: string | undefined;
+    savePath?: string | undefined;
+    useEntitledAccess?: boolean | undefined;
+    useSciHub?: boolean | undefined;
+}>, {
     items: {
         paperId?: string | undefined;
         title?: string | undefined;
@@ -167,8 +183,23 @@ export declare const DownloadBatchSchema: z.ZodObject<{
         doi?: string | undefined;
         savePath?: string | undefined;
     }[];
+    mode: "two_phase" | "per_item" | "entitled_only";
+    content: "main" | "supplements" | "both";
+    useEntitledAccess: boolean;
+    useSciHub: boolean;
+    resume?: string | undefined;
+    savePath?: string | undefined;
+}, {
+    items?: {
+        paperId?: string | undefined;
+        title?: string | undefined;
+        source?: string | undefined;
+        doi?: string | undefined;
+        savePath?: string | undefined;
+    }[] | undefined;
     mode?: "two_phase" | "per_item" | "entitled_only" | undefined;
     content?: "main" | "supplements" | "both" | undefined;
+    resume?: string | undefined;
     savePath?: string | undefined;
     useEntitledAccess?: boolean | undefined;
     useSciHub?: boolean | undefined;

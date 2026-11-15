@@ -118,9 +118,13 @@ function insideOutputDir(file: unknown, outputDir?: string): string | undefined 
 
 /**
  * The backend's ``artifacts``: driver/publisher labels, the state code, record
- * files and a stopped login's host name. Anything else, and any file outside
+ * files, a stopped login's host name and where a wait on a login ended. Anything else, and any file outside
  * ``outputDir``, is dropped.
  */
+/** Where a wait on a school login can end (the backend's _login_wait_page). */
+const LOGIN_WAIT_PAGES = new Set(["school_login", "school_choice", "institution_chooser", "authentication_redirect",
+  "publisher", "other", "closed"]);
+
 function backendTrace(value: unknown, outputDir?: string, diagnosticsDir?: string): SchoolTrace | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const artifacts = value as Record<string, unknown>;
@@ -136,6 +140,9 @@ function backendTrace(value: unknown, outputDir?: string, diagnosticsDir?: strin
   if (publisher) trace.publisher = publisher;
   if (state) trace.state = state;
   if (stoppedHost) trace.stoppedHost = stoppedHost;
+  if (typeof artifacts.login_wait_page === "string" && LOGIN_WAIT_PAGES.has(artifacts.login_wait_page)) {
+    trace.loginWaitPage = artifacts.login_wait_page;
+  }
   for (const key of ["record", "diagnostic"] as const) {
     const file = insideOutputDir(artifacts[key], diagnosticsDir) || insideOutputDir(artifacts[key], outputDir);
     if (file) trace[key] = file;

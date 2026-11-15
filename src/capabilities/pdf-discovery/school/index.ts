@@ -17,6 +17,7 @@ export {
   LEGACY_SCHOOL_DATA_DIR,
   paperSearchDataHome,
   resolveDefaultSchoolProfileDir,
+  SCHOOL_BACKEND_UTF8_ENV,
   takeDownloadLock,
 } from "./SchoolMcpClient.js";
 
@@ -29,6 +30,8 @@ export type {
   SchoolBatchPosition,
   SchoolBatchResults,
   SchoolBatchUpdate,
+  SchoolBatchRequests,
+  SchoolHeldPublisher,
   SchoolDownloadRequest,
   SchoolInvocationOutcome,
   SchoolProgress,
