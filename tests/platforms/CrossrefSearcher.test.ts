@@ -102,6 +102,15 @@ describe('CrossrefSearcher', () => {
       expect(paper.publishedDate.toISOString()).toBe('2024-12-01T00:00:00.000Z');
       expect(paper.year).toBe(2024);
     });
+
+    it('keeps when the paper first came out, and the journal\'s short title, for its file name', () => {
+      const paper = (searcher as any).parsePaper({ DOI: '10.1038/s41591-024-03271-5', title: ['T'], 'container-title': ['Nature Medicine'],
+        'short-container-title': ['Nat Med'], 'published-print': { 'date-parts': [[2024, 12]] },
+        'published-online': { 'date-parts': [[2024, 9, 27]] }, issued: { 'date-parts': [[2024, 9, 27]] } });
+      expect(paper.extra).toMatchObject({ journalAbbreviation: 'Nat Med', issued: '2024-09' });
+      expect((searcher as any).parsePaper({ DOI: '10.1/x', title: ['T'], issued: { 'date-parts': [[2024]] } }).extra.issued).toBe('2024');
+      expect((searcher as any).parsePaper({ DOI: '10.1/x', title: ['T'] }).extra.issued).toBeUndefined();
+    });
   });
 
   describe('titles and journal names', () => {

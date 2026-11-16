@@ -75,9 +75,21 @@ class GenericSiteRoutingTests(unittest.TestCase):
                 self.assertEqual((result["error_type"], result["action"]),
                                  ("unsupported_publisher", "review_publisher_profiles"))
 
-    def test_profiles_keep_their_route(self):
-        # A profile by DOI prefix: an unresolved DOI ends as before (no result).
-        self.assertIsNone(self.run_bridge(doi="10.1016/j.example.2026.1", landing=None))
+    def test_a_doi_not_at_doi_org_yet_opens_the_publishers_own_article_page(self):
+        # Science, 2026-11-15: online days before doi.org knew its DOI; the profile's own
+        # article address opens it, the driver going on as for any other paper.
+        result = self.run_bridge(doi="10.1126/scitranslmed.aea3879", landing=None)
+        self.factory.assert_called_once()
+        self.assertEqual(self.factory.call_args.kwargs["profile"].name, "Science")
+        self.assertEqual(self.downloader.fetch_one.call_args.args[1].doi, "10.1126/scitranslmed.aea3879")
+        self.assertEqual(result["error_type"], "download_failed")
+
+    def test_a_doi_not_at_doi_org_where_only_doi_org_leads_to_the_article_says_so(self):
+        # A profile reaching its articles through doi.org (Elsevier): no browser, and not a login matter.
+        result = self.run_bridge(doi="10.1016/j.example.2026.1", landing=None)
+        self.factory.assert_not_called()
+        self.assertEqual((result["error_type"], result["reason"], result["action"]),
+                         ("doi_not_resolved", "doi_not_resolved", "retry_later"))
         # A profile by the landing's host is used, not the site profile.
         self.run_bridge(doi="10.1164/rccm.201908-1590ST", landing="https://academic.oup.com/ajrccm/article/200/8/e70/8497012")
         self.assertFalse(self.factory.call_args.kwargs["profile"].generic)

@@ -57,6 +57,9 @@ _FAILURE_KINDS = {
     "supplements_only": ("supplements_only", "supplements_only"),
     # The DOI resolves to no site to sign in on (publishers/site.py): no driver can run.
     "unsupported_publisher": ("unsupported_publisher", "review_publisher_profiles"),
+    # doi.org answered no address for the DOI (a paper online days before its DOI is
+    # registered, Science 2026-11-15) and the publisher's article page is only reached through it.
+    "doi_not_resolved": ("doi_not_resolved", "retry_later"),
     # A site without a publisher profile: the shared rules found no institution entry.
     "generic_institution_entry_missing": ("generic_institution_entry_missing", "review_publisher_profiles"),
     **{code: (code, "review_browser") for code in _LOGIN_FAILURE_CODES},
@@ -260,10 +263,16 @@ def _try_builtin_institutional(
 
     # Step 1: Resolve DOI to publisher URL
     resolved_url = _resolve_doi(doi)
+    if not resolved_url and profile:
+        # A paper is online at its publisher days before doi.org knows its DOI (Science,
+        # 2026-11-15): the profile's own article address opens it all the same.
+        resolved_url = _own_article_url(profile, doi)
+        if resolved_url:
+            log.info("   [Institutional] DOI not at doi.org yet: the publisher's article page")
     if not resolved_url:
         log.info("   [Institutional] Could not resolve DOI")
         # Without a profile there is no site to build one for.
-        return None if profile else _unsupported_publisher(doi)
+        return _failure(doi, "doi_not_resolved") if profile else _unsupported_publisher(doi)
 
     if not profile:
         from ..publishers.profiles import infer_publisher_profile_from_url
@@ -300,7 +309,7 @@ def _try_builtin_institutional(
                 "error_type": "no_entitlement", "reason": "user_marked_no_entitlement",
                 "action": "skipped_by_user", "entitlement": remembered}
     from .. import blocked_journals
-    blocked_by = blocked_journals.blocked_by(identity)
+    blocked_by = blocked_journals.skip_for(identity, doi)
     if blocked_by:
         log.info("   [Institutional] Skipped: this journal's site blocked the current network (%s)", blocked_by)
         return {"success": False, "identifier": doi, "doi": doi, "source": "institutional:blocked_journal",
@@ -396,10 +405,24 @@ def _try_builtin_institutional(
     return None
 
 
-def _unsupported_publisher(doi: str) -> dict[str, Any]:
-    error_type, action = _FAILURE_KINDS["unsupported_publisher"]
+def _failure(doi: str, kind: str) -> dict[str, Any]:
+    error_type, action = _FAILURE_KINDS[kind]
     return {"success": False, "identifier": doi, "doi": doi, "source": "institutional",
             "error_type": error_type, "reason": error_type, "action": action}
+
+
+def _unsupported_publisher(doi: str) -> dict[str, Any]:
+    return _failure(doi, "unsupported_publisher")
+
+
+def _own_article_url(profile: Any, doi: str) -> str:
+    """The profile's article address for ``doi`` when it is the publisher's own, not doi.org's."""
+    try:
+        url = profile.article_url(doi)
+    except (AttributeError, KeyError, IndexError, ValueError):
+        return ""
+    host = (urlparse(url).hostname or "").lower()
+    return url if url.startswith("https://") and host and not (host == "doi.org" or host.endswith(".doi.org")) else ""
 
 
 def _resolve_doi(doi: str) -> str | None:

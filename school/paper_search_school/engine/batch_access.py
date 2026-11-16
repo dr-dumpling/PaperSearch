@@ -25,6 +25,9 @@ from .batch_common import (
 
 # The bare body a publisher's front proxy serves when the server behind it did
 # not answer: Envoy, nginx and similar. Nothing else is on such a page.
+# A publisher's own page for a blocked address: "Your IP has been blocked.", "Your IP
+# 69.63.193.18 has been blocked." (Science, 2026-11-16), "your IP address … has been blocked".
+_IP_BLOCKED = re.compile(r"\byour ip(?: address)?(?: [0-9a-f.:]+)? (?:has been|is) blocked\b")
 _GATEWAY_ERROR_MARKERS = (
     "upstream connect error or disconnect/reset before headers",
     "502 bad gateway", "503 service unavailable", "503 service temporarily unavailable",
@@ -162,6 +165,13 @@ class AccessMixin:
         text = " ".join(self._body_text(page, 4000).lower().split())
         return ("sorry, you have been blocked" in text
                 and "you are unable to access" in text)
+
+    @staticmethod
+    def _ip_blocked_text(text: str) -> bool:
+        """The publisher's own page for a blocked address, under its usual title (Science,
+        2026-11-16: "Your IP 69.63.193.18 has been blocked."): no login can open it. Read
+        from the article page's text the access check reads anyway (``_access_snapshot``)."""
+        return bool(_IP_BLOCKED.search(" ".join(text[:4000].lower().split())))
 
     def _raise_on_publisher_access_blocked(self, page: Any) -> None:
         if self._publisher_access_blocked(page):

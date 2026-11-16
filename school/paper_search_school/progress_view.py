@@ -37,8 +37,6 @@ ACTION_FEEDBACK = {
     "resume_held": "已收到：这一篇下完后接着下暂停的篇目",
     "stop_batch": "已终止任务：这一篇结束，剩下的不再下载",
     "skip_item": "已跳过本篇，进入下一篇",
-    "skip_journal": "已记住：本刊无权限，以后自动跳过（可用 entitlements 撤销）",
-    "skip_publisher": "已记住：该出版社无权限，以后自动跳过",
 }
 
 TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled", "interrupted"})
@@ -432,9 +430,11 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
             if not running and state.get("stage") == "supplements_checked" else "",
         "summary": summary_view(state.get("results")) if mode == "done" else None,
         "actions": running and bool(current) and not awaiting,
-        # This paper has a download browser to show: not between papers, not in
-        # the caller's open-access stretch (its channel), which opens none.
-        "browser": running and bool(current) and not awaiting and not state.get("channel"),
+        # This paper has a download browser to show: not in the caller's open-access stretch
+        # (its channel), which opens none; between papers too once the window knows the
+        # browser's processes, to raise it itself (2026-11-16).
+        "browser": running and bool(current) and not state.get("channel")
+                   and (not awaiting or bool(state.get("browser_pid") or state.get("browser_pids"))),
         "stop_left": max(0, total - done - 1),
         "held": held, "held_wait": held_wait,
         "folder": bool(state.get("output_dir")),
@@ -485,6 +485,17 @@ def dark_mode() -> bool:
     except Exception:
         pass
     return False
+
+
+def batch_folder(listed: Any, state: dict[str, Any] | None) -> str:
+    """The folder the window's 文件夹 opens: the running batch's download folder (its
+    papers file says it), else the task's folder. Each article's visit records its own
+    folder as the task's, and the button opened the last paper's (Windows, 2026-11-16)."""
+    state = state or {}
+    if (isinstance(listed, dict) and listed.get("batch_id") and listed.get("batch_id") == state.get("batch_id")
+            and isinstance(listed.get("folder"), str) and listed["folder"]):
+        return listed["folder"]
+    return str(state.get("output_dir") or "")
 
 
 def open_folder(path: str) -> bool:

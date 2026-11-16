@@ -8,6 +8,13 @@
  */
 import { Paper } from '../models/Paper.js';
 import { PaperSource, SearchOptions, DownloadOptions, PlatformCapabilities } from './PaperSource.js';
+/**
+ * When the paper first came out, "2024-09" ("2024" without a month): Crossref's
+ * ``issued``, the earlier of its online and print dates (a paper's file name).
+ */
+export declare function issuedMonth(issued: {
+    'date-parts'?: unknown[][];
+} | undefined): string | undefined;
 export declare class CrossrefSearcher extends PaperSource {
     private client;
     private mailto;

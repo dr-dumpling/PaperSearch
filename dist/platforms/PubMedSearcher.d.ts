@@ -83,6 +83,11 @@ export declare class PubMedSearcher extends PaperSource {
      */
     getPaperByPmid(pmid: string): Promise<Paper | null>;
     /**
+     * NLM's abbreviation of the journal with one of these ISSNs ("Sci Transl Med"), from the
+     * NLM Catalog; ``undefined`` when it has none. Names downloaded files (outputLayout.ts).
+     */
+    journalAbbreviation(issns: string[]): Promise<string | undefined>;
+    /**
      * 根据DOI获取论文信息
      */
     getPaperByDoi(doi: string): Promise<Paper | null>;

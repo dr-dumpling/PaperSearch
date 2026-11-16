@@ -20,12 +20,70 @@ export function safeComponent(value, limit) {
     return text.replace(/[. ]+$/g, '') || 'unknown';
 }
 /**
+ * The title within ``limit`` characters and ``bytes`` UTF-8 bytes, a colon written " - "; one cut
+ * short ends at a word's end ("…microneedle patch provides", not "…provides sust") unless that loses too much.
+ */
+function titleComponent(value, limit, bytes) {
+    // A colon would become "_", the fields' separator: "memristors_ a high-uniformity".
+    value = plainText(value).replace(/\s*:\s*/g, ' - ');
+    let cut = safeComponent(value, limit);
+    while (Buffer.byteLength(cut) > bytes && cut.length > 8)
+        cut = Array.from(cut).slice(0, -1).join('');
+    const whole = safeComponent(value, 100_000);
+    if (cut === whole || !whole.startsWith(cut) || /^\s/.test(whole.slice(cut.length)))
+        return cut;
+    const space = cut.lastIndexOf(' ');
+    const atWord = space >= cut.length * 0.6 ? cut.slice(0, space).replace(/[\s,;:–—-]+$/u, '') : '';
+    return atWord || cut;
+}
+/**
  * Where a DOI's journal and year are asked next when Crossref gives none: rate-limited
  * or queued past the lookup's time, a paper was named 未知期刊_未知年份 (Windows, 2026-11-11).
  */
 const DOI_FALLBACKS = ['openalex', 'pubmed'];
 /** A DOI's journal and year once found: the open lane's lookup also names its institutional download. */
 const foundByDoi = new Map();
+/** NLM's abbreviation of a journal by its ISSNs, once asked ('' when it has none). */
+const abbreviationByIssn = new Map();
+/**
+ * The journal's abbreviation a paper is named with (user, 2026-11-15: "期刊名称要用缩写"):
+ * NLM's ("Arthritis Rheumatol"), asked once per journal; else the publisher's short title
+ * when it is shorter than the name ("Int. J. Neur. Syst."; Wiley gives the full name).
+ */
+async function abbreviationFor(searchers, found) {
+    const issns = (found.issn ?? []).filter((issn) => typeof issn === 'string');
+    const pubmed = searchers.pubmed;
+    if (issns.length && pubmed?.journalAbbreviation) {
+        const key = [...issns].sort().join(',');
+        if (!abbreviationByIssn.has(key)) {
+            let nlm = '';
+            try {
+                nlm = (await withTimeout(pubmed.journalAbbreviation(issns), 4_000, 'Journal abbreviation lookup timed out')) || '';
+            }
+            catch {
+                // Naming metadata is optional: the publisher's short title or the name serves.
+            }
+            if (abbreviationByIssn.size >= 1_000)
+                abbreviationByIssn.clear();
+            abbreviationByIssn.set(key, nlm);
+        }
+        const nlm = abbreviationByIssn.get(key);
+        if (nlm)
+            return nlm;
+    }
+    const own = found.journalAbbreviation;
+    return own && found.journal && plainText(own).length < plainText(found.journal).length ? own : undefined;
+}
+/** A paper record's fields for its file name. */
+function namingFields(paper) {
+    const extra = paper.extra ?? {};
+    return {
+        ...paper,
+        ...(typeof extra.journalAbbreviation === 'string' ? { journalAbbreviation: extra.journalAbbreviation } : {}),
+        ...(typeof extra.issued === 'string' ? { issued: extra.issued } : {}),
+        ...(Array.isArray(extra.issn) ? { issn: extra.issn } : {}),
+    };
+}
 /** The journal, year and title a download is named with; ``{}`` when no source answers in time. */
 export async function lookupOutputMetadata(searchers, source, id) {
     const doi = source === 'crossref' ? id.trim().toLowerCase() : '';
@@ -41,6 +99,10 @@ export async function lookupOutputMetadata(searchers, source, id) {
         found = { ...more, ...Object.fromEntries(Object.entries(found).filter(([, value]) => value !== undefined && value !== '')) };
         break;
     }
+    if (found.journal) {
+        const abbreviation = await abbreviationFor(searchers, found);
+        found = { ...found, journalAbbreviation: abbreviation };
+    }
     if (doi && found.journal) {
         if (foundByDoi.size >= 1_000)
             foundByDoi.clear();
@@ -53,7 +115,8 @@ async function lookupOnce(searchers, source, id) {
     if (!searcher?.getPaperByDoi)
         return {};
     try {
-        return await withTimeout(searcher.getPaperByDoi(id), 4_000, 'Output metadata lookup timed out') || {};
+        const paper = await withTimeout(searcher.getPaperByDoi(id), 4_000, 'Output metadata lookup timed out');
+        return paper ? namingFields(paper) : {};
     }
     catch {
         // Naming metadata is optional; never block an otherwise valid download.
@@ -64,13 +127,20 @@ export function createOutputLayout(root, identity, metadata, preprint = false, p
     const base = resolve(root);
     const key = hash(identity.trim().toLowerCase());
     const year = metadata.year || metadata.publishedDate?.getUTCFullYear();
-    const journal = preprint ? 'arXiv' : metadata.journal || '未知期刊';
-    // Repeated directory/file names must still fit traditional Windows paths.
-    const budget = Math.min(88, Math.floor((238 - base.length - '/papers//.pdf'.length - 11) / 2));
+    // Journal, year-month and title (user, 2026-11-15), as "Sci Transl Med_2024-11_A wearable
+    // osmotic microneedle patch": the journal's abbreviation, when the paper first came out.
+    const abbreviation = metadata.journalAbbreviation?.replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
+    const journal = preprint ? 'arXiv' : abbreviation || metadata.journal || '未知期刊';
+    const issued = /^\d{4}(?:-(?:0[1-9]|1[0-2]))?$/.test(metadata.issued ?? '') ? metadata.issued
+        : preprint && metadata.publishedDate ? metadata.publishedDate.toISOString().slice(0, 7) : undefined;
+    // The name is the paper's folder and its main text inside it, both within traditional
+    // Windows paths: <root>/<name>_<key>/<name>.pdf. What the journal and date leave is the title's.
+    const budget = Math.min(120, Math.floor((238 - base.length - '/_/.pdf'.length - 10) / 2));
     if (budget < 32)
         throw new Error('Download root is too long; choose a shorter savePath.');
-    const prefix = `${safeComponent(journal, Math.min(28, Math.floor(budget / 3)))}_${year && Number.isInteger(year) ? year : '未知年份'}_`;
-    const title = safeComponent(metadata.title || identity, Math.max(8, budget - prefix.length));
+    const prefix = `${safeComponent(journal, Math.min(28, Math.floor(budget / 3)))}_${issued || (year && Number.isInteger(year) ? year : '未知年份')}_`;
+    // UTF-8 bytes too: a folder name is at most 255 bytes (macOS, Linux), the key after it.
+    const title = titleComponent(metadata.title || identity, Math.max(8, budget - prefix.length), 240 - Buffer.byteLength(prefix));
     const name = `${prefix}${title}`;
     // Stable identity suffix prevents different papers with identical titles colliding.
     const paperDir = join(base, `${name}_${key}`);

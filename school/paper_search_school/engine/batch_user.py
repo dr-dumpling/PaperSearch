@@ -11,6 +11,7 @@ Part of ``PublisherBatchDownloader`` (batch.py), which combines the mixins."""
 
 from __future__ import annotations
 
+import os
 import sys
 import threading
 import time
@@ -77,6 +78,17 @@ class UserRequestsMixin:
                 self._event(result, "browser_focus_unavailable", type(exc).__name__)
                 pid = 0
             progress_reporter.update(browser_pid=pid)
+        elif os.name == "nt":
+            # The window raises the browser itself, as on macOS: a request left for this
+            # article's watch was lost once the watch had ended (Windows, 2026-11-16).
+            from ..browser.foreground import browser_pids
+
+            try:
+                pids = browser_pids(page, self.config)
+            except Exception as exc:
+                self._event(result, "browser_focus_unavailable", type(exc).__name__)
+                pids = []
+            progress_reporter.update(browser_pids=pids)
 
         def watch() -> None:
             while not stop.wait(1.0):

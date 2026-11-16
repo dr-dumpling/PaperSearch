@@ -71,6 +71,17 @@ def _browser_pids(page: Any, config: dict) -> list[int]:
     return found
 
 
+def browser_pids(page: Any, config: dict) -> list[int]:
+    """The processes of this page's browser (Windows), for the progress window to raise it."""
+    return _browser_pids(page, config)
+
+
+def activate_windows(pids: list[int]) -> bool:
+    """Raise the browser of these processes from the progress window, which the user's
+    click has made the foreground window; False when none of them has a window."""
+    return _activate_windows(pids, lambda: "")
+
+
 def _activate_windows(pids: list[int], window_title: Callable[[], str]) -> bool:
     from ctypes import wintypes
 

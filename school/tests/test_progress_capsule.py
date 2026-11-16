@@ -57,6 +57,13 @@ class ViewTests(unittest.TestCase):
         self.assertFalse(pv.view(running(publisher="", channel="开放获取"), NOW)["browser"])
         self.assertFalse(pv.view(running(status="done"), NOW)["browser"])
 
+    def test_between_papers_the_browser_shows_once_the_window_knows_its_processes(self):
+        # The window raises it itself then (Windows, 2026-11-16: a click between two
+        # papers' watches was lost).
+        self.assertTrue(pv.view(running(awaiting_next=True, browser_pids=[201]), NOW)["browser"])
+        self.assertTrue(pv.view(running(awaiting_next=True, browser_pid=101), NOW)["browser"])
+        self.assertFalse(pv.view(running(awaiting_next=True, browser_pids=[201], publisher="", channel="开放获取"), NOW)["browser"])
+
     def test_supplements_part(self):
         v = pv.view(running(part="supplements", supplements_total=5, supplements_saved=2), NOW)
         self.assertEqual((v["part"], v["step"]), ("附录", {"index": 4, "label": "附录 2/5"}))
@@ -273,6 +280,27 @@ class ApiTests(unittest.TestCase):
             self.assertIn('没有打开浏览器', api().act('show_browser', state['current'], 'r1'))
             request.assert_not_called()
 
+    def test_windows_raises_the_browser_from_the_window_itself(self):
+        # Windows, 2026-11-16: the request alone was lost once the article's watch had
+        # ended; the window raises the browser itself, as on macOS.
+        state = running(run_id='r1', browser_pids=[201, 202])
+        with patch.object(capsule, 'read_state', return_value=state), \
+                patch.object(capsule.sys, 'platform', 'win32'), patch.object(capsule.os, 'name', 'nt'), \
+                patch('paper_search_school.browser.foreground.activate_windows', return_value=True) as activate, \
+                patch('paper_search_school.entitlements.request_action') as request:
+            self.assertEqual(api().act('show_browser', state['current'], 'r1'), pv.ACTION_FEEDBACK['show_browser'])
+            activate.assert_called_once_with([201, 202])
+            # The running article still brings its own tab up.
+            request.assert_called_once_with(state['current'], 'show_browser', 'r1')
+            request.reset_mock()
+            # Between papers: raised, and no request left for an article not running.
+            state['awaiting_next'] = True
+            self.assertEqual(api().act('show_browser', state['current'], 'r1'), '已切到下载浏览器')
+            request.assert_not_called()
+            activate.return_value = False
+            self.assertIn('未能切到', api().act('show_browser', state['current'], 'r1'))
+            request.assert_not_called()
+
     def test_failed_native_activation_does_not_report_a_successful_request(self):
         state = running(attention={'login': {'message': '请登录学校'}}, run_id='r1', browser_pid=101)
         with patch.object(capsule, 'read_state', return_value=state), \
@@ -291,9 +319,9 @@ class ApiTests(unittest.TestCase):
 
     def test_buttons_ask_the_running_download(self):
         with patch("paper_search_school.entitlements.request_action") as request:
-            text = api().act("skip_journal", "10.1/x", "r1")
-        request.assert_called_once_with("10.1/x", "skip_journal", "r1")
-        self.assertEqual(text, pv.ACTION_FEEDBACK["skip_journal"])
+            text = api().act("skip_item", "10.1/x", "r1")
+        request.assert_called_once_with("10.1/x", "skip_item", "r1")
+        self.assertEqual(text, pv.ACTION_FEEDBACK["skip_item"])
         with patch("paper_search_school.entitlements.request_action", side_effect=ValueError("unknown action")):
             self.assertEqual(api().act("nope", "10.1/x"), "记录失败：ValueError")
 

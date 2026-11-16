@@ -93,8 +93,22 @@ class EntitlementMemoryTests(unittest.TestCase):
         self.assertEqual((again["reason"], again["blocked_by"]), ("journal_blocked_earlier", "10.1136/gut.1"))
         self.assertEqual(browser.call_count, 2)  # the first Gut item and the Hepatology item
         self.assertEqual(other["reason"], "publisher_access_blocked")
+        # Every five minutes one article re-checks the site, the others are still answered
+        # at once; the site letting it in ends the block (another network, 2026-11-16).
+        start = time.time()
+        recheck = start + blocked_journals.RECHECK_SEC + 1
+        self.assertEqual(blocked_journals.skip_for(GUT, "10.1136/gut.2", now=recheck), "")
+        self.assertEqual(blocked_journals.skip_for(GUT, "10.1136/gut.3", now=recheck + 5), "10.1136/gut.1")
+        blocked_journals.recheck_ended("10.1136/gut.3", blocked=False)  # not the re-checking article
+        self.assertEqual(blocked_journals.blocked_by(GUT), "10.1136/gut.1")
+        blocked_journals.recheck_ended("10.1136/GUT.2", blocked=False)
+        self.assertEqual(blocked_journals.blocked_by(GUT), "")
+        # Blocked again: the entry starts over, the next re-check two minutes on.
+        blocked_journals.remember("10.1136/gut.2", GUT, now=recheck)
+        blocked_journals.recheck_ended("10.1136/gut.2", blocked=True)
+        self.assertEqual(blocked_journals.skip_for(GUT, "10.1136/gut.4", now=recheck + 60), "10.1136/gut.2")
         # Half an hour later the journal is tried again, and the old entry is gone.
-        later = time.time() + blocked_journals.KEEP_SEC + 1
+        later = recheck + blocked_journals.KEEP_SEC + 1
         self.assertEqual(blocked_journals.blocked_by(GUT, now=later), "")
         self.assertFalse(blocked_journals.any_recent(now=later))
 

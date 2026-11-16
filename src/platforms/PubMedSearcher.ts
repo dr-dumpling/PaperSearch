@@ -126,6 +126,36 @@ interface PubMedArticleDetail {
   };
 }
 
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const listOf = <T>(value: T | T[] | undefined): T[] => (value === undefined ? [] : Array.isArray(value) ? value : [value]);
+const textOf = (value: unknown): string => (typeof value === 'string' ? value : typeof (value as { _?: unknown })?._ === 'string' ? (value as { _: string })._ : '').trim();
+
+/** "2024-11" from a PubMed date ("Nov" or "11"), "2024" without a month. */
+function pubmedMonth(date: { Year?: unknown; Month?: unknown } | undefined): string | undefined {
+  const year = textOf(date?.Year);
+  if (!/^\d{4}$/.test(year)) return undefined;
+  const month = textOf(date?.Month).toLowerCase();
+  const number = /^\d{1,2}$/.test(month) ? Number(month) : MONTHS.indexOf(month.slice(0, 3)) + 1;
+  return number >= 1 && number <= 12 ? `${year}-${String(number).padStart(2, '0')}` : year;
+}
+
+/** When the paper first came out: the earlier of its electronic date and its issue's (a paper's file name). */
+function pubmedIssued(articleData: any): string | undefined {
+  const dates = [...listOf(articleData?.ArticleDate), articleData?.Journal?.JournalIssue?.PubDate]
+    .map((date) => pubmedMonth(date)).filter((date): date is string => !!date);
+  // A month known beats a year alone of the same year; otherwise the earliest.
+  return dates.sort((a, b) => a.slice(0, 4).localeCompare(b.slice(0, 4)) || b.length - a.length || a.localeCompare(b))[0];
+}
+
+/** NLM's abbreviation of the journal ("Sci Transl Med"). */
+function nlmAbbreviation(medlineCitation: any, articleData: any): string | undefined {
+  return textOf(medlineCitation?.MedlineJournalInfo?.MedlineTA) || textOf(articleData?.Journal?.ISOAbbreviation) || undefined;
+}
+
+function pubmedIssns(articleData: any): string[] {
+  return listOf(articleData?.Journal?.ISSN).map(textOf).filter((issn) => /^\d{4}-\d{3}[\dX]$/i.test(issn));
+}
+
 export class PubMedSearcher extends PaperSource {
   private readonly baseApiUrl: string;
   private readonly rateLimiter: RateLimiter;
@@ -420,7 +450,10 @@ export class PubMedSearcher extends PaperSource {
         year: publishedDate?.getFullYear(),
         extra: {
           pmid: pmid,
-          pmc: pmc || undefined
+          pmc: pmc || undefined,
+          ...(nlmAbbreviation(medlineCitation, articleData) ? { journalAbbreviation: nlmAbbreviation(medlineCitation, articleData) } : {}),
+          ...(pubmedIssued(articleData) ? { issued: pubmedIssued(articleData) } : {}),
+          ...(pubmedIssns(articleData).length ? { issn: pubmedIssns(articleData) } : {}),
         }
       });
     } catch (error) {
@@ -573,6 +606,37 @@ export class PubMedSearcher extends PaperSource {
       logDebug('Error getting paper by PMID:', error);
       return null;
     }
+  }
+
+  /**
+   * NLM's abbreviation of the journal with one of these ISSNs ("Sci Transl Med"), from the
+   * NLM Catalog; ``undefined`` when it has none. Names downloaded files (outputLayout.ts).
+   */
+  async journalAbbreviation(issns: string[]): Promise<string | undefined> {
+    const valid = issns.filter((issn) => /^\d{4}-\d{3}[\dX]$/i.test(issn)).slice(0, 4);
+    if (!valid.length) return undefined;
+    const key = this.apiKey ? { api_key: this.apiKey } : {};
+    const ask = async (endpoint: string, params: Record<string, string>) => {
+      await this.rateLimiter.waitForPermission();
+      const response = await axios.get(`${this.baseApiUrl}/${endpoint}`, {
+        params: { ...params, retmode: 'json', ...key }, timeout: TIMEOUTS.DEFAULT, headers: { 'User-Agent': USER_AGENT },
+      });
+      return response.data;
+    };
+    const found = await ask('esearch.fcgi', { db: 'nlmcatalog', term: valid.map((issn) => `${issn}[issn]`).join(' OR '), retmax: '5' });
+    const ids: string[] = found?.esearchresult?.idlist ?? [];
+    if (!ids.length) return undefined;
+    const summary = (await ask('esummary.fcgi', { db: 'nlmcatalog', id: ids.join(',') }))?.result ?? {};
+    // The journal's own record, among editions sharing its ISSN ("N Engl J Med Overseas Ed"):
+    // the one listing the ISSN, indexed for MEDLINE now.
+    const asked = new Set(valid.map((issn) => issn.toUpperCase()));
+    const ranked = (summary.uids ?? ids).map((id: string) => summary[id] ?? {}).map((record: any) => ({
+      abbreviation: textOf(record.medlineta) || textOf(record.isoabbreviation),
+      rank: (listOf(record.issnlist).some((entry: any) => asked.has(textOf(entry?.issn).toUpperCase())) ? 2 : 0)
+        + (textOf(record.currentindexingstatus) === 'Y' ? 1 : 0),
+    })).filter((record: { abbreviation: string }) => record.abbreviation);
+    ranked.sort((a: { rank: number }, b: { rank: number }) => b.rank - a.rank);
+    return ranked[0]?.abbreviation || undefined;
   }
 
   /**

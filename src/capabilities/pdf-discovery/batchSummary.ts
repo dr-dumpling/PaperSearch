@@ -159,10 +159,19 @@ export function batchPaper(
   const [via, detail] = sourceLabel(item);
   // The window's 失败 list also shows a saved paper still missing supplementary files (user, 2026-11-11).
   const missing = supplementsMissing(item, content);
+  const path = savedFile(item);
   return {
-    ...paper, state: "ok", via, ...(detail ? { detail } : {}), ...(item.path ? { path: item.path } : {}),
+    ...paper, state: "ok", via, ...(detail ? { detail } : {}), ...(path ? { path } : {}),
     ...(missing ? { supplement_cls: missing.cls, supplement_reason: missing.reason } : {}),
   };
+}
+
+/**
+ * The file a listed paper opens at (its folder shown, the file selected): its PDF, else its first
+ * supplementary file saved; a batch of the files alone has no PDF (Windows, 2026-11-16).
+ */
+function savedFile(item: DownloadBatchItemResult): string | undefined {
+  return item.path || item.supplements?.find((file) => file.status === "saved" && file.file)?.file;
 }
 
 /** Supplementary files a saved paper is missing (content "both"): the class and the reason in a few words. */

@@ -1,6 +1,13 @@
 import type { Searchers } from '../../core/searchers.js';
 import type { Paper } from '../../models/Paper.js';
-export type OutputMetadata = Partial<Pick<Paper, 'title' | 'journal' | 'year' | 'publishedDate'>>;
+export type OutputMetadata = Partial<Pick<Paper, 'title' | 'journal' | 'year' | 'publishedDate'>> & {
+    /** The journal's abbreviation ("Sci Transl Med"): NLM's, else the publisher's short title. */
+    journalAbbreviation?: string;
+    /** When the paper first came out: "2024-11", or "2024" without a month. */
+    issued?: string;
+    /** The journal's ISSNs, for NLM's abbreviation. */
+    issn?: string[];
+};
 /**
  * Where one paper's files go (user, 2026-11-11): main texts lie side by side in the download
  * folder; a paper with supplementary files saved has a folder of its own there, its main text

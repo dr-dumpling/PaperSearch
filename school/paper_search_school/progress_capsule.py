@@ -252,12 +252,25 @@ class Api:
                     pid = state.get("browser_pid")
                     if not isinstance(pid, int) or pid <= 0 or not activate_mac(pid):
                         return "未能切到下载浏览器，请从程序坞打开"
-                if os.name == "nt" and isinstance(state.get("owner_pid"), int) and state["owner_pid"] > 0:
-                    # The click gives this foreground window permission to let
-                    # the exact backend process activate its browser on Windows.
-                    import ctypes
+                if os.name == "nt":
+                    # The window raises the browser itself, as on macOS, whatever the paper
+                    # is fetching and between papers: a request left for the article's watch
+                    # was lost once the watch had ended (Windows, 2026-11-16).
+                    pids = [p for p in state.get("browser_pids") or [] if isinstance(p, int) and p > 0]
+                    if pids:
+                        from .browser.foreground import activate_windows
 
-                    ctypes.windll.user32.AllowSetForegroundWindow(state["owner_pid"])
+                        if not activate_windows(pids):
+                            return "未能切到下载浏览器，请从任务栏打开"
+                    if isinstance(state.get("owner_pid"), int) and state["owner_pid"] > 0:
+                        # The click gives this foreground window permission to let
+                        # the exact backend process activate its browser on Windows.
+                        import ctypes
+
+                        ctypes.windll.user32.AllowSetForegroundWindow(state["owner_pid"])
+                if state.get("awaiting_next"):
+                    # Between papers no article watches for requests: raised above, nothing to leave.
+                    return "已切到下载浏览器"
 
             request_action(str(current), str(action), str(run_id))
             return progress_view.ACTION_FEEDBACK[str(action)]
@@ -295,7 +308,7 @@ class Api:
         return "已在浏览器打开这篇文章" if opened else "打开失败：没有找到默认浏览器"
 
     def open_folder(self) -> bool:
-        return progress_view.open_folder(str((read_state() or {}).get("output_dir") or ""))
+        return progress_view.open_folder(progress_view.batch_folder(read_papers(), read_state()))
 
     # --- the lists behind 成功, 失败 and 剩余 ---------------------------------
     def _papers_batch(self) -> str:
@@ -312,15 +325,17 @@ class Api:
         return progress_view.paper_lists(read_papers(), read_state())
 
     def show_paper(self, index: int) -> str:
-        """A saved PDF of the running or finished batch, shown in its folder: the path the batch
-        recorded for it, wherever the paper was sent (folders of their own by topic, user 2026-11-11)."""
+        """A saved paper of the running or finished batch, shown in its folder: the file the batch
+        recorded for it (its PDF, else what it saved of it: a batch of the supplementary files or the
+        Markdown alone has no PDF, 2026-11-16), wherever the paper was sent (folders of their own by
+        topic, user 2026-11-11). The file is only selected in its folder, never opened."""
         listed, state = read_papers() or {}, read_state() or {}
         key = str(index) if isinstance(index, int) and not isinstance(index, bool) else ""
         paper = (listed.get("papers") or {}).get(key) if listed.get("batch_id") == state.get("batch_id") else None
         path = str((paper or {}).get("path") or "") if (paper or {}).get("state") == "ok" else ""
         real = os.path.realpath(path) if path else ""
-        if not real.lower().endswith(".pdf"):
-            return "打开失败：没有这篇的 PDF"
+        if not real:
+            return "打开失败：这篇没有保存的文件"
         if not progress_view.reveal_file(real):
             return "打开失败：文件已被移走或删除"
         return "已打开所在文件夹"

@@ -109,3 +109,14 @@ def test_older_mac_versions_restore_the_owned_browser_windows():
     app.unhide.assert_called_once()
     reopen.assert_called_once_with(101)
     app.activateWithOptions_.assert_called_once_with(3)
+
+
+def test_the_window_raises_the_browser_by_its_processes_on_windows():
+    page = Mock()
+    with patch.object(foreground, '_browser_pids', return_value=[301]) as pids, \
+            patch.object(foreground, '_activate_windows', return_value=True) as activate:
+        assert foreground.browser_pids(page, {}) == [301]
+        pids.assert_called_once_with(page, {})
+        assert foreground.activate_windows([301]) is True
+        assert activate.call_args.args[0] == [301]
+        assert activate.call_args.args[1]() == ""

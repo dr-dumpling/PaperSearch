@@ -46,6 +46,34 @@ class PublisherAccessBlockedTests(unittest.TestCase):
         phases=[call.kwargs.get('phase','') for call in self.batch.progress_reporter.update.call_args_list]
         self.assertIn('网站已阻止当前访问，此路径已停止',phases)
 
+    def test_a_publishers_own_ip_block_page_is_a_block(self):
+        # Science, 2026-11-16: its own page under its usual title; the driver had gone on to
+        # the school's login, waited out its time, and the next article did the same.
+        for body in ('Your IP has been blocked.\nYour IP 69.63.193.18 has been blocked. Please contact membership for assistance.',
+                     'Access denied: your IP address 2001:db8::1 has been blocked by the publisher.'):
+            with self.subTest(body=body[:30]):
+                self.assertTrue(self.d._ip_blocked_text(body))
+        for body in ('Abstract. Blocking the IP3 receptor has been shown to...', 'Log in through your institution', ''):
+            with self.subTest(body=body[:30]):
+                self.assertFalse(self.d._ip_blocked_text(body))
+
+    def test_the_article_page_blocking_the_address_stops_before_the_login(self):
+        from types import SimpleNamespace as NS
+        self.d._title.return_value = 'Science | AAAS'
+        # Science's adapter leaves the login step to the driver (base ensure_login: None).
+        for name in ('_wait_past_redirect_page', '_reopen_after_gateway_error', '_raise_on_publisher_content_error',
+                     '_wait_for_page_text', '_dismiss_cookie_banners'):
+            setattr(self.d, name, Mock())
+        self.d._wait_for_challenge = Mock(return_value=True)
+        self.d._is_auth_page = Mock(return_value=False)
+        self.d._access_snapshot = Mock(return_value=NS(text='Science\nYour IP has been blocked.\nYour IP 69.63.193.18 has been blocked.'))
+        self.d._institution_pdf_entitlement_missing = Mock()
+        import paper_search_school.engine.batch_login as login_module
+        with patch.object(login_module, 'open_page', Mock()), patch.object(login_module, 'settle', Mock()):
+            with self.assertRaises(self.batch.PublisherAccessBlocked):
+                self.d._ensure_login(self.page, self.result)
+        self.d._institution_pdf_entitlement_missing.assert_not_called()
+
     def test_interactive_challenge_still_waits(self):
         self.d._title.return_value='Just a moment...'
         self.d._body_text.return_value='Verify you are human'

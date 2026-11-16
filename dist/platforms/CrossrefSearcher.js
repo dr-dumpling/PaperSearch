@@ -16,6 +16,16 @@ import { plainText } from '../utils/plainText.js';
 import { RateLimiter } from '../infrastructure/rate-limit/RateLimiter.js';
 import { ErrorHandler } from '../infrastructure/http/ErrorHandler.js';
 import { RequestCache } from '../infrastructure/cache/RequestCache.js';
+/**
+ * When the paper first came out, "2024-09" ("2024" without a month): Crossref's
+ * ``issued``, the earlier of its online and print dates (a paper's file name).
+ */
+export function issuedMonth(issued) {
+    const [year, month] = issued?.['date-parts']?.[0] ?? [];
+    if (typeof year !== 'number' || !Number.isInteger(year) || year < 1000)
+        return undefined;
+    return typeof month === 'number' && month >= 1 && month <= 12 ? `${year}-${String(month).padStart(2, '0')}` : String(year);
+}
 export class CrossrefSearcher extends PaperSource {
     client;
     mailto;
@@ -283,6 +293,8 @@ export class CrossrefSearcher extends PaperSource {
             // Extract journal name
             const containerTitleList = data['container-title'] || [];
             const journal = plainText(containerTitleList[0] || '') || undefined;
+            // The publisher's short title of it ("Nat Med", "Int. J. Neur. Syst."; some give the full name).
+            const journalAbbreviation = plainText(data['short-container-title']?.[0] || '') || undefined;
             // Extract publisher
             const publisher = data.publisher || '';
             // Extract citation count
@@ -315,6 +327,8 @@ export class CrossrefSearcher extends PaperSource {
                     publisher: publisher,
                     type: docType,
                     issn: data.ISSN || [],
+                    ...(journalAbbreviation ? { journalAbbreviation } : {}),
+                    ...(issuedMonth(data.issued) ? { issued: issuedMonth(data.issued) } : {}),
                     isbn: data.ISBN || [],
                     subjects: data.subject || []
                 }

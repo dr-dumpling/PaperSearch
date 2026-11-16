@@ -10,6 +10,32 @@ import { RateLimiter } from '../infrastructure/rate-limit/RateLimiter.js';
 import { ErrorHandler } from '../infrastructure/http/ErrorHandler.js';
 import { TIMEOUTS, USER_AGENT } from '../config/constants.js';
 import { logDebug } from '../utils/Logger.js';
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const listOf = (value) => (value === undefined ? [] : Array.isArray(value) ? value : [value]);
+const textOf = (value) => (typeof value === 'string' ? value : typeof value?._ === 'string' ? value._ : '').trim();
+/** "2024-11" from a PubMed date ("Nov" or "11"), "2024" without a month. */
+function pubmedMonth(date) {
+    const year = textOf(date?.Year);
+    if (!/^\d{4}$/.test(year))
+        return undefined;
+    const month = textOf(date?.Month).toLowerCase();
+    const number = /^\d{1,2}$/.test(month) ? Number(month) : MONTHS.indexOf(month.slice(0, 3)) + 1;
+    return number >= 1 && number <= 12 ? `${year}-${String(number).padStart(2, '0')}` : year;
+}
+/** When the paper first came out: the earlier of its electronic date and its issue's (a paper's file name). */
+function pubmedIssued(articleData) {
+    const dates = [...listOf(articleData?.ArticleDate), articleData?.Journal?.JournalIssue?.PubDate]
+        .map((date) => pubmedMonth(date)).filter((date) => !!date);
+    // A month known beats a year alone of the same year; otherwise the earliest.
+    return dates.sort((a, b) => a.slice(0, 4).localeCompare(b.slice(0, 4)) || b.length - a.length || a.localeCompare(b))[0];
+}
+/** NLM's abbreviation of the journal ("Sci Transl Med"). */
+function nlmAbbreviation(medlineCitation, articleData) {
+    return textOf(medlineCitation?.MedlineJournalInfo?.MedlineTA) || textOf(articleData?.Journal?.ISOAbbreviation) || undefined;
+}
+function pubmedIssns(articleData) {
+    return listOf(articleData?.Journal?.ISSN).map(textOf).filter((issn) => /^\d{4}-\d{3}[\dX]$/i.test(issn));
+}
 export class PubMedSearcher extends PaperSource {
     baseApiUrl;
     rateLimiter;
@@ -253,7 +279,10 @@ export class PubMedSearcher extends PaperSource {
                 year: publishedDate?.getFullYear(),
                 extra: {
                     pmid: pmid,
-                    pmc: pmc || undefined
+                    pmc: pmc || undefined,
+                    ...(nlmAbbreviation(medlineCitation, articleData) ? { journalAbbreviation: nlmAbbreviation(medlineCitation, articleData) } : {}),
+                    ...(pubmedIssued(articleData) ? { issued: pubmedIssued(articleData) } : {}),
+                    ...(pubmedIssns(articleData).length ? { issn: pubmedIssns(articleData) } : {}),
                 }
             });
         }
@@ -386,6 +415,38 @@ export class PubMedSearcher extends PaperSource {
             logDebug('Error getting paper by PMID:', error);
             return null;
         }
+    }
+    /**
+     * NLM's abbreviation of the journal with one of these ISSNs ("Sci Transl Med"), from the
+     * NLM Catalog; ``undefined`` when it has none. Names downloaded files (outputLayout.ts).
+     */
+    async journalAbbreviation(issns) {
+        const valid = issns.filter((issn) => /^\d{4}-\d{3}[\dX]$/i.test(issn)).slice(0, 4);
+        if (!valid.length)
+            return undefined;
+        const key = this.apiKey ? { api_key: this.apiKey } : {};
+        const ask = async (endpoint, params) => {
+            await this.rateLimiter.waitForPermission();
+            const response = await axios.get(`${this.baseApiUrl}/${endpoint}`, {
+                params: { ...params, retmode: 'json', ...key }, timeout: TIMEOUTS.DEFAULT, headers: { 'User-Agent': USER_AGENT },
+            });
+            return response.data;
+        };
+        const found = await ask('esearch.fcgi', { db: 'nlmcatalog', term: valid.map((issn) => `${issn}[issn]`).join(' OR '), retmax: '5' });
+        const ids = found?.esearchresult?.idlist ?? [];
+        if (!ids.length)
+            return undefined;
+        const summary = (await ask('esummary.fcgi', { db: 'nlmcatalog', id: ids.join(',') }))?.result ?? {};
+        // The journal's own record, among editions sharing its ISSN ("N Engl J Med Overseas Ed"):
+        // the one listing the ISSN, indexed for MEDLINE now.
+        const asked = new Set(valid.map((issn) => issn.toUpperCase()));
+        const ranked = (summary.uids ?? ids).map((id) => summary[id] ?? {}).map((record) => ({
+            abbreviation: textOf(record.medlineta) || textOf(record.isoabbreviation),
+            rank: (listOf(record.issnlist).some((entry) => asked.has(textOf(entry?.issn).toUpperCase())) ? 2 : 0)
+                + (textOf(record.currentindexingstatus) === 'Y' ? 1 : 0),
+        })).filter((record) => record.abbreviation);
+        ranked.sort((a, b) => b.rank - a.rank);
+        return ranked[0]?.abbreviation || undefined;
     }
     /**
      * 根据DOI获取论文信息

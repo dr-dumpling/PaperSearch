@@ -51,6 +51,13 @@ class AtyponAdapter(PublisherAdapter):
     def is_institution_chooser(self, url: str) -> bool:
         return self._chooser(url)
 
+    def is_login_landing(self, url: str) -> bool:
+        """``/action/authenticateSharedSP``: Science's login came back here, a
+        "LOG IN" page with the institution search, after the school was chosen
+        with its sign-in still valid, and stayed; the article opened by itself
+        then had its full text (Windows, 2026-11-16, the first paper of two batches)."""
+        return self._on_site(url) and urlparse(url).path.lower() == "/action/authenticatesharedsp"
+
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink] | None:
         """Files under ``/doi/suppl/<this DOI>/suppl_file/``; a supplement link of
         another article on the page is not this article's. Follow the observed

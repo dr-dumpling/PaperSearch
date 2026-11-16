@@ -495,6 +495,9 @@ class PublisherBatchDownloader(
             if preparation is not None:
                 return preparation
             if self.config.get("login_only"):
+                # The article's title in the window, as the PDF step shows it (a visit given
+                # no title showed only the DOI, 2026-11-16).
+                self._show_title(page)
                 # `login` (cli): the school's login and the article's access, then stop; no PDF.
                 result.signed_in = self._school_login_done()
                 result.state = "access_ready"
@@ -709,7 +712,9 @@ class PublisherBatchDownloader(
                 "browser_unresponsive", "browser_operation_timeout", "user_skipped", "batch_stopped", "user_marked_no_entitlement"}
             if not stopped:
                 self._capture_reported_issues(page, result, act=False)
-            if not result.ok:
+            # A visit that stops at the article's access (`login`) took no PDF and went fine:
+            # not "这条路没走通，正在换路" (Windows, 2026-11-16).
+            if not result.ok and result.state != "access_ready":
                 progress_reporter.report_stage("route_failed", current=record.doi)
             if not stopped:
                 self._hold_after_run(page, result)

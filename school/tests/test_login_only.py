@@ -39,6 +39,19 @@ class LoginOnlyEngineTests(unittest.TestCase):
                 self.assertEqual((result.state, result.signed_in, result.ok), ("access_ready", signed_in, False))
                 self.assertIn("login_only_done", [event["state"] for event in result.events])
         self.d._capture_pdf.assert_not_called()
+        # It went fine: the window is not told the route failed.
+        stages = [call.args[0] for call in self.batch.progress_reporter.report_stage.call_args_list]
+        self.assertNotIn("route_failed", stages)
+
+    def test_the_article_page_gives_the_window_its_title(self):
+        # Windows, 2026-11-16: a visit that stops at the article's access showed the DOI
+        # where a PDF's showed the title.
+        self.d.config["login_only"] = True
+        self.d._prepare_article = Mock(return_value=None)
+        self.d._school_login_done = Mock(return_value=True)
+        self.d._show_title = Mock()
+        self.run_item()
+        self.d._show_title.assert_called_once_with(self.page)
 
     def test_a_closed_browser_is_named_not_unexplained(self):
         self.d._prepare_article = Mock(side_effect=TargetClosedError(

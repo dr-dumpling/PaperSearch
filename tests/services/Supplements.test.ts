@@ -177,6 +177,27 @@ describe("supplementary files", () => {
     expect(ledger.find((i) => i.doi === "10.1000/oa").stages.map((s: { stage: string }) => s.stage)).toContain("supplements");
   });
 
+  it("a batch of the files alone sends its papers to the window, which opens 成功 and 失败 with them", async () => {
+    // Windows, 2026-11-15: such a batch sent no list, and the finished card's counts did not open.
+    const listed: Array<{ papers: Array<{ doi: string; state: string; path?: string }> }> = [];
+    const backend: SchoolBackend = {
+      probe: async () => ({ state: "available", code: "ready", message: "", missing: [] }),
+      downloadLegalDoi: async (request) => request.identifier === "10.1000/a"
+        ? { kind: "attempt_error", identifier: request.identifier, code: "supplements_only", message: "",
+            supplements: [{ status: "saved", file: `${request.outputDir}/s.pdf`, label: "S1" }] }
+        : { kind: "attempt_error", identifier: request.identifier, code: "entitlement_missing", message: "" },
+      reportBatchPapers: async (update) => { listed.push(structuredClone(update)); return true; },
+    };
+    await downloadBatch({} as never, { items: [{ doi: "10.1000/a" }, { doi: "10.1000/b" }], savePath: "/tmp/out",
+      content: "supplements" }, backend, () => {}, () => []);
+    expect(listed[0].papers.map((paper) => paper.state)).toEqual(["open", "open"]);
+    const last = new Map(listed.flatMap((update) => update.papers.map((paper) => [paper.doi, paper.state] as const)));
+    expect([...last]).toEqual([["10.1000/a", "ok"], ["10.1000/b", "failed"]]);
+    // With no PDF, the paper opens at its supplementary file (Windows, 2026-11-16: "没有这篇的 PDF").
+    const opensAt = listed.flatMap((update) => update.papers).filter((paper) => paper.doi === "10.1000/a" && paper.path).at(-1)?.path;
+    expect(opensAt).toMatch(/[\\/]s\.pdf$/);
+  });
+
   it("stops during supplements without losing saved main texts or visiting later items", async () => {
     for (const mode of ["two_phase", "per_item"] as const) {
       for (const content of ["both", "supplements"] as const) {

@@ -176,6 +176,22 @@ class OpenPaperTests(unittest.TestCase):
         return patch.object(capsule, "read_papers", return_value={
             "batch_id": batch, "folder": str(self.folder), "papers": {str(p["index"]): p for p in papers}})
 
+    def test_the_folder_button_opens_the_batch_folder_not_the_last_papers(self):
+        # Windows, 2026-11-16: each article's visit set its own folder as the task's.
+        paper_dir = self.folder / "papers" / "1"
+        with patch.object(capsule, "read_state", return_value={"batch_id": "b1", "status": "running",
+                                                               "output_dir": str(paper_dir)}):
+            with self.listed(paper(1, "open")), patch("subprocess.Popen") as shown:
+                self.assertTrue(self.api.open_folder())
+            self.assertIn(str(self.folder), str(shown.call_args))
+            self.assertNotIn(str(paper_dir), str(shown.call_args))
+            # Another batch's list, or none: the task's own folder.
+            for listed in ({"batch_id": "b0", "folder": str(self.root), "papers": {}}, None):
+                with self.subTest(listed=bool(listed)), patch.object(capsule, "read_papers", return_value=listed), \
+                        patch("subprocess.Popen") as shown:
+                    self.assertTrue(self.api.open_folder())
+                    self.assertIn(str(paper_dir), str(shown.call_args))
+
     def test_a_saved_pdf_of_the_batch_is_shown_in_its_folder(self):
         with self.listed(paper(1, "ok", path=str(self.pdf))), patch("subprocess.Popen") as shown:
             self.assertEqual(self.api.show_paper(1), "已打开所在文件夹")
@@ -201,24 +217,31 @@ class OpenPaperTests(unittest.TestCase):
                 self.assertEqual(self.api.show_paper(1), "已打开所在文件夹")
                 self.assertIn(str(self.root), str(shown.call_args))
 
-    def test_only_a_saved_pdf_of_this_batch_opens(self):
-        text = self.folder / "papers" / "1" / "notes.txt"
-        text.write_text("x")
+    def test_a_paper_saved_without_a_pdf_opens_at_what_it_saved(self):
+        # A batch of the supplementary files or the Markdown alone (Windows, 2026-11-16).
+        for name in ("supplements/table S1.xlsx", "markdown/article.md"):
+            saved = self.folder / "papers" / "1" / name
+            saved.parent.mkdir(parents=True, exist_ok=True)
+            saved.write_text("x")
+            with self.subTest(name=name), self.listed(paper(1, "ok", path=str(saved))), patch("subprocess.Popen") as shown:
+                self.assertEqual(self.api.show_paper(1), "已打开所在文件夹")
+                self.assertIn(str(saved.parent), str(shown.call_args))
+
+    def test_only_a_saved_paper_of_this_batch_opens(self):
         cases = [
-            (paper(1, "ok", path=str(text)), 1, "打开失败：没有这篇的 PDF"),
-            (paper(1, "ok"), 1, "打开失败：没有这篇的 PDF"),
+            (paper(1, "ok"), 1, "打开失败：这篇没有保存的文件"),
             (paper(1, "ok", path=str(self.folder / "papers" / "1" / "gone.pdf")), 1, "打开失败：文件已被移走或删除"),
-            (paper(1, "failed", path=str(self.pdf)), 1, "打开失败：没有这篇的 PDF"),
-            (paper(1, "ok", path=str(self.pdf)), 2, "打开失败：没有这篇的 PDF"),
-            (paper(1, "ok", path=str(self.pdf)), True, "打开失败：没有这篇的 PDF"),
-            (paper(1, "ok", path=str(self.pdf)), "1", "打开失败：没有这篇的 PDF"),
+            (paper(1, "failed", path=str(self.pdf)), 1, "打开失败：这篇没有保存的文件"),
+            (paper(1, "ok", path=str(self.pdf)), 2, "打开失败：这篇没有保存的文件"),
+            (paper(1, "ok", path=str(self.pdf)), True, "打开失败：这篇没有保存的文件"),
+            (paper(1, "ok", path=str(self.pdf)), "1", "打开失败：这篇没有保存的文件"),
         ]
         for item, index, expected in cases:
             with self.subTest(path=item.get("path"), index=index), self.listed(item), patch("subprocess.Popen") as shown:
                 self.assertEqual(self.api.show_paper(index), expected)
                 shown.assert_not_called()
         with self.listed(paper(1, "ok", path=str(self.pdf)), batch="b0"), patch("subprocess.Popen") as shown:
-            self.assertEqual(self.api.show_paper(1), "打开失败：没有这篇的 PDF")
+            self.assertEqual(self.api.show_paper(1), "打开失败：这篇没有保存的文件")
             shown.assert_not_called()
 
     def test_the_counts_open_lists_only_for_this_batchs_papers(self):

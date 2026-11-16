@@ -4,7 +4,7 @@ description: |
   用本机 paper-search 命令做文献工作：检索论文、核对 DOI/PMID、搜正文片段（找方法和结果的原文）、查期刊影响因子与分区、查施引和参考文献、下载全文和补充材料。
   用户要找文献、查期刊、下载论文，或说“请开始配置”时使用；英文请求（literature search、journal metrics、paper download、start setup）同样适用。
 metadata:
-  version: "0.6.7"
+  version: "0.6.8"
 ---
 
 # 文献检索与下载（paper-search）
@@ -173,4 +173,4 @@ paper-search doctor --pretty
 - 不写论文正文，不做语言润色。
 - 不把 API key、token、Cookie 写入 Skill、README 或回复。
 
-下载结果在下载文件夹（`savePath`，没传时用 `DEFAULT_DOWNLOAD_PATH`）里这次新建的 `<年月日-时分秒>_PaperSearchDownload/`：PDF 直接放在里面，取到了补充材料的论文才单独一个文件夹（正文和 `supplements/`）。出过问题的篇目的诊断记录和截图在结果 `runLog` 所指运行记录目录的 `diagnostics/` 里（可能带登录信息，不要发给别人；30 天后自动删除）。正文按“期刊_年份_标题”命名，附件保留原名；使用结果返回的实际 `path` / `supplements[].file`，不要自行拼 DOI 文件名。过长名称会截短，完整标题见返回结果。
+下载结果在下载文件夹（`savePath`，没传时用 `DEFAULT_DOWNLOAD_PATH`）里这次新建的 `<年月日-时分秒>_PaperSearchDownload/`：PDF 直接放在里面，取到了补充材料的论文才单独一个文件夹（正文和 `supplements/`）。出过问题的篇目的诊断记录和截图在结果 `runLog` 所指运行记录目录的 `diagnostics/` 里（可能带登录信息，不要发给别人；30 天后自动删除）。正文按“期刊缩写_年月_标题”命名，附件保留原名；使用结果返回的实际 `path` / `supplements[].file`，不要自行拼 DOI 文件名。过长名称会截短，完整标题见返回结果。

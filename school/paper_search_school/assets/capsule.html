@@ -341,7 +341,7 @@ function ring(pct, size, stroke, label) {
 const root = document.getElementById("root");
 let V = { mode: "idle" };
 let open = false;          // the card is showing
-let panel = "";            // "", "menu", "report", "confirm", "settings": kept until the user leaves it
+let panel = "";            // "", "report", "confirm", "settings": kept until the user leaves it
 let flash = { text: "", until: 0 };
 // 登录并继续 pressed: the held publishers then ({run, keys}); the button says so at once,
 // as the papers go on only after the paper running, or within seconds (user, 2026-11-15).
@@ -434,17 +434,16 @@ function actionsBlock() {
   if (V.actions) {
     html += '<button class="btn" data-act="skip_item">' + icon("skip") + "跳过</button>"
       + '<button class="btn" data-act="confirm">' + icon("stop") + "终止</button>"
-      + '<button class="btn" data-act="menu" aria-label="更多">' + icon("dots") + "</button>";
+      // Only the problem report is left behind it: whether the school has access the download
+      // finds itself, the "no access" marks are gone (user, 2026-11-16).
+      + '<button class="btn" data-act="report" aria-label="报告问题" title="报告问题">' + icon("dots") + "</button>";
   } else if ((V.held || []).length) {
     // Waiting for the user with held publishers: they go on (登录并继续 above) or the batch ends here.
     html += '<button class="btn" data-act="confirm">' + icon("stop") + "终止</button>";
   }
   html += "</div>";
-  if (panel === "menu") {
-    html += '<div class="menu"><button data-act="skip_journal">本刊无权限</button><button data-act="skip_publisher">出版社无权限</button>'
-      + '<hr><button data-act="report">报告问题' + icon("right") + "</button></div>";
-  } else if (panel === "report") {
-    html += '<div class="menu"><button class="back" data-act="menu">' + icon("left") + "报告问题</button>"
+  if (panel === "report") {
+    html += '<div class="menu"><button class="back" data-act="cancel">' + icon("left") + "报告问题</button>"
       + kinds.map((k) => '<button data-act="issue" data-kind="' + esc(k[0]) + '">' + esc(k[1]) + "</button>").join("") + "</div>";
   }
   return html;
@@ -1008,13 +1007,15 @@ async function act(action, target) {
       catch (error) { return say("未能激活进度窗口，请重试"); }
       return say(await api().act("show_browser", v.current, v.run_id));
     }
-    case "menu": panel = panel === "menu" ? "" : "menu"; return render(true);
-    case "report": if (!kinds.length) kinds = await api().issue_kinds(); panel = "report"; return render(true);
+    case "report":
+      if (panel === "report") { panel = ""; return render(true); }
+      if (!kinds.length) kinds = await api().issue_kinds();
+      panel = "report"; return render(true);
     case "issue": panel = ""; return say(await api().report(target.dataset.kind, v.current));
     case "confirm": panel = "confirm"; return render(true);
     case "cancel": panel = ""; return render(true);
     case "stop": panel = ""; return say(await api().act("stop_batch", v.current, v.run_id));
-    case "skip_item": case "skip_journal": case "skip_publisher":
+    case "skip_item":
       panel = ""; return say(await api().act(action, v.current, v.run_id));
     case "resume_held": {
       heldAsked = { run: v.run_id, keys: heldKeys() };

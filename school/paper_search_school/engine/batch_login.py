@@ -15,7 +15,7 @@ from urllib.parse import unquote, urljoin, urlparse
 from . import access_rules
 from .login_wait import LoginWait
 from .. import federations, progress_reporter
-from .batch_common import (AWAY_WAIT_SEC, POLL_MS, DownloadResult, PublisherContentError, _is_browser_error,
+from .batch_common import (AWAY_WAIT_SEC, POLL_MS, DownloadResult, PublisherAccessBlocked, PublisherContentError, _is_browser_error,
                            _is_navigation_cut, open_page, pump_until, settle)
 
 # A site without a publisher profile (publishers/site.py) whose article page
@@ -75,6 +75,9 @@ class LoginMixin:
         self._raise_on_publisher_content_error(page)
         self._dismiss_cookie_banners(page, result)
         snapshot = self._access_snapshot(page) if not self._is_auth_page(str(page.url)) else None
+        if snapshot is not None and self._ip_blocked_text(snapshot.text):
+            # Science, 2026-11-16: the driver went on to the school's login and waited out its time.
+            raise PublisherAccessBlocked("publisher_access_blocked")
         if self._institution_pdf_entitlement_missing(page, snapshot=snapshot):
             return False
         if self._pdf_first_unless_signed_out(page, result, snapshot=snapshot):
@@ -273,6 +276,12 @@ class LoginMixin:
                 result._login_wait = None
                 self._set_login_attention(result, "")
 
+    def _at_login_landing(self, url: str, result: DownloadResult) -> bool:
+        """The publisher's own page its login ends on (``is_login_landing``), after
+        this paper chose the school."""
+        return (self.adapter.is_login_landing(url)
+                and any(e.get("state") in self._SCHOOL_CHOSEN for e in result.events))
+
     def _complete_login_steps(self, page: Any, result: DownloadResult) -> bool:
         own = self.adapter.complete_login(page, result)
         if own is not None:
@@ -414,13 +423,17 @@ class LoginMixin:
                     after_login, returned, last_probe = returned and self._school_login_done(), False, time.time()
                     if self._probe_pdf_while_waiting(page, result, after_login=after_login):
                         return False  # signed in, and the page still offers or denies the article
-                elif (visited_idp and on_publisher and article_returns < 2
+                elif (on_publisher and article_returns < 2
+                      and (visited_idp or self._at_login_landing(here.geturl(), result))
                       and not self._is_success_article_url(here.geturl())
                       and not self._is_auth_page(here.geturl())
                       and not self._challenge_shell(page)):
                     # Back from the IdP on a publisher page that is neither the
                     # article nor a login/chooser page (Taylor & Francis drops the
-                    # redirect and lands on its home page): open the article.
+                    # redirect and lands on its home page): open the article. So too
+                    # on the page a publisher's login ends on once the school was chosen,
+                    # its sign-in still valid and the IdP passed unseen between two
+                    # passes (Science: choosing the school again there was no login).
                     article_returns += 1
                     try:
                         open_page(page, result.article_url, timeout_ms=60_000)

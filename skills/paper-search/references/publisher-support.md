@@ -74,4 +74,4 @@ DOI 跳转到表外的网站时，程序按通用规则尝试：找机构登录�
 - `institution_not_registered`：认证应用或入口未注册，或与当前认证渠道不兼容，属于外部认证配置问题；核查入口，不把它当作学校没有论文订阅。
 - `idp_no_return_to_publisher`：学校登录后停在学校自己的网站，没回到出版社，通常也是学校没开通。
 - `entitlement_missing`：出版社认出了学校，判定本篇不在订阅内。只说本篇、当前学校没有权限，不推断整个出版社。
-- `no_entitlement`：用户在进度窗口里标过“本刊无权限”或“出版社无权限”，之后同刊或同出版社直接跳过；查看或撤销见 `browser-download.md`。
+- `no_entitlement`：用 `paper-search-school entitlements set` 标过本刊或本出版社无权限，之后同刊或同出版社直接跳过；查看或撤销用 `paper-search-school entitlements`（`list` / `clear <key>`）。

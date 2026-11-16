@@ -52,6 +52,42 @@ describe('download output layout', () => {
     expect(asked).toHaveLength(2);
   });
 
+  it('names a paper by the journal abbreviation, the month it first came out and its title (user, 2026-11-15)', async () => {
+    const title = 'A wearable osmotic microneedle patch provides sustained interstitial fluid sampling for continuous monitoring in humans';
+    const nlm: string[][] = [];
+    const searchers = {
+      crossref: {getPaperByDoi: async (doi: string) => ({journal: 'Science Translational Medicine', year: 2025, title: doi.endsWith('2') ? 'Another' : title,
+        extra: {issn: ['1946-6234', '1946-6242'], journalAbbreviation: 'Sci. Transl. Med.', issued: '2024-11'}})},
+      pubmed: {journalAbbreviation: async (issns: string[]) => { nlm.push(issns); return 'Sci Transl Med'; }},
+    } as any;
+    const found = await lookupOutputMetadata(searchers, 'crossref', '10.1126/scitranslmed.test1');
+    const layout = createOutputLayout('/tmp/output', '10.1126/scitranslmed.test1', found);
+    // Cut short at a word's end, the title having what the journal and date leave (it had 55 characters before).
+    expect(layout.name).toBe('Sci Transl Med_2024-11_A wearable osmotic microneedle patch provides sustained interstitial fluid');
+    // NLM is asked once per journal.
+    await lookupOutputMetadata(searchers, 'crossref', '10.1126/scitranslmed.test2');
+    expect(nlm).toEqual([['1946-6234', '1946-6242']]);
+  });
+
+  it('names a paper by the publisher\'s short title without NLM, and by the journal and year without either', async () => {
+    const searchers = (extra: object) => ({
+      crossref: {getPaperByDoi: async () => ({journal: 'International Journal of Neural Systems', year: 2027, title: 'Spiking networks', extra})},
+      pubmed: {journalAbbreviation: async () => undefined},
+    } as any);
+    const name = async (doi: string, extra: object) =>
+      createOutputLayout('/tmp/output', doi, await lookupOutputMetadata(searchers(extra), 'crossref', doi)).name;
+    expect(await name('10.1142/a', {issn: ['0129-0657'], journalAbbreviation: 'Int. J. Neur. Syst.', issued: '2026-10'}))
+      .toBe('Int J Neur Syst_2026-10_Spiking networks');
+    // Wiley gives the journal's full name as its short title.
+    expect(await name('10.1142/b', {journalAbbreviation: 'International Journal of Neural Systems', issued: '2026'}))
+      .toBe('International Journal of Neu_2026_Spiking networks');
+    expect(await name('10.1142/c', {})).toBe('International Journal of Neu_2027_Spiking networks');
+    expect(createOutputLayout('/tmp', '1706.03762', {...metadata, publishedDate: new Date('2017-06-12T00:00:00Z')}, true).name)
+      .toBe('arXiv_2017-06_A useful article');
+    expect(createOutputLayout('/tmp/output', '10.1/x', {journal: 'Nanotechnology', issued: '2026-10', title: 'TiO<sub>2</sub> memristors: a study'}).name)
+      .toBe('Nanotechnology_2026-10_TiO2 memristors - a study');
+  });
+
   it("lays main texts only side by side, and puts diagnostics in the run's folder", () => {
     // Main texts only: no folder per paper; diagnostics never in the download folder (user, 2026-11-11).
     const dir = root();

@@ -223,6 +223,11 @@ class PublisherAdapter:
         """A page that moves on to the article by script (wait for it to leave)."""
         return False
 
+    def is_login_landing(self, url: str) -> bool:
+        """A page of the publisher's own where its login can end once the school is
+        chosen, without going on to the article: the engine opens the article."""
+        return False
+
     def is_institution_chooser(self, url: str) -> bool:
         """A page of the publisher's own sign-in service, on another host of its
         own, where the user's organisation is searched; the configured school is

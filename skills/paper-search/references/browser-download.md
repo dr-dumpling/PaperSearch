@@ -19,7 +19,7 @@
 - 同一个数据目录同时只跑一个下载。命令没结束时，不因窗口看似停住而重新下载或登录。
 - 机构下载一次一篇，开放渠道同时查后面的篇目。遇到学校登录或验证时停在这一篇；出现人工处理提示后，提醒用户到下载浏览器操作。等待时限：停在学校登录页（以及没配置学校、要用户自己选学校的页面）最多 3 分钟（后端配置 `browser_login_timeout`，秒）；停在其他页面（人机验证、出版社页面、选机构页、取 PDF 时等待处理）连续超过 1 分钟就结束这一篇（`browser_page_wait_timeout`）。两项都能在进度窗口右上角的设置（齿轮）里改，从下一篇起生效。学校统一认证登录一次后，其余篇目通常自动通过。一篇等满时限后（日志写“这一篇等你登录或验证已到时限”），后面每篇只等 60 秒；用户在登录框输入时照常等。
 - 每个出版社每小时最多打开 100 篇（后端配置 `publisher_hourly_limit`，0 为不限）。到上限时批量等到可以继续再下这一篇（日志写明时间）；单篇返回 `rate_limited`，稍后再试。
-- 出版社网站拦截了当前网络（`access_blocked`，如 Cloudflare 拦截页）时这一篇结束；同一期刊 30 分钟内的其他文章直接跳过（`journal_blocked_earlier`），其他期刊照常继续。告诉用户可能是当前网络被网站防护拦截，也可能是下载过多被暂停：可换网络或稍后再试，后者请联系学校图书馆。
+- 出版社网站拦截了当前网络（`access_blocked`，如 Cloudflare 拦截页、出版社自己的“IP 已被封锁”页）时这一篇结束；同一期刊的其他文章暂时直接跳过（`journal_blocked_earlier`），每 5 分钟用一篇再试一次网站，能打开就照常继续（换了网络不用等半小时），其他期刊照常继续。告诉用户可能是当前网络被网站防护拦截，也可能是下载过多被暂停：可换网络或稍后再试，后者请联系学校图书馆。
 - 后端会先短暂等待自动验证，每次验证等待对可识别的 Turnstile 复选框最多尝试点击 3 次，两次至少间隔 3 秒；程序提示人工处理时，再提醒用户到下载浏览器接管，不因 `checking_access` 就要求用户操作。学校登录、二次验证和复杂验证码由用户完成（reCAPTCHA、hCaptcha、滑块等验证页，程序认出后直接交给用户）；学校认证页的信息发送同意和使用条款、出版社登录途中的条款确认页由后端代点同意（每篇各最多两次，仍停在那一页时才提醒用户）。不索取账号、密码或验证码，agent 不另开浏览器代操作。
 - 在专用人工登录页输入、选择或点击控件，或点击胶囊接管登录后，暂停剩余学校登录预算；输入间停顿不算离开，离开该人工步骤后恢复计时。无人操作仍按原限时结束。不要询问用户的账号密码。用户在登录页中途停下（比如去拿手机验证码）时继续等，按原来的时限算，不重新发起登录。
 - 学校登录提醒依赖当前可见的账号、密码、二次验证码、二维码，或后端没能代点的同意步骤；学校域名和空闲时间不作为人工操作证据。胶囊“提醒你操作前最多等”仍保存到 `browser_stall_notify_after`（默认 30 秒，1–600）；可见验证控件无法自动操作时，按该值与剩余预算一半的较早者交接。控件仍在加载、已勾选处理中或尚未出现时继续自动观察。未派发点击不消耗最多 3 次输入额度；失败原因见 `challenge_observation`。明确网站封禁和预算耗尽仍结束当前路径，不保证所有验证码自动通过。程序认不出的页面停住达到这个时长、页面上又有可点的控件时，也会提醒“页面可能需要你处理”，同样请用户到下载浏览器看一眼。
@@ -40,7 +40,7 @@
 - 当前源码（未发布修复）：`browser_operation_timeout` 表示自动页面操作耗尽共享预算，不是无权限，也不是等待用户登录。不要因此反复登录；先检查是否误用了 `entitled_only`。附件阶段终止同样停止后续篇目，保留已保存的正文。
 - 展开后写明正在下哪部分和哪一步：正文有五段步骤条（打开文章、权限、取 PDF、核对、附录），附录显示“附录 2/5”。
 - 右上角齿轮（设置）：手动输入学校登录页、其他页面的最长等待（秒）、页面持续无进展的提醒时间（默认 30 秒）和每家出版社每小时最多下载篇数，保存后用于后续篇目；“系统通知”开关点击即保存，可随时开启或关闭；关闭后胶囊仍变色呼吸，点击提醒仍可唤回浏览器。
-- “跳过”：只结束当前这一篇。“⋯”里的“本刊无权限”“出版社无权限”：结束这一篇并记住，以后自动跳过；查看或撤销用 `paper-search-school entitlements`（`list` / `clear <key>`）。点击后 1–2 秒内生效。
+- “跳过”：只结束当前这一篇，点击后 1–2 秒内生效。学校有没有权限由下载自己判断，进度窗口里不用标；“⋯”打开“报告问题”。
 - “⋯”里的“报告问题”：用户选择看到的问题后，后端截下页面并处理（读取已打开的 PDF、回到文章、刷新、停止自动选校），窗口显示处理结果。
 - 发起机构下载时同时监听用户的报告（与下载相同的 `SCHOOL_DATA_DIR`）：
   - 能后台运行命令并在结束时收到通知：后台运行 `paper-search-school issues watch --since <开始下载的时间戳>`，用户报告后它返回报告 JSON（网址、标题、正文片段、截图路径、处理结果）并退出。
@@ -90,7 +90,7 @@ paper-search failures --format text
 | 类别 | 常见 code | 怎么说、怎么做 |
 | --- | --- | --- |
 | 没权限（有依据） | `entitlement_missing`、`institution_federation_unavailable`、`no_entitlement` | 附上汇总里的依据（页面原话或决定性的一步）。只说本篇、当前学校没有权限，不推断整个平台。出版社没有学校所在联盟的登录路线时，建议在校园网或学校 VPN 下下载。 |
-| 用户或外部原因 | `login_timeout`（停在学校登录页）、`login_paused`（这家出版社的学校登录在本批中途失效，这篇暂停、没试；不代表没有权限）、`login_page_closed`、`login_credentials_rejected`、`captcha_required`、`idp_login_error`、`institution_not_registered`（认证应用或入口未注册，不代表没有订阅）、`user_skipped`、`cancelled`、`access_blocked`、`cloudflare_blocked`、`publisher_content_error`、`article_not_yet_published`（论文已录用，出版社还没上线全文）、`rate_limited`、`batch_stopped`、`profile_busy` | 说明需要用户做什么（登录、验证、等待、联系图书馆），原调用结束、资源释放后再决定是否重试；不连续重新提交登录。 |
+| 用户或外部原因 | `login_timeout`（停在学校登录页）、`login_paused`（这家出版社的学校登录在本批中途失效，这篇暂停、没试；不代表没有权限）、`login_page_closed`、`login_credentials_rejected`、`captcha_required`、`idp_login_error`、`institution_not_registered`（认证应用或入口未注册，不代表没有订阅）、`user_skipped`、`cancelled`、`access_blocked`、`cloudflare_blocked`、`publisher_content_error`、`article_not_yet_published`（论文已录用，出版社还没上线全文）、`doi_not_resolved`（doi.org 还查不到这个 DOI，常见于刚上线几天的文章；过几天再下）、`rate_limited`、`batch_stopped`、`profile_busy` | 说明需要用户做什么（登录、验证、等待、联系图书馆），原调用结束、资源释放后再决定是否重试；不连续重新提交登录。 |
 | 暂不支持的网站 | `unsupported_platform`（如只在 ClinicalKey 上的内容）、`unsupported_publisher`（DOI 没有指向能登录的出版社网站，没有打开浏览器）、`generic_institution_entry_missing`（这家出版社还没有专门的规则，按通用规则没找到机构登录入口） | 说明这类网站还不支持，不说成没有权限；后者可以建议用户把这篇报告给维护者补规则，或在校园网下下载。 |
 | 原因不明（需排查） | `download_failed`、`download_timeout`、`login_not_reached`（程序没进入学校登录页）、`login_required`、`source_exception`、`browser_unresponsive`、`pdf_identity_unverified`、`pdf_identity_mismatch`、`pdf_wrong_article` 等 | 不说成没有权限；说明原因待查，给出汇总里的“停在哪一步”和诊断文件位置。 |
 
@@ -125,7 +125,7 @@ paper-search failures --run <运行ID> --doi <DOI> --export ./failure-report.zip
 - `download_with_fallback` / `download_batch` 的 `content`：`main`（默认，只要正文）、`supplements`（只要补充材料，不走正文的各层）、`both`（正文和补充材料）。
 - 补充材料只经学校订阅下载的浏览器取得：正文由开放渠道拿到时，`both` 会再请它单独取补充材料；它没装或没启用时，这一步记为 `skipped`，写明没有可用的后端。
 - 哪些出版社有补充材料规则见 `publisher-support.md`。完成检查但页面未列出附件时返回空 `supplements`，attempt 为 `skipped/no_supplements`；只取补充材料时整体 `status=ok`，表示检查完成，不表示保存了文件。这家网站没有补充材料专门规则时先按通用规则取文章页补充材料区块里地址带本文 DOI 的文件，仍没有找到时 attempt 为 `skipped/supplements_not_supported`，整体仍为 `ok`：不知道有没有附件，告诉用户“网站暂不支持自动下载附录”，需要的话打开文章页手动下载，不要说成没有附录。登录未完成（`login_required`）、验证未完成（`challenge_timeout`）、网站的人机验证页挡住了附件下载（`verification_page`，如 Figshare）、拿到网页而不是文件（`html_page`）与其他下载失败分别报告，只取补充材料时为 `error`，不影响已保存正文。
-- 文件存在 `<savePath>/<期刊_年份_标题_短标识>/supplements/`，正文也移进这个文件夹；没取到附件的论文，正文平铺在 `<savePath>` 里；`…_supplements-manifest.json` 记录每个文件的状态（`saved`、`failed`、`skipped`）和原因，在结果 `runLog` 所指的运行记录目录里：有文件没下到时在 `diagnostics/`，都下到时在 `records/`；结果里的 `supplements` 给出实际文件路径。
+- 文件存在 `<savePath>/<期刊缩写_年月_标题_短标识>/supplements/`，正文也移进这个文件夹；没取到附件的论文，正文平铺在 `<savePath>` 里；`…_supplements-manifest.json` 记录每个文件的状态（`saved`、`failed`、`skipped`）和原因，在结果 `runLog` 所指的运行记录目录里：有文件没下到时在 `diagnostics/`，都下到时在 `records/`；结果里的 `supplements` 给出实际文件路径。
 - 上限：每篇最多 50 个文件，每个不超过 200 MB，一篇总共 3 分钟；超出的记 `skipped`（原因 `file_limit`、`too_large`、`time_budget`）。`html_page` 表示链接打开的是网页而不是文件，`http_403` 一类是网站拒绝。
 - 只收本文的文件：别的文章的文件、本文的插图、参考文献里的链接都不收。Figshare 公开 article/collection 链接按原文 DOI 关联后解析文件；其他外部附件平台仍需适配。
 - 补充材料、利益冲突声明里也可能印着目标标题和 DOI；不要把补充材料 PDF 当正文交付，正文成功也不代表补充材料齐全。

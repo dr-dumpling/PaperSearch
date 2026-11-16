@@ -143,6 +143,9 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
     except Exception as exc:
         log.info(f"   [Institutional] route exception: {type(exc).__name__}")
         return fail(doi, "institutional route raised", error_type="source_exception", action="review_logs")
+    # An article that re-checked a blocked journal's site: open again unless blocked again.
+    from . import blocked_journals
+    blocked_journals.recheck_ended(doi, blocked=bool(result) and result.get("error_type") == "access_blocked")
 
     if result is None:
         return fail(

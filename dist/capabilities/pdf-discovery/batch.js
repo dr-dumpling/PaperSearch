@@ -228,7 +228,7 @@ function publisherBlocked(result) {
 }
 function blockedNotice(doi) {
     return (`[批量] 出版社网站拦截了当前网络（${doi}）：可能是当前网络被网站防护拦截，也可能是下载过多被暂停；` +
-        "同一期刊的后续文章直接跳过，其他照常继续。可换网络或稍后再试");
+        "同一期刊的后续文章暂时直接跳过，每 5 分钟拿一篇再试一次网站（换了网络就会接着下），其他照常继续");
 }
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function runItem(index, request) {
@@ -332,6 +332,10 @@ async function downloadSupplementsBatch(options, backend, log, searchers) {
     const batchId = randomUUID();
     const total = options.items.length;
     const ledger = openLedger("supplements", batchId, options, log);
+    // The window's lists (成功, 失败, 剩余 open on a click), as the other batches send them: a
+    // batch of the files alone sent none (Windows, 2026-11-15).
+    const papers = new PaperList(backend, batchId, options.savePath, options.items.map((item) => batchPaper(itemOptions(item, options), undefined, "open", "supplements")));
+    await papers.send();
     const items = [];
     let succeeded = 0;
     let failed = 0;
@@ -348,6 +352,7 @@ async function downloadSupplementsBatch(options, backend, log, searchers) {
             failed += 1;
         ledger?.item(entry, result);
         items.push(itemResult(result, offset + 1, request));
+        papers.set(offset, batchPaper(request, items[items.length - 1], undefined, "supplements"));
         if (stoppedByUser(result)) {
             for (const [rest, item] of options.items.entries()) {
                 if (rest <= offset)
@@ -357,11 +362,14 @@ async function downloadSupplementsBatch(options, backend, log, searchers) {
                     supplements: [{ status: "skipped", label: "", reason: "batch_stopped" }] }, rest + 1, request);
                 items.push(skipped);
                 ledger?.item(runItem(rest + 1, request), skipped);
+                papers.set(rest, batchPaper(request, skipped, undefined, "supplements"));
             }
             log(STOP_NOTICE);
             break;
         }
+        await papers.send();
     }
+    await papers.send(true);
     ledger?.close();
     return summary(options.mode ?? "two_phase", batchId, items, {
         content: "supplements",
