@@ -448,6 +448,50 @@ def _lock_path():
     return progress_path().parent / "bar.pid"
 
 
+_WINDOW_CLAIM: Any = None
+
+
+def claim_window() -> bool:
+    """Hold the progress window's lock file for this process's life; False when another
+    window holds it. Two downloads asking for a window at the same moment each started
+    one (``bar.pid`` is written only once a window is up): three windows showed the same
+    batch (Windows, 2026-11-16). A window that cannot claim it closes at once."""
+    global _WINDOW_CLAIM
+    if _WINDOW_CLAIM is not None:
+        return True
+    try:
+        path = _lock_path().with_name("bar.lock")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(path, "a+b")
+    except OSError:
+        return True  # no lock file to hold: as before, the pid file alone guards
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        return False
+    _WINDOW_CLAIM = handle
+    return True
+
+
+def release_window_claim() -> None:
+    global _WINDOW_CLAIM
+    if _WINDOW_CLAIM is not None:
+        try:
+            _WINDOW_CLAIM.close()
+        except OSError:
+            pass
+        _WINDOW_CLAIM = None
+
+
 def write_window_lock() -> None:
     """Mark this process as the open progress window (ensure_progress_bar reads it)."""
     try:

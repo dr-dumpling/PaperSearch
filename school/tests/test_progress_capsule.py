@@ -36,6 +36,26 @@ def running(**changes):
     return state
 
 
+class OneWindowTests(unittest.TestCase):
+    """Windows, 2026-11-16: two downloads asking for a window at once started three."""
+
+    def test_only_one_window_holds_the_claim(self):
+        with TemporaryDirectory() as folder, patch.object(pv, "_lock_path", return_value=Path(folder) / "bar.pid"):
+            self.addCleanup(pv.release_window_claim)
+            self.assertTrue(pv.claim_window())
+            # Another window (another handle on the lock file) cannot claim it.
+            held, pv._WINDOW_CLAIM = pv._WINDOW_CLAIM, None
+            self.assertFalse(pv.claim_window())
+            pv._WINDOW_CLAIM = held
+            pv.release_window_claim()
+            self.assertTrue(pv.claim_window())
+
+    def test_a_second_window_closes_before_drawing_anything(self):
+        with patch.object(pv, "claim_window", return_value=False), \
+                patch.object(capsule, "page_html", side_effect=AssertionError("no window")):
+            capsule.main()
+
+
 class ViewTests(unittest.TestCase):
     def test_no_task_is_idle(self):
         self.assertEqual(pv.view(None, NOW), {"mode": "idle"})

@@ -670,6 +670,8 @@ class Api:
 
 
 def main() -> None:
+    if not progress_view.claim_window():
+        return  # another progress window is open: it shows this download too
     try:
         import webview
     except ImportError as exc:

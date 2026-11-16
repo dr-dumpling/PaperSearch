@@ -8,7 +8,7 @@ import sys
 import unittest
 
 PROBE = r'''
-import sys, time, webview
+import os, sys, time, webview
 from paper_search_school.progress_capsule import page_html
 LANG = sys.argv[1]
 class Bridge:
@@ -26,6 +26,13 @@ def probe(window):
     window.destroy()
 webview.start(probe, webview.create_window("capsule page test", html=page_html(), js_api=Bridge(),
                                            width=360, height=200))
+# Leave as progress_capsule.main does. The page asks state() every 500 ms and
+# pywebview answers each call on a thread of its own; a reply caught by destroy()
+# waits for the closed page forever, and a normal exit waits for that thread.
+# The 2 s sleep lands on the 4th poll, so this hit often (90 s timeouts, 2026-11-15).
+sys.stdout.flush()
+sys.stderr.flush()
+os._exit(0)
 '''
 
 
