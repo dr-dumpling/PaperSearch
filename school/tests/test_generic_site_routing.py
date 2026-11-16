@@ -17,13 +17,16 @@ CONFIG = {"publisher_institution_federation": "carsi", "school_name": "Example U
 
 
 class GenericSiteRoutingTests(unittest.TestCase):
-    def run_bridge(self, doi=DOI, landing=LANDING, remembered=None, wait=0):
+    def run_bridge(self, doi=DOI, landing=LANDING, remembered=None, wait=0, pubmed=None, days=0, unknown=False):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as stack:
             config = {**CONFIG, "cache_dir": temp}
             stack.enter_context(patch("requests.sessions.Session.request", side_effect=AssertionError("Network forbidden")))
             stack.enter_context(patch("socket.create_connection", side_effect=AssertionError("Network forbidden")))
             stack.enter_context(patch.object(bridge, "_try_external_instsci", return_value=None))
             resolve = stack.enter_context(patch.object(bridge, "_resolve_doi", return_value=landing))
+            self.pubmed = stack.enter_context(patch.object(bridge, "_pubmed_article", return_value=pubmed))
+            stack.enter_context(patch.object(bridge, "_published_days_ago", return_value=days))
+            self.unknown = stack.enter_context(patch.object(bridge, "_doi_unknown_to_doi_org", return_value=unknown))
             stack.enter_context(patch("paper_search_school.browser.backend.is_available", return_value=True))
             self.decision = stack.enter_context(patch("paper_search_school.entitlements.decision_for",
                                                       return_value=remembered))
@@ -94,6 +97,79 @@ class GenericSiteRoutingTests(unittest.TestCase):
         self.run_bridge(doi="10.1164/rccm.201908-1590ST", landing="https://academic.oup.com/ajrccm/article/200/8/e70/8497012")
         self.assertFalse(self.factory.call_args.kwargs["profile"].generic)
         self.assertEqual(self.factory.call_args.kwargs["profile"].base_domains, ("academic.oup.com",))
+
+
+    def test_a_doi_doi_org_never_knew_opens_the_publishers_link_pubmed_lists(self):
+        # Annals of the Rheumatic Diseases, 2026-11-16: BMJ DOIs of 2024-25 never registered,
+        # PubMed listing Elsevier's link; the browser opens it, the driver going on as for any paper.
+        link = "https://linkinghub.elsevier.com/retrieve/pii/S0003-4967(25)00001-9"
+        result = self.run_bridge(doi="10.1136/ard-2024-225982", landing=None,
+                                 pubmed={"pmid": "39739385", "url": link})
+        self.pubmed.assert_called_once_with("10.1136/ard-2024-225982")
+        self.factory.assert_called_once()
+        self.assertEqual(self.factory.call_args.kwargs["profile"].name, "Elsevier")
+        self.downloader.use_article_url.assert_called_once_with("10.1136/ard-2024-225982", link)
+        self.assertEqual(self.downloader.fetch_one.call_args.args[1].doi, "10.1136/ard-2024-225982")
+        self.assertEqual(result["error_type"], "download_failed")
+        # Without a profile for the DOI, the link's site names one.
+        self.run_bridge(landing=None, pubmed={"pmid": "1", "url": link})
+        self.assertEqual(self.factory.call_args.kwargs["profile"].name, "Elsevier")
+
+    def test_a_doi_never_registered_for_a_paper_published_long_ago_is_said_so(self):
+        # PubMed has the paper a month and more, with no link but doi.org's, and doi.org says it has no such DOI.
+        result = self.run_bridge(doi="10.1016/j.example.2026.1", landing=None, pubmed={"pmid": "1", "url": ""},
+                                 days=330, unknown=True)
+        self.factory.assert_not_called()
+        self.assertEqual((result["error_type"], result["action"]), ("doi_not_registered", "review_publisher_error"))
+        # A paper of the last days, or doi.org not answering: not yet registered, try again later.
+        for days, unknown in ((3, True), (330, False)):
+            with self.subTest(days=days, unknown=unknown):
+                result = self.run_bridge(doi="10.1016/j.example.2026.1", landing=None,
+                                         pubmed={"pmid": "1", "url": ""}, days=days, unknown=unknown)
+                self.assertEqual(result["error_type"], "doi_not_resolved")
+        # doi.org knowing the DOI asks PubMed nothing.
+        self.run_bridge(doi="10.1016/j.example.2026.1", landing="https://www.sciencedirect.com/science/article/pii/S0")
+        self.pubmed.assert_not_called()
+
+
+class PubmedLinkTests(unittest.TestCase):
+    """PubMed's link to the publisher (LinkOut), read from E-utilities' answers."""
+
+    def answers(self, *bodies):
+        responses = [MagicMock(**{"json.return_value": body}) for body in bodies]
+        return patch("requests.get", side_effect=responses)
+
+    def test_the_publishers_own_link_not_doi_orgs_nor_pubmed_centrals(self):
+        search = {"esearchresult": {"idlist": ["39739385"]}}
+        links = {"linksets": [{"idurllist": [{"objurls": [
+            {"url": {"value": "https://dx.doi.org/10.1136/ard-2024-225982"}},
+            {"url": {"value": "https://pmc.ncbi.nlm.nih.gov/articles/pmid/39739385/"}},
+            {"url": {"value": "https://linkinghub.elsevier.com/retrieve/pii/S0003-4967(25)00001-9"}}]}]}]}
+        with self.answers(search, links) as get:
+            found = bridge._pubmed_article("10.1136/ard-2024-225982")
+        self.assertEqual(found, {"pmid": "39739385", "url": "https://linkinghub.elsevier.com/retrieve/pii/S0003-4967(25)00001-9"})
+        self.assertEqual(get.call_args_list[0].kwargs["params"]["term"], '"10.1136/ard-2024-225982"[aid]')
+        # Only doi.org's link (Springer): the paper, without a link.
+        with self.answers(search, {"linksets": [{"idurllist": [{"objurls": [
+                {"url": {"value": "https://dx.doi.org/10.1007/x"}}]}]}]}):
+            self.assertEqual(bridge._pubmed_article("10.1007/x"), {"pmid": "39739385", "url": ""})
+
+    def test_no_single_record_or_no_answer_is_none(self):
+        for ids in ([], ["1", "2"]):
+            with self.subTest(ids=ids), self.answers({"esearchresult": {"idlist": ids}}):
+                self.assertIsNone(bridge._pubmed_article("10.1/x"))
+        import requests
+        with patch("requests.get", side_effect=requests.ConnectionError("down")):
+            self.assertIsNone(bridge._pubmed_article("10.1/x"))
+            self.assertFalse(bridge._doi_unknown_to_doi_org("10.1/x"))
+            self.assertEqual(bridge._published_days_ago({"pmid": "1", "url": ""}), 0)
+
+    def test_doi_orgs_own_no_and_the_papers_age(self):
+        with self.answers({"responseCode": 100}, {"responseCode": 1}):
+            self.assertTrue(bridge._doi_unknown_to_doi_org("10.1136/ard-2024-225982"))
+            self.assertFalse(bridge._doi_unknown_to_doi_org("10.1136/ard-2024-225872"))
+        with self.answers({"result": {"1": {"sortpubdate": "2024/12/20 00:00"}}}):
+            self.assertGreater(bridge._published_days_ago({"pmid": "1", "url": ""}), 300)
 
 
 if __name__ == "__main__":

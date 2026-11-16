@@ -44,24 +44,51 @@ describe("stable release checks", () => {
 });
 
 describe("cached notification lifecycle", () => {
-  it("prints once on every invocation from a fresh cache, with no network", async () => {
+  it("prints once a day from a fresh cache, with no network", async () => {
+    // It came with every command; once a day is enough (user, 2026-11-16).
     cache({ latest: "0.4.8", latestCheckedAt: NOW });
     const queryLatest = jest.fn(async () => "0.4.9");
-    for (let i = 0; i < 2; i += 1) {
+    const printed: number[] = [];
+    for (const at of [NOW, NOW + 3_600_000, NOW + 86_400_000]) {
       const write = jest.fn();
-      const session = beginUpdateNotification({ ...options(), enabled: true, allowNetwork: true, write, queryLatest });
+      const session = beginUpdateNotification({ ...options(), now: () => at, enabled: true, allowNetwork: false, write, queryLatest });
       await session.done;
-      expect(write).toHaveBeenCalledTimes(1);
-      expect(write.mock.calls[0][0]).toContain("0.4.7 → 0.4.8");
+      printed.push(write.mock.calls.length);
+      if (write.mock.calls.length) expect(write.mock.calls[0][0]).toContain("0.4.7 → 0.4.8");
       session.stop();
     }
+    expect(printed).toEqual([1, 0, 1]);
     expect(queryLatest).not.toHaveBeenCalled();
   });
 
-  it("suppresses disabled, current, newer and stale-cache notifications", async () => {
+  it("tells a newer version once found until the update, also when npm does not answer", async () => {
+    // A Mac whose checks all timed out went days without a reminder (2026-11-16).
+    cache({ checkedAt: NOW - 3_600_000, latest: "0.4.8", latestCheckedAt: NOW - 5 * 86_400_000 });
+    const write = jest.fn();
+    const failing = jest.fn(async () => { throw new Error("timeout"); });
+    await beginUpdateNotification({ ...options(), enabled: true, allowNetwork: true, write, queryLatest: failing }).done;
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write.mock.calls[0][0]).toContain("0.4.7 → 0.4.8");
+    // Updated: nothing more.
+    const after = jest.fn();
+    await beginUpdateNotification({ ...options(), current: "0.4.8", now: () => NOW + 2 * 86_400_000, enabled: true,
+      allowNetwork: false, write: after, queryLatest: failing }).done;
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it("a check's reminder on a day one was already printed waits for the next day", async () => {
+    cache({ checkedAt: NOW - 2 * 86_400_000, latest: "0.4.7", latestCheckedAt: NOW - 2 * 86_400_000, notifiedAt: NOW - 3_600_000 });
+    const write = jest.fn();
+    await beginUpdateNotification({ ...options(), enabled: true, allowNetwork: true, write, queryLatest: async () => "0.4.8" }).done;
+    expect(write).not.toHaveBeenCalled();
+    expect(JSON.parse(readFileSync(join(root, "update-check.json"), "utf8")))
+      .toEqual({ schemaVersion: 1, checkedAt: NOW, latest: "0.4.8", latestCheckedAt: NOW, notifiedAt: NOW - 3_600_000 });
+  });
+
+  it("suppresses disabled, current and newer notifications", async () => {
     const queryLatest = jest.fn(async () => "0.4.8");
     const write = jest.fn();
-    for (const [latest, timestamp] of [["0.4.7", NOW], ["0.4.6", NOW], ["0.4.8", NOW - 2 * 86400000]] as const) {
+    for (const [latest, timestamp] of [["0.4.7", NOW], ["0.4.6", NOW]] as const) {
       cache({ latest, latestCheckedAt: timestamp });
       await beginUpdateNotification({ ...options(), enabled: true, allowNetwork: false, write, queryLatest }).done;
     }
@@ -76,7 +103,8 @@ describe("cached notification lifecycle", () => {
     const session = beginUpdateNotification({ ...options(), enabled: true, allowNetwork: true, write, queryLatest: async () => "0.4.8" });
     await session.done;
     expect(write).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(readFileSync(join(root, "update-check.json"), "utf8"))).toEqual({ schemaVersion: 1, checkedAt: NOW, latest: "0.4.8", latestCheckedAt: NOW });
+    expect(JSON.parse(readFileSync(join(root, "update-check.json"), "utf8")))
+      .toEqual({ schemaVersion: 1, checkedAt: NOW, latest: "0.4.8", latestCheckedAt: NOW, notifiedAt: NOW });
     session.stop();
   });
 
@@ -109,7 +137,7 @@ describe("cached notification lifecycle", () => {
     expect(write).toHaveBeenCalledTimes(1);
     expect(write.mock.calls[0][0]).toContain("0.4.7 → 0.4.11");
     expect(JSON.parse(readFileSync(join(root, "update-check.json"), "utf8")))
-      .toEqual({ schemaVersion: 1, checkedAt: NOW, latest: "0.4.11", latestCheckedAt: NOW });
+      .toEqual({ schemaVersion: 1, checkedAt: NOW, latest: "0.4.11", latestCheckedAt: NOW, notifiedAt: NOW });
   });
 
   it("waits no longer than the check's own timeout", async () => {
@@ -119,7 +147,7 @@ describe("cached notification lifecycle", () => {
     let ended = false;
     const finished = beginUpdateNotification({ ...options(), enabled: true, allowNetwork: true, write, queryLatest }).finish()
       .then(() => { ended = true; });
-    await jest.advanceTimersByTimeAsync(1400);
+    await jest.advanceTimersByTimeAsync(4900);
     expect(ended).toBe(false);
     await jest.advanceTimersByTimeAsync(101);
     await finished;
@@ -131,7 +159,13 @@ describe("cached notification lifecycle", () => {
     jest.useFakeTimers();
     const queryLatest = (signal: AbortSignal) => new Promise<string>((_, reject) => signal.addEventListener("abort", () => reject(new Error("timeout"))));
     const pending = checkForUpdate({ ...options(), queryLatest });
-    await jest.advanceTimersByTimeAsync(1501);
+    // One asked for waits 10 s (npm took 1.52 s on a Mac where 1.5 s was allowed, 2026-11-16).
+    await jest.advanceTimersByTimeAsync(9900);
+    let settled = false;
+    void pending.then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    await jest.advanceTimersByTimeAsync(101);
     expect((await pending).status).toBe("unavailable");
     const result = await checkForUpdate({ ...options(), queryLatest: async () => "0.4.8" });
     expect(result.updateAvailable).toBe(true);

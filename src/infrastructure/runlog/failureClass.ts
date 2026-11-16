@@ -63,6 +63,8 @@ const CLASS_OF_CODE: Readonly<Record<string, FailureClass>> = {
   article_not_yet_published: "user_or_external",
   // doi.org did not know the DOI yet, at a publisher reached only through it (2026-11-15).
   doi_not_resolved: "user_or_external",
+  // doi.org never knew the DOI of a paper published long ago, and PubMed lists no other link (2026-11-16).
+  doi_not_registered: "user_or_external",
   publisher_unreachable: "user_or_external",
   rate_limited: "user_or_external",
   batch_stopped: "user_or_external",

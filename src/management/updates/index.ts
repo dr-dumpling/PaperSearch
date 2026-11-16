@@ -5,7 +5,10 @@ import { paperSearchDataRoot } from "../skills/autoSync.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 const RETRY = 60 * 60 * 1000;
-const TIMEOUT = 1500;
+// npm's answer took 1.52 s on a Mac, past the 1.5 s once allowed: every check failed and no
+// reminder came for days (2026-11-16). A check alongside a command waits 5 s, one asked for 10 s.
+const BACKGROUND_TIMEOUT = 5_000;
+const MANUAL_TIMEOUT = 10_000;
 export const RELEASE_NOTES = "https://github.com/dr-dumpling/PaperSearch/releases";
 const REGISTRY = "https://registry.npmjs.org/papersearch/latest";
 
@@ -39,7 +42,8 @@ export function upgradeCommand(latest: string, packageRoot = ""): string {
   return `npm install${local ? "" : " -g"} papersearch@${latest}`;
 }
 
-interface Cache { schemaVersion: 1; checkedAt: number; latest?: string; latestCheckedAt?: number }
+/** notifiedAt: when a reminder was last printed (none for 24 h after one, user 2026-11-16). */
+interface Cache { schemaVersion: 1; checkedAt: number; latest?: string; latestCheckedAt?: number; notifiedAt?: number }
 export interface UpdateOptions {
   current: string;
   packageRoot?: string;
@@ -70,6 +74,7 @@ function readCache(options: UpdateOptions, now: number): Cache | undefined {
     if (data.schemaVersion !== 1 || !Number.isFinite(data.checkedAt) || data.checkedAt <= 0 || data.checkedAt > now + 60_000) return undefined;
     if (data.latest !== undefined && (typeof data.latest !== "string" || compareStableRelease("0.0.0", data.latest) === undefined ||
         !Number.isFinite(data.latestCheckedAt) || Number(data.latestCheckedAt) > now + 60_000 || Number(data.latestCheckedAt) <= 0)) return undefined;
+    if (data.notifiedAt !== undefined && (!Number.isFinite(data.notifiedAt) || data.notifiedAt <= 0 || data.notifiedAt > now + 60_000)) return undefined;
     return data;
   } catch { return undefined; } // Optional cache: missing/corrupt files never break a paper command.
 }
@@ -122,19 +127,19 @@ function unavailable(options: UpdateOptions): UpdateResult {
     status: "unavailable", source: "npm", checkedAt: null, releaseNotesUrl: RELEASE_NOTES };
 }
 
-function startCheck(options: UpdateOptions) {
+function startCheck(options: UpdateOptions, timeoutMs: number) {
   const now = options.now ?? Date.now;
   const old = readCache(options, now());
   const controller = new AbortController();
   let stopped = false;
-  const timer = setTimeout(() => controller.abort(), TIMEOUT);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const done = (async (): Promise<UpdateResult> => {
     try {
       const latest = await (options.queryLatest ?? queryLatestStable)(controller.signal);
       if (stopped) return unavailable(options);
       const checkedAt = now();
       const result = resultFor(options, latest, checkedAt);
-      saveCache(options, result.ok ? { schemaVersion: 1, checkedAt, latest, latestCheckedAt: checkedAt }
+      saveCache(options, result.ok ? { ...old, schemaVersion: 1, checkedAt, latest, latestCheckedAt: checkedAt }
         : { ...old, schemaVersion: 1, checkedAt });
       return result;
     } catch {
@@ -149,7 +154,7 @@ function startCheck(options: UpdateOptions) {
 }
 
 export async function checkForUpdate(options: UpdateOptions): Promise<UpdateResult> {
-  const check = startCheck(options);
+  const check = startCheck(options, MANUAL_TIMEOUT);
   try { return await check.done; }
   finally { check.stop(); }
 }
@@ -163,6 +168,11 @@ export function renderUpdateNotice(result: UpdateResult): string {
  * Runs alongside the original command. finish() at command completion lets a
  * check still under way end within its own timeout (at most once a day), so a
  * quick command (journal-metrics, doctor) still gets the reminder; stop() cancels.
+ *
+ * A command tells a newer version once, then none for 24 h (user, 2026-11-16; it came
+ * with every command); nothing is told without a command. A newer version once found is
+ * told so until the update, also when npm does not answer later: a Mac whose checks all
+ * timed out went days without one.
  */
 export function beginUpdateNotification(options: UpdateOptions & {
   enabled: boolean; allowNetwork: boolean; write: (text: string) => void;
@@ -173,14 +183,20 @@ export function beginUpdateNotification(options: UpdateOptions & {
   const cached = readCache(options, now);
   let printed = false;
   const notify = (result: UpdateResult) => {
-    if (!printed && result.ok && result.updateAvailable) { printed = true; options.write(renderUpdateNotice(result)); }
+    if (printed || !result.ok || !result.updateAvailable) return;
+    const at = (options.now ?? Date.now)();
+    const seen = readCache(options, at);
+    if (seen?.notifiedAt && at - seen.notifiedAt < DAY) return;
+    printed = true;
+    options.write(renderUpdateNotice(result));
+    saveCache(options, { ...(seen ?? { checkedAt: at }), schemaVersion: 1, notifiedAt: at });
   };
-  if (cached?.latest && cached.latestCheckedAt && now - cached.latestCheckedAt < DAY) {
+  if (cached?.latest && cached.latestCheckedAt) {
     notify(resultFor(options, cached.latest, cached.latestCheckedAt));
   }
   const successful = cached?.latestCheckedAt === cached?.checkedAt && Boolean(cached?.latest);
   if (!options.allowNetwork || (cached && now - cached.checkedAt < (successful ? DAY : RETRY))) return idle;
-  const check = startCheck(options);
+  const check = startCheck(options, BACKGROUND_TIMEOUT);
   const done = check.done.then(notify);
   return { stop: check.stop, done, finish: () => done };
 }

@@ -370,6 +370,11 @@ export class PubMedSearcher extends PaperSource {
       throw new Error(`Invalid XML response received (expected markup, got: "${preview}...")`);
     }
 
+    // A title or abstract's own markup (S1P<sub>1</sub>, CD4<sup>+</sup>, <i>gene</i>) stays its
+    // text: parsed as elements it made the title an object, the record failed and was left out
+    // of the results without a word (10.1136/ard-2024-226547, 2026-11-16). PubMed's own
+    // elements are capitalised; these lower-case ones are only ever this markup.
+    const text = trimmed.replace(/<(\/?)(b|i|u|sup|sub)>/g, '&lt;$1$2&gt;');
     const parser = new xml2js.Parser({
       explicitArray: false,  // 简化数组处理
       mergeAttrs: false,
@@ -379,7 +384,7 @@ export class PubMedSearcher extends PaperSource {
     });
     
     logDebug('PubMed XML Parsing - Data preview:', xmlData.substring(0, 200));
-    const result = await parser.parseStringPromise(xmlData);
+    const result = await parser.parseStringPromise(text);
     logDebug('PubMed XML Parsed result structure:', JSON.stringify(result, null, 2).substring(0, 1000));
     
     return result;

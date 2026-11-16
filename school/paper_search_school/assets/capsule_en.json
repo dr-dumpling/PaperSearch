@@ -134,6 +134,7 @@
   "等待下载进程响应（暂无新进度）": "Waiting for the download (no news)",
   "DOI 没指向能登录的网站": "DOI leads to no login site",
   "DOI 暂时查不到": "DOI not found yet",
+  "DOI 没有登记": "DOI never registered",
   "PDF 身份未确认": "PDF identity unconfirmed",
   "下载已取消": "Download cancelled",
   "下载时程序出错": "Program error",

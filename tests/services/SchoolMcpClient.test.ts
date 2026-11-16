@@ -608,7 +608,9 @@ describe("SchoolMcpClient", () => {
         code: "startup_timeout",
       }),
     );
-    expect(Date.now() - startedAt).toBeLessThan(800);
+    // Two deadlines would take 1000 ms and more. 800 left 300 ms for the process to start
+    // and stop, and a busy full run took 805-820 (public preview tree, 2026-11-16).
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
     await expectAllChildrenExited();
   });
 

@@ -29,19 +29,16 @@ describe("CLI update notices", () => {
     });
   }
 
-  it("prints a cached reminder each time without changing JSON or exit status", () => {
-    for (let i = 0; i < 2; i += 1) {
-      const result = cli(["tools"]);
-      expect(result.status).toBe(0);
-      expect(JSON.parse(result.stdout).ok).toBe(true);
-      expect(result.stderr.match(/PaperSearch update available:/g)).toHaveLength(1);
-      expect(result.stderr).toContain("99.0.0");
+  it("prints a cached reminder once a day without changing JSON or exit status", () => {
+    // Once a day (user, 2026-11-16): the day's first command has it, the next ones not.
+    const reminders = [["tools"], ["tools"], ["not-a-command"]].map((args) => {
+      const result = cli(args);
+      expect(result.status).toBe(args[0] === "tools" ? 0 : 1);
+      expect(JSON.parse(result.stdout).ok).toBe(args[0] === "tools");
       expect(result.stderr).not.toContain("UNEXPECTED_NETWORK");
-    }
-    const result = cli(["not-a-command"]);
-    expect(result.status).toBe(1);
-    expect(JSON.parse(result.stdout).ok).toBe(false);
-    expect(result.stderr).toContain("PaperSearch update available:");
+      return (result.stderr.match(/PaperSearch update available: \S+ → 99\.0\.0/g) ?? []).length;
+    });
+    expect(reminders).toEqual([1, 0, 0]);
   });
 
   it("honors the switch, CI and informational-command exemptions", () => {

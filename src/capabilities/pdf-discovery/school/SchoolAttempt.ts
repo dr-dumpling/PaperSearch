@@ -62,6 +62,8 @@ const MESSAGES: Record<string, string> = {
     "这篇论文已录用，但出版社还没有上线全文（页面写明正式发表后才能阅读）；本次未取得 PDF，正式发表后再下载。这不代表没有权限。",
   doi_not_resolved:
     "doi.org 还查不到这个 DOI（刚上线的文章常要过几天才登记，也可能当时连不上 doi.org），这家出版社的文章页只能经 DOI 打开，没有打开浏览器，本次未取得 PDF；这不代表没有权限，过几天再下即可。",
+  doi_not_registered:
+    "这个 DOI 从没在 doi.org 登记过：文章已发表一个多月，是出版社没有登记，不是网络问题，以后重下也查不到；PubMed 里也没有出版社给的其他链接。没有打开浏览器，本次未取得 PDF；这不代表没有权限，可以在出版社网站按标题找到这篇后自己下载。",
   unsupported_publisher:
     "这篇文章的 DOI 没有指向 PaperSearch 能登录的出版社网站（DOI 解析失败、直接指向 PDF 文件，或是暂不支持的平台），没有打开浏览器，本次未取得 PDF；这不代表没有权限，可在校园网下到出版社页面自己下载。",
   generic_institution_entry_missing:
@@ -118,6 +120,7 @@ const SHORT_REASONS: Record<string, string> = {
   unsupported_platform: "只在其他平台提供",
   article_not_yet_published: "全文尚未发布",
   doi_not_resolved: "DOI 暂时查不到",
+  doi_not_registered: "DOI 没有登记",
   unsupported_publisher: "DOI 没指向能登录的网站",
   generic_institution_entry_missing: "找不到机构登录入口",
   access_blocked: "网站拦截了当前网络",

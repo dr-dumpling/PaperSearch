@@ -29,6 +29,11 @@ export declare function renderUpdateNotice(result: UpdateResult): string;
  * Runs alongside the original command. finish() at command completion lets a
  * check still under way end within its own timeout (at most once a day), so a
  * quick command (journal-metrics, doctor) still gets the reminder; stop() cancels.
+ *
+ * A command tells a newer version once, then none for 24 h (user, 2026-11-16; it came
+ * with every command); nothing is told without a command. A newer version once found is
+ * told so until the update, also when npm does not answer later: a Mac whose checks all
+ * timed out went days without one.
  */
 export declare function beginUpdateNotification(options: UpdateOptions & {
     enabled: boolean;

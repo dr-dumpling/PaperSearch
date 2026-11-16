@@ -60,6 +60,10 @@ _FAILURE_KINDS = {
     # doi.org answered no address for the DOI (a paper online days before its DOI is
     # registered, Science 2026-11-15) and the publisher's article page is only reached through it.
     "doi_not_resolved": ("doi_not_resolved", "retry_later"),
+    # doi.org has never known the DOI of a paper published a month or more ago, and PubMed
+    # lists no other link to it: the publisher never registered it (Annals of the Rheumatic
+    # Diseases, 2026-11-16); trying again later finds nothing either.
+    "doi_not_registered": ("doi_not_registered", "review_publisher_error"),
     # A site without a publisher profile: the shared rules found no institution entry.
     "generic_institution_entry_missing": ("generic_institution_entry_missing", "review_publisher_profiles"),
     **{code: (code, "review_browser") for code in _LOGIN_FAILURE_CODES},
@@ -263,12 +267,26 @@ def _try_builtin_institutional(
 
     # Step 1: Resolve DOI to publisher URL
     resolved_url = _resolve_doi(doi)
+    # The article's page when it is not reached through doi.org (PubMed's link below).
+    article_url = ""
     if not resolved_url and profile:
         # A paper is online at its publisher days before doi.org knows its DOI (Science,
         # 2026-11-15): the profile's own article address opens it all the same.
         resolved_url = _own_article_url(profile, doi)
         if resolved_url:
             log.info("   [Institutional] DOI not at doi.org yet: the publisher's article page")
+    if not resolved_url:
+        # A DOI doi.org never knew (Annals of the Rheumatic Diseases moving from BMJ to
+        # Elsevier, 2026-11-16: 10.1136/ard-2024-225982, never registered): the publisher's
+        # own link PubMed lists for the paper opens its page.
+        pubmed = _pubmed_article(doi)
+        article_url = (pubmed or {}).get("url", "")
+        if article_url:
+            resolved_url = article_url
+            log.info("   [Institutional] DOI not at doi.org: the publisher's link PubMed lists, %s", article_url)
+        elif pubmed and _published_days_ago(pubmed) >= _DOI_REGISTRATION_DAYS and _doi_unknown_to_doi_org(doi):
+            log.info("   [Institutional] DOI never registered at doi.org, and PubMed lists no other link")
+            return _failure(doi, "doi_not_registered")
     if not resolved_url:
         log.info("   [Institutional] Could not resolve DOI")
         # Without a profile there is no site to build one for.
@@ -360,11 +378,12 @@ def _try_builtin_institutional(
     # jobs cannot propagate the federation/manual-selection policy.
     if profile:
         log.info("   [Institutional] Publisher driver (%s)", getattr(profile, "name", ""))
-        if not manual_school:
+        # A broker job opens the article by its DOI: not one doi.org does not know.
+        if not manual_school and not article_url:
             result = _try_session_broker(doi, output_path, config, profile)
             if accept(result, "institutional:session_broker"):
                 return result
-        result = _try_browser_batch_download(doi, output_path, config, profile)
+        result = _try_browser_batch_download(doi, output_path, config, profile, article_url)
         if accept(result, "institutional:browser"):
             return result
     else:
@@ -423,6 +442,66 @@ def _own_article_url(profile: Any, doi: str) -> str:
         return ""
     host = (urlparse(url).hostname or "").lower()
     return url if url.startswith("https://") and host and not (host == "doi.org" or host.endswith(".doi.org")) else ""
+
+
+_EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
+# A paper doi.org still does not know this many days after it was published is not one
+# online days before its DOI (Science, 2026-11-15): its DOI was never registered.
+_DOI_REGISTRATION_DAYS = 30
+
+
+def _pubmed_article(doi: str) -> dict[str, str] | None:
+    """PubMed's one record of ``doi``: its PMID and the publisher's link it lists for the
+    paper (not doi.org's, not PubMed Central's; "" when there is none). None when PubMed has
+    no single record of it or does not answer.
+
+    The link is the publisher's own, given to PubMed (LinkOut): Elsevier's by its PII
+    (linkinghub.elsevier.com/retrieve/pii/…), HighWire's by the PMID; Springer's and
+    Frontiers' are doi.org's, of no use here (2026-11-16)."""
+    import requests
+    params = {"tool": "paper-search", "retmode": "json"}
+    try:
+        found = requests.get(_EUTILS + "esearch.fcgi", timeout=10,
+                             params={**params, "db": "pubmed", "term": f'"{doi}"[aid]'})
+        ids = found.json()["esearchresult"]["idlist"]
+        if len(ids) != 1:
+            return None
+        links = requests.get(_EUTILS + "elink.fcgi", timeout=10,
+                             params={**params, "dbfrom": "pubmed", "id": ids[0], "cmd": "prlinks"}).json()
+        urls = [str(item["url"]["value"]) for linkset in links.get("linksets", [])
+                for entry in linkset.get("idurllist", []) for item in entry.get("objurls", [])]
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return None
+    for url in urls:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if (parsed.scheme in ("http", "https") and host and not (host == "doi.org" or host.endswith(".doi.org"))
+                and not host.endswith("ncbi.nlm.nih.gov")):
+            return {"pmid": ids[0], "url": url}
+    return {"pmid": ids[0], "url": ""}
+
+
+def _published_days_ago(article: dict[str, str]) -> int:
+    """How many days ago PubMed says the paper was published; 0 when it does not say."""
+    import datetime
+    import requests
+    try:
+        summary = requests.get(_EUTILS + "esummary.fcgi", timeout=10, params={
+            "tool": "paper-search", "retmode": "json", "db": "pubmed", "id": article["pmid"]}).json()
+        published = datetime.datetime.strptime(str(summary["result"][article["pmid"]]["sortpubdate"])[:10], "%Y/%m/%d")
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return 0
+    return (datetime.datetime.now() - published).days
+
+
+def _doi_unknown_to_doi_org(doi: str) -> bool:
+    """doi.org's own answer that it has no such DOI (handle API code 100), not a network failure."""
+    import requests
+    try:
+        answer = requests.get(f"https://doi.org/api/handles/{doi}", timeout=15).json()
+    except (requests.RequestException, ValueError):
+        return False
+    return isinstance(answer, dict) and answer.get("responseCode") == 100
 
 
 def _resolve_doi(doi: str) -> str | None:
@@ -506,12 +585,14 @@ def _try_browser_batch_download(
     output_path: Path,
     config: dict[str, Any],
     profile: Any | None,
+    article_url: str = "",
 ) -> dict[str, Any] | None:
     """Try single-DOI download via PublisherBatchDownloader in the download browser.
 
     Uses the browser state machine: navigate → SSO login → capture PDF → verify.
     This is the most capable built-in path — handles Cloudflare, SSO redirects,
-    and publisher-specific PDF extraction.
+    and publisher-specific PDF extraction. ``article_url``: the article's page when
+    doi.org does not lead to it (PubMed's link to the publisher).
     """
     if not profile:
         return None
@@ -552,6 +633,8 @@ def _try_browser_batch_download(
         # must stay visible whatever browser_headless says.
         require_interactive_browser=True,
     )
+    if article_url:
+        downloader.use_article_url(doi, article_url)
 
     from uuid import uuid4
     run_dir = Path(config.get("diagnostics_dir") or output_path.parent / "diagnostics") / uuid4().hex[:12]

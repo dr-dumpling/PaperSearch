@@ -61,6 +61,8 @@ class CARSISchedulingTests(unittest.TestCase):
             stack.enter_context(patch("socket.create_connection", side_effect=AssertionError("Network forbidden")))
             stack.enter_context(patch.object(bridge, "_try_external_instsci", return_value=None))
             stack.enter_context(patch.object(bridge, "_resolve_doi", return_value=landing))
+            # PubMed has no record of it either (doi.org not knowing a DOI asks it, 2026-11-16).
+            stack.enter_context(patch.object(bridge, "_pubmed_article", return_value=None))
             stack.enter_context(patch("paper_search_school.browser.backend.is_available", return_value=True))
             downloader = MagicMock()
             downloader.fetch_one.return_value = SimpleNamespace(ok=False, pdf_path=None, state="sso_required",

@@ -395,6 +395,8 @@ class PublisherBatchDownloader(
         # disk, so the hand-off must go through memory.
         self._handoff_cookies: list[dict[str, Any]] | None = None
         self._progress_active = False
+        # Article pages by DOI not reached through doi.org (use_article_url).
+        self._article_urls: dict[str, str] = {}
 
     def _launch_context(self, profile_dir: str | Path | None = None, *, proxy: str | None = None,
                         relaunch: str = ""):
@@ -797,9 +799,16 @@ class PublisherBatchDownloader(
         self._wait_past_redirect_page(page, result)
         self._dismiss_cookie_banners(page, result)
 
+    def use_article_url(self, doi: str, url: str) -> None:
+        """Open ``doi``'s article at ``url``: a DOI doi.org does not know, whose page
+        PubMed links to (Annals of the Rheumatic Diseases, 2026-11-16)."""
+        self._article_urls[doi.strip().lower()] = url
+
     def _article_url(self, doi: str) -> str:
-        """The article's page: the adapter's (APS's journal codes), else the profile's."""
-        return self.adapter.article_url(doi) or self.profile.article_url(doi)
+        """The article's page: the one given for it (use_article_url), else the adapter's
+        (APS's journal codes), else the profile's."""
+        given = (getattr(self, "_article_urls", None) or {}).get(doi.strip().lower())
+        return given or self.adapter.article_url(doi) or self.profile.article_url(doi)
 
     def _login_failed(self, page: Any, result: DownloadResult, run_dir: Path) -> DownloadResult:
         """The login did not complete: name the reason, and for a wait that ran
