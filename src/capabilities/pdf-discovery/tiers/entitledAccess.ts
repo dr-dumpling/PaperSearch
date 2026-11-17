@@ -63,8 +63,10 @@ async function tryEntitledAccess(
       ...(context.withSupplements ? { supplements: "with" as const } : {}),
       ...(context.shortUserWait ? { userWait: "short" as const } : {}),
     });
+    // An empty list is kept: the visit checked the article page and it listed none, which is
+    // not "never checked" (a resume asked for them all again, Windows 2026-11-16).
     const supplements =
-      outcome.kind !== "backend_unavailable" && outcome.supplements?.length
+      outcome.kind !== "backend_unavailable" && Array.isArray(outcome.supplements)
         ? { supplements: outcome.supplements }
         : {};
 

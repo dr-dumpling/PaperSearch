@@ -17,7 +17,8 @@ CONFIG = {"publisher_institution_federation": "carsi", "school_name": "Example U
 
 
 class GenericSiteRoutingTests(unittest.TestCase):
-    def run_bridge(self, doi=DOI, landing=LANDING, remembered=None, wait=0, pubmed=None, days=0, unknown=False):
+    def run_bridge(self, doi=DOI, landing=LANDING, remembered=None, wait=0, pubmed=None, days=0, unknown=False,
+                   offline=False):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as stack:
             config = {**CONFIG, "cache_dir": temp}
             stack.enter_context(patch("requests.sessions.Session.request", side_effect=AssertionError("Network forbidden")))
@@ -27,6 +28,7 @@ class GenericSiteRoutingTests(unittest.TestCase):
             self.pubmed = stack.enter_context(patch.object(bridge, "_pubmed_article", return_value=pubmed))
             stack.enter_context(patch.object(bridge, "_published_days_ago", return_value=days))
             self.unknown = stack.enter_context(patch.object(bridge, "_doi_unknown_to_doi_org", return_value=unknown))
+            self.offline = stack.enter_context(patch.object(bridge, "_offline", return_value=offline))
             stack.enter_context(patch("paper_search_school.browser.backend.is_available", return_value=True))
             self.decision = stack.enter_context(patch("paper_search_school.entitlements.decision_for",
                                                       return_value=remembered))
@@ -99,6 +101,20 @@ class GenericSiteRoutingTests(unittest.TestCase):
         self.assertEqual(self.factory.call_args.kwargs["profile"].base_domains, ("academic.oup.com",))
 
 
+    def test_no_network_is_said_so_not_a_doi_doi_org_does_not_know(self):
+        # The Mac's Wi-Fi gone for 100 s (2026-11-17): neither doi.org nor PubMed answered, and
+        # 40 papers ended as "DOI 暂时查不到". No browser, no PubMed lookup; a batch waits for the network.
+        for doi in ("10.1016/j.joca.2025.12.013", "10.1126/scitranslmed.aea3879", DOI):
+            with self.subTest(doi=doi):
+                result = self.run_bridge(doi=doi, landing=None, offline=True)
+                self.factory.assert_not_called()
+                self.pubmed.assert_not_called()
+                self.assertEqual((result["error_type"], result["reason"], result["action"]),
+                                 ("network_unavailable", "network_unavailable", "retry_later"))
+        # doi.org answering the DOI does not look at the network.
+        self.run_bridge(doi="10.1016/j.joca.2025.12.013", landing="https://www.sciencedirect.com/science/article/pii/S0")
+        self.offline.assert_not_called()
+
     def test_a_doi_doi_org_never_knew_opens_the_publishers_link_pubmed_lists(self):
         # Annals of the Rheumatic Diseases, 2026-11-16: BMJ DOIs of 2024-25 never registered,
         # PubMed listing Elsevier's link; the browser opens it, the driver going on as for any paper.
@@ -170,6 +186,20 @@ class PubmedLinkTests(unittest.TestCase):
             self.assertFalse(bridge._doi_unknown_to_doi_org("10.1136/ard-2024-225872"))
         with self.answers({"result": {"1": {"sortpubdate": "2024/12/20 00:00"}}}):
             self.assertGreater(bridge._published_days_ago({"pmid": "1", "url": ""}), 300)
+
+
+class OfflineTests(unittest.TestCase):
+    """The network is down only when neither doi.org nor PubMed answers anything."""
+
+    def test_any_answer_of_either_is_the_network_up(self):
+        import requests
+        down = requests.ConnectionError("Failed to resolve 'doi.org'")
+        for answers, offline in (([down, down], True), ([down, MagicMock(status_code=200)], False),
+                                 ([MagicMock(status_code=503)], False)):
+            with self.subTest(answers=answers):
+                with patch("requests.head", side_effect=answers) as head:
+                    self.assertIs(bridge._offline(), offline)
+                self.assertEqual(head.call_args_list[0].args[0], "https://doi.org/")
 
 
 if __name__ == "__main__":

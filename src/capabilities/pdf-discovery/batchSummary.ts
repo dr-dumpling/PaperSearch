@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { dirname } from "node:path";
+import { dirname, isAbsolute } from "node:path";
 import { sanitizeDoi } from "../../infrastructure/security/SecurityUtils.js";
 import { classifyFailureCode } from "../../infrastructure/runlog/failureClass.js";
 import { schoolShortReason } from "./school/index.js";
@@ -32,6 +32,11 @@ export function supplementShortfall(item: DownloadBatchItemResult): string | und
   const missed = (item.supplements ?? []).filter((file) =>
     file.status !== "saved" && file.reason && !NOT_A_SHORTFALL.has(file.reason));
   return (missed.find((file) => file.reason !== "supplements_not_supported") ?? missed[0])?.reason;
+}
+
+/** Not saved because the user stopped the batch: not a failure of the paper (2026-11-16). */
+export function stoppedItem(item: DownloadBatchItemResult): boolean {
+  return item.status !== "ok" && item.attempts.some((attempt) => attempt.code === "batch_stopped");
 }
 
 /**
@@ -112,8 +117,15 @@ export function batchResults(result: DownloadBatchResult, startedAt: number, fol
     const saved = item.supplements?.filter((file) => file.status === "saved").length ?? 0;
     summary.supplements += saved;
     if (item.attempts.some((attempt) => attempt.code === "batch_stopped")) summary.stopped = true;
+    // Left undone by the stop: counted apart, listed with the papers left (not as failed).
+    if (stoppedItem(item)) {
+      summary.stopped_count = (summary.stopped_count ?? 0) + 1;
+      continue;
+    }
     if (item.status === "ok") {
-      if (item.attempts.some((attempt) => attempt.code === "no_supplements")) summary.no_supplements += 1;
+      // Checked, none listed: in the visit for the PDF (an empty list) or on its own.
+      if (item.attempts.some((attempt) => attempt.code === "no_supplements")
+          || (Array.isArray(item.supplements) && item.supplements.length === 0)) summary.no_supplements += 1;
       const missing = supplementsMissing(item, result.content);
       if (missing) {
         summary.supplement_failures.push({
@@ -152,16 +164,24 @@ export function batchPaper(
   item: DownloadBatchItemResult | undefined,
   waiting: "open" | "school" | undefined,
   content: DownloadBatchResult["content"],
+  mainPath?: string,
 ): Omit<SchoolBatchPaper, "index"> {
   const paper = { doi: item?.doi ?? request.doi ?? "", title: item?.title ?? request.title ?? "", journal: item?.journal ?? "" };
   if (waiting || !item) return { ...paper, state: waiting ?? "open" };
+  // Left undone by the stop: listed apart, not with the failed (user, 2026-11-16).
+  if (stoppedItem(item)) return { ...paper, state: "stopped" };
   if (item.status !== "ok") return { ...paper, state: "failed", ...failure(item, content) };
   const [via, detail] = sourceLabel(item);
   // The window's 失败 list also shows a saved paper still missing supplementary files (user, 2026-11-11).
   const missing = supplementsMissing(item, content);
-  const path = savedFile(item);
+  // A batch of the files alone: its PDF saved before is where the list shows the paper,
+  // also when the page listed none (it said “这篇没有保存的文件”, 2026-11-16).
+  const path = savedFile(item) ?? (mainPath && isAbsolute(mainPath) ? mainPath : undefined);
+  const files = content === "supplements" && Array.isArray(item.supplements)
+    ? item.supplements.filter((file) => file.status === "saved").length : undefined;
   return {
     ...paper, state: "ok", via, ...(detail ? { detail } : {}), ...(path ? { path } : {}),
+    ...(files !== undefined ? { supplements_saved: files } : {}),
     ...(missing ? { supplement_cls: missing.cls, supplement_reason: missing.reason } : {}),
   };
 }

@@ -176,7 +176,8 @@ export async function downloadWithFallback(
       review = result.review;
       reviewPaths.push(result.review.path);
     }
-    if (result.supplements?.length) supplements = result.supplements;
+    // An empty list too: checked, none listed (not "never checked").
+    if (Array.isArray(result.supplements)) supplements = result.supplements;
     if (result.status === "ok" && result.path) {
       discardReviews(reviewPaths, result.path);
       removeWorkFolder(layout);

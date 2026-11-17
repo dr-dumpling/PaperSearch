@@ -66,6 +66,8 @@ const CLASS_OF_CODE: Readonly<Record<string, FailureClass>> = {
   // doi.org never knew the DOI of a paper published long ago, and PubMed lists no other link (2026-11-16).
   doi_not_registered: "user_or_external",
   publisher_unreachable: "user_or_external",
+  // Neither doi.org nor PubMed answered: the computer's network was down (2026-11-17).
+  network_unavailable: "user_or_external",
   rate_limited: "user_or_external",
   batch_stopped: "user_or_external",
   profile_busy: "user_or_external",

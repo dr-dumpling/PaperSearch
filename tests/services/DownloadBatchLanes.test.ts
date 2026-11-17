@@ -165,7 +165,7 @@ describe("two lanes at once", () => {
         // The lists: every paper once, then the ones that changed (again if not through);
         // a paper never goes back, and each ends as its result.
         expect(listed[0].papers.map((paper) => paper.index)).toEqual(plan.map((_, offset) => offset + 1));
-        const rank = { open: 0, school: 1, ok: 2, failed: 2 };
+        const rank = { open: 0, school: 1, ok: 2, failed: 2, stopped: 2 };
         const merged = new Map<number, SchoolBatchPaper>();
         for (const report of listed.filter((sent) => sent.delivered)) {
           expect(report.folder).toBe(root);
@@ -175,7 +175,8 @@ describe("two lanes at once", () => {
           }
         }
         expect([...merged.values()].sort((a, b) => a.index - b.index).map((paper) => [paper.index, paper.state]))
-          .toEqual(result.items.map((item) => [item.index, item.status === "ok" ? "ok" : "failed"]));
+          .toEqual(result.items.map((item) => [item.index, item.status === "ok" ? "ok"
+            : item.attempts.some((attempt) => attempt.code === "batch_stopped") ? "stopped" : "failed"]));
         for (const item of result.items.filter((it) => it.status === "ok")) {
           expect(merged.get(item.index)).toMatchObject({ via: item.attempts.some((a) => a.stage === "entitled_access" && a.status === "ok")
             ? "机构下载" : "开放下载", path: item.path });

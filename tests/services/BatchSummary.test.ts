@@ -103,6 +103,30 @@ describe("main text and supplementary files apart", () => {
     expect(summary.supplements).toBe(2);
   });
 
+  it("counts a page that listed no files, and the papers the stop left undone apart from the failed", () => {
+    // Windows, 2026-11-16: the visit for the PDF found none (an empty list); a stopped batch said 失败 69.
+    const stop = { stage: "entitled_access", status: "skipped", message: "", code: "batch_stopped" } as const;
+    const summary = batchResults(batch([
+      item(1, { supplements: [] }),
+      item(2, { status: "error", path: undefined, attempts: [stop] }),
+      item(3, { status: "error", path: undefined, attempts: [stop] }),
+    ]), 0, "/out");
+    expect(summary).toMatchObject({ no_supplements: 1, stopped: true, stopped_count: 2, failures: [] });
+  });
+
+  it("lists a batch of the files alone by what each got, at its PDF saved before", () => {
+    const request = { doi: "10.1000/1" } as Parameters<typeof batchPaper>[0];
+    const none = item(1, { path: undefined, supplements: [] });
+    expect(batchPaper(request, none, undefined, "supplements", "/out/1.pdf"))
+      .toMatchObject({ state: "ok", path: "/out/1.pdf", supplements_saved: 0 });
+    expect(batchPaper(request, none, undefined, "supplements", "relative.pdf")).not.toHaveProperty("path");
+    expect(batchPaper(request, item(1, { path: undefined, supplements: [{ label: "S1", status: "saved", file: "/out/1/S1.pdf" }] }),
+      undefined, "supplements", "/out/1.pdf")).toMatchObject({ path: "/out/1/S1.pdf", supplements_saved: 1 });
+    expect(batchPaper(request, item(1, { supplements: [] }), undefined, "both")).not.toHaveProperty("supplements_saved");
+    const stopped = item(2, { status: "error", path: undefined, attempts: [{ stage: "entitled_access", status: "skipped", message: "", code: "batch_stopped" }] });
+    expect(batchPaper(request, stopped, undefined, "supplements")).toMatchObject({ state: "stopped" });
+  });
+
   it("lists none when only the main text was asked for", () => {
     const summary = batchResults(batch([item(1, { supplements: [{ label: "x", status: "failed", reason: "html_page" }] })], "main"), 0, "/out");
     expect(summary.supplement_failures).toEqual([]);

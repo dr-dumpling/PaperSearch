@@ -37,10 +37,17 @@ interface LedgerPaper {
   status: string;
   path: string;
   supplements?: SupplementFile[];
+  /** Its PDF came from the institutional visit, which also checks the supplementary files. */
+  byVisit?: boolean;
 }
 
-/** A file not to ask for again: the site has no rule for its files, or listed none. */
-const FINAL_FILE_REASONS = new Set(["supplements_not_supported", "no_supplements"]);
+/** The stop's own entries: nothing was tried for these files. */
+const NOT_TRIED = new Set(["batch_stopped", "user_skipped"]);
+const notTried = (files: SupplementFile[]) =>
+  files.length > 0 && files.every((file) => file.status !== "saved" && NOT_TRIED.has(String(file.reason ?? "")));
+
+/** A file not to ask for again: the site has no rule for its files, listed none, or it is past the size limit. */
+const FINAL_FILE_REASONS = new Set(["supplements_not_supported", "no_supplements", "too_large"]);
 
 function readJson(file: string): Record<string, unknown> | undefined {
   try {
@@ -67,6 +74,8 @@ function readPapers(dir: string): LedgerPaper[] {
         status: String(item.status ?? ""),
         path: String(item.path ?? ""),
         ...(Array.isArray(item.supplements) ? { supplements: item.supplements as SupplementFile[] } : {}),
+        ...(Array.isArray(item.stages) && item.stages.some((stage) => (stage as Record<string, unknown>)?.stage === "entitled_access"
+          && (stage as Record<string, unknown>)?.status === "ok") ? { byVisit: true } : {}),
       });
     } catch {
       // A line cut short (a run ended mid-write): that paper is not counted as saved.
@@ -110,8 +119,10 @@ export function planResume(which: string, env: Record<string, string | undefined
       const key = (paper.doi || paper.paperId).toLowerCase();
       if (!key) continue;
       const before = papers.get(key);
+      // A run the user stopped before it tried this paper's files leaves what was known (2026-11-16).
+      const tried = paper.supplements !== undefined && !notTried(paper.supplements);
       papers.set(key, before?.status === "ok"
-        ? { ...before, path: paper.path || before.path, ...(paper.supplements !== undefined ? { supplements: paper.supplements } : {}) }
+        ? { ...before, path: paper.path || before.path, ...(tried ? { supplements: paper.supplements } : {}) }
         : { ...paper, path: paper.path || before?.path || "", title: paper.title || before?.title || "" });
     }
   }
@@ -129,8 +140,11 @@ export function planResume(which: string, env: Record<string, string | undefined
       retry.push(item(paper));
       continue;
     }
-    const filesMissing = content === "both" && (paper.supplements === undefined
-      || paper.supplements.some((file) => file.status !== "saved" && !FINAL_FILE_REASONS.has(String(file.reason ?? ""))));
+    // No record of its files after the institutional visit for its PDF: that visit checked the
+    // page and it listed none; versions before 0.6.11 did not record an empty list (2026-11-16).
+    const unchecked = paper.supplements === undefined && !paper.byVisit;
+    const filesMissing = content === "both" && (unchecked
+      || (paper.supplements ?? []).some((file) => file.status !== "saved" && !FINAL_FILE_REASONS.has(String(file.reason ?? ""))));
     if (filesMissing) files.push({ ...item(paper), ...(paper.path ? { mainPath: paper.path } : {}) });
     else complete += 1;
   }

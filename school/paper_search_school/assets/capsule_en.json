@@ -134,6 +134,8 @@
   "等待下载进程响应（暂无新进度）": "Waiting for the download (no news)",
   "DOI 没指向能登录的网站": "DOI leads to no login site",
   "DOI 暂时查不到": "DOI not found yet",
+  "网络中断": "Network down",
+  "网络断了，等网络恢复后接着下": "Offline; waiting to go on",
   "DOI 没有登记": "DOI never registered",
   "PDF 身份未确认": "PDF identity unconfirmed",
   "下载已取消": "Download cancelled",
@@ -291,7 +293,12 @@
   "已确认": "Confirmed",
   "正在继续下载": "Resuming",
   "如需登录，会打开学校登录页": "Sign-in page opens if needed",
-  "其他篇目已完成，等你回来点“登录并继续”": "Others done; press Sign in & resume"
+  "其他篇目已完成，等你回来点“登录并继续”": "Others done; press Sign in & resume",
+  "已终止，未处理": "Stopped, not done",
+  "未处理": "Not done",
+  "没有附录（已核对）": "None listed (checked)",
+  "补上附录": "Files saved",
+  "没有附录": "None listed"
  },
  "patterns": [
   [

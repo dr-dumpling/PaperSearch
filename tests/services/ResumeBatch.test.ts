@@ -41,6 +41,27 @@ describe("going on with a batch", () => {
     });
   });
 
+  it("leaves the files the institutional visit checked, and what a stopped run never tried", () => {
+    // Windows, 2026-11-16: 76 papers with no record of their files after the visit that saved their
+    // PDF were all asked for again; then a run stopped mid-way wrote "stopped" over the others.
+    const visit = [{ stage: "entitled_access", status: "ok" }];
+    run("20261116-131248-0c9e79", { savePath: "/out", content: "both" }, [
+      { index: 1, doi: "10.1136/a", paperId: "10.1136/a", status: "ok", path: "/out/A.pdf", stages: visit },
+      { index: 2, doi: "10.1136/b", paperId: "10.1136/b", status: "ok", path: "/out/B.pdf", stages: [{ stage: "unpaywall", status: "ok" }] },
+      { index: 3, doi: "10.1136/c", paperId: "10.1136/c", status: "ok", path: "/out/C.pdf", stages: visit,
+        supplements: [{ status: "failed", label: "S1", reason: "verification_page" }] },
+      { index: 4, doi: "10.1136/d", paperId: "10.1136/d", status: "ok", path: "/out/D.pdf", stages: visit,
+        supplements: [{ status: "skipped", label: "S1", reason: "too_large" }] },
+    ]);
+    run("20261116-203028-64e75e", { savePath: "/out", content: "supplements", resumeOf: "20261116-131248-0c9e79" }, [
+      { index: 1, doi: "10.1136/b", paperId: "10.1136/b", status: "ok", supplements: [] },
+      { index: 2, doi: "10.1136/c", paperId: "10.1136/c", status: "error",
+        supplements: [{ status: "skipped", label: "", reason: "batch_stopped" }] },
+    ]);
+    expect(planResume("latest", env())).toMatchObject({ complete: 3, retry: [],
+      files: [{ doi: "10.1136/c", paperId: "10.1136/c", mainPath: "/out/C.pdf" }] });
+  });
+
   it("reads the batch with the runs that went on with it, the latest record of each paper counting", () => {
     run("20261115-143144-1a4de8", { savePath: "/out", content: "main" }, [
       { index: 1, doi: "10.1126/a", paperId: "10.1126/a", status: "error" },

@@ -7,6 +7,8 @@ import type { DownloadWithFallbackOptions, DownloadWithFallbackResult } from "./
  * A paper without its main text is told by its main text's reason instead.
  */
 export declare function supplementShortfall(item: DownloadBatchItemResult): string | undefined;
+/** Not saved because the user stopped the batch: not a failure of the paper (2026-11-16). */
+export declare function stoppedItem(item: DownloadBatchItemResult): boolean;
 /**
  * Tell the progress window how the whole batch ended: what was saved, and
  * each failure's class and reason in a few words. Sent once, after every
@@ -27,5 +29,5 @@ export declare function batchResults(result: DownloadBatchResult, startedAt: num
  * A paper for the window's lists (成功, 失败, 剩余): waiting in a lane, or its
  * result as the finished card tells it (the way it came, or why it failed).
  */
-export declare function batchPaper(request: DownloadWithFallbackOptions, item: DownloadBatchItemResult | undefined, waiting: "open" | "school" | undefined, content: DownloadBatchResult["content"]): Omit<SchoolBatchPaper, "index">;
+export declare function batchPaper(request: DownloadWithFallbackOptions, item: DownloadBatchItemResult | undefined, waiting: "open" | "school" | undefined, content: DownloadBatchResult["content"], mainPath?: string): Omit<SchoolBatchPaper, "index">;
 //# sourceMappingURL=batchSummary.d.ts.map

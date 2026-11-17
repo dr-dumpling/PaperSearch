@@ -141,6 +141,16 @@ class ViewTests(unittest.TestCase):
         self.assertEqual(pv.view(running(status="done"), NOW)["finished"], "完成")
         self.assertEqual([pv.fmt_clock(s) for s in (9, 161, 3723)], ["0:09", "2:41", "1:02:03"])
 
+    def test_the_papers_a_stop_left_undone_are_not_counted_as_failed(self):
+        # A stopped batch said 失败 69 (Windows, 2026-11-16): 已终止 in place of the time.
+        v = pv.view(running(status="cancelled", total=86, done=86, success=17, failed=69,
+                            results={"content": "supplements", "stopped": True, "stopped_count": 69}), NOW)
+        self.assertEqual((v["ok"], v["bad"], v["stopped"]), (17, 0, 69))
+        v = pv.view(running(status="cancelled", total=10, done=10, success=5, failed=5,
+                            results={"content": "both", "stopped": True, "stopped_count": 3}), NOW)
+        self.assertEqual((v["bad"], v["stopped"]), (2, 3))
+        self.assertEqual(pv.view(running(success=5, failed=5, results={"stopped_count": 3}), NOW)["stopped"], 0)
+
     def test_finished_card_lists_failures_by_reason_not_by_paper(self):
         def fail(cls, reason, journal="", n=1, **extra):
             return [{"cls": cls, "reason": reason, "title": f"{reason} {i}", "journal": journal, "doi": "", "note": "",

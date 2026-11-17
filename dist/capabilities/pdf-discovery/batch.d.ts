@@ -55,6 +55,8 @@ export interface DownloadBatchResult {
     total: number;
     succeeded: number;
     failed: number;
+    /** Of the failed ones, those the user's stop left undone (not tried, or cut short). */
+    stoppedItems?: number;
     /** Directory of the local run ledger (run.json, items.jsonl, timeline.log). */
     runLog?: string;
     /** Failed institutional downloads by class (ADR 0012). */
@@ -88,5 +90,5 @@ export declare const KEEP_SESSION_EVERY_MS: number;
 /** The user pressed 终止 in the batch's window (papers not reached, or still paused, show it). */
 export declare function batchStopped(result: DownloadBatchResult): boolean;
 /** Download a list serially; one batch id ties it to one progress window. */
-export declare function downloadBatch(searchers: Searchers, options: DownloadBatchOptions, backend?: SchoolBackend, log?: (line: string) => void, createTiers?: (backend?: SchoolBackend) => DownloadTier[], pause?: (ms: number) => Promise<void>): Promise<DownloadBatchResult>;
+export declare function downloadBatch(searchers: Searchers, options: DownloadBatchOptions, backend?: SchoolBackend, log?: (line: string) => void, createTiers?: (backend?: SchoolBackend) => DownloadTier[], pause?: (ms: number) => Promise<void>, online?: () => Promise<boolean>): Promise<DownloadBatchResult>;
 //# sourceMappingURL=batch.d.ts.map

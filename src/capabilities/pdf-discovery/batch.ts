@@ -17,8 +17,9 @@ import {
 import { schoolAttemptDetails, schoolShortReason } from "./school/index.js";
 import type { SchoolBackend, SchoolHeldPublisher } from "./school/index.js";
 import { fetchSupplementsOnly } from "./tiers/entitledAccess.js";
-import { batchPaper, reportBatchResults, supplementShortfall } from "./batchSummary.js";
+import { batchPaper, reportBatchResults, supplementShortfall, stoppedItem } from "./batchSummary.js";
 import { PaperList } from "./batchPapers.js";
+import { networkReachable, pastNetworkLoss, type NetworkWatch } from "./networkLoss.js";
 import type {
   DownloadContent,
   DownloadBatchPosition,
@@ -86,6 +87,8 @@ export interface DownloadBatchResult {
   total: number;
   succeeded: number;
   failed: number;
+  /** Of the failed ones, those the user's stop left undone (not tried, or cut short). */
+  stoppedItems?: number;
   /** Directory of the local run ledger (run.json, items.jsonl, timeline.log). */
   runLog?: string;
   /** Failed institutional downloads by class (ADR 0012). */
@@ -242,6 +245,28 @@ async function supplementsForOpenItem(
   const extra = await downloadSupplementsOnly({ ...request, ...(result.publishedDoi ? { doi: result.publishedDoi } : {}) }, backend, searchers, result.path && !result.version ? result.path : undefined);
   if (extra.supplements) result.supplements = extra.supplements;
   if (extra.path) result.path = extra.path;  // moved into its folder beside the files
+  return extra;
+}
+
+/**
+ * supplementsForOpenItem, asked again after a network loss: the files the lost network
+ * failed are fetched anew once it is back (those a first visit found stand otherwise).
+ */
+async function filesPastNetworkLoss(
+  result: DownloadBatchItemResult,
+  request: DownloadWithFallbackOptions,
+  backend: SchoolBackend | undefined,
+  searchers: Searchers,
+  watch: NetworkWatch,
+): Promise<DownloadWithFallbackResult | undefined> {
+  let extra: DownloadWithFallbackResult | undefined;
+  let again = false;
+  await pastNetworkLoss(async () => {
+    if (again) delete result.supplements;
+    again = true;
+    extra = await supplementsForOpenItem(result, request, backend, searchers);
+    return extra ?? { status: "ok", attempts: [] };
+  }, watch);
   return extra;
 }
 
@@ -419,6 +444,7 @@ function summary(
 ): DownloadBatchResult {
   const succeeded = items.filter((item) => item.status === "ok").length;
   const failed = items.length - succeeded;
+  const stopped = items.filter(stoppedItem).length;
   const failureClasses: Partial<Record<FailureClass, number>> = {};
   for (const item of items) {
     const entitled = [...item.attempts].reverse().find((attempt) => attempt.stage === "entitled_access");
@@ -434,6 +460,7 @@ function summary(
     total: items.length,
     succeeded,
     failed,
+    ...(stopped ? { stoppedItems: stopped } : {}),
     ...(Object.keys(failureClasses).length ? { failureClasses } : {}),
     ...extra,
     items,
@@ -448,16 +475,17 @@ export async function downloadBatch(
   log: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
   createTiers: (backend?: SchoolBackend) => DownloadTier[] = createDefaultDownloadTiers,
   pause: (ms: number) => Promise<void> = wait,
+  online: () => Promise<boolean> = networkReachable,
 ): Promise<DownloadBatchResult> {
   options = { ...options, savePath: resolveDownloadPath(options.savePath) };
   const startedAt = Date.now();
   const run = async (backend?: SchoolBackend) => {
     const result = await (options.content === "supplements"
-      ? downloadSupplementsBatch(options, backend, log, searchers)
+      ? downloadSupplementsBatch(options, backend, log, searchers, { log, pause, online })
       : options.mode === "per_item"
-        ? downloadPerItem(searchers, options, backend, log, createTiers, pause)
+        ? downloadPerItem(searchers, options, backend, log, createTiers, pause, online)
         : downloadTwoPhase(searchers, options, backend, log, createTiers,
-            options.mode === "entitled_only" ? "entitled_only" : "two_phase", pause));
+            options.mode === "entitled_only" ? "entitled_only" : "two_phase", pause, online));
     await reportBatchResults(result, backend, startedAt, options.savePath!);
     return result;
   };
@@ -474,7 +502,10 @@ export async function downloadBatch(
     shortfalls.set(reason, (shortfalls.get(reason) ?? 0) + 1);
   }
   const missed = [...shortfalls.values()].reduce((sum, n) => sum + n, 0);
-  log(`[批量] 完成：成功 ${result.succeeded}，失败 ${result.failed}，共 ${result.total} 篇` +
+  // Papers the stop left undone are told apart, not counted as failed (user, 2026-11-16).
+  const stopped = result.stoppedItems ?? 0;
+  log(`[批量] 完成：成功 ${result.succeeded}，失败 ${result.failed - stopped}` + (stopped ? `，已终止 ${stopped}` : "")
+    + `，共 ${result.total} 篇` +
     (byClass ? `。失败分类：${byClass}；详情：paper-search failures --format text` : "") +
     (missed ? `。附录未下全 ${missed} 篇：${[...shortfalls].map(([reason, n]) => `${reason} ${n}`).join("、")}` : ""));
   // What is left goes on later with one word (user, 2026-11-15).
@@ -490,6 +521,7 @@ async function downloadSupplementsBatch(
   backend: SchoolBackend | undefined,
   log: (line: string) => void,
   searchers: Searchers,
+  watch: NetworkWatch,
 ): Promise<DownloadBatchResult> {
   const batchId = randomUUID();
   const total = options.items.length;
@@ -497,7 +529,7 @@ async function downloadSupplementsBatch(
   // The window's lists (成功, 失败, 剩余 open on a click), as the other batches send them: a
   // batch of the files alone sent none (Windows, 2026-11-15).
   const papers = new PaperList(backend, batchId, options.savePath!,
-    options.items.map((item) => batchPaper(itemOptions(item, options), undefined, "open", "supplements")));
+    options.items.map((item) => batchPaper(itemOptions(item, options), undefined, "open", "supplements", item.mainPath)));
   await papers.send();
   const items: DownloadBatchItemResult[] = [];
   let succeeded = 0;
@@ -507,13 +539,14 @@ async function downloadSupplementsBatch(
     const request = { ...itemOptions(item, options), batch };
     const entry = runItem(offset + 1, request);
     log(`[批量] 补充材料 ${offset + 1}/${total}：${request.doi || request.paperId}`);
-    const result = await downloadSupplementsOnly(recorded(request, ledger, entry), backend, searchers, item.mainPath);
+    const result = await pastNetworkLoss(
+      () => downloadSupplementsOnly(recorded(request, ledger, entry), backend, searchers, item.mainPath), watch);
     await reportBatchItem(request, result, backend);
     if (result.status === "ok") succeeded += 1;
     else failed += 1;
     ledger?.item(entry, result);
     items.push(itemResult(result, offset + 1, request));
-    papers.set(offset, batchPaper(request, items[items.length - 1], undefined, "supplements"));
+    papers.set(offset, batchPaper(request, items[items.length - 1], undefined, "supplements", item.mainPath));
     if (stoppedByUser(result)) {
       for (const [rest, item] of options.items.entries()) {
         if (rest <= offset) continue;
@@ -522,7 +555,7 @@ async function downloadSupplementsBatch(
           supplements: [{ status: "skipped", label: "", reason: "batch_stopped" }] }, rest + 1, request);
         items.push(skipped);
         ledger?.item(runItem(rest + 1, request), skipped);
-        papers.set(rest, batchPaper(request, skipped, undefined, "supplements"));
+        papers.set(rest, batchPaper(request, skipped, undefined, "supplements", item.mainPath));
       }
       log(STOP_NOTICE);
       break;
@@ -544,10 +577,12 @@ async function downloadPerItem(
   log: (line: string) => void,
   createTiers: (backend?: SchoolBackend) => DownloadTier[],
   pause: (ms: number) => Promise<void>,
+  online: () => Promise<boolean>,
 ): Promise<DownloadBatchResult> {
   const batchId = randomUUID();
   const total = options.items.length;
   const ledger = openLedger("per_item", batchId, options, log);
+  const watch: NetworkWatch = { log, pause, online };
   const content = options.content ?? "main";
   const papers = new PaperList(backend, batchId, options.savePath!,
     options.items.map((item) => batchPaper(itemOptions(item, options), undefined, "open", content)));
@@ -562,7 +597,7 @@ async function downloadPerItem(
     const entry = runItem(index, request);
     log(`[批量] 第 ${index}/${total} 篇：${request.doi || request.paperId}`);
     const batch = { id: batchId, index, total, done: offset, succeeded, failed };
-    const result = await pastHourlyLimit(
+    const result = await pastNetworkLoss(() => pastHourlyLimit(
       () =>
         downloadWithFallback(
           searchers,
@@ -572,7 +607,7 @@ async function downloadPerItem(
       log,
       pause,
       () => backend?.keepSession?.() ?? Promise.resolve(false),
-    );
+    ), watch);
     if (result.status === "ok") succeeded += 1;
     else failed += 1;
     if (!away && waitedOutOnUser(result)) {
@@ -580,7 +615,7 @@ async function downloadPerItem(
       log(AWAY_NOTICE);
     }
     const finished = itemResult(result, index, request);
-    if (!stoppedByUser(result)) await supplementsForOpenItem(finished, recorded({ ...request, batch }, ledger, entry), backend, searchers);
+    if (!stoppedByUser(result)) await filesPastNetworkLoss(finished, recorded({ ...request, batch }, ledger, entry), backend, searchers, watch);
     await reportBatchItem({ ...request, batch }, finished, backend);
     ledger?.item(entry, finished);
     items.push(finished);
@@ -625,6 +660,7 @@ async function downloadTwoPhase(
   createTiers: (backend?: SchoolBackend) => DownloadTier[],
   mode: "two_phase" | "entitled_only" = "two_phase",
   pause: (ms: number) => Promise<void> = wait,
+  online: () => Promise<boolean> = networkReachable,
 ): Promise<DownloadBatchResult> {
   const batchId = randomUUID();
   const total = options.items.length;
@@ -697,6 +733,14 @@ async function downloadTwoPhase(
   };
   const settle = (offset: number, waiting?: "school") =>
     papers.set(offset, batchPaper(requests[offset], results[offset], waiting, content));
+  // Without network the window says so, while it is open (a large batch, or the school's lane begun).
+  const watch: NetworkWatch = { log, pause, online, notice: (phase) => {
+    if (!backend?.reportBatchProgress || !(openProgress || missed.length)) return reports;
+    const update = { id: batchId, total, done: settledOk() + failed, succeeded: settledOk(), failed, current: "",
+      finished: false, phase };
+    reports = reports.then(() => backend.reportBatchProgress!(update)).catch(() => false);
+    return reports;
+  } };
 
   const openLane = async () => {
     try {
@@ -706,7 +750,7 @@ async function downloadTwoPhase(
         const tiers = createTiers(backend).filter((tier) => tier.stage !== "entitled_access" && tier.stage !== "preprint");
         let result: DownloadWithFallbackResult;
         try {
-          result = await downloadWithFallback(searchers, recorded(request, ledger, entries[offset]), tiers);
+          result = await pastNetworkLoss(() => downloadWithFallback(searchers, recorded(request, ledger, entries[offset]), tiers), watch);
         } catch (error) {
           result = laneError("open_access", error);
           log(`[批量] 开放来源出错（${id(offset)}）：${result.attempts[0].message}；这一篇转机构下载`);
@@ -827,7 +871,7 @@ async function downloadTwoPhase(
       const batch = { id: batchId, index: done + 1, total, done, succeeded: settledOk(), failed };
       let result: DownloadWithFallbackResult;
       try {
-        result = await pastHourlyLimit(
+        result = await pastNetworkLoss(() => pastHourlyLimit(
           () =>
             downloadBatchItem(
               searchers,
@@ -838,7 +882,7 @@ async function downloadTwoPhase(
           log,
           pause,
           () => backend?.keepSession?.() ?? Promise.resolve(false),
-        );
+        ), watch);
       } catch (error) {
         result = laneError("entitled_access", error);
         log(`[批量] 机构下载出错（${id(offset)}）：${result.attempts[0].message}`);
@@ -957,7 +1001,7 @@ async function downloadTwoPhase(
       const batch = { id: batchId, index: remaining + step + 1, total, done: remaining + step,
         succeeded: succeeded + supplementsSucceeded, failed: failed + supplementsFailed };
       const request = { ...requests[offset], batch };
-      const extra = await supplementsForOpenItem(items[offset], recorded(request, ledger, entries[offset]), backend, searchers);
+      const extra = await filesPastNetworkLoss(items[offset], recorded(request, ledger, entries[offset]), backend, searchers, watch);
       if (extra) {
         await reportBatchItem(request, extra, backend);
         if (extra.status === "ok") supplementsSucceeded += 1;
@@ -997,7 +1041,7 @@ async function downloadTwoPhase(
         log(`[批量] 补充材料：${id(offset)}`);
         const done = settledOk() + failed;
         const request = { ...requests[offset], batch: { id: batchId, index: done + 1, total, done, succeeded: settledOk(), failed } };
-        const extra = await supplementsForOpenItem(items[offset], recorded(request, ledger, entries[offset]), backend, searchers);
+        const extra = await filesPastNetworkLoss(items[offset], recorded(request, ledger, entries[offset]), backend, searchers, watch);
         if (extra) await reportBatchItem(request, extra, backend);
         record(offset);
         settle(offset);

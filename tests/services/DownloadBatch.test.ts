@@ -729,19 +729,21 @@ describe("serial download batch", () => {
       stage: "entitled_access",
       run: async () => ({ status: "error", message: "stopped", code: "batch_stopped" }),
     }];
-    await downloadBatch(
+    const lines: string[] = [];
+    const result = await downloadBatch(
       {} as never,
       { mode: "per_item", items: [{ doi: "10.1000/a" }, { doi: "10.1000/b" }] },
       fakeBackend(updates),
-      () => undefined,
+      (line) => lines.push(line),
       tiers,
     );
+    expect(result).toMatchObject({ failed: 2, stoppedItems: 2 });
+    expect(lines.some((line) => line.startsWith("[批量] 完成：成功 0，失败 0，已终止 2，共 2 篇"))).toBe(true);
+    // Left undone by the stop: counted apart, not listed as failed (user, 2026-11-16).
     expect(updates.at(-1)?.results).toEqual(expect.objectContaining({
       stopped: true,
-      failures: [
-        { cls: "user_or_external", reason: "任务已终止", doi: "10.1000/a" },
-        { cls: "user_or_external", reason: "任务已终止", doi: "10.1000/b" },
-      ],
+      stopped_count: 2,
+      failures: [],
     }));
   });
 

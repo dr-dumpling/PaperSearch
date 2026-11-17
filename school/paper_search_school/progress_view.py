@@ -252,6 +252,14 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
         if paper.get("state") == "ok":
             by_way.setdefault(str(paper.get("via") or OPEN_DOWNLOAD), []).append(paper)
     saved = []
+    # A batch of the supplementary files alone: by what each got, not by the way its PDF came
+    # (they showed as 开放下载 · 开放获取, 2026-11-16).
+    files_alone = [p for p in papers if p.get("state") == "ok" and "supplements_saved" in p]
+    if files_alone:
+        got = [row(p, p.get("journal")) for p in files_alone if _count(p.get("supplements_saved"))]
+        none = [row(p, p.get("journal"), "没有附录") for p in files_alone if not _count(p.get("supplements_saved"))]
+        saved = [group(label, rows) for label, rows in (("补上附录", got), ("没有附录（已核对）", none)) if rows]
+        by_way = {}
     for way, items in sorted(by_way.items(), key=lambda kv: -len(kv[1])):
         details: dict[str, int] = {}
         for paper in items:
@@ -278,6 +286,18 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
         way = "机构下载" if paper["state"] == "school" else OPEN_DOWNLOAD
         waiting["now" if now else paper["state"]].append(row(paper, paper.get("journal"), way if now else ""))
     left = [group(label, waiting[key]) for key, label in LEFT_GROUPS if waiting[key]]
+    # Left undone by the stop: on their own, and once the batch is over with whatever still
+    # waited (user, 2026-11-16).
+    stopped = [row(p, p.get("journal")) for p in papers if p.get("state") == "stopped"]
+    if state.get("status") != "running":
+        undone = [p for item in left for p in item["papers"]]
+        left = []
+        if stopped or state.get("status") == "cancelled":
+            stopped = undone + stopped
+        elif undone:
+            left = [group("未处理", undone)]
+    if stopped:
+        left.append(group("已终止，未处理", stopped))
     missing = first_open(failed + short)
     missing.update(count=sum(item["count"] for item in failed), supplement_count=sum(item["count"] for item in short))
     return {"ok": first_open(saved), "failed": missing, "left": first_open(left)}
@@ -314,6 +334,10 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
     done = _count(state.get("done"))
     done = min(total, done) if total else done
     ok, bad = _count(state.get("success")), _count(state.get("failed"))
+    # Papers the stop left undone: told apart from the failed ones (user, 2026-11-16).
+    results = state.get("results") if isinstance(state.get("results"), dict) else {}
+    stopped = 0 if running else min(bad, _count(results.get("stopped_count")))
+    bad -= stopped
     attention = attention_items(state) if running else []
     awaiting = bool(state.get("awaiting_next"))
     # Publishers whose school login stopped working mid-batch, held by the caller:
@@ -420,6 +444,7 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
         "finished": {"cancelled": "已终止", "interrupted": "已中断"}.get(status, "完成"),
         "done": done, "total": total, "pct": round(100 * done / total) if total else 0,
         "ok": ok, "bad": bad, "left": max(0, total - done) if running and total else None,
+        "stopped": stopped,
         "part": part, "publisher": publisher,
         "where": " · ".join(v for v in (journal, publisher) if v),
         "title": title, "current": current,

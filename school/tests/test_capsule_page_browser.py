@@ -205,7 +205,7 @@ class CapsulePageTests(unittest.TestCase):
             page = page_world(browser.new_page(viewport={'width':800,'height':800}))
             errors = []
             page.on('pageerror', lambda error: errors.append(str(error)))
-            page.set_content(PAGE.read_text())
+            page.set_content(PAGE.read_text(encoding='utf-8'))
             page.evaluate('''state => {
               window.testPointer={x:-1,y:-1};
               document.addEventListener('pointermove', e=>{testPointer={x:e.clientX,y:e.clientY}});
@@ -700,18 +700,18 @@ class CapsulePageTests(unittest.TestCase):
                 page.evaluate("async state => { testState = state; open = true; await tick(); }", state)
                 page.wait_for_function("!root.classList.contains('animating')")
                 text = page.locator('#root').inner_text()
-                for expected in ('正文未下到 5 篇', '附录未下全 2 篇', '正文已保存', '网站人机验证拦截', '网站暂不支持自动下载附录'):
+                for expected in ('正文未下到 5 篇', '附录未下全 2 篇', '网站人机验证拦截', '网站暂不支持自动下载附录'):
                     self.assertIn(expected, text)
                 self.assertNotIn('未完成', text)
                 self.assertEqual(page.locator('.grp').count(), 3)
                 self.assertEqual(page.locator('.grp .m').count(), 0)  # main row open, supplement rows without a journal line
                 page.locator('[data-act=group][data-group="1"]').click()
                 page.wait_for_function("!root.classList.contains('animating')")
-                self.assertEqual(page.locator('.paper-list li .t').all_inner_texts(), ['Blocked file'])
+                self.assertEqual(page.locator('.grp').nth(1).locator('.paper-list li .t').all_inner_texts(), ['Blocked file'])
             finally:
                 browser.close()
 
-    def test_finished_card_opens_one_reason_at_a_time_and_its_list_scrolls_without_dragging(self):
+    def test_finished_card_opens_each_reason_on_its_own_and_its_list_scrolls_without_dragging(self):
         from datetime import datetime
         import time
         from patchright.sync_api import sync_playwright
@@ -748,17 +748,20 @@ class CapsulePageTests(unittest.TestCase):
                 page.mouse.move(box['x'] + 20, box['y'] + 20)
                 page.mouse.down(); page.mouse.move(box['x'] + 60, box['y'] + 60); page.mouse.up()
                 self.assertEqual(page.evaluate('dragLocks'), [])
+                # Another reason opens beside it, the first staying open (user, 2026-11-17).
                 rows.nth(1).click()
                 page.wait_for_function("!root.classList.contains('animating')")
-                self.assertEqual(page.locator('.paper-list li').all_inner_texts(), ['Late\nThieme'])
+                self.assertEqual(page.locator('.paper-list').count(), 2)
+                self.assertEqual(page.locator('.grp').nth(1).locator('.paper-list li').all_inner_texts(), ['Late\nThieme'])
                 # A listed paper opens its article page, to be fetched by hand (user, 2026-11-08).
-                page.locator('.paper-list [data-act=open_article]').click()
+                page.locator('.grp').nth(1).locator('.paper-list [data-act=open_article]').click()
                 page.wait_for_function("openedArticles.length === 1")
                 self.assertEqual(page.evaluate('openedArticles'), ['10.1055/a-2979-4843'])
                 self.assertEqual(page.evaluate('dragLocks'), [])
                 rows.nth(1).click()
                 page.wait_for_function("!root.classList.contains('animating')")
-                self.assertEqual(page.locator('.paper-list').count(), 0)
+                self.assertEqual(page.locator('.paper-list').count(), 1)
+                self.assertEqual(page.locator('.paper-list li').count(), 12)
             finally:
                 browser.close()
 
@@ -904,7 +907,7 @@ class CapsulePageTests(unittest.TestCase):
                     order = page.evaluate("""() => [...root.querySelectorAll('.papers-scroll > *')].map(e =>
                         e.classList.contains('list-sub') ? 'heading' : e.querySelector('.reason').textContent)""")
                     self.assertEqual(order, ['出版社页面出错', 'heading', '网站人机验证拦截'])
-                    self.assertEqual(page.locator('.list-sub').inner_text().split('\n'), ['附录未下全 2 篇', '正文已保存'])
+                    self.assertEqual(page.locator('.list-sub').inner_text().split('\n'), ['附录未下全 2 篇'])
                     page.locator('[data-act=list_group][data-group="1"]').click()
                     page.wait_for_function("!root.classList.contains('animating')")
                     page.locator('.grp').nth(1).locator('[data-act=open_article]').first.click()
@@ -1244,7 +1247,7 @@ class CapsulePageTests(unittest.TestCase):
         browser = playwright.chromium.launch(channel='chrome', headless=True)
         page = page_world(browser.new_page(viewport={'width': 800, 'height': 800}))
         from paper_search_school.progress_capsule import page_html
-        page.set_content(page_html() if english else PAGE.read_text())
+        page.set_content(page_html() if english else PAGE.read_text(encoding='utf-8'))
         page.evaluate("""({state, platform}) => {
           window.testPointer={x:-1,y:-1};
               document.addEventListener('pointermove', e=>{testPointer={x:e.clientX,y:e.clientY}});
@@ -1266,7 +1269,7 @@ class CapsulePageTests(unittest.TestCase):
         }""", {'state': state, 'platform': platform})
         # Use pywebview's actual drag listener, including its default ancestor hit testing.
         customize = Path(webview.__file__).parent / 'js/customize.js'
-        page.evaluate(customize.read_text() % {
+        page.evaluate(customize.read_text(encoding='utf-8') % {
             'text_select':'False', 'drag_region_direct_target_only':'False',
             'drag_selector':'.pywebview-drag-region', 'easy_drag':'False',
             'zoomable':'False', 'draggable':'False'})

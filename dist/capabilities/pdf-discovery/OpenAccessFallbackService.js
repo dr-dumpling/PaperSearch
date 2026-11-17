@@ -132,7 +132,8 @@ export async function downloadWithFallback(searchers, options, tiers = createDef
             review = result.review;
             reviewPaths.push(result.review.path);
         }
-        if (result.supplements?.length)
+        // An empty list too: checked, none listed (not "never checked").
+        if (Array.isArray(result.supplements))
             supplements = result.supplements;
         if (result.status === "ok" && result.path) {
             discardReviews(reviewPaths, result.path);

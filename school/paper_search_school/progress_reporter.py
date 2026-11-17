@@ -492,7 +492,8 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
 
 # A paper's states in the order it moves through them: open access not checked
 # yet, waiting for (or in) the institutional download, then its result.
-PAPER_STATES = {"open": 0, "school": 1, "ok": 2, "failed": 2}
+# stopped: left undone by the user's stop, an end state as ok and failed (2026-11-16).
+PAPER_STATES = {"open": 0, "school": 1, "ok": 2, "failed": 2, "stopped": 2}
 _PAPERS_LOCK = threading.Lock()
 
 
@@ -514,6 +515,10 @@ def _paper(raw: Any) -> dict[str, Any] | None:
         path = raw.get("path")
         if isinstance(path, str) and 0 < len(path) <= 4096 and os.path.isabs(path):
             paper["path"] = path
+        # A batch of the supplementary files alone: how many this paper got (0: its page listed none).
+        files = raw.get("supplements_saved")
+        if isinstance(files, int) and not isinstance(files, bool) and 0 <= files <= 100_000:
+            paper["supplements_saved"] = files
         if raw.get("supplement_reason"):  # saved, but not every supplementary file
             paper.update(supplement_cls=raw.get("supplement_cls") if raw.get("supplement_cls") in FAILURE_CLASSES
                          else "unexplained", supplement_reason=_display_text(raw.get("supplement_reason")))
@@ -531,7 +536,8 @@ def sync_papers(batch_id: str, folder: str, papers: Any) -> bool:
     (``PAPER_STATES``). Another batch starts a new list. Wire shape of a paper:
     ``index``, ``doi``, ``title``, ``journal``, ``state``; a saved one adds ``via``
     (开放下载 or 机构下载), ``detail`` (the open source when not open access: 出版社 API,
-    Sci-Hub, 预印本), ``path`` (the PDF, absolute, wherever the paper was sent) and,
+    Sci-Hub, 预印本), ``path`` (the PDF, absolute, wherever the paper was sent),
+    ``supplements_saved`` (a batch of the supplementary files alone: how many it got) and,
     missing supplementary files, ``supplement_cls`` and ``supplement_reason``; a failed
     one ``cls`` (one of FAILURE_CLASSES) and ``reason``. ``folder`` is the batch's
     download folder. Kept apart from the progress file, which the downloading process

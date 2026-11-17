@@ -60,6 +60,9 @@ _FAILURE_KINDS = {
     # doi.org answered no address for the DOI (a paper online days before its DOI is
     # registered, Science 2026-11-15) and the publisher's article page is only reached through it.
     "doi_not_resolved": ("doi_not_resolved", "retry_later"),
+    # Neither doi.org nor PubMed answered at all: the computer's network was down, not the DOI
+    # unknown (the Mac's Wi-Fi gone for 100 s, 2026-11-17); a batch waits for it and goes on.
+    "network_unavailable": ("network_unavailable", "retry_later"),
     # doi.org has never known the DOI of a paper published a month or more ago, and PubMed
     # lists no other link to it: the publisher never registered it (Annals of the Rheumatic
     # Diseases, 2026-11-16); trying again later finds nothing either.
@@ -267,6 +270,11 @@ def _try_builtin_institutional(
 
     # Step 1: Resolve DOI to publisher URL
     resolved_url = _resolve_doi(doi)
+    # Neither doi.org nor PubMed answering: the network is down, no DOI to look for elsewhere
+    # and no page to open (the Mac's Wi-Fi gone for 100 s, 2026-11-17).
+    if not resolved_url and _offline():
+        log.info("   [Institutional] No network: neither doi.org nor PubMed answers")
+        return _failure(doi, "network_unavailable")
     # The article's page when it is not reached through doi.org (PubMed's link below).
     article_url = ""
     if not resolved_url and profile:
@@ -502,6 +510,19 @@ def _doi_unknown_to_doi_org(doi: str) -> bool:
     except (requests.RequestException, ValueError):
         return False
     return isinstance(answer, dict) and answer.get("responseCode") == 100
+
+
+def _offline() -> bool:
+    """No answer at all, of any status, from doi.org or PubMed's E-utilities: the network is
+    down. A DOI doi.org does not know is told apart from a network that reaches nothing."""
+    import requests
+    for url in ("https://doi.org/", _EUTILS + "einfo.fcgi"):
+        try:
+            requests.head(url, timeout=8, allow_redirects=False)
+            return False
+        except requests.RequestException:
+            continue
+    return True
 
 
 def _resolve_doi(doi: str) -> str | None:

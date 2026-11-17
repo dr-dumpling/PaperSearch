@@ -521,8 +521,11 @@ function groupOpen(i) {
   return openGroups ? openGroups.has(i) : !!(allGroups()[i] || {}).open;
 }
 function toggleGroup(i) {
-  const opened = !groupOpen(i);
-  openGroups = new Set(opened ? [i] : []);  // one reason open at a time
+  // Each reason opens and closes on its own, the others as they are (user, 2026-11-17: one at
+  // a time closed what was being read).
+  const now = new Set(allGroups().map((_, j) => j).filter(groupOpen));
+  if (!now.delete(i)) now.add(i);
+  openGroups = now;
   render(true);
 }
 
@@ -546,15 +549,17 @@ function doneCard() {
   const v = V, s = v.summary;
   let html = '<div class="card-body">' + header(v.headline, v.total ? "共 " + v.total + " 篇" : "", true)
     + '<div class="stats done-stats">' + stat("ok", v.ok, "成功", "var(--ok)") + stat("failed", v.bad, "失败", v.bad ? "var(--bad)" : "")
-    + stat("", esc(v.elapsed || "—"), "用时") + "</div>";
+    // Papers the stop left undone in place of the time: their list opens from it (user, 2026-11-16).
+    + (v.stopped ? stat("left", v.stopped, "已终止") : stat("", esc(v.elapsed || "—"), "用时")) + "</div>";
   if (s && s.groups.length) {
     const apart = s.supplement_groups && s.supplement_groups.length;
-    html += '<div class="sec"><div class="sec-h"><b>' + (apart ? "正文未下到 " : "未完成 ") + v.bad + " 篇</b><span>按原因</span></div>"
+    // Each part its title alone: the small "按原因", "正文已保存" said nothing (user, 2026-11-16).
+    html += '<div class="sec"><div class="sec-h"><b>' + (apart ? "正文未下到 " : "未完成 ") + v.bad + " 篇</b></div>"
       + s.groups.map((g, i) => reasonRow(g, i)).join("") + "</div>";
   }
   // Main text and supplementary files apart, kept short: closed rows, no journal line (user, 2026-11-08).
   if (s && s.supplement_groups && s.supplement_groups.length) {
-    html += '<div class="sec"><div class="sec-h"><b>附录未下全 ' + s.supplement_missing + " 篇</b><span>正文已保存</span></div>"
+    html += '<div class="sec"><div class="sec-h"><b>附录未下全 ' + s.supplement_missing + " 篇</b></div>"
       + s.supplement_groups.map((g, i) => reasonRow(g, s.groups.length + i, true)).join("") + "</div>";
   }
   if (s && v.ok) {
@@ -605,12 +610,12 @@ function papersCard() {
   const list = shownList();
   const note = flash.text && Date.now() < flash.until ? flash.text : "";
   let html = '<div class="card-body"><div class="head"><button class="iconbtn" data-act="back" aria-label="返回">' + icon("left") + "</button>"
-    + '<div class="drag capsule-drag-region"><div class="text"><div class="title">' + LIST_TITLES[papersKind] + " " + list.count + " 篇</div></div></div></div>";
+    + '<div class="drag capsule-drag-region"><div class="text"><div class="title">' + (papersKind === "left" && V.mode === "done" ? "已终止" : LIST_TITLES[papersKind]) + " " + list.count + " 篇</div></div></div></div>";
   if (note) html += '<div class="line">' + esc(note) + "</div>";
   if (!list.groups.length) html += '<div class="line">' + (papersList ? "没有论文" : "正在读取…") + "</div>";
   // Saved papers missing supplementary files follow the failed ones, as on the finished card (user, 2026-11-11).
   const heading = (g, i) => g.supplement && !(list.groups[i - 1] || {}).supplement
-    ? '<div class="sec-h list-sub"><b>附录未下全 ' + (list.supplement_count || 0) + " 篇</b><span>正文已保存</span></div>" : "";
+    ? '<div class="sec-h list-sub"><b>附录未下全 ' + (list.supplement_count || 0) + " 篇</b></div>" : "";
   return html + '<div class="sec papers-scroll" style="max-height:' + listMaxHeight() + 'px">'
     + list.groups.map((g, i) => heading(g, i) + listRow(g, i)).join("") + "</div></div>";
 }

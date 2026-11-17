@@ -48,6 +48,13 @@ class SyncPapersTests(unittest.TestCase):
                                                supplement_cls="no_access", supplement_reason="x")])
         self.assertNotIn("supplement_reason", self.listed()["papers"]["3"])
 
+    def test_the_files_a_paper_got_and_a_stop_are_kept(self):
+        self.assertTrue(pr.sync_papers("b1", "/papers", [paper(1, "ok", supplements_saved=0, path="/papers/1.pdf"),
+                                                         paper(2, "stopped"), paper(3, "ok", supplements_saved=True)]))
+        papers = self.listed()["papers"]
+        self.assertEqual((papers["1"]["supplements_saved"], papers["1"]["path"], papers["2"]["state"]), (0, "/papers/1.pdf", "stopped"))
+        self.assertNotIn("supplements_saved", papers["3"])
+
     def test_a_late_report_never_takes_a_paper_back(self):
         pr.sync_papers("b1", "/papers", [paper(1, "failed", cls="no_access", reason="本校没有订阅")])
         pr.sync_papers("b1", "/papers", [paper(1, "school"), paper(2, "school")])
@@ -143,7 +150,22 @@ class PaperListsTests(unittest.TestCase):
         self.assertEqual(lists["left"]["groups"][0]["papers"][0]["where"], "Nature · 开放下载")
         # Once the batch is over nothing is being downloaded.
         lists = self.lists(paper(5, "school"), state={**self.state, "status": "done"})
-        self.assertEqual([g["label"] for g in lists["left"]["groups"]], ["排队等机构下载"])
+        self.assertEqual([g["label"] for g in lists["left"]["groups"]], ["未处理"])
+
+    def test_the_papers_a_stop_left_undone_on_their_own(self):
+        # A stopped batch said 失败 69 (Windows, 2026-11-16): those papers are told apart.
+        lists = self.lists(paper(4, "stopped"), paper(5, "school"), paper(6, "ok"),
+                           state={**self.state, "status": "cancelled"})
+        self.assertEqual([(g["label"], g["count"]) for g in lists["left"]["groups"]], [("已终止，未处理", 2)])
+        self.assertEqual(lists["failed"]["count"], 0)
+
+    def test_a_batch_of_the_files_alone_by_what_each_got(self):
+        # They showed as 开放下载 · 开放获取, and one listing none said 这篇没有保存的文件 (2026-11-16).
+        lists = self.lists(paper(1, "ok", supplements_saved=3), paper(2, "ok", supplements_saved=0),
+                           paper(3, "ok", supplements_saved=0, journal=""))
+        self.assertEqual([(g["label"], g["count"]) for g in lists["ok"]["groups"]],
+                         [("补上附录", 1), ("没有附录（已核对）", 2)])
+        self.assertEqual([p["where"] for p in lists["ok"]["groups"][1]["papers"]], ["Nature · 没有附录", "没有附录"])
 
     def test_another_batchs_papers_are_not_shown(self):
         self.assertEqual(self.lists(paper(1, "ok"), state={**self.state, "batch_id": "b2"}), {})

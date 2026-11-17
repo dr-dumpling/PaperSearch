@@ -73,13 +73,16 @@ export interface SchoolBatchPaper {
     doi: string;
     title: string;
     journal: string;
-    state: "open" | "school" | "ok" | "failed";
+    /** stopped: left undone by the user's stop (told apart from failed, 2026-11-16). */
+    state: "open" | "school" | "ok" | "failed" | "stopped";
     /** Saved: 开放下载 or 机构下载. */
     via?: string;
     /** Saved by 开放下载 from elsewhere than open access: 出版社 API, Sci-Hub, 预印本. */
     detail?: string;
     /** Saved: the PDF (absolute), shown in its folder from the window's list. */
     path?: string;
+    /** A batch of the supplementary files alone: how many this paper got (0: its page listed none). */
+    supplements_saved?: number;
     /** Saved without every supplementary file (content "both"): the first missing file's class and reason. */
     supplement_cls?: FailureClass;
     supplement_reason?: string;
@@ -110,8 +113,10 @@ export interface SchoolBatchResults {
     main: number;
     /** Supplementary files saved. */
     supplements: number;
-    /** Supplements-only batch: article pages that listed none. */
+    /** Article pages checked that listed no supplementary files. */
     no_supplements: number;
+    /** Papers the user's stop left undone (counted in the failed ones, told apart). */
+    stopped_count?: number;
     /** Where the saved main texts came from: [label, count], most first (开放下载, 机构下载). */
     sources: Array<[string, number]>;
     /**

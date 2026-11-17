@@ -47,6 +47,15 @@ describe("Entitled PDF acceptance", () => {
     expect(existsSync(path)).toBe(true);
   });
 
+  it("keeps an empty list of supplementary files: the page was checked and listed none", async () => {
+    // A resume asked for them all again when it was dropped (Windows, 2026-11-16).
+    const path = join(directory, "paper.pdf");
+    writeFileSync(path, textPdf([["Nutrition and health", "doi:10.1000/target"]]));
+    const backend = { downloadLegalDoi: async () => ({ kind: "success", identifier: context.paperId, path, supplements: [] }) } as unknown as SchoolBackend;
+    const result = await createEntitledAccessTier(backend).run({ ...context, withSupplements: true } as DownloadTierContext);
+    expect(result).toMatchObject({ status: "ok", supplements: [] });
+  });
+
   it.each([
     ["10.1000/other", "pdf_identity_mismatch"],
     ["", "pdf_identity_unverified"],
