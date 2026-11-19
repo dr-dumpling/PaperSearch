@@ -74,9 +74,6 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 
 说了“请开始配置”后，AI 会先问你要不要装[学校订阅下载](#1-学校订阅下载)：用学校账号下载非 OA 文章的全文和补充材料，需要 Chrome（没有的话一起装）。你同意后它才安装，装完问你的学校并设好，然后弹出设置窗口。
 
-- 不要的话说一声就跳过，之后不再提；检索和 OA 文章下载照常能用。
-- 没有图形界面的服务器上不问、不装。
-
 <p align="center"><img src="assets/config.webp" width="840" alt="配置演示：说“请开始配置”，AI 先问再装学校订阅下载和 Chrome，设好学校；之后在设置窗口里填 key、点“测试”，下载文件夹、等待时间和通知也在这里改"></p>
 
 ### 3. 按需填 API key
@@ -96,7 +93,7 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 | 搜正文片段 | `/paper-search` 这些试验的主要终点，原文是怎么定义的？摘几段原文 |
 | 查期刊 IF 与分区 | `/paper-search` 它们发表在哪些期刊？影响因子和分区各是多少 |
 | 查引文和参考文献 | `/paper-search` DAPA-HF 试验发表后，有哪些研究引用了它 |
-| 下载全文和补充材料 | `/paper-search` 把这些论文的全文和补充材料下载到 ./downloads |
+| 下载全文和补充材料 | `/paper-search` 把这些论文的全文和补充材料下载到指定路径 |
 
 **拿到结果：**
 
@@ -123,8 +120,7 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 | &emsp;下载 OA 文章 | ✅ | — | — |
 | &emsp;下载非 OA 文章 | — | ✅（Elsevier、Springer） | ✅（30+主流出版社） |
 | &emsp;下载补充材料 | — | — | ✅ |
-| **需要准备** | Node.js 22 或以上 | 到各家网站申请 key | Google Chrome、学校账号 |
-| **怎么开启** | 快速开始第 1 步 | 设置窗口或终端 | 配置时同意安装 |
+
 
 ### 1. 学校订阅下载
 
@@ -155,7 +151,6 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 | 非洲 | 北部、南部非洲 | 摩洛哥：eduIDM；南非：SAFIRE |
 
 - 各联盟的全称、学校数和实测过的学校，见 [学术联盟支持表](skills/paper-search/references/federation-support.md)。
-- 非洲各联盟尚未实测。中亚、加勒比等地暂无可用的联盟（联盟里没有学校入口，或尚未正式运行），这些地方的学校有 OpenAthens 权限的可经它登录。
 - 学校登录不上，或想支持你的学校，请用“学校登录不上”模板[提 Issue](https://github.com/dr-dumpling/PaperSearch/issues/new?template=school-login.yml)，写明学校名称、官网域名，以及出问题的出版社和文章 DOI。
 
 - **学校账号就能用**：不用另外申请 key；出版社 API key 只覆盖 Elsevier、Springer 两家。
