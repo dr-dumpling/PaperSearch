@@ -9,8 +9,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from paper_search_school import carsi_schools
-from paper_search_school.carsi_schools import choose_school, find_schools, load_school_list, parse_school_list
+from paper_search_school.federations import carsi as carsi_schools
+from paper_search_school.federations.carsi import choose_school, find_schools, load_school_list, parse_school_list
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "carsi_school_list.js"
 EXAMPLE = "https://idp.example.edu.cn/idp/shibboleth"

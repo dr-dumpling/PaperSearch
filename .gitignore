@@ -6,6 +6,8 @@ yarn-error.log*
 
 # Build outputs
 build/
+# PaperSearch Pro's bundle (node pro/build.mjs)
+pro/dist/
 *.tsbuildinfo
 
 # Environment variables
@@ -108,7 +110,13 @@ profile-*
 .vscode
 
 #claude
-.claude/
+.claude/*
+# Trellis' Claude Code files go with the private repository (never exported; maintainer/release-public.py)
+!.claude/agents/
+!.claude/commands/
+!.claude/hooks/
+!.claude/skills/
+!.claude/settings.json
 claudedocs/
 
 #openspec

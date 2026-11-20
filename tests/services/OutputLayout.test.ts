@@ -1,12 +1,14 @@
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, realpathSync, symlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join, dirname, basename, relative } from 'node:path';
+import { join, dirname, basename, relative, resolve } from 'node:path';
 import { describe, it, expect } from '@jest/globals';
-import { DIAGNOSTICS_FOLDER, createOutputLayout, lookupOutputMetadata, organizeFiles, placeFile, removeWorkFolder, safeComponent } from '../../src/capabilities/pdf-discovery/outputLayout.js';
-import { downloadWithFallback } from '../../src/capabilities/pdf-discovery/OpenAccessFallbackService.js';
-import { downloadBatch, downloadSupplementsOnly } from '../../src/capabilities/pdf-discovery/batch.js';
-import { normalizeDownloadResult } from '../../src/capabilities/pdf-discovery/school/SchoolResultNormalizer.js';
-import { createSchoolDownloadArguments, selectSchoolBatchSupport } from '../../src/capabilities/pdf-discovery/school/SchoolReadiness.js';
+import { DIAGNOSTICS_FOLDER, createOutputLayout, lookupOutputMetadata, organizeFiles, placeFile, removeWorkFolder, safeComponent } from '../../src/capabilities/download/outputLayout.js';
+import { downloadWithFallback } from '../../src/capabilities/download/content/pdf/OpenAccessFallbackService.js';
+import { downloadBatch } from '../../src/capabilities/download/batch/batch.js';
+import { downloadSupplementsOnly } from '../../src/capabilities/download/content/supplements/fetch.js';
+import { normalizeDownloadResult } from '../../src/infrastructure/school/SchoolResultNormalizer.js';
+import { createSchoolDownloadArguments, selectSchoolBatchSupport } from '../../src/infrastructure/school/SchoolReadiness.js';
 
 const metadata = { journal: 'Nature', year: 2026, title: 'A useful article' };
 const root = () => mkdtempSync(join(tmpdir(), 'output-layout-'));
@@ -63,7 +65,8 @@ describe('download output layout', () => {
     const found = await lookupOutputMetadata(searchers, 'crossref', '10.1126/scitranslmed.test1');
     const layout = createOutputLayout('/tmp/output', '10.1126/scitranslmed.test1', found);
     // Cut short at a word's end, the title having what the journal and date leave (it had 55 characters before).
-    expect(layout.name).toBe('Sci Transl Med_2024-11_A wearable osmotic microneedle patch provides sustained interstitial fluid');
+    // No code after the title (2026-11-17): its room goes to the title.
+    expect(layout.name).toBe('Sci Transl Med_2024-11_A wearable osmotic microneedle patch provides sustained interstitial fluid sampling');
     // NLM is asked once per journal.
     await lookupOutputMetadata(searchers, 'crossref', '10.1126/scitranslmed.test2');
     expect(nlm).toEqual([['1946-6234', '1946-6242']]);
@@ -240,9 +243,10 @@ describe('download output layout', () => {
     const batch = await downloadBatch(searchers, {items: [{doi: '10.1000/example'}], savePath: dir}, undefined, () => {}, stages);
     expect(batch.items[0].path).toBe(one.path);
     expect(readFileSync(one.path!, 'utf8')).toBe('same bytes');
-    // Main texts only: the PDF lies in the download folder, nothing else there (user, 2026-11-11).
+    // Main texts only: the PDF lies in the download folder (user, 2026-11-11), beside the batch's
+    // records and its list (user, 2026-11-17).
     expect(one.path).toBe(join(dir, 'Nature_2026_A useful article.pdf'));
-    expect(readdirSync(dir)).toEqual(['Nature_2026_A useful article.pdf']);
+    expect(readdirSync(dir).sort()).toEqual(['Nature_2026_A useful article.pdf', '_run']);
     expect(existsSync(join(batch.runLog!, 'run.json'))).toBe(true);  // the run's records in PaperSearch's own data
     let manifest = '';
     const backend = {downloadLegalDoi: async (r: any) => {
@@ -263,12 +267,44 @@ describe('download output layout', () => {
     expect(moved).toHaveLength(1);
     expect(existsSync(manifest)).toBe(false);
     expect(JSON.parse(readFileSync(join(records, moved[0]), 'utf8')).files[0].file).toBe(extra.items[0].supplements![0].file);
-    expect(readdirSync(dir).sort()).toEqual(['Nature_2026_A useful article.pdf', basename(paperDir)].sort());
+    expect(readdirSync(dir).sort()).toEqual(['Nature_2026_A useful article.pdf', basename(paperDir), '_run'].sort());
     expect(readdirSync(paperDir)).toEqual(['supplements']);
     // The backend wrote into the run's diagnostics; its working folder is gone afterwards.
     expect(manifest.startsWith(join(extra.runLog!, 'diagnostics'))).toBe(true);
     const runDiagnostics = join(extra.runLog!, 'diagnostics');
     expect(existsSync(runDiagnostics) ? readdirSync(runDiagnostics).filter((name) => name.startsWith('work-')) : []).toEqual([]);
+  });
+
+  it("gives another paper of the same name in this run the next name, the same paper its own folder (2026-11-17)", () => {
+    const dir = root();
+    const first = createOutputLayout(dir, '10.1000/one', metadata);
+    // Claimed in this process before anything is written: the other lane's paper takes name_2.
+    const second = createOutputLayout(dir, '10.1000/two', metadata);
+    expect(basename(first.paperDir)).toBe(first.name);
+    expect(basename(second.paperDir)).toBe(`${first.name}_2`);
+    expect(createOutputLayout(dir, '10.1000/ONE', metadata).paperDir).toBe(first.paperDir);
+    // No hidden file: a folder an earlier run left is taken for its paper.
+    const later = root();
+    mkdirSync(join(later, first.name));
+    expect(basename(createOutputLayout(later, '10.1000/one', metadata).paperDir)).toBe(first.name);
+    expect(readdirSync(join(later, first.name))).toEqual([]);
+  });
+
+  it("takes the folder an earlier version named with the paper's code, a shorter title before it (Windows, 2026-11-17)", () => {
+    // art.43357: its Markdown and files in "…encounters spinal_e6c9625c68"; a resume started "…encounters" beside it.
+    const dir = root();
+    const code = createHash('sha256').update('10.1000/coded').digest('hex').slice(0, 10);
+    const old = join(dir, `Nature_2026_A useful_${code}`);
+    mkdirSync(old);
+    expect(createOutputLayout(dir, '10.1000/CODED', metadata).paperDir).toBe(old);
+    // Another paper of the same name still gets its own.
+    expect(basename(createOutputLayout(dir, '10.1000/other', metadata).paperDir)).toBe('Nature_2026_A useful article');
+    // A later run's folder of its name beside the coded one: the later one.
+    const both = root();
+    const code2 = createHash('sha256').update('10.1000/both').digest('hex').slice(0, 10);
+    mkdirSync(join(both, `Nature_2026_A useful_${code2}`));
+    mkdirSync(join(both, 'Nature_2026_A useful article'));
+    expect(basename(createOutputLayout(both, '10.1000/both', metadata).paperDir)).toBe('Nature_2026_A useful article');
   });
 
   it("keeps a fine paper's record in the run's records, the others' in its diagnostics", () => {
@@ -364,7 +400,7 @@ describe('download output layout', () => {
   it('accepts only an explicitly allowed diagnostic root and advertises the optional MCP field', () => {
     const payload = {content: [{type: 'text', text: JSON.stringify({success: false, error_type: 'paywall', artifacts: {record: '/diagnostics/a/record.json', diagnostic: '/private/secret.json'}})}]};
     const outcome = normalizeDownloadResult(payload, '10.1000/example', '/papers/a', '/diagnostics/a');
-    expect(outcome).toMatchObject({trace: {record: '/diagnostics/a/record.json'}});
+    expect(outcome).toMatchObject({trace: {record: resolve('/diagnostics/a/record.json')}});
     expect((outcome as any).trace.diagnostic).toBeUndefined();
     expect((normalizeDownloadResult(payload, '10.1000/example', '/papers/a') as any).trace).toBeUndefined();
     const args = createSchoolDownloadArguments('10.1000/example', '/papers/a', 'legal_only', undefined, undefined, undefined, '/diagnostics/a');

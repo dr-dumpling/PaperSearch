@@ -2,15 +2,15 @@ export {
   createDefaultDownloadTiers,
   downloadWithFallback,
   insertDownloadTierBefore
-} from '../capabilities/pdf-discovery/OpenAccessFallbackService.js';
+} from '../capabilities/download/content/pdf/OpenAccessFallbackService.js';
 
 export type {
   DownloadTier,
   DownloadTierContext,
   DownloadTierResult
-} from '../capabilities/pdf-discovery/DownloadTier.js';
+} from '../capabilities/download/content/pdf/DownloadTier.js';
 
 export type {
   DownloadWithFallbackOptions,
   DownloadWithFallbackResult
-} from '../capabilities/pdf-discovery/types.js';
+} from '../capabilities/download/types.js';

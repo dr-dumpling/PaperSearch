@@ -120,7 +120,7 @@ Sci-Hub 兜底默认开启。单次请求跳过 Sci-Hub、直接进入可选的�
 paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"10.xxxx/xxxxx","doi":"10.xxxx/xxxxx","title":"Paper title","useSciHub":false}' --pretty
 ```
 
-补充材料用 `content` 选择（`main`、`supplements`、`both`），只经机构下载后端获取；哪些出版社能取见 `publisher-support.md`，细节见 `browser-download.md`。
+下载内容用 `content` 选择：`pdf`（正文 PDF，默认）、`supplements`（补充材料，只经机构下载后端获取，哪些出版社能取见 `publisher-support.md`），可以都要（`"pdf,supplements"`）；细节见 `browser-download.md`。
 
 PDF 来源分组：
 

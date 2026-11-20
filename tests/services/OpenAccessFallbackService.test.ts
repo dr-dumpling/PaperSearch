@@ -9,8 +9,10 @@ import {
   downloadWithFallback,
   insertDownloadTierBefore,
   type DownloadTier,
-} from "../../src/capabilities/pdf-discovery/OpenAccessFallbackService.js";
-import { hasOpenAccessProvenance } from "../../src/capabilities/pdf-discovery/tiers/directPdfUrl.js";
+} from "../../src/capabilities/download/content/pdf/OpenAccessFallbackService.js";
+import { hasOpenAccessProvenance } from "../../src/capabilities/download/content/pdf/open/tiers/directPdfUrl.js";
+
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 function validPdfBuffer(size = 10_100): Buffer {
   const buffer = Buffer.alloc(size, 0x20);
@@ -97,7 +99,7 @@ describe("OpenAccessFallbackService", () => {
       );
       expect(result.status).toBe("error");
       // No run's folder here: the download folder's diagnostics/, never beside the PDFs.
-      expect(result.review).toEqual({ path: expect.stringMatching(/\/diagnostics\/[^/]+_review\.pdf$/),
+      expect(result.review).toEqual({ path: expect.stringMatching(/[\\/]diagnostics[\\/][^\\/]+_review\.pdf$/),
         reason: "pdf_identity_unverified" });
       expect(readFileSync(result.review!.path)).toEqual(readFileSync(unlabelled));
     });
@@ -163,7 +165,7 @@ describe("OpenAccessFallbackService", () => {
     expect(result.status).toBe("ok");
     expect(readFileSync(result.path!)).toEqual(readFileSync(paper));
     expect(scihubDownload).toHaveBeenCalledWith("10.1000/example", {
-      savePath: expect.stringMatching(/_[0-9a-f]{10}$/),
+      savePath: expect.not.stringMatching(/_[0-9a-f]{10}$/),
     });
     expect(result.attempts.map((attempt) => attempt.stage)).toEqual([
       "primary",
@@ -363,12 +365,12 @@ describe("OpenAccessFallbackService", () => {
 
       expect(downloadLegalDoi).toHaveBeenCalledWith({
         identifier: "10.1000/example",
-        outputDir: expect.stringMatching(new RegExp(`^${tempDir}/[^/]+_[0-9a-f]{10}$`)),
-        diagnosticsDir: expect.stringMatching(new RegExp(`^${tempDir}/[^/]+_[0-9a-f]{10}/diagnostics$`)),
+        outputDir: expect.stringMatching(new RegExp(`^${escapeRe(tempDir)}[\\\\/][^\\\\/]+$`)),
+        diagnosticsDir: expect.stringMatching(new RegExp(`^${escapeRe(tempDir)}[\\\\/][^\\\\/]+[\\\\/]diagnostics$`)),
       });
       expect(result).toEqual({
         status: "ok",
-        path: expect.stringMatching(new RegExp(`^${tempDir}/[^/]+\\.pdf$`)),
+        path: expect.stringMatching(new RegExp(`^${escapeRe(tempDir)}[\\\\/][^\\\\/]+\\.pdf$`)),
         attempts: expect.arrayContaining([
           {
             stage: "entitled_access",
@@ -533,8 +535,8 @@ describe("OpenAccessFallbackService", () => {
 
     expect(downloadLegalDoi).toHaveBeenCalledWith({
       identifier: "not-a-doi",
-      outputDir: expect.stringMatching(/_[0-9a-f]{10}$/),
-      diagnosticsDir: expect.stringMatching(/_[0-9a-f]{10}\/diagnostics$/),
+      outputDir: expect.not.stringMatching(/_[0-9a-f]{10}$/),
+      diagnosticsDir: expect.stringMatching(/[\\/]diagnostics$/),
     });
     expect(result.attempts).toContainEqual({
       stage: "entitled_access",

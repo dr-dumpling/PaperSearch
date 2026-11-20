@@ -46,6 +46,18 @@ class PublisherAccessBlockedTests(unittest.TestCase):
         phases=[call.kwargs.get('phase','') for call in self.batch.progress_reporter.update.call_args_list]
         self.assertIn('网站已阻止当前访问，此路径已停止',phases)
 
+    def test_the_school_login_is_kept_after_the_paper(self):
+        # Saved, not only when the browser closes, and sent with a SAML POST (browser/backend.py, 2026-11-19).
+        self.d._wait_for_challenge = Mock()
+        self.d._complete_login_from_current_page = Mock()
+        self.d._capture_pdf = Mock()
+        self.d._hold_after_run = Mock()
+        save = Mock()
+        self.page.context = SimpleNamespace(paper_search_keep_login=save)
+        with tempfile.TemporaryDirectory() as tmp:
+            self.d.fetch_one(self.page, self.batch.PaperRecord(doi='10.1000/fixture'), Path(tmp))
+        save.assert_called_once()
+
     def test_a_publishers_own_ip_block_page_is_a_block(self):
         # Science, 2026-11-16: its own page under its usual title; the driver had gone on to
         # the school's login, waited out its time, and the next article did the same.

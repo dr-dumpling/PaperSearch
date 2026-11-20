@@ -1,11 +1,14 @@
 """One browser window and tab kept for a serial MCP batch, on its Playwright
 worker thread. Used when the backend declares ``batch_window``
 (browser/backend.py); only plain Playwright calls, no backend of its own."""
+import queue
+import threading
 import time
+from concurrent.futures import Executor, Future
 from contextvars import ContextVar
 from urllib.parse import urlsplit
 
-from . import challenges
+from .challenge import detection as challenges
 from .preview import ensure_enabled
 
 
@@ -14,6 +17,10 @@ from .preview import ensure_enabled
 # publisher runs by itself); the client waits up to a minute for all of it.
 KEEP_SESSION_TIMEOUT_MS = 25_000
 KEEP_SESSION_SETTLE_SECONDS = 20
+# Between papers, how long each pass lets the browser's events through, and how long the
+# thread waits for the next job first.
+IDLE_PASS_MS = 200
+IDLE_POLL_SEC = 0.05
 
 
 class BatchBrowser:
@@ -69,6 +76,28 @@ class BatchBrowser:
             pass
         return {"kept": False, "reason": reason}
 
+    def pump(self):
+        """Between papers (the batch waiting for 登录并继续, for its hourly limit): the batch's
+        tab goes on answering. Patchright sends every request of a tab with an init script
+        through this process first, and a sync driver hears it only during a call of its
+        own: with no paper running, the school's login page did not move after 登录
+        (Windows, 2026-11-18)."""
+        page = self.page
+        if self.context is None or page is None:
+            time.sleep(IDLE_PASS_MS / 1000)
+            return
+        from . import watchdog
+
+        try:
+            if not page.is_closed():
+                page.wait_for_timeout(IDLE_PASS_MS)
+                return
+        except Exception:
+            pass  # the next paper finds the browser as it is and says so
+        finally:
+            watchdog.take_period()  # not the next paper's browser calls
+        time.sleep(IDLE_PASS_MS / 1000)
+
     def finish_item(self):
         # Keep the original tab and its native window. Article/PDF/login
         # popups cannot leak into the next publisher's page detection.
@@ -83,6 +112,51 @@ class BatchBrowser:
 
 
 active_batch: ContextVar[BatchBrowser | None] = ContextVar("active_browser_batch", default=None)
+
+
+class BatchThread(Executor):
+    """The batch's one browser thread: runs its jobs in order, and with none waiting calls
+    ``idle`` (BatchBrowser.pump), so the batch's tab works while no paper runs."""
+
+    def __init__(self, idle, name="school-batch"):
+        self._idle = idle
+        self._jobs: queue.SimpleQueue = queue.SimpleQueue()
+        self._closed = False
+        self._thread = threading.Thread(target=self._run, name=name, daemon=True)
+        self._thread.start()
+
+    def submit(self, fn, /, *args, **kwargs):
+        if self._closed:
+            raise RuntimeError("cannot schedule new futures after shutdown")
+        future = Future()
+        self._jobs.put((future, fn, args, kwargs))
+        return future
+
+    def _run(self):
+        while True:
+            try:
+                job = self._jobs.get(timeout=IDLE_POLL_SEC)
+            except queue.Empty:
+                try:
+                    self._idle()
+                except Exception:
+                    time.sleep(IDLE_PASS_MS / 1000)
+                continue
+            if job is None:
+                return
+            future, fn, args, kwargs = job
+            if not future.set_running_or_notify_cancel():
+                continue
+            try:
+                future.set_result(fn(*args, **kwargs))
+            except BaseException as exc:
+                future.set_exception(exc)
+
+    def shutdown(self, wait=True, *, cancel_futures=False):
+        self._closed = True
+        self._jobs.put(None)
+        if wait:
+            self._thread.join()
 
 
 def _on_verification(page) -> bool:
@@ -103,7 +177,7 @@ def _settle(page, site: str) -> str:
     after KEEP_SESSION_SETTLE_SECONDS, "verification" or "signin" (another site: the
     publisher's sign-in, a school's login). A check's checkbox is clicked as in a
     download (at most three times, three seconds apart)."""
-    from .challenge_interaction import click_checkbox
+    from .challenge.interaction import click_checkbox
     until = time.monotonic() + KEEP_SESSION_SETTLE_SECONDS
     clicks, next_click = 0, 0.0
     page.wait_for_timeout(2000)  # a redirect the page makes once loaded

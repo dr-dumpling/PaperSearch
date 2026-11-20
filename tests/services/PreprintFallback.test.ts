@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import { PaperFactory } from '../../src/models/Paper.js';
 import { handleGetPaperByDoi } from '../../src/capabilities/metadata-search/handler.js';
 import { dedupePapers } from '../../src/capabilities/metadata-search/MultiSourceSearchService.js';
-import { downloadWithFallback, createDefaultDownloadTiers, type DownloadTier } from '../../src/capabilities/pdf-discovery/OpenAccessFallbackService.js';
-import { assessArxivIdentity, createPreprintTier } from '../../src/capabilities/pdf-discovery/tiers/preprint.js';
-import { downloadBatch } from '../../src/capabilities/pdf-discovery/batch.js';
+import { downloadWithFallback, createDefaultDownloadTiers, type DownloadTier } from '../../src/capabilities/download/content/pdf/OpenAccessFallbackService.js';
+import { assessArxivIdentity, createPreprintTier } from '../../src/capabilities/download/content/pdf/open/tiers/preprint.js';
+import { downloadBatch } from '../../src/capabilities/download/batch/batch.js';
 import { normalizeArxivId } from '../../src/infrastructure/arxiv.js';
 import { textPdf } from '../fixtures/textPdf.js';
 

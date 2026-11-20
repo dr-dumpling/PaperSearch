@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
-import { SCHOOL_BACKEND_UTF8_ENV } from "../../capabilities/pdf-discovery/school/index.js";
+import { SCHOOL_BACKEND_UTF8_ENV } from "../../infrastructure/school/index.js";
 import { selectFailures, type FailureQuery } from "./index.js";
 
 export interface ExportReportResult {
@@ -24,8 +24,31 @@ export async function exportFailureReport(options: {
   if (!options.output.toLowerCase().endsWith(".zip")) throw new Error("导出路径须以 .zip 结尾。");
   const input = JSON.stringify({ schemaVersion: 1, version: options.version, papers: selected.papers });
   if (Buffer.byteLength(input) > 8 * 1024 * 1024) throw new Error("记录超过 8 MiB，请用 --run 或 --doi 缩小范围。");
+  const data = await runBackendExport(options.command, ["report-export", "--output", resolve(options.output)], input, "失败记录导出",
+    "学校订阅下载未返回导出结果，请更新支持 report-export 的版本。");
+  if (data.ok !== true) {
+    // Only stable codes, never arbitrary exception text from an older backend.
+    const code = typeof data.error === "string" ? data.error.split(";")[0] : "";
+    const known = new Set(["invalid_export_request", "export_request_too_large", "no_matching_failures",
+      "too_many_failures", "export_path_must_end_in_zip", "export_target_exists", "source_size_limit",
+      "package_size_limit", "export_permission_denied", "export_io_or_input_error"]);
+    throw new Error(`失败记录导出未完成：${known.has(code) ? code : "export_failed"}`);
+  }
+  if (data.schemaVersion !== 1 || data.path !== resolve(options.output) || data.reviewRequired !== true ||
+      ![data.papers, data.files, data.bytes, data.incompletePapers].every((v) => Number.isInteger(v) && Number(v) >= 0)) {
+    throw new Error("学校订阅下载返回了不兼容的导出结果。");
+  }
+  return data as unknown as ExportReportResult;
+}
+
+/**
+ * An offline backend command fed ``input`` on stdin: its JSON reply ({ok: false, error} when
+ * it failed). ``what`` names the export in the messages ("失败记录导出"); ``outdated``, what
+ * to say when a backend gave no reply (one without the command).
+ */
+export function runBackendExport(command: string, args: string[], input: string, what: string, outdated: string): Promise<Record<string, unknown>> {
   return new Promise((resolveResult, reject) => {
-    const child = spawn(options.command, ["report-export", "--output", resolve(options.output)], {
+    const child = spawn(command, args, {
       stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
       env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) =>
         /^(PATH|HOME|USERPROFILE|SYSTEMROOT|WINDIR|TEMP|TMP|TMPDIR|LANG|LC_ALL|XDG_DATA_HOME|XDG_CONFIG_HOME|SCHOOL_DATA_DIR|SCHOOL_PYTHON|PYTHONPATH|OPENBLAS_NUM_THREADS)$/i.test(key))),
@@ -35,7 +58,7 @@ export async function exportFailureReport(options: {
     let size = 0;
     let problem: Error | undefined;
     const stop = (message: string) => { problem ??= new Error(message); child.kill(); };
-    const timer = setTimeout(() => stop("失败记录导出超时（60 秒），请缩小范围后重试。"), 60_000);
+    const timer = setTimeout(() => stop(`${what}超时（60 秒），请缩小范围后重试。`), 60_000);
     child.stdout.on("data", (chunk: Buffer) => {
       size += chunk.length;
       if (size > 64 * 1024) stop("后端导出输出超过限制。");
@@ -54,23 +77,11 @@ export async function exportFailureReport(options: {
     child.on("close", (code) => {
       clearTimeout(timer);
       if (problem) return reject(problem);
-      let data: Partial<ExportReportResult> & { error?: string };
-      try { data = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
-      catch { return reject(new Error("学校订阅下载未返回导出结果，请更新支持 report-export 的版本。")); }
-      if (code !== 0 || data.ok !== true) {
-        // Only stable codes, never arbitrary exception text from an older backend.
-        const code = typeof data.error === "string" ? data.error.split(";")[0] : "";
-        const known = new Set(["invalid_export_request", "export_request_too_large", "no_matching_failures",
-          "too_many_failures", "export_path_must_end_in_zip", "export_target_exists", "source_size_limit",
-          "package_size_limit", "export_permission_denied", "export_io_or_input_error"]);
-        const error = known.has(code) ? code : "export_failed";
-        return reject(new Error(`失败记录导出未完成：${error}`));
-      }
-      if (data.schemaVersion !== 1 || data.path !== resolve(options.output) || data.reviewRequired !== true ||
-          ![data.papers, data.files, data.bytes, data.incompletePapers].every((v) => Number.isInteger(v) && Number(v) >= 0)) {
-        return reject(new Error("学校订阅下载返回了不兼容的导出结果。"));
-      }
-      resolveResult(data as ExportReportResult);
+      let data: Record<string, unknown>;
+      try { data = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>; }
+      catch { return reject(new Error(outdated)); }
+      if (!data || typeof data !== "object") return reject(new Error(outdated));
+      resolveResult(code === 0 ? data : { ...data, ok: false });
     });
     child.stdin.end(input);
   });

@@ -118,6 +118,14 @@ class MachineProgressEventsTests(unittest.TestCase):
         self.assertEqual((state["status"], state["stage"]), ("done", "failed"))
         self.assertNotIn("private-fixture", json.dumps(state))
 
+    def test_access_without_a_pdf_is_not_reported_as_a_saved_pdf(self):
+        # `login` and the full-text page alone end at the article's access.
+        with patch.object(server, "download", return_value={"success": True, "login": {"signed_in": True}}):
+            server.school_download(DOI)
+        state = progress.read_state()
+        self.assertEqual((state["status"], state["stage"], state["success"]), ("done", "access_ready", 1))
+        self.assertNotIn("PDF 已保存", state["phase"])
+
     def test_mcp_terminal_block_keeps_fixed_failure_message(self):
         with patch.object(server, "download", return_value={
                 "success": False, "error_type": "access_blocked", "reason": "token=private-fixture"}):

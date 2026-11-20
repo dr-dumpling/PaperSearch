@@ -264,6 +264,9 @@ class ThiemeInstitutionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
             self.downloader.config['cache_dir']=str(root/'cache')
+            # The site root's visit before a site's first article is warmup's own (test_session_warmup);
+            # made once per process, it was counted here when no Thieme article came before (2026-11-19).
+            self.downloader.config['browser_session_warmup']=False
             # This regression exercises real DOM/login decisions. The existing
             # PDF transport is stubbed; live route checks verify that separately.
             with patch('paper_search_school.engine.batch.time.sleep'), patch.object(

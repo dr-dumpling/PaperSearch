@@ -50,6 +50,12 @@ def _federation_code(cfg: dict[str, Any]) -> str:
     return federation.code if federation else ("carsi" if cfg.get("carsi_enabled") else "")
 
 
+def _saved(cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    from .schools import saved as saved_schools
+
+    return saved_schools.saved(cfg)
+
+
 def _institutional_summary(cfg: dict[str, Any]) -> dict[str, Any]:
     from .federations import by_code
 
@@ -63,6 +69,8 @@ def _institutional_summary(cfg: dict[str, Any]) -> dict[str, Any]:
         "school_name": cfg.get("school_name") or "",
         "school_name_en": cfg.get("school_name_en") or "",
         "idp_entity_id": cfg.get("idp_entity_id") or "",
+        # The other saved schools, switched to with `use` (user, 2026-11-17).
+        "saved_schools": [entry.get("school_name") or "" for entry in _saved(cfg)],
         "browser_backend": cfg.get("browser_backend") or "",
         "chrome_profile_dir": cfg.get("chrome_profile_dir") or "",
         "output_dir": cfg.get("output_dir") or "",
@@ -113,7 +121,7 @@ def _environment_check(cfg: dict[str, Any]) -> tuple[bool, list[dict[str, str]],
 def _carsi_school_list(cfg: dict[str, Any]) -> tuple[list[Any], dict[str, Any] | None]:
     import requests
 
-    from .carsi_schools import SCHOOL_LIST_URL, load_school_list
+    from .federations.carsi import SCHOOL_LIST_URL, load_school_list
 
     try:
         return load_school_list(cfg, _data_dir()), None
@@ -125,7 +133,7 @@ def _carsi_school_list(cfg: dict[str, Any]) -> tuple[list[Any], dict[str, Any] |
 
 def _set_carsi_school(cfg: dict[str, Any], query: str) -> dict[str, Any] | None:
     """Save the CARSI member school the user named; the problem to report when there is not exactly one."""
-    from .carsi_schools import choose_school
+    from .federations.carsi import choose_school
 
     schools, problem = _carsi_school_list(cfg)
     if problem:
@@ -144,9 +152,9 @@ def _set_carsi_school(cfg: dict[str, Any], query: str) -> dict[str, Any] | None:
 
 
 def _find_school(cfg: dict[str, Any], query: str, also: list[str]) -> dict[str, Any] | None:
-    """Save the school the user named, any federation (``federations.schools``);
+    """Save the school the user named, any federation (``schools.lookup``);
     the problem to report when there is not exactly one."""
-    from .federations import schools
+    from .schools import lookup as schools
 
     found = schools.find(query, cfg, _data_dir(), also=also)
     if found.school is not None:
@@ -182,7 +190,7 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         if problem:
             print(json.dumps(problem, ensure_ascii=False))
             return 1
-        from .carsi_schools import find_schools
+        from .federations.carsi import find_schools
 
         if args.list_carsi_schools.strip():
             exact, partial = find_schools(schools, args.list_carsi_schools)
@@ -199,6 +207,10 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         cfg["carsi_enabled"] = False
         changed = True
     if args.institution:
+        from .schools import saved as saved_schools
+
+        # The school before it stays saved, to switch back to with `use` (2026-11-17).
+        saved_schools.remember(cfg)
         # With --carsi only CARSI's member list is asked; otherwise every
         # supported federation, and the school's federation is saved with it.
         problem = (_set_carsi_school(cfg, args.institution) if args.carsi
@@ -206,6 +218,7 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         if problem:
             print(json.dumps(problem, ensure_ascii=False, indent=2))
             return 1
+        saved_schools.remember(cfg)
         changed = True
 
     if args.output_dir:
@@ -234,6 +247,73 @@ def _cmd_setup(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# several schools (user, 2026-11-17): list, switch, forget; nothing switches on its own
+# ---------------------------------------------------------------------------
+
+def _cmd_schools(_args: argparse.Namespace) -> int:
+    from .schools import saved as saved_schools
+    from .config import load_config
+
+    cfg = load_config()
+    saved_schools.remember(cfg)
+    school = saved_schools.current(cfg)
+    print(json.dumps({"current": saved_schools.summary(school) if school else None,
+                      "schools": [saved_schools.summary(entry, cfg) for entry in saved_schools.saved(cfg)]},
+                     ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_use(args: argparse.Namespace) -> int:
+    """The named school as the current one: a saved one, else looked up as `setup
+    --institution` does and saved too. The one before stays saved."""
+    from .schools import saved as saved_schools
+    from .config import load_config, save_config
+
+    cfg = load_config()
+    saved_schools.remember(cfg)
+    matches = saved_schools.find(cfg, args.school)
+    if len(matches) > 1:
+        print(json.dumps({"error": "school_ambiguous", "query": args.school,
+                          "candidates": [saved_schools.summary(entry, cfg) for entry in matches],
+                          "hint": "run again with the full name or the entityID of one of them"}, ensure_ascii=False, indent=2))
+        return 1
+    added = not matches
+    if matches:
+        saved_schools.apply(cfg, matches[0])
+    else:
+        problem = _find_school(cfg, args.school, list(args.also_name or ()))
+        if problem:
+            print(json.dumps(problem, ensure_ascii=False, indent=2))
+            return 1
+    saved_schools.remember(cfg)
+    save_config(cfg)
+    print(json.dumps({"switched": True, "added": added, "school": saved_schools.summary(saved_schools.current(cfg) or {}),
+                      "settings": _institutional_summary(cfg)}, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_forget(args: argparse.Namespace) -> int:
+    from .schools import saved as saved_schools
+    from .config import load_config, save_config
+
+    cfg = load_config()
+    saved_schools.remember(cfg)
+    matches = saved_schools.find(cfg, args.school)
+    if len(matches) != 1:
+        print(json.dumps({"error": "school_not_saved" if not matches else "school_ambiguous", "query": args.school,
+                          "candidates": [saved_schools.summary(entry, cfg) for entry in matches]}, ensure_ascii=False, indent=2))
+        return 1
+    if not saved_schools.forget(cfg, matches[0]):
+        print(json.dumps({"error": "school_is_current", "query": args.school,
+                          "hint": "switch to another school with `use` first"}, ensure_ascii=False, indent=2))
+        return 1
+    save_config(cfg)
+    print(json.dumps({"forgotten": saved_schools.summary(matches[0]),
+                      "schools": [saved_schools.summary(entry, cfg) for entry in saved_schools.saved(cfg)]}, ensure_ascii=False, indent=2))
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # login
 # ---------------------------------------------------------------------------
 
@@ -243,7 +323,7 @@ _LOGIN_MESSAGES = {
     "browser_closed": "下载浏览器被关闭了，没有完成登录",
     "institution_pdf_entitlement_missing": "已登录学校，但学校没有这篇文章的全文权限；换一篇学校订阅的文章再试",
     "login_credentials_rejected": "学校登录页没有接受账号或密码",
-    "institution_not_registered": "出版社的机构列表里没有找到你的学校",
+    "institution_not_registered": "学校的这个登录入口和这家出版社之间没有开通，经这个入口没有权限",
     "login_not_reached": "程序没能进入学校登录页的输入步骤（停在出版社页面或跳转途中）；详情见诊断文件",
 }
 
@@ -339,6 +419,31 @@ def _cmd_report_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_markdown_report(args: argparse.Namespace) -> int:
+    """The Markdown report (markdown_report.py) from the run records PaperSearch names on
+    stdin: ``{"schemaVersion": 1, "version", "reports": [{"report", "doi", "title"}]}``."""
+    from .config import load_config
+    from .markdown_report import ReportError, export
+
+    try:
+        raw = sys.stdin.buffer.read(1024 * 1024 + 1)
+        if len(raw) > 1024 * 1024:
+            raise ReportError("export_request_too_large")
+        request = json.loads(raw)
+        if not isinstance(request, dict) or request.get("schemaVersion") != 1 or not isinstance(request.get("reports"), list):
+            raise ReportError("invalid_export_request")
+        result = export(request["reports"], Path(args.folder or "."), load_config(), str(request.get("version") or ""),
+                        output=Path(args.output) if args.output else None)
+    except (OSError, ValueError) as exc:
+        # Never print original JSON, paths, secrets or exception payloads.
+        code = (str(exc) if isinstance(exc, ReportError) else
+                "export_permission_denied" if isinstance(exc, PermissionError) else "export_io_or_input_error")
+        print(json.dumps({"ok": False, "error": code}))
+        return 1
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
 def _cmd_run(_args: argparse.Namespace) -> int:
     from .server import main as serve
 
@@ -381,7 +486,14 @@ def _cmd_publisher_check(args: argparse.Namespace) -> int:
     from .orchestrator import download_institutional
 
     with progress_reporter.tracked_download(args.doi, args.output_dir) as outcome:
-        result = download_institutional(args.doi, args.output_dir, strategy="institutional_only")
+        extra = {"fulltext": "sample"} if getattr(args, "fulltext", False) else {}
+        if extra:
+            # A cached main text would skip the article page, and with it the page's sample.
+            from .cache import cache_clear
+            from .config import load_config
+
+            cache_clear(args.doi, load_config())
+        result = download_institutional(args.doi, args.output_dir, strategy="institutional_only", **extra)
         outcome["result"] = result
     report = {
         "doi": result.get("doi"),
@@ -403,6 +515,11 @@ def _cmd_publisher_check(args: argparse.Namespace) -> int:
             report["first_page_has_doi"] = (result.get("doi") or "").lower() in first.lower()
         except Exception:
             report["pages"] = None
+    page = result.get("fulltext_page")
+    if isinstance(page, dict):
+        report["fulltext_page"] = {"file": page.get("file"), "url": page.get("url"),
+                                   "images": len(page.get("images") or []),
+                                   "failed_images": len(page.get("failed_images") or [])}
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if result.get("success") else 1
 
@@ -502,16 +619,21 @@ def _cmd_issues(args: argparse.Namespace) -> int:
     return 0
 
 
-SETTINGS_PAGES = ("home", "download", "wait", "keys")
+SETTINGS_PAGES = ("home", "download", "wait", "keys", "pro", "markdown", "login")
+# PaperSearch Pro's pages (edition.py): Pro itself, its Markdown, the school's sign-in (school_login.py).
+PRO_PAGES = ("pro", "markdown", "login")
 
 
 def _cmd_settings(args: argparse.Namespace) -> int:
     """Open the settings in the progress window, at a page or at one service's key."""
     from . import api_keys, progress_reporter
+    from .edition import pro_features
 
+    # Pro's pages are there with PaperSearch Pro's features only (edition.py).
+    pages = SETTINGS_PAGES if pro_features() else tuple(p for p in SETTINGS_PAGES if p not in PRO_PAGES)
     target = (args.target or "home").strip()
-    page = target if target in SETTINGS_PAGES else "keys"
-    found = None if target in SETTINGS_PAGES else api_keys.find(target)
+    page = target if target in pages else "keys"
+    found = None if target in pages else api_keys.find(target)
     if page == "keys" and target != "keys" and found is None:
         print(json.dumps({"ok": False, "error": f"没有这一项设置：{target}"}, ensure_ascii=False))
         return 2
@@ -592,6 +714,15 @@ def main(argv: list[str] | None = None) -> int:
     st.add_argument("--check", action="store_true", help="environment check; exit 2 when something is missing")
     st.set_defaults(func=_cmd_setup)
 
+    sub.add_parser("schools", help="the saved schools, the current one marked").set_defaults(func=_cmd_schools)
+    us = sub.add_parser("use", help="switch the current school: a saved one, else looked up and saved (only when the user asks)")
+    us.add_argument("school", help="its name, English name, domain or entityID")
+    us.add_argument("--also-name", action="append", metavar="NAME", help="another name of the same school, as for setup")
+    us.set_defaults(func=_cmd_use)
+    fg = sub.add_parser("forget", help="remove a saved school (not the current one)")
+    fg.add_argument("school")
+    fg.set_defaults(func=_cmd_forget)
+
     lg = sub.add_parser("login", help="sign in to the school as a download does, without the PDF")
     lg.add_argument("--doi", default="", help="an article the school subscribes to; its page leads to the school's login")
     lg.add_argument("--max-wait", type=int, default=None,
@@ -610,9 +741,18 @@ def main(argv: list[str] | None = None) -> int:
     exp.add_argument("--output", required=True)
     exp.set_defaults(func=_cmd_report_export)
 
+    mdr = sub.add_parser("markdown-report-export",
+                         help="export the pages of sites not yet supported for Markdown into a sanitized ZIP (JSON request on stdin)")
+    mdr.add_argument("--folder", help="folder for PaperSearch-Markdown报告-<date>.zip")
+    mdr.add_argument("--output", help="a new .zip path instead")
+    mdr.set_defaults(func=_cmd_markdown_report)
+
     chk = sub.add_parser("publisher-check", help="run one institutional download and print a sanitized report")
     chk.add_argument("--doi", required=True)
     chk.add_argument("--output-dir")
+    chk.add_argument("--fulltext", action="store_true",
+                     help="also save the article's full-text page and figures in <output-dir>/<DOI>_fulltext_page/, "
+                          "with general rules on a site without its own (samples for a new converter)")
     chk.set_defaults(func=_cmd_publisher_check)
 
     en = sub.add_parser("entitlements", help="remembered has-access / no-access decisions per journal or publisher")

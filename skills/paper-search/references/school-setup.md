@@ -64,6 +64,20 @@ paper-search-school setup --institution "用户说的校名" [--also-name "学�
 - 出版社列表里找不到用户的学校时，报告找不到，不改选别的学校。
 - 后端命令要和下载使用同一个数据目录（PaperSearch 默认 `${XDG_DATA_HOME:-~/.local/share}/paper-search-cli/school`）；需要时在命令前加 `SCHOOL_DATA_DIR=<该目录>`。登录状态保存在这个目录的下载浏览器里。
 
+### 几所学校
+
+可以存几所学校，其中一所是当前学校，下载默认用它。**只在用户明确要求时切换或指定学校，不要自己换，也不要建议换哪所。**
+
+```bash
+paper-search-school schools                      # 列出存过的学校，current 为当前学校
+paper-search-school use "学校名"                  # 切换当前学校；没存过就像 setup --institution 那样查到后存下
+paper-search-school forget "学校名"               # 从列表删掉（不能删当前学校）
+```
+
+- 用 `setup --institution` 换学校时，原来的学校也会留在列表里。`use` 可以用校名、英文名、域名或 entityID；返回 `school_ambiguous` 时把 `candidates` 列给用户选。没存过的学校，`use` 的查找和报错同上（`--also-name` 也一样）。
+- 只这一批用另一所已存的学校（用户说“这几篇用某某学校下”）：`download_batch` 加 `school`（校名等），当前学校不变，这一批的“接着下”也用它。扩展太旧不认得时报“需要更新”（`school_update_needed`），运行 `paper-search school update`。
+- 各校的登录都在同一个下载浏览器里，切换不会登出别的学校；账号密码仍由用户在学校登录页输入。
+
 ## 浏览器
 
 后端配置键 `browser_backend` 二选一：

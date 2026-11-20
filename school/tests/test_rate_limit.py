@@ -1,4 +1,6 @@
 """At most ``publisher_hourly_limit`` articles per publisher in each hour (rate_limit.py)."""
+import json
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -73,6 +75,61 @@ class PausedArticleTests(unittest.TestCase):
         self.assertTrue(state["awaiting_next"])
         self.assertIn("23:10 继续", state["phase"])
         self.assertNotEqual(state.get("stage"), "failed")
+
+
+class LimitChangedWhileWaitingTests(unittest.TestCase):
+    """A limit raised in the settings window while a batch waits lets it go on at once (2026-11-19)."""
+
+    def setUp(self):
+        rate_limit.ledger_path().unlink(missing_ok=True)
+        self.addCleanup(rate_limit.ledger_path().unlink, missing_ok=True)
+        for _ in range(3):
+            rate_limit.record("Elsevier")
+
+    def wait(self, limit, publisher="Elsevier", now=True):
+        from paper_search_school import server
+
+        with patch.object(server, "load_config", return_value={"publisher_hourly_limit": limit,
+                                                                "publisher_hourly_limit_now": now}):
+            return json.loads(server.school_hourly_wait(publisher))
+
+    def test_off_the_wait_goes_on_until_the_hour_is_over(self):
+        # 马上生效 off (the default): a limit raised, or none, holds the article until its hour is over.
+        for limit in (3, 500, 0):
+            held = self.wait(limit, now=False)
+            self.assertEqual(held["limit"], limit)
+            self.assertTrue(3500 < held["wait_sec"] <= 3601)
+        self.assertEqual(self.wait(500, "Wiley", now=False), {"wait_sec": 0, "limit": 500})
+
+    def test_the_wait_follows_the_setting_as_it_is_now(self):
+        held = self.wait(3)
+        self.assertEqual(held["limit"], 3)
+        self.assertTrue(3500 < held["wait_sec"] <= 3601)
+        self.assertEqual(self.wait(500), {"wait_sec": 0, "limit": 500})
+        self.assertEqual(self.wait(0), {"wait_sec": 0, "limit": 0})
+        # A publisher with no hour running waits for nothing.
+        self.assertEqual(self.wait(3, "Wiley"), {"wait_sec": 0, "limit": 3})
+
+    def test_the_window_shows_a_changed_limit_still_reached(self):
+        batch = progress_reporter.BatchContext.from_args("b-2", 3, 3, 2, 1, 1)
+        until = time.time() + 1200
+        phase = progress_reporter.hourly_phase("Elsevier", 4, until)
+        with progress_reporter.tracked_download("10.1016/x", None, batch) as outcome:
+            outcome["result"] = {"success": False, "error_type": "rate_limited"}
+            outcome["paused"] = phase
+            outcome["hourly_wait"] = {"publisher": "Elsevier", "limit": 4, "until": until, "phase": phase}
+        # Lowered to 3: still reached, the window says 3.
+        self.assertGreater(self.wait(3)["wait_sec"], 0)
+        state = progress_reporter.read_state()
+        self.assertEqual(state["hourly_wait"]["limit"], 3)
+        self.assertIn("已打开 3 篇", state["phase"])
+        self.assertEqual(state["phase"], state["hourly_wait"]["phase"])
+        revision = state["revision"]
+        # The same limit again: nothing rewritten.
+        self.wait(3)
+        self.assertEqual(progress_reporter.read_state()["revision"], revision)
+        # Another publisher's hold is not this one's.
+        self.assertFalse(progress_reporter.hourly_limit_now("Wiley", 2, until))
 
 
 if __name__ == "__main__":

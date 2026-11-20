@@ -4,7 +4,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from paper_search_school.browser import challenges, watchdog
+from paper_search_school.browser import watchdog
+from paper_search_school.browser.challenge import detection as challenges
 from paper_search_school.engine.batch import PublisherBatchDownloader
 
 
@@ -28,7 +29,7 @@ def test_lightweight_interstitial_evidence(url, title, expected):
     ("", "Automated-traffic protection needs a quick check", True),
     ("Cloudflare", "Security verification", True),
     ("Cloudflare", "Ray ID: example", True),
-    ("Cloudflare", "瀹夊叏楠岃瘉", True),
+    ("Cloudflare", "安全验证", True),
     ("Human Verification", "Let's confirm you are human. Complete the security check before continuing. "
      "This step verifies that you are not a bot", True),
     ("Human Verification", "Complete the security\ncheck before continuing. You are not a bot", True),
@@ -41,6 +42,8 @@ def test_lightweight_interstitial_evidence(url, title, expected):
     ("Article", "Powered by Cloudflare", False),
     ("Article", "Access through your institution", False),
     ("Article", "Free Access", False),
+    ("请稍候", "Cloudflare 安全验证", True),
+    ("Article", "本文讨论网页安全验证的设计", False),
     ("", "", False),
 ])
 def test_text_evidence_does_not_conflate_access_and_verification(title, text, expected):

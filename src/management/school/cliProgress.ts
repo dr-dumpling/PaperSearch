@@ -1,4 +1,4 @@
-import type { SchoolBackend } from "../../capabilities/pdf-discovery/school/index.js";
+import type { SchoolBackend } from "../../infrastructure/school/index.js";
 
 /**
  * The CLI's backend: a download can be stopped with Ctrl-C and tells its steps
@@ -16,6 +16,7 @@ export function withCliSchoolProgress(backend: SchoolBackend): SchoolBackend {
     reportBatchPapers: async (update, last) =>
       (await backend.reportBatchPapers?.(update, last)) ?? false,
     keepSession: async (signal) => (await backend.keepSession?.(signal)) ?? false,
+    hourlyWait: async (publisher, signal) => backend.hourlyWait?.(publisher, signal),
     holdSupported: async () => (await backend.holdSupported?.()) ?? false,
     takeBatchRequests: (batchId) => backend.takeBatchRequests?.(batchId) ?? { resume: [], stop: false },
     downloadLegalDoi: async (request) => {

@@ -25,7 +25,7 @@ describe("doctor command", () => {
     const result = spawnSync(
       process.execPath,
       [
-        join(process.cwd(), "node_modules/.bin/tsx"),
+        join(process.cwd(), "node_modules/tsx/dist/cli.mjs"),
         "src/cli.ts",
         "doctor",
         "--pretty",
@@ -104,7 +104,7 @@ describe("doctor command", () => {
     const result = spawnSync(
       process.execPath,
       [
-        join(process.cwd(), "node_modules/.bin/tsx"),
+        join(process.cwd(), "node_modules/tsx/dist/cli.mjs"),
         "src/cli.ts",
         "doctor",
         "--format",
@@ -144,7 +144,7 @@ describe("doctor command", () => {
     writeFileSync(configFile, '{\n  "EASYSCHOLAR_KEY": "secret-value"\n}\\n');
     const result = spawnSync(
       process.execPath,
-      [join(process.cwd(), "node_modules/.bin/tsx"), "src/cli.ts", "doctor", "--format", "text"],
+      [join(process.cwd(), "node_modules/tsx/dist/cli.mjs"), "src/cli.ts", "doctor", "--format", "text"],
       {
         cwd: process.cwd(),
         env: {
@@ -169,7 +169,7 @@ describe("doctor command", () => {
     const result = spawnSync(
       process.execPath,
       [
-        join(process.cwd(), "node_modules/.bin/tsx"),
+        join(process.cwd(), "node_modules/tsx/dist/cli.mjs"),
         "src/cli.ts",
         "doctor",
         "--format",
@@ -204,7 +204,7 @@ describe("doctor command", () => {
     const result = spawnSync(
       process.execPath,
       [
-        join(process.cwd(), "node_modules/.bin/tsx"),
+        join(process.cwd(), "node_modules/tsx/dist/cli.mjs"),
         "src/cli.ts",
         "doctor",
         "--pretty",

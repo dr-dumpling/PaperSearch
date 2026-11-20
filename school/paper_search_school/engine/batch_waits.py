@@ -12,7 +12,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 from ..entitlements import UserMarkedNoEntitlement
-from ..browser import challenge_interaction, challenges, watchdog
+from ..browser import watchdog
+from ..browser.challenge import detection as challenges, interaction as challenge_interaction
 from .batch_common import (AWAY_WAIT_SEC, DownloadResult, _IP_BLOCK_STATUS_CODES, _observe_preview)
 
 class UserWaitMixin:
@@ -429,6 +430,8 @@ class UserWaitMixin:
             if widget and not attempt.get("widget"):
                 attempt["widget"] = widget  # whose widget the user is asked to complete
                 self._event(result, "challenge_observation", f"manual widget: {widget}")
+            if self._press_confirm_control(page, result, attempt, deadline):
+                return True
             return False
         if ((attempt["attempts"] >= 3 and now >= attempt["retry_at"])
                 or (attempt.get("unavailable") and now >= attempt["handoff_at"])):
@@ -436,12 +439,15 @@ class UserWaitMixin:
         if now >= automatic_end:
             # No observed user action: the caller ends at its original bound.
             return True
+        if self._recover_stuck_widget(page, result, attempt):
+            return True
         if now >= attempt["retry_at"] and attempt["attempts"] < 3:
             reasons = []
             outcome = challenge_interaction.click_checkbox(
                 page, timeout_ms=min(2500, max(1, int((automatic_end - now) * 1000))),
                 checkpoint=lambda: self._check_user_decision(result, page),
                 observation=reasons.append,
+                attempt=attempt["attempts"],
             )
             reason = ", ".join(dict.fromkeys(reasons)) or outcome
             if reason != attempt.get("last_observation"):
@@ -457,7 +463,76 @@ class UserWaitMixin:
                     activity.progress(page)
                 self._event(result, "challenge_interaction",
                             f"checkbox clicked; attempt {attempt['attempts']}/3; awaiting verification")
+                names = [str(item.get("event"))
+                         for item in challenge_interaction.interaction_events(page)]
+                if names:
+                    # What the widget actually reported: without it, a press that
+                    # led nowhere cannot be told from one that was ignored.
+                    self._event(result, "challenge_observation",
+                                "widget events: " + " -> ".join(names[-6:]))
         return True
+
+    def _recover_stuck_widget(self, page: Any, result: DownloadResult, attempt: dict[str, Any]) -> bool:
+        """A widget that reported failure or expired gets one fresh page.
+
+        Pressing a dead widget cannot work: the challenge has to be issued
+        again. One reload per verification page, and only when the widget said
+        so — a page that reported nothing is left to the existing presses.
+        ``True`` says the wait continues on the reloaded page.
+        """
+        from ..browser import watchdog as browser_watchdog
+
+        if attempt.get("recovered") or not attempt.get("attempts"):
+            return False
+        names = [str(item.get("event")) for item in challenge_interaction.interaction_events(page)]
+        if not names:
+            return False
+        stuck = "fail" in names or "tokenExpired" in names
+        if not stuck:
+            return False
+        attempt["recovered"] = True
+        self._event(result, "challenge_observation", "widget stuck: " + " -> ".join(names[-6:]))
+        try:
+            page.reload(wait_until="domcontentloaded", timeout=15_000)
+        except (browser_watchdog.BrowserUnresponsive, browser_watchdog.CallAbandoned):
+            raise
+        except Exception as exc:  # noqa: BLE001 - a reload that fails leaves the wait as it was
+            self._event(result, "challenge_observation", f"reload failed: {type(exc).__name__}")
+            return False
+        attempt["attempts"] = 0
+        attempt["retry_at"] = time.time() + 1
+        return True
+
+    def _press_confirm_control(self, page: Any, result: DownloadResult, attempt: dict[str, Any],
+                               deadline: float) -> bool:
+        """One press on another provider's own control, once per verification page.
+
+        Only with ``PAPER_SEARCH_AUTO_CONFIRM=1``: it starts the provider's check
+        and answers no puzzle, and a puzzle that follows is still the user's.
+        ``True`` keeps the automatic wait going; the page's own change still
+        decides whether verification ended.
+        """
+        from ..browser.challenge import prompt as prompt_control
+
+        if not prompt_control.enabled() or attempt.get("confirmed"):
+            return False
+        attempt["confirmed"] = True
+        remaining = watchdog.operation_remaining()
+        budget = max(0.0, deadline - time.time())
+        if remaining is not None:
+            budget = min(budget, max(0.0, remaining))
+        if budget <= 0.5:
+            return False
+        reasons: list[str] = []
+        outcome = prompt_control.click_confirm_control(
+            page, timeout_ms=int(min(prompt_control.PRESS_LIMIT_SEC, budget) * 1000),
+            checkpoint=lambda: self._check_user_decision(result, page),
+            observation=reasons.append)
+        detail = f"confirmation control: {outcome}"
+        if reasons:
+            detail += f" ({', '.join(dict.fromkeys(reasons))})"
+        self._event(result, "challenge_observation", detail)
+        return outcome == "clicked"
 
     def _verification_attention(self, result: DownloadResult, deadline: float | None) -> None:
         from .. import progress_reporter

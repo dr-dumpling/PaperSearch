@@ -5,7 +5,7 @@ import { handleSemanticSnippets } from "../capabilities/body-snippet-search/hand
 import { handleGetPaperCitations, handleGetPaperReferences, } from "../capabilities/citation-expansion/handler.js";
 import { handleGenericSearch, handleGetPaperByDoi, handleSearchPapers, } from "../capabilities/metadata-search/handler.js";
 import { handleJournalMetrics } from "../capabilities/journal-metrics/handler.js";
-import { handleDownloadBatch, handleDownloadPaper, handleDownloadWithFallback, } from "../capabilities/pdf-discovery/handler.js";
+import { handleDownloadBatch, handleDownloadPaper, handleDownloadWithFallback, } from "../capabilities/download/handler.js";
 import { getGenericSearchToolPlatform, isPlatformAlias, } from "../registry/platformMetadata.js";
 function jsonTextResponse(text) {
     return {

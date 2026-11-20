@@ -48,7 +48,31 @@ class Redactor:
     def __init__(self, config: dict | None = None):
         self.terms: set[str] = set()
         self.school_hosts: set[str] = set()
-        cfg = config or {}
+        config = config or {}
+        # The current school and every other saved one (user, 2026-11-17: several schools).
+        saved = config.get('saved_schools') if isinstance(config.get('saved_schools'), list) else []
+        for cfg in [config, *(entry for entry in saved if isinstance(entry, dict))]:
+            self._school(cfg)
+        # The configured IdP often lives below the institution's domain.
+        for host in list(self.school_hosts):
+            if host.split('.')[0] in {'idp', 'sso', 'login', 'auth'} and host.count('.') >= 2:
+                self.school_hosts.add(host.split('.', 1)[1])
+        self.home = str(Path.home())
+        self.usernames: set[str] = {Path.home().name}
+        self.secrets: set[str] = set()
+        for key, value in config.items():
+            if _SECRET.search(key) and isinstance(value, str) and len(value) >= 6:
+                self.secrets.add(value)
+        # The schools' accounts for PaperSearch Pro's sign-in (school_login.py): never in a report.
+        logins = config.get('school_logins') if isinstance(config.get('school_logins'), dict) else {}
+        for entry in logins.values():
+            if isinstance(entry, dict):
+                if len(str(entry.get('password') or '')) >= 3:
+                    self.secrets.add(str(entry['password']))
+                if len(str(entry.get('username') or '')) >= 3:
+                    self.usernames.add(str(entry['username']))
+
+    def _school(self, cfg: dict) -> None:
         for key in ('school_name', 'school_name_en', 'school_entry_name', 'idp_entity_id', 'institution_domain', 'idp_domain'):
             value = str(cfg.get(key) or '').strip()
             if len(value) > 2:
@@ -71,16 +95,6 @@ class Redactor:
             page = str(value or '').strip()
             if len(page) > 2:
                 self.terms.add(page)
-        # The configured IdP often lives below the institution's domain.
-        for host in list(self.school_hosts):
-            if host.split('.')[0] in {'idp', 'sso', 'login', 'auth'} and host.count('.') >= 2:
-                self.school_hosts.add(host.split('.', 1)[1])
-        self.home = str(Path.home())
-        self.usernames: set[str] = {Path.home().name}
-        self.secrets: set[str] = set()
-        for key, value in cfg.items():
-            if _SECRET.search(key) and isinstance(value, str) and len(value) >= 6:
-                self.secrets.add(value)
 
     def observe(self, data, depth: int = 0) -> None:
         """Discover school URLs from explicitly labelled school/IdP evidence.

@@ -3,7 +3,7 @@ import type {
   SchoolBackend,
   SchoolInvocationOutcome,
   SchoolReadiness,
-} from "../../src/capabilities/pdf-discovery/school/index.js";
+} from "../../src/infrastructure/school/index.js";
 import { resolveSchoolReadiness } from "../../src/management/capability-profile/schoolReadiness.js";
 
 const unusedDownload: SchoolInvocationOutcome = {

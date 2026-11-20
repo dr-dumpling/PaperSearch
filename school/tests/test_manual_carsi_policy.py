@@ -232,11 +232,15 @@ class ManualSchoolTests(unittest.TestCase):
         self.assertEqual(self.requests, [CHOOSER] * 3)
 
     def test_external_identity_provider_and_visible_credential_forms_remain_manual(self):
-        for url in ('https://identity.fixture.example/login', 'https://journals.sagepub.com/action/login'):
+        # Neither form is clicked or submitted. The external one is the user's step; the
+        # publisher's own password form with no school entry is its personal sign-in,
+        # where the login ends (2026-11-18), not a step the user is asked for.
+        for url, users in (('https://identity.fixture.example/login', True),
+                           ('https://journals.sagepub.com/action/login', False)):
             with self.subTest(url=url):
                 self.chooser_html = '<form action="/should-not-submit"><input type="password"><button>Continue</button></form>'
                 self.page.goto(url)
-                self.assertTrue(self.downloader._is_human_login_page(self.page))
+                self.assertIs(self.downloader._is_human_login_page(self.page), users)
                 self.assertFalse(self.downloader._click_sso_entry(self.page, self.result))
                 self.downloader._click_optional_continue(self.page, self.result)
                 self.assertEqual(self.page.url, url)

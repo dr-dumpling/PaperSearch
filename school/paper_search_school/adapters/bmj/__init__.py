@@ -32,6 +32,57 @@ _DC_FILE = re.compile(r"/content/[^/]+/(?P<article>.+)/DC\d+/embed/[^/]+\.[A-Za-
 _ARTICLE = re.compile(r"/content/(?P<article>.+?)(?:\.(?:full|abstract|long|full-text))?/?")
 
 
+# --fulltext (PaperSearch's sites/templates/highwire.ts). The full text is in
+# div.article.fulltext-view: div.section sections (the abstract, the body, the back matter,
+# div.section.ref-list). A figure (div.fig) links its largest image ("F1.large.jpg", its
+# query the viewer's size); the image shown is a lazy medium GIF. A table (div.table) holds
+# only its caption: the table is loaded on "View inline" from the data-table-url of
+# a.table-expand-inline (/highwire/markup/<id>/expansion?…), behind the site's Cloudflare
+# check like the page, so it is fetched from the page before it is saved and put in its
+# div.table (BMJ Open, open access, 2026-11-16).
+_FULLTEXT_PARAGRAPHS = ("[...document.querySelectorAll('.article.fulltext-view .section p')]"
+                        ".filter((p) => !p.closest('.abstract, .ref-list, .fig, .table, .fn-group'))")
+FULLTEXT_SHOWN_JS = """() => """ + _FULLTEXT_PARAGRAPHS + """
+  .reduce((total, p) => total + (p.textContent || '').length, 0) > 500"""
+FULLTEXT_IMAGES_JS = """() => [...document.querySelectorAll('.article.fulltext-view div.fig')]
+  .map((fig) => [...fig.querySelectorAll('a[href]')].map((a) => a.href).find((href) => /\\.large\\.[a-z]+(?:[?#]|$)/i.test(href)) || '')
+  .filter(Boolean)
+  .map((href) => { const url = new URL(href, location.href); url.search = ''; url.hash = ''; return url.href; })"""
+FULLTEXT_PREPARE_JS = r"""async () => {
+  const boxes = [...document.querySelectorAll('.article.fulltext-view div.table')]
+    .filter((box) => !box.querySelector('table'));
+  const deadline = Date.now() + 20000;
+  let inserted = 0;
+  for (const box of boxes) {
+    const link = box.querySelector('a.table-expand-inline[data-table-url]');
+    const remaining = deadline - Date.now();
+    if (!link || remaining < 500) continue;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.min(8000, remaining));
+    try {
+      const response = await fetch(new URL(link.getAttribute('data-table-url'), location.href).href,
+                                   {credentials: 'include', signal: controller.signal});
+      if (!response.ok) continue;
+      const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+      const tables = [...doc.querySelectorAll('table')].filter((table) => !table.parentElement?.closest('table'));
+      if (!tables.length) continue;
+      const holder = document.createElement('div');
+      holder.className = 'papersearch-table';
+      for (const table of tables) holder.appendChild(document.importNode(table, true));
+      const foot = doc.querySelector('.table-foot');
+      if (foot) holder.appendChild(document.importNode(foot, true));
+      box.appendChild(holder);
+      inserted += 1;
+    } catch {
+      // Left without its table: the converter says so and the package is not kept (tables_missing).
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return `${inserted}/${boxes.length} tables`;
+}"""
+
+
 def supplement_links_from_page(data: Any, page_url: str) -> list[SupplementLink] | None:
     """The article's supplementary files, or None while its full text is not shown:
     an abstract page lists none, which says nothing about the article."""
@@ -63,6 +114,9 @@ def supplement_links_from_page(data: Any, page_url: str) -> list[SupplementLink]
 @register
 class BMJAdapter(PublisherAdapter):
     publisher = "bmj"
+    fulltext_shown_js = FULLTEXT_SHOWN_JS
+    fulltext_images_js = FULLTEXT_IMAGES_JS
+    fulltext_prepare_js = FULLTEXT_PREPARE_JS
 
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink] | None:
         if not (urlparse(str(getattr(page, "url", "") or "")).hostname or "").lower().endswith("bmj.com"):

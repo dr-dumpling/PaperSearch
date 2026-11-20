@@ -49,8 +49,16 @@ def test_launch_options_are_public_chrome_switches(chrome):
                                       ["--disable-features=CrossOriginOpenerPolicy",
                                        "--proxy-server=http://proxy.test:1"], {})
     assert options == {"executable_path": str(chrome), "headless": False,
-                       "args": ["--disable-features=CrossOriginOpenerPolicy", "--test-type"], "chromium_sandbox": True,
+                       "args": ["--disable-features=CrossOriginOpenerPolicy", "--test-type", "--lang=en-US"],
+                       "chromium_sandbox": True, "locale": "en-US",
                        "proxy": {"server": "http://proxy.test:1"}, "no_viewport": True}
+
+
+def test_the_browser_is_in_english_unless_set_otherwise(chrome):
+    # User, 2026-11-19: the pages as tested, in English, on every computer; browser_language "" follows the system.
+    assert backend._chrome_options(True, None, [], {"browser_language": "zh-CN"})["args"][-1] == "--lang=zh-CN"
+    following = backend._chrome_options(True, None, [], {"browser_language": ""})
+    assert "locale" not in following and not any(a.startswith("--lang=") for a in following["args"])
 
 
 def test_new_tabs_open_in_the_background():
@@ -134,7 +142,7 @@ def test_persistent_context_uses_its_own_profile_and_keeps_session_cookies(chrom
 
     monkeypatch.setattr(backend, "_launch_chrome_persistent", launch)
     monkeypatch.setattr(backend, "wait_for_profile_release", lambda path: True)
-    monkeypatch.setattr(backend, "_restore_session_cookies", lambda context, profile: 0)
+    monkeypatch.setattr(backend, "_restore_session_cookies", lambda *a, **k: 0)
     monkeypatch.setattr(backend, "_save_session_cookies", lambda context, profile: saved.append(profile))
     monkeypatch.setattr(backend, "_open_tabs_in_background", lambda context: calls.update(background=True))
     context = backend.launch_persistent_context(str(tmp_path / "profile"), headless=False,

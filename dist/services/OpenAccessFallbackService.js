@@ -1,2 +1,2 @@
-export { createDefaultDownloadTiers, downloadWithFallback, insertDownloadTierBefore } from '../capabilities/pdf-discovery/OpenAccessFallbackService.js';
+export { createDefaultDownloadTiers, downloadWithFallback, insertDownloadTierBefore } from '../capabilities/download/content/pdf/OpenAccessFallbackService.js';
 //# sourceMappingURL=OpenAccessFallbackService.js.map

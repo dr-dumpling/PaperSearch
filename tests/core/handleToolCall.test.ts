@@ -8,7 +8,7 @@ import {
   TOOL_HANDLER_NAMES,
 } from "../../src/core/handleToolCall.js";
 import { getGenericSearchToolPlatform } from "../../src/registry/platformMetadata.js";
-import { TOOLS } from "../../src/core/tools.js";
+import { toolList } from "../../src/core/tools.js";
 import { PaperFactory } from "../../src/models/Paper.js";
 import CitationService from "../../src/capabilities/citation-expansion/CitationService.js";
 import { OpenAlexGraph } from "../../src/capabilities/citation-expansion/OpenAlexGraph.js";
@@ -35,7 +35,7 @@ describe("handleToolCall", () => {
 
   describe("tool routing", () => {
     it("keeps every non-generic tool wired to the explicit handler map", () => {
-      const nonGenericToolNames = TOOLS.map((tool) => tool.name)
+      const nonGenericToolNames = toolList().map((tool) => tool.name)
         .filter((toolName) => !getGenericSearchToolPlatform(toolName))
         .sort();
 

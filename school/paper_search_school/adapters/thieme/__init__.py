@@ -15,6 +15,7 @@ import time
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse
 
+from ...engine.fulltext_page import MATHJAX_SOURCES_JS
 from ...engine.router import is_thieme_article_pdf_url
 from ...engine.batch_common import _is_browser_error, open_page
 from ..base import PublisherAdapter, SupplementLink, register
@@ -24,6 +25,36 @@ _HOSTS = frozenset({"thieme-connect.de", "www.thieme-connect.de", "thieme-connec
 _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href]')].map(a => ({
     href: a.href, label: (a.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 240)
 }))"""
+
+# --fulltext on the full-text page (``fulltext_page_url``; PaperSearch's sites/templates/thieme.ts).
+# Thieme renders it on the server: section#htmlfulltext holds the abstract, the body and the
+# back matter (the abstract page has it empty). A figure (figure.vita) shows a 200-pixel
+# thumbnail inside its zoom link (a.zoomFunction), whose address is the full-size image: that
+# one is taken, as the converter does; the general sample rules had the thumbnails. The
+# references are in the page (Endoscopy International Open, pages saved after a school
+# login, 2026-11-14).
+FULLTEXT_SHOWN_JS = """() => {
+  const body = document.querySelector('#sections > section#htmlfulltext');
+  if (!body) return false;
+  const text = [...body.querySelectorAll('p')]
+    .filter((p) => !p.closest('ul.literaturliste, .articleBox'))
+    .reduce((total, p) => total + (p.textContent || '').length, 0);
+  return text > 500;
+}"""
+FULLTEXT_IMAGES_JS = """() => {
+  const body = document.querySelector('#sections > section#htmlfulltext');
+  if (!body) return [];
+  const figures = [...body.querySelectorAll('figure img')].filter((img) => !img.closest('figcaption, figure.lookInsidePreview'))
+    .map((img) => {
+      const zoom = img.closest('.zoomFunction');
+      const large = zoom && img.closest('figure').contains(zoom) ? zoom.getAttribute('href') || zoom.getAttribute('data-href') : '';
+      return large || img.getAttribute('src') || img.getAttribute('data-src') || '';
+    });
+  const tables = [...body.querySelectorAll('.tableWrapper')].filter((wrapper) => !wrapper.querySelector('table'))
+    .flatMap((wrapper) => [...wrapper.querySelectorAll('img')].map((img) => img.getAttribute('src') || ''));
+  return [...figures, ...tables].filter((src) => src && !src.startsWith('data:') && !src.startsWith('javascript:'))
+    .map((src) => new URL(src, location.href).href);
+}"""
 
 
 def supplement_links_from_rows(rows: list[dict], doi: str) -> list[SupplementLink]:
@@ -48,6 +79,21 @@ class ThiemeAdapter(PublisherAdapter):
     validates_article_pdf = True
     binds_response_url = True
     requires_institution_entry = True
+    fulltext_shown_js = FULLTEXT_SHOWN_JS
+    fulltext_images_js = FULLTEXT_IMAGES_JS
+    # Thieme loads MathJax 3 (MathML input) where an article has formulas: it replaces each
+    # <math> with its output and keeps the MathML only as assistive MathML, a reader's menu
+    # setting. The shared script keeps each formula's source; a page without MathJax costs
+    # nothing (no formula page has been saved yet).
+    fulltext_prepare_js = MATHJAX_SOURCES_JS
+
+    def fulltext_page_url(self, doi: str, page_url: str) -> str:
+        """--fulltext: the download opens /products/ejournals/abstract/<DOI>; the full
+        text is /products/ejournals/html/<DOI> on the same host (2026-11-14)."""
+        host = (urlparse(page_url or "").hostname or "").lower()
+        if not host.endswith(("thieme-connect.de", "thieme-connect.com")):
+            host = "www.thieme-connect.de"
+        return f"https://{host}/products/ejournals/html/{doi}"
 
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink]:
         return supplement_links_from_rows(page.evaluate(_SUPPLEMENT_ROWS_JS), doi)

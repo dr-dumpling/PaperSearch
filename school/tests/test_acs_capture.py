@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import test_wiley_capture as fixtures
+from fixture_network import network_is_the_fixture
 
 
 DOI = "10.1021/acs.est.3c01495"
@@ -229,6 +230,7 @@ class ACSNativeCaptureTests(unittest.TestCase):
         del self.d._access_probe  # the real page's labels
         self.batch = harness.batch
         self.d._fetch_page_state_pdf = Mock(return_value=(None, "", None))
+        network_is_the_fixture(self)
         self.context = self.browser.new_context(service_workers="block")
         self.addCleanup(self.context.close)
         self.context.set_default_timeout(3_000)

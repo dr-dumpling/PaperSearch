@@ -95,7 +95,10 @@ export function selectFailures(root: string, query: FailureQuery = {}, options: 
       const code = String((part ? incomplete?.reason : stage.code) || "download_failed");
       const backend = stage.backend as Record<string, unknown> | undefined;
       const current = describeFailure(code, backend, stage.trace as Record<string, unknown> | undefined);
+      // An unregistered entry's evidence as said now: records before 2026-11-19 may carry an old
+      // inference of no subscription for it.
       const description: FailureDescription = !part && FAILURE_CLASSES.includes(stage.failureClass as FailureClass)
+        && code !== "institution_not_registered"
         && (current.failureClass === "unexplained" || current.failureClass === stage.failureClass)
         ? { failureClass: stage.failureClass as FailureClass,
             ...(typeof stage.evidence === "string" ? { evidence: stage.evidence } : {}),
@@ -153,7 +156,7 @@ export function summarizeFailures(root: string, query: FailureQuery = {}): Failu
 }
 
 /** Run directories are named <yyyymmdd>-<hhmmss>-<id>, so names sort by start time. */
-function selectRuns(root: string, query: FailureQuery): string[] {
+export function selectRuns(root: string, query: FailureQuery): string[] {
   if (!existsSync(root)) return [];
   const all = readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && /^\d{8}-\d{6}-/.test(entry.name))
@@ -168,7 +171,7 @@ function selectRuns(root: string, query: FailureQuery): string[] {
   return all.slice(-1);
 }
 
-function readItems(file: string): Array<Record<string, unknown>> {
+export function readItems(file: string): Array<Record<string, unknown>> {
   if (!existsSync(file)) return [];
   if (statSync(file).size > 64 * 1024 * 1024) throw new Error("运行记录超过 64 MiB，无法安全汇总此批次。");
   const items: Array<Record<string, unknown>> = [];

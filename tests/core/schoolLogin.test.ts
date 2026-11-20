@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import { schoolAttemptDetails, schoolShortReason } from "../../src/capabilities/pdf-discovery/school/index.js";
+import { schoolAttemptDetails, schoolShortReason } from "../../src/infrastructure/school/index.js";
 import { classifyFailureCode } from "../../src/infrastructure/runlog/failureClass.js";
 import { LOGIN_NO_SCREEN, LOGIN_UNAVAILABLE, schoolLogin } from "../../src/management/school/login.js";
 
@@ -32,6 +32,6 @@ describe("a download browser closed by the user", () => {
   it("is said as such and counted as the user's, not unexplained", () => {
     expect(schoolAttemptDetails("browser_closed").message).toBe("下载浏览器被关闭了，这一篇没有下完；需要时重新下载即可。");
     expect(schoolShortReason("browser_closed")).toBe("下载浏览器被关闭了");
-    expect(classifyFailureCode("browser_closed")).toBe("user_or_external");
+    expect(classifyFailureCode("browser_closed")).toBe("user_side");
   });
 });

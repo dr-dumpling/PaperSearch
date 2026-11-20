@@ -116,6 +116,12 @@ class PublisherContentErrorTests(unittest.TestCase):
         snapshot.lines = [snapshot.text]
         downloader._institution_session = Mock(return_value="")
         self.assertNotEqual(downloader._access_decision(page, snapshot)[1], "not_yet_published")
+        # APS's accepted paper (2026-11-15): no PDF until the version of record.
+        from paper_search_school.engine import access_rules
+        self.assertTrue(access_rules.not_yet_published(
+            "Accepted Paper\nPhys. Rev. Research - Accepted 13 November, 2026\nIf the author has provided any supplemental "
+            "materials with this article they will be available upon publication of the version of record."))
+        self.assertFalse(access_rules.not_yet_published("Accepted Paper collections; the version of record"))
 
     def test_unsupported_platform_ends_the_item_with_its_own_reason(self):
         downloader, page = self.make()

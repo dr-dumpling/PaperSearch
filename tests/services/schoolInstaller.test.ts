@@ -1,7 +1,7 @@
 import { NO_SCREEN, hasScreen } from "../../src/management/school/runtime.js";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { describe, expect, it } from "@jest/globals";
 import {
   InstallError,
@@ -18,7 +18,7 @@ import {
 import { UV_ARCHIVES } from "../../src/management/school/runtime.js";
 import { autoUpdateSchool, withAutoUpdate } from "../../src/management/school/autoUpdate.js";
 import { createNodeHost } from "../../src/management/school/host.js";
-import type { SchoolBackend } from "../../src/capabilities/pdf-discovery/school/index.js";
+import type { SchoolBackend } from "../../src/infrastructure/school/index.js";
 
 const ARCHIVE = UV_ARCHIVES["darwin-arm64"];
 
@@ -73,8 +73,10 @@ function fakeMachine(overrides: {
     home,
     env: { XDG_DATA_HOME: data },
     async run(command, args) {
-      const name = command.split("/").pop()!;
-      calls.push(`${name} ${args.join(" ")}`.replace(root, "<root>").replace(root, "<root>"));
+      // The installer joins paths the way the machine running the test does ("\\" on Windows):
+      // the calls are kept with "/", as on the Mac this fakes.
+      const name = command.split(/[\\/]/).pop()!;
+      calls.push(`${name} ${args.join(" ")}`.replace(root, "<root>").replace(root, "<root>").replaceAll(sep, "/"));
       const custom = overrides.respond?.(name, args);
       if (custom) return custom;
       if (name === "paper-search-school" && args.join(" ") === "config get progress_notify") {
@@ -610,6 +612,20 @@ describe("updating the extension after a PaperSearch upgrade", () => {
     const again = lock();
     expect(await autoUpdateSchool(m.host, m.context, again.take)).toBe("not_needed");
     expect(again.events).toEqual([]);
+  });
+
+  it("updates before the settings window too, and says that is what it goes on to", async () => {
+    const m = await upgraded();
+    const l = lock();
+    expect(await autoUpdateSchool(m.host, m.context, l.take, "打开设置窗口")).toBe("updated");
+    expect(l.events).toEqual(["taken", "released"]);
+    expect(m.logs[0]).toBe("学校订阅下载扩展是 PaperSearch 0.3.4 时装的，先更新到 0.3.5 再打开设置窗口" +
+      "（不想自动更新：paper-search config set PAPER_SEARCH_SCHOOL_AUTO_UPDATE false）。");
+    expect(m.logs.at(-1)).toBe("扩展已更新，继续打开设置窗口。");
+    // A batch running elsewhere holds the backend: the window opens on it, nothing waits.
+    const busy = await upgraded();
+    expect(await autoUpdateSchool(busy.host, busy.context, lock(true).take, "打开设置窗口")).toBe("busy");
+    expect(busy.calls).toEqual([]);
   });
 
   it("leaves alone an extension that is current, switched off, not installed or not the one in use", async () => {

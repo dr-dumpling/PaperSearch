@@ -26,6 +26,7 @@ import json
 import re
 import shutil
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -122,7 +123,9 @@ class ColdStart:
         path = self._cookies_db()
         if not path.exists():
             return []
-        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
+        # closing(): a connection's own ``with`` only commits. Left open, it keeps Chrome's
+        # cookie file locked on Windows until the garbage collector gets to it.
+        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as db:
             return list(db.execute("SELECT rowid, host_key, name FROM cookies"))
 
     def _local_storage_hosts(self) -> list[str]:
@@ -210,7 +213,7 @@ class ColdStart:
         path = self._cookies_db()
         if path.exists():
             gone = [i for i, host, name in self._cookie_rows() if self.classify(host, name) in DELETE]
-            with sqlite3.connect(path) as db:
+            with closing(sqlite3.connect(path)) as db, db:
                 db.executemany("DELETE FROM cookies WHERE rowid = ?", [(i,) for i in gone])
             done["cookies"] = len(gone)
         storage = self._default / "IndexedDB"

@@ -5,7 +5,7 @@ import { SearchSemanticSnippetsSchema } from '../capabilities/body-snippet-searc
 import { CitationLookupSchema } from '../capabilities/citation-expansion/schemas.js';
 import { GetPaperByDoiSchema, SearchPapersSchema } from '../capabilities/metadata-search/schemas.js';
 import { QueryJournalMetricsSchema } from '../capabilities/journal-metrics/schemas.js';
-import { DownloadBatchSchema, DownloadPaperSchema, DownloadWithFallbackSchema } from '../capabilities/pdf-discovery/schemas.js';
+import { DownloadBatchSchema, DownloadPaperSchema, DownloadWithFallbackSchema } from '../capabilities/download/schemas.js';
 export { CitationLookupSchema };
 export { DownloadBatchSchema, DownloadPaperSchema, DownloadWithFallbackSchema };
 export { GetPaperByDoiSchema, SearchPapersSchema };

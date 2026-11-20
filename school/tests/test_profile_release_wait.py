@@ -23,6 +23,8 @@ class ProfileReleaseTests(unittest.TestCase):
         self.lock(999999)
         self.assertTrue(backend.wait_for_profile_release(str(self.dir), timeout=0))
 
+    @unittest.skipIf(sys.platform == "win32", "SingletonLock is Chromium's profile lock on macOS and Linux; "
+                     "on Windows it keeps lockfile open (the lockfile tests below)")
     def test_waits_until_the_owner_exits(self):
         import threading
         owner = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(1.2)"])
@@ -52,19 +54,28 @@ class ProfileReleaseTests(unittest.TestCase):
         launch.assert_called_once()
 
     def hold_lockfile(self, seconds):
-        """Another process holding the profile's lockfile (Chrome keeps it open on Windows)."""
+        """Another process holding the profile's lockfile: an fcntl lock, or on Windows the file
+        kept open without sharing, as Chrome keeps it."""
         import threading
         lock = self.dir / "lockfile"
         lock.touch()
-        code = ("import fcntl, os, sys, time; fd = os.open(sys.argv[1], os.O_RDWR); "
-                "fcntl.lockf(fd, fcntl.LOCK_EX); print('held', flush=True); time.sleep(float(sys.argv[2]))")
+        if sys.platform == "win32":
+            code = ("import ctypes, sys, time; k = ctypes.WinDLL('kernel32', use_last_error=True); "
+                    "k.CreateFileW.restype = ctypes.c_void_p; "
+                    "h = k.CreateFileW(sys.argv[1], 0xC0000000, 0, None, 3, 0, None); "  # read/write, no sharing
+                    "assert h not in (None, ctypes.c_void_p(-1).value), ctypes.get_last_error(); "
+                    "print('held', flush=True); time.sleep(float(sys.argv[2]))")
+        else:
+            code = ("import fcntl, os, sys, time; fd = os.open(sys.argv[1], os.O_RDWR); "
+                    "fcntl.lockf(fd, fcntl.LOCK_EX); print('held', flush=True); time.sleep(float(sys.argv[2]))")
         owner = subprocess.Popen([sys.executable, "-c", code, str(lock), str(seconds)], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(owner.stdout.close)
+        self.addCleanup(owner.wait)  # gone before the folder is removed: Windows keeps an open file
         self.addCleanup(owner.kill)
         self.assertEqual(owner.stdout.readline().strip(), "held")
         threading.Thread(target=owner.wait, daemon=True).start()
         return owner
 
-    @unittest.skipIf(sys.platform == "win32", "fcntl locks")
     def test_a_held_lockfile_is_waited_for_until_released(self):
         (self.dir / "lockfile").touch()
         self.assertEqual(backend.profile_holder(str(self.dir)), "")  # a file left behind holds nothing
@@ -73,7 +84,6 @@ class ProfileReleaseTests(unittest.TestCase):
         self.assertTrue(backend.wait_for_profile_release(str(self.dir), timeout=10))
         self.assertEqual(backend.profile_holder(str(self.dir)), "")
 
-    @unittest.skipIf(sys.platform == "win32", "fcntl locks")
     def test_a_lockfile_held_too_long_lets_the_launch_report(self):
         self.hold_lockfile(30)
         self.assertFalse(backend.wait_for_profile_release(str(self.dir), timeout=0.6))

@@ -1,6 +1,7 @@
 """Optional Cython-accelerated core modules.
 
-The .pyx sources live in this package and are MIT licensed. When Cython
+The .pyx sources live in this package, under its AGPL-3.0-only license (the parts
+drawn from scansci-pdf keep its MIT notice: LICENSE-scansci-pdf). When Cython
 is available they are compiled to .pyd/.so at build time; pure Python fallbacks
 exist in the original modules.
 

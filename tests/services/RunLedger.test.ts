@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "@jest/globals";
 import {
   collapseEvents,
@@ -9,7 +9,7 @@ import {
   RUN_KEEP_DAYS,
   RunLedger,
 } from "../../src/infrastructure/runlog/RunLedger.js";
-import { normalizeDownloadResult } from "../../src/capabilities/pdf-discovery/school/SchoolResultNormalizer.js";
+import { normalizeDownloadResult } from "../../src/infrastructure/school/SchoolResultNormalizer.js";
 
 function toolResult(payload: unknown) {
   return { content: [{ type: "text", text: JSON.stringify(payload) }] };
@@ -17,9 +17,9 @@ function toolResult(payload: unknown) {
 
 describe("run ledger", () => {
   it("resolves its root from the override, XDG or the home data dir, and can be turned off", () => {
-    expect(resolveRunLogRoot({ PAPER_SEARCH_RUNLOG_DIR: "/x/runs" }, "/home/u")).toBe("/x/runs");
-    expect(resolveRunLogRoot({ XDG_DATA_HOME: "/data" }, "/home/u")).toBe("/data/paper-search-cli/runs");
-    expect(resolveRunLogRoot({}, "/home/u")).toBe("/home/u/.local/share/paper-search-cli/runs");
+    expect(resolveRunLogRoot({ PAPER_SEARCH_RUNLOG_DIR: "/x/runs" }, "/home/u")).toBe(resolve("/x/runs"));
+    expect(resolveRunLogRoot({ XDG_DATA_HOME: "/data" }, "/home/u")).toBe(join(resolve("/data"), "paper-search-cli", "runs"));
+    expect(resolveRunLogRoot({}, "/home/u")).toBe(join("/home/u", ".local", "share", "paper-search-cli", "runs"));
     expect(resolveRunLogRoot({ PAPER_SEARCH_RUNLOG: "0", PAPER_SEARCH_RUNLOG_DIR: "/x" })).toBeNull();
     expect(RunLedger.open({ kind: "download", total: 1 }, { PAPER_SEARCH_RUNLOG: "0" })).toBeNull();
   });
@@ -158,7 +158,7 @@ describe("backend trace for the ledger", () => {
     }), "10.1/x", out);
     expect(outcome).toEqual(expect.objectContaining({
       kind: "attempt_error",
-      trace: { driver: "publisher", publisher: "Karger", state: "sso_required", record: "/data/out/.browser_runs/run.json" },
+      trace: { driver: "publisher", publisher: "Karger", state: "sso_required", record: resolve("/data/out/.browser_runs/run.json") },
     }));
   });
 
@@ -170,6 +170,6 @@ describe("backend trace for the ledger", () => {
     expect(normalizeDownloadResult(toolResult(payload), "10.1/x", out)).not.toHaveProperty("trace");
     const withFile = { success: true, file: "/data/out/x.pdf", artifacts: { record: "/data/out/r.json" } };
     expect(normalizeDownloadResult(toolResult(withFile), "10.1/x")).not.toHaveProperty("trace");
-    expect(normalizeDownloadResult(toolResult(withFile), "10.1/x", out)).toEqual(expect.objectContaining({ trace: { record: "/data/out/r.json" } }));
+    expect(normalizeDownloadResult(toolResult(withFile), "10.1/x", out)).toEqual(expect.objectContaining({ trace: { record: resolve("/data/out/r.json") } }));
   });
 });

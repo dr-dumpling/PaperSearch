@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "@jest/globals";
-import { isStaleDownloadLock } from "../../src/capabilities/pdf-discovery/school/SchoolMcpClient.js";
+import { isStaleDownloadLock } from "../../src/infrastructure/school/SchoolMcpClient.js";
 
 function deadPid(): number {
   const child = spawnSync(process.execPath, ["-e", ""]);

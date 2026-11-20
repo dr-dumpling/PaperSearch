@@ -43,9 +43,24 @@ class LoginOnlyEngineTests(unittest.TestCase):
         stages = [call.args[0] for call in self.batch.progress_reporter.report_stage.call_args_list]
         self.assertNotIn("route_failed", stages)
 
+    def test_a_visit_for_the_page_alone_is_shown_as_the_markdowns(self):
+        # Windows, 2026-11-16: every such visit showed "PDF" and the PDF steps.
+        self.d._prepare_article = Mock(return_value=None)
+        self.d._school_login_done = Mock(return_value=True)
+        for config, part in (({"login_only": True, "fulltext": True}, "markdown"), ({"login_only": True}, "main"), ({}, "main")):
+            with self.subTest(config=config):
+                self.d.config.pop("fulltext", None)
+                self.d.config.pop("login_only", None)
+                self.d.config.update(config)
+                self.d._capture_pdf = Mock(return_value=(None, None, None))
+                self.batch.progress_reporter.update.reset_mock()
+                self.run_item()
+                parts = [call.kwargs["part"] for call in self.batch.progress_reporter.update.call_args_list if "part" in call.kwargs]
+                self.assertEqual(parts[0], part)
+
     def test_the_article_page_gives_the_window_its_title(self):
-        # Windows, 2026-11-16: a visit that stops at the article's access showed the DOI
-        # where a PDF's showed the title.
+        # Windows, 2026-11-16: a visit for the page alone showed the DOI where a PDF's showed the title.
+        # (fulltext is not set: this fixture's progress module has no current_part for the page's read.)
         self.d.config["login_only"] = True
         self.d._prepare_article = Mock(return_value=None)
         self.d._school_login_done = Mock(return_value=True)

@@ -78,6 +78,95 @@ def supplement_links_from_page(data: dict, page_url: str, doi: str) -> list[Supp
             links.append(SupplementLink(url, str(row.get("label") or "")))
     return links
 
+# --fulltext (PaperSearch's sites/templates/ieee.ts). The full text is #article inside
+# div.document-text; without a subscription the same container has the class snippet-text
+# and only the first paragraph, and an article without HTML full text has none. A figure (div.figure, tables too: they are images)
+# shows -small.gif inside a link to -large.gif: the link's address is taken, else the
+# zoom button's data-src, as the converter does. Formulas keep their TeX in MathJax 2's
+# scripts, so MATHJAX_SOURCES_JS is not needed (10.1109/tbme.2026.3712673, saved after a
+# school login, 2026-11-15).
+FULLTEXT_SHOWN_JS = """() => {
+  const body = document.querySelector('div.document-text:not(.snippet-text) #article');
+  if (!body) return false;
+  const text = [...body.querySelectorAll('p')].reduce((total, p) => total + (p.textContent || '').length, 0);
+  return text > 500;
+}"""
+FULLTEXT_IMAGES_JS = """() => {
+  const body = document.querySelector('div.document-text:not(.snippet-text) #article');
+  if (!body) return [];
+  return [...body.querySelectorAll('div.figure')]
+    .filter((figure) => !(figure.classList.contains('table') && figure.querySelector('table')))
+    .flatMap((figure) => [...figure.querySelectorAll('img')]
+      .filter((img) => {
+        const caption = img.closest('.figcaption, .formula');
+        return !caption || !figure.contains(caption);
+      })
+      .map((img) => {
+        let link = '';
+        for (let node = img.parentElement; node && node !== figure && !link; node = node.parentElement) {
+          if (node.tagName === 'A' && !/^javascript:/i.test(node.getAttribute('href') || '')) link = node.getAttribute('href') || '';
+        }
+        const zoom = img.closest('.img-wrap')?.querySelector('button[data-src]');
+        return link || zoom?.getAttribute('data-src') || img.getAttribute('src') || img.getAttribute('data-src') || '';
+      }))
+    .filter((src) => src && !src.startsWith('data:'))
+    .map((src) => new URL(src, location.href).href);
+}"""
+# The page does not hold the references: its closed References panel loads them from
+# /rest/document/<number>/references when opened. Before the page is read they are fetched
+# from the article page (same origin, the session's cookies), 30 at a time (a later page
+# starts at its start= entry, the previous page's last one again: entries are kept once),
+# up to the page's referenceCount, 5 s a request and 10 s in all (the page read has 50 s,
+# batch_capture.FULLTEXT_READ_SEC), and written into the page as
+# script#papersearch-ieee-references (JSON), which the converter reads. Without them it
+# reports the references as incomplete.
+FULLTEXT_PREPARE_JS = r"""async () => {
+  const metadata = window.xplGlobal?.document?.metadata || {};
+  const number = String(metadata.articleNumber || (location.pathname.match(/^\/document\/(\d+)/) || [])[1] || '');
+  const expected = Number(metadata.referenceCount) || 0;
+  if (!/^\d+$/.test(number) || metadata.referenceCount === 0) return 0;
+  const deadline = Date.now() + 10000;
+  const references = [];
+  const seen = new Set();
+  for (let page = 0; page < 40; page += 1) {
+    const remaining = deadline - Date.now();
+    if (remaining < 500 || (expected && references.length >= expected)) break;
+    const url = `/rest/document/${number}/references` + (page ? `?start=${references.length}&rowsPerPage=30` : '');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.min(5000, remaining));
+    let list;
+    try {
+      const response = await fetch(url, {credentials: 'include', headers: {Accept: 'application/json, text/plain, */*'},
+                                         signal: controller.signal});
+      if (!response.ok) break;
+      list = (await response.json())?.references;
+    } catch {
+      break;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!Array.isArray(list)) break;
+    let added = 0;
+    for (const item of list) {
+      const key = `${item?.order ?? ''}\n${item?.text ?? ''}`;
+      if (!item?.text || seen.has(key)) continue;
+      seen.add(key);
+      references.push({order: String(item.order ?? ''), text: String(item.text),
+                       links: {crossRefLink: item.links?.crossRefLink || '', doi: item.links?.doi || ''}});
+      added += 1;
+    }
+    if (!added || list.length < 30) break;
+  }
+  document.getElementById('papersearch-ieee-references')?.remove();
+  if (!references.length) return 0;
+  const holder = document.createElement('script');
+  holder.type = 'application/json';
+  holder.id = 'papersearch-ieee-references';
+  holder.textContent = JSON.stringify({articleNumber: number, references}).replace(/</g, '\\u003c');
+  document.body.appendChild(holder);
+  return references.length;
+}"""
+
 _SEARCH = "input.inst-typeahead-input"
 # Text on an article page that offers the institution login.
 _ENTRY_MARKERS = (
@@ -133,6 +222,9 @@ _SEARCH_INPUTS = (
 @register
 class IEEEAdapter(PublisherAdapter):
     publisher = "ieee"
+    fulltext_shown_js = FULLTEXT_SHOWN_JS
+    fulltext_images_js = FULLTEXT_IMAGES_JS
+    fulltext_prepare_js = FULLTEXT_PREPARE_JS
 
     def is_article_page_url(self, url: str) -> bool:
         parsed = urlparse(url)
@@ -254,9 +346,9 @@ class IEEEAdapter(PublisherAdapter):
         try:
             input_box.fill("")
             try:
-                input_box.type(d.institution_query, timeout=5_000)
+                input_box.type(d._typed_school_name(), timeout=5_000)
             except Exception:
-                input_box.fill(d.institution_query)
+                input_box.fill(d._typed_school_name())
             d._event(result, "institution_search", input_selector)
             settle(page, 2_000)
         except Exception as exc:

@@ -41,7 +41,7 @@ _STAGE_LISTENER: ContextVar[tuple[str, Callable[[str], None]] | None] = ContextV
 STAGES = frozenset({
     "starting", "opening_article", "waiting_login", "waiting_verification",
     "checking_access", "fetching_pdf", "pdf_captured",
-    "saved_pending_verification", "supplements_checked", "route_failed", "failed", "cancelled", "interrupted", "unknown",
+    "saved_pending_verification", "access_ready", "supplements_checked", "route_failed", "failed", "cancelled", "interrupted", "unknown",
 })
 _IDENTITY_FIELDS = frozenset({"schema_version", "run_id", "revision", "owner_pid"})
 
@@ -420,8 +420,8 @@ def _short_line(value: Any, limit: int = 80) -> str:
     return " ".join(value.split())[:limit]
 
 
-FAILURE_CLASSES = ("no_access", "user_or_external", "unsupported", "unexplained")
-_RESULT_CONTENTS = ("main", "supplements", "both")
+FAILURE_CLASSES = ("no_access", "user_side", "school_side", "publisher_or_network", "article_or_site", "unsupported", "unexplained")
+_RESULT_CONTENTS = ("main", "supplements", "both", "markdown")
 _MAX_RESULT_FAILURES = 1000  # the caller's batch limit
 _MAX_RESULT_TEXT = 300
 
@@ -443,12 +443,15 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
     ``content``; ``folder`` (the batch's download folder, absolute);
     ``started`` (epoch seconds the batch began); ``stopped``;
     ``main`` (main texts saved), ``supplements`` (attachment files saved),
-    ``no_supplements`` (pages that listed none); ``sources`` ([label, count]);
+    ``no_supplements`` (pages that listed none); ``markdown`` (papers whose Markdown was
+    saved, when the batch asked for it beside the PDF or the files); ``sources`` ([label, count]);
     ``source_details`` ([label, text]: a label's sources, shown in brackets after its count);
     ``failures`` ([{cls, reason, title, journal, doi, note}]) with ``cls`` one
     of FAILURE_CLASSES and a short ``reason`` text; ``supplement_failures``, the
     same for papers whose main text was saved but not every supplementary file
-    (content "both"). Anything else is dropped.
+    (content "both"); ``markdown_failures``, the same for papers saved without the
+    Markdown the batch asked for. A failure from a site not yet supported adds
+    ``unverified`` (true), its ``note`` saying where it fell short. Anything else is dropped.
     """
     if not isinstance(raw, dict):
         return None
@@ -462,6 +465,7 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
         "main": count(raw.get("main")),
         "supplements": count(raw.get("supplements")),
         "no_supplements": count(raw.get("no_supplements")),
+        **({"markdown": count(raw.get("markdown"))} if "markdown" in raw else {}),
         "sources": [[text(s[0]), count(s[1])] for s in (raw.get("sources") or [])[:8]
                     if isinstance(s, list) and len(s) == 2 and text(s[0]) and count(s[1])]
         if isinstance(raw.get("sources"), list) else [],
@@ -470,9 +474,10 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
         if isinstance(raw.get("source_details"), list) else {},
         "failures": [],
         "supplement_failures": [],
+        "markdown_failures": [],
         "stopped": raw.get("stopped") is True,
     }
-    for key in ("failures", "supplement_failures"):
+    for key in ("failures", "supplement_failures", "markdown_failures"):
         listed = raw.get(key)
         for item in (listed if isinstance(listed, list) else [])[:_MAX_RESULT_FAILURES]:
             if not isinstance(item, dict) or not text(item.get("reason")):
@@ -480,7 +485,11 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
             summary[key].append({
                 "cls": item.get("cls") if item.get("cls") in FAILURE_CLASSES else "unexplained",
                 **{field: text(item.get(field)) for field in ("reason", "title", "journal", "doi", "note")},
+                # A site not yet supported (its note says where it fell short).
+                **({"unverified": True} if item.get("unverified") is True else {}),
             })
+    if not summary["markdown_failures"]:
+        del summary["markdown_failures"]  # only a batch with papers saved without their Markdown has it
     folder = raw.get("folder")
     if isinstance(folder, str) and 0 < len(folder) <= 4096 and os.path.isabs(folder):
         summary["folder"] = folder
@@ -494,6 +503,8 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
 # yet, waiting for (or in) the institutional download, then its result.
 # stopped: left undone by the user's stop, an end state as ok and failed (2026-11-16).
 PAPER_STATES = {"open": 0, "school": 1, "ok": 2, "failed": 2, "stopped": 2}
+# A site's host as the caller names it (ard.eular.org).
+_HOST = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}\.)+[a-z]{2,63}")
 _PAPERS_LOCK = threading.Lock()
 
 
@@ -522,9 +533,30 @@ def _paper(raw: Any) -> dict[str, Any] | None:
         if raw.get("supplement_reason"):  # saved, but not every supplementary file
             paper.update(supplement_cls=raw.get("supplement_cls") if raw.get("supplement_cls") in FAILURE_CLASSES
                          else "unexplained", supplement_reason=_display_text(raw.get("supplement_reason")))
+        if raw.get("markdown_reason"):  # saved, without the Markdown asked for
+            paper.update(markdown_cls=raw.get("markdown_cls") if raw.get("markdown_cls") in FAILURE_CLASSES
+                         else "unexplained", markdown_reason=_display_text(raw.get("markdown_reason")))
+        # Saved with a Markdown its checks found short, from a registered site's page (user, 2026-11-17).
+        if _display_text(raw.get("markdown_doubt_reason")):
+            paper.update(markdown_doubt_reason=_display_text(raw.get("markdown_doubt_reason")),
+                         markdown_doubt_note=_display_text(raw.get("markdown_doubt_note")))
     elif paper["state"] == "failed":
         paper.update(cls=raw.get("cls") if raw.get("cls") in FAILURE_CLASSES else "unexplained",
                      reason=_display_text(raw.get("reason")))
+    # Its page from a site not yet supported (user, 2026-11-16): the site, whether its Markdown
+    # was kept or the batch gave the site up, a note on what it lacked, the kept report.
+    host = raw.get("markdown_host")
+    if paper["state"] in ("ok", "failed") and isinstance(host, str) and _HOST.fullmatch(host):
+        paper.update(markdown_host=host, markdown_saved=raw.get("markdown_saved") is True)
+        if raw.get("markdown_skipped") is True:
+            paper["markdown_skipped"] = True
+        if _display_text(raw.get("markdown_rules")):
+            paper["markdown_rules"] = _display_text(raw.get("markdown_rules"))
+        if _display_text(raw.get("markdown_note")):
+            paper["markdown_note"] = _display_text(raw.get("markdown_note"))
+        report = raw.get("markdown_report")
+        if isinstance(report, str) and 0 < len(report) <= 4096 and os.path.isabs(report) and report.endswith("_markdown-report.json"):
+            paper["markdown_report"] = report
     return paper
 
 
@@ -539,7 +571,11 @@ def sync_papers(batch_id: str, folder: str, papers: Any) -> bool:
     Sci-Hub, 预印本), ``path`` (the PDF, absolute, wherever the paper was sent),
     ``supplements_saved`` (a batch of the supplementary files alone: how many it got) and,
     missing supplementary files, ``supplement_cls`` and ``supplement_reason``; a failed
-    one ``cls`` (one of FAILURE_CLASSES) and ``reason``. ``folder`` is the batch's
+    one ``cls`` (one of FAILURE_CLASSES) and ``reason``; a saved one without the Markdown
+    asked for, ``markdown_cls`` and ``markdown_reason``; either, its page from a site not
+    yet supported, ``markdown_host``, ``markdown_saved``, ``markdown_skipped`` (the batch
+    gave the site up), ``markdown_note`` and ``markdown_report`` (the page and its checks
+    kept for a report, absolute). ``folder`` is the batch's
     download folder. Kept apart from the progress file, which the downloading process
     rewrites every moment."""
     if not isinstance(batch_id, str) or not 0 < len(batch_id) <= 128 or not isinstance(papers, list):
@@ -577,9 +613,30 @@ def read_papers() -> dict[str, Any] | None:
     return listed if isinstance(listed, dict) and isinstance(listed.get("papers"), dict) else None
 
 
+def hourly_phase(publisher: str, limit: Any, until: float) -> str:
+    """The status line while an article waits for the hourly limit the user set."""
+    resume = time.strftime("%H:%M", time.localtime(until))
+    return f"{publisher} 一小时内已打开 {limit} 篇（每小时上限），{resume} 继续这一篇"
+
+
+def hourly_limit_now(publisher: str, limit: int, until: float) -> bool:
+    """The window's hold for ``publisher`` with the limit as the user set it now: changed in the
+    settings window while the batch waits and still over it (2026-11-19). True when it changed."""
+    with _LOCK:
+        hold = _STATE.get("hourly_wait")
+        if not isinstance(hold, dict) or hold.get("publisher") != publisher or hold.get("limit") == limit:
+            return False
+        phase = hourly_phase(publisher, limit, until)
+        if _STATE.get("phase") == hold.get("phase"):
+            _STATE["phase"] = phase
+        _STATE["hourly_wait"] = {**hold, "limit": limit, "until": until, "phase": phase}
+        _write_state()
+    return True
+
+
 @contextmanager
 def tracked_download(current: str, output_dir: Any = None, batch: BatchContext | None = None,
-                     content: str = "main"):
+                     content: str = "main", markdown: bool = False):
     """One institutional download as a reported task (progress window + live preview).
 
     Every single-paper entry point (MCP tool, ``publisher-check``) runs inside
@@ -587,7 +644,8 @@ def tracked_download(current: str, output_dir: Any = None, batch: BatchContext |
     The caller stores the result dict under ``outcome["result"]`` and may set
     ``outcome["failure_phase"]``. Inside a serial batch the item continues the
     batch's report (``k / N``) and the window stays open between items.
-    ``content`` (main / supplements / both) is shown as a small label.
+    ``content`` (main / supplements / both / markdown) is shown as a small label, with
+    "+Markdown" when ``markdown`` (the page is read too).
     ``outcome["paused"]`` (a phase text) means the article has not run yet and
     the batch tries it again later (publisher's hourly limit): nothing is
     counted and the window stays open; ``outcome["hourly_wait"]`` (publisher,
@@ -605,7 +663,8 @@ def tracked_download(current: str, output_dir: Any = None, batch: BatchContext |
     with _LOCK:
         _STATE.pop("hourly_wait", None)  # this article runs: no longer held by the hourly limit
         _STATE.pop("held_wait", None)  # nor waiting for the user to go on with held publishers
-    update(content=content if content in ("main", "supplements", "both") else "main")
+    update(content=content if content in ("main", "supplements", "both", "markdown") else "main",
+           markdown=bool(markdown), page_reading=False)
     if output_dir:
         set_output_dir(output_dir)
     outcome: dict[str, Any] = {}
@@ -625,9 +684,14 @@ def tracked_download(current: str, output_dir: Any = None, batch: BatchContext |
 def _finish_download(outcome: dict[str, Any], current: str, batch: BatchContext | None,
                      content: str = "main") -> None:
     """Count the download and show how it ended (end of ``tracked_download``)."""
-    succeeded = (outcome.get("result") or {}).get("success") is True
-    phase = "PDF 已保存，待内容核验" if succeeded else outcome.get("failure_phase", "下载未完成")
-    stage = "saved_pending_verification" if succeeded else "failed"
+    result = outcome.get("result") or {}
+    succeeded = result.get("success") is True
+    # `login` and the full-text page alone stop at the article's access: no PDF was taken.
+    access_only = succeeded and isinstance(result.get("login"), dict) and not result.get("file")
+    phase = ("全文网页已读取" if access_only and result.get("fulltext_page")
+             else "已确认全文访问，未取 PDF" if access_only else "PDF 已保存，待内容核验" if succeeded
+             else outcome.get("failure_phase", "下载未完成"))
+    stage = "access_ready" if access_only else "saved_pending_verification" if succeeded else "failed"
     files = (outcome.get("result") or {}).get("supplements")
     checked = (content == "supplements" and isinstance(files, list)
                and (files or succeeded or (outcome.get("result") or {}).get("error_type") == "supplements_only")
@@ -705,7 +769,8 @@ def report_stage(stage: str, *, current: str = "") -> None:
     """Report an explicit machine stage, independently of GUI prose.
 
     saved_pending_verification means bytes were saved, not that the product
-    verified the article's identity. route_failed leaves the task running for
+    verified the article's identity; access_ready, that the article opened in
+    full and no PDF was asked for (``login``, the full-text page alone). route_failed leaves the task running for
     other routes. No stage is inferred from phase text.
     """
     if not isinstance(stage, str) or stage not in STAGES:
@@ -764,6 +829,19 @@ def update(**kw: Any) -> None:
             return
         _STATE.update(kw)
         _write_state()
+
+
+def batch_id() -> str:
+    """The caller's serial batch the current download belongs to; "" for a download on its own."""
+    with _LOCK:
+        return str(_STATE.get("batch_id") or "")
+
+
+def current_part() -> str:
+    """The part of the paper the window says is being fetched ("main", "supplements",
+    "markdown"), or ""."""
+    with _LOCK:
+        return str(_STATE.get("part") or "")
 
 
 def advance(ok: bool, current: str = "", phase: str = "", *, pending: bool = False) -> None:

@@ -2,9 +2,9 @@ import { describe, expect, it } from "@jest/globals";
 import {
   createSchoolDownloadArguments,
   selectSchoolBatchSupport,
-} from "../../src/capabilities/pdf-discovery/school/SchoolReadiness.js";
-import { createEntitledAccessTier } from "../../src/capabilities/pdf-discovery/tiers/entitledAccess.js";
-import type { SchoolBackend, SchoolDownloadRequest } from "../../src/capabilities/pdf-discovery/school/index.js";
+} from "../../src/infrastructure/school/SchoolReadiness.js";
+import { createEntitledAccessTier } from "../../src/capabilities/download/content/pdf/school.js";
+import type { SchoolBackend, SchoolDownloadRequest } from "../../src/infrastructure/school/index.js";
 
 // The backend checks the PDF against this title when the article page names none
 // (Science on Atypon gives no citation_title, and its older PDFs print the DOI on the last page).

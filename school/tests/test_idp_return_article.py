@@ -29,6 +29,17 @@ class LoginLandingRuleTests(unittest.TestCase):
         self.assertFalse(adapter.is_login_landing(SCIENCE_ARTICLE))
         self.assertFalse(adapter.is_login_landing("https://evil.example/action/authenticateSharedSP"))
 
+    def test_an_atypon_sites_home_page_is_a_login_landing(self):
+        """PNAS 2026-11-17: its institution search's entries end the login on its home page."""
+        from paper_search_school.adapters import adapter_for
+        adapter = adapter_for(Mock(profile=infer_publisher_profile_from_url("https://www.pnas.org/doi/10.1073/pnas.2610670123")))
+        self.assertEqual(type(adapter).__name__, "PNASAdapter")
+        self.assertTrue(adapter.is_login_landing("https://www.pnas.org/"))
+        self.assertTrue(adapter.is_login_landing("https://www.pnas.org"))
+        self.assertFalse(adapter.is_login_landing("https://www.pnas.org/doi/10.1073/pnas.2610670123"))
+        self.assertFalse(adapter.is_login_landing("https://www.pnas.org/action/ssostart?uri=/doi/10.1073/pnas.2610670123"))
+        self.assertFalse(adapter.is_login_landing("https://evil.example/"))
+
 
 @unittest.skipUnless(os.environ.get("SCHOOL_LOCAL_BROWSER_TEST") == "1", "local Chrome fixture opt-in")
 class IdpReturnArticleTests(unittest.TestCase):
@@ -97,6 +108,8 @@ class IdpReturnArticleTests(unittest.TestCase):
         self.assertIn("idp_return_article", [e["state"] for e in self.result.events])
 
     def test_home_page_without_an_idp_visit_or_session_is_left_alone(self):
+        # Not sent to the article; with no way to a school's login on it either, the
+        # login ends there (2026-11-18: no school route, no wait).
         self.home_body = "<title>Taylor &amp; Francis Online</title>Login | Register"
         self.page.goto(HOME)
         calls = {"n": 0}
@@ -106,8 +119,11 @@ class IdpReturnArticleTests(unittest.TestCase):
             if calls["n"] > 8:
                 raise TimeoutError("stop")
 
-        with patch.object(batch.time, "sleep", side_effect=tick), self.assertRaises(TimeoutError):
-            self.d._complete_login_from_current_page(self.page, self.result)
+        with patch.object(batch.time, "sleep", side_effect=tick):
+            ok = self.d._complete_login_from_current_page(self.page, self.result)
+        self.assertFalse(ok)
+        self.assertEqual(self.result.reason, "no_institution_entry")
+        self.assertEqual(self.page.url, HOME)
         self.assertNotIn("idp_return_article", [e["state"] for e in self.result.events])
 
     def _science(self):
@@ -140,6 +156,10 @@ class IdpReturnArticleTests(unittest.TestCase):
         self.assertEqual(self.page.url, SCIENCE_ARTICLE)
         returns = [e["detail"] for e in result.events if e["state"] == "idp_return_article"]
         self.assertEqual(returns, [SCIENCE_LANDING])
+        # The login counts as done, unseen as it went: the page read before it is read again
+        # (PNAS via OpenAthens, 2026-11-17: the Markdown was missing).
+        d._item_result = result
+        self.assertTrue(d._school_login_done())
 
     def test_science_login_landing_before_any_school_choice_is_left_alone(self):
         d, result = self._science()

@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse
 
 from ...engine.batch_common import _is_browser_error, open_page
 from ..base import PublisherAdapter, SupplementLink, register
+from ..platforms.atypon import CURRENT_TEMPLATE_FULLTEXT_IMAGES_JS, CURRENT_TEMPLATE_FULLTEXT_SHOWN_JS
 
 _ARTICLE = re.compile(r"/doi/(?:(?:abs|full|pdf|epdf)/)?10\.1177/")
 _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href*="/suppl_file/"]')]
@@ -27,6 +28,11 @@ SSO_START = "https://journals.sagepub.com/action/ssostart"
 @register
 class SageAdapter(PublisherAdapter):
     publisher = "sage"
+
+    # --fulltext: journals.sagepub.com is on Atypon's current template (platforms/atypon),
+    # verified 2026-11-14; Sage keeps its own adapter for the rest.
+    fulltext_shown_js = CURRENT_TEMPLATE_FULLTEXT_SHOWN_JS
+    fulltext_images_js = CURRENT_TEMPLATE_FULLTEXT_IMAGES_JS
 
     def is_article_page_url(self, url: str) -> bool | None:
         parsed = urlparse((url or "").lower())

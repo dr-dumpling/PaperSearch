@@ -1,4 +1,4 @@
-import { type SkillTargetStatus } from '../../skills/SkillInstaller.js';
+import { paperSearchDataRoot, type SkillTargetStatus } from '../../skills/SkillInstaller.js';
 /** One installed copy of the Skill. Targets whose directories resolve to the same
  * place (a linked ~/.claude/skills sharing ~/.agents/skills) are one copy. */
 export interface SkillLocation {
@@ -8,6 +8,7 @@ export interface SkillLocation {
     staleFiles: string[];
     missingFiles: string[];
     extraFiles: string[];
+    retiredFiles: string[];
     error?: string;
     /** The PaperSearch version the copy's SKILL.md names (metadata.version), when it names one. */
     version?: string;
@@ -26,8 +27,7 @@ export interface SkillAutoSyncResult {
     updated?: SkillLocation[];
     backupDir?: string;
 }
-/** `${XDG_DATA_HOME:-~/.local/share}/paper-search-cli` */
-export declare function paperSearchDataRoot(env?: NodeJS.ProcessEnv, home?: string): string;
+export { paperSearchDataRoot };
 /** The PaperSearch version a copy of the Skill names in its SKILL.md front matter (``metadata.version``). */
 export declare function skillVersion(directory: string): string | undefined;
 /** ``a`` is a later X.Y.Z than ``b``; false when either is missing. */

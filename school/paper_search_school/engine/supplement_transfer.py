@@ -34,22 +34,37 @@ class Request:
         return Response(self._session.get(url, stream=True, timeout=(10, timeout / 1000)))
 
 
-@contextmanager
-def browser_request(page: Any, config: dict, *, proxy: str | None = None):
-    """Keep cookie domain/path/secure scope and the browser's configured egress.
+def browser_session(page: Any) -> dict[str, Any]:
+    """What requests outside the browser need of its session, as it is now: the browser's
+    user agent and its cookies (for ``session_request``). Kept in memory only."""
+    return {"user_agent": page.evaluate("navigator.userAgent"), "cookies": page.context.cookies()}
 
-    Cookies remain in memory. Requests' redirect handling reapplies cookie scope
-    on each host; no manually copied Cookie header follows cross-site redirects.
+
+@contextmanager
+def session_request(session_state: dict[str, Any], config: dict, *, referer: str, proxy: str | None = None):
+    """Requests with a browser session read before (``browser_session``), without asking the
+    browser: also once the watchdog has ended this process's browser calls.
+
+    Cookie domain/path/secure scope and the browser's configured egress are kept. Cookies
+    remain in memory. Requests' redirect handling reapplies cookie scope on each host; no
+    manually copied Cookie header follows cross-site redirects.
     """
     with requests.Session() as session:
         session.trust_env = False
         proxy = str(proxy or config.get("browser_static_proxy") or config.get("network_proxy") or "").strip()
         if proxy:
             session.proxies.update(http=proxy, https=proxy)
-        session.headers.update({"User-Agent": page.evaluate("navigator.userAgent"),
-                                "Referer": str(page.url)})
-        for cookie in page.context.cookies():
+        session.headers.update({"User-Agent": session_state["user_agent"], "Referer": referer})
+        for cookie in session_state["cookies"]:
             session.cookies.set(cookie["name"], cookie["value"], domain=cookie["domain"],
                                 path=cookie.get("path", "/"), secure=bool(cookie.get("secure")),
                                 expires=int(cookie["expires"]) if cookie.get("expires", -1) > 0 else None)
         yield Request(session)
+
+
+@contextmanager
+def browser_request(page: Any, config: dict, *, proxy: str | None = None, referer: str | None = None):
+    """Requests with the browser's session as it is now (``session_request``)."""
+    session_state = browser_session(page)
+    with session_request(session_state, config, referer=referer or str(page.url), proxy=proxy) as request:
+        yield request

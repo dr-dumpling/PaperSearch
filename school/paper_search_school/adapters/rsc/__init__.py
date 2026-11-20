@@ -21,7 +21,7 @@ from urllib.parse import urljoin, urlparse
 
 from ...engine.batch_common import open_page
 from ..base import register
-from ..platforms.silverchair import SilverchairAdapter
+from ..platforms.silverchair import SILVERCHAIR_FULLTEXT_IMAGES_JS, SILVERCHAIR_FULLTEXT_SHOWN_JS, SilverchairAdapter
 
 # The older article pages: /en/content/articlelanding|articlehtml/<year>/...
 _OLD_ARTICLE = re.compile(r"/en/content/article(?:landing|html)/\d{4}/")
@@ -36,6 +36,9 @@ def _on_pubs(url: str) -> bool:
 class RSCAdapter(SilverchairAdapter):
     publisher = "rsc"
     site_hosts = frozenset({"pubs.rsc.org"})
+    # The full-text page for the Markdown: Silverchair's (Chemical Science, 2026-11-15).
+    fulltext_shown_js = SILVERCHAIR_FULLTEXT_SHOWN_JS
+    fulltext_images_js = SILVERCHAIR_FULLTEXT_IMAGES_JS
 
     def is_redirect_page(self, url: str) -> bool:
         """RSC's silent sign-in check on the way to the article: sso.rsc.org's

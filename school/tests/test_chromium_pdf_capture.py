@@ -18,7 +18,7 @@ def article_pdf():
 
 class ChromiumPDFCaptureTests(unittest.TestCase):
     def capture(self, status=200, content_type="application/pdf", body=None, body_error=False, title=None,
-                disposition=None):
+                disposition=None, length="its own", another_copy=False):
         pdf_bytes = body if body is not None else article_pdf()
         pdf_url = "https://pdf.sciencedirectassets.com/example/main.pdf"
         downloader = PublisherBatchDownloader(config={}, profile=ELSEVIER_PROFILE)
@@ -28,15 +28,32 @@ class ChromiumPDFCaptureTests(unittest.TestCase):
         downloader._fetch_page_state_pdf = Mock(return_value=(None, "", None))
         if title is not None:
             downloader._citation_title = Mock(return_value=title)
-        page = Mock()
+        page = self.page = Mock()
         page.context.browser.browser_type.name = "chromium"
         session = page.context.new_cdp_session.return_value
+
+        stream = {"at": 0}
 
         def send(method, params=None):
             if method == "Fetch.getResponseBody":
                 if body_error:
                     raise RuntimeError("Browser response unavailable")
                 return {"body": base64.b64encode(pdf_bytes).decode(), "base64Encoded": True}
+            if method == "Fetch.takeResponseBodyAsStream":
+                return {"stream": "body-stream"}
+            if method == "IO.read":
+                if body_error:
+                    raise RuntimeError("Browser response unavailable")
+                if another_copy and stream["at"] == 0:
+                    # The same PDF paused again while this copy is read (IEEE, 2026-11-19).
+                    session.on.call_args.args[1]({"requestId": "another-copy", "request": {"url": pdf_url},
+                                                  "responseStatusCode": 200,
+                                                  "responseHeaders": [{"name": "Content-Type", "value": content_type}]})
+                at = stream["at"]
+                piece = pdf_bytes[at:at + 1500]
+                stream["at"] = at + len(piece)
+                return {"data": base64.b64encode(piece).decode(), "base64Encoded": True,
+                        "eof": stream["at"] >= len(pdf_bytes)}
             return {}
 
         session.send.side_effect = send
@@ -48,7 +65,9 @@ class ChromiumPDFCaptureTests(unittest.TestCase):
                 "request": {"url": pdf_url},
                 "responseStatusCode": status,
                 "responseHeaders": [{"name": "Content-Type", "value": content_type}]
-                + ([{"name": "Content-Disposition", "value": disposition}] if disposition else []),
+                + ([{"name": "Content-Disposition", "value": disposition}] if disposition else [])
+                + ([{"name": "Content-Length", "value": str(len(pdf_bytes) if length == "its own" else length)}]
+                   if length else []),
             })
 
         page.wait_for_timeout.side_effect = deliver_response
@@ -81,6 +100,96 @@ class ChromiumPDFCaptureTests(unittest.TestCase):
         captured, _, session, _, _ = self.capture(disposition="attachment", content_type="application/pdf", body=b"<html>" + b"x" * 6000)
         self.assertIsNone(captured[0])
         session.send.assert_any_call("Fetch.continueRequest", {"requestId": "test-response"})
+
+    def test_a_large_pdf_is_read_in_pieces_its_step_going_on_meanwhile(self):
+        # Cell (2026-11-18): a 108 MB PDF read in one call was cut at the step's minute.
+        from paper_search_school.browser import watchdog
+        from paper_search_school.engine import batch_capture
+
+        extended = []
+        real = watchdog.extend_operation
+        watchdog.extend_operation = lambda seconds: extended.append(seconds)
+        try:
+            captured, downloader, session, body, url = self.capture(length=batch_capture.STREAM_PDF_BYTES + 1)
+        finally:
+            watchdog.extend_operation = real
+        self.assertEqual(captured, (body, url, None))
+        calls = [call.args[0] for call in session.send.call_args_list]
+        self.assertNotIn("Fetch.getResponseBody", calls)
+        self.assertGreater(calls.count("IO.read"), 1)
+        self.assertEqual(len(extended), calls.count("IO.read"))
+        session.send.assert_any_call("IO.close", {"handle": "body-stream"})
+        # Its body taken, the request is answered empty, never continued.
+        session.send.assert_any_call("Fetch.fulfillRequest", {
+            "requestId": "test-response", "responseCode": 204, "responseHeaders": [], "body": ""})
+        self.assertNotIn(("Fetch.continueRequest", {"requestId": "test-response"}),
+                         [call.args for call in session.send.call_args_list])
+        # A read that fails still answers the request.
+        captured, _, session, _, _ = self.capture(length=batch_capture.STREAM_PDF_BYTES + 1, body_error=True)
+        self.assertIsNone(captured[0])
+        session.send.assert_any_call("Fetch.fulfillRequest", {
+            "requestId": "test-response", "responseCode": 204, "responseHeaders": [], "body": ""})
+
+    def test_a_copy_of_the_pdf_paused_while_one_is_read_is_answered_empty_unread(self):
+        # IEEE (2026-11-19): the stamp.jsp frame's getPDF.jsp and the address tried after it each
+        # read the 37 MB PDF, 36 s each.
+        from paper_search_school.browser import watchdog
+
+        real = watchdog.extend_operation
+        watchdog.extend_operation = lambda seconds: None
+        try:
+            captured, downloader, session, body, url = self.capture(length=None, another_copy=True)
+        finally:
+            watchdog.extend_operation = real
+        self.assertEqual(captured, (body, url, None))
+        calls = [call.args for call in session.send.call_args_list]
+        self.assertEqual([args[0] for args in calls].count("Fetch.takeResponseBodyAsStream"), 1)
+        self.assertIn(("Fetch.fulfillRequest", {"requestId": "another-copy", "responseCode": 204,
+                                                "responseHeaders": [], "body": ""}), calls)
+        self.assertNotIn(("Fetch.continueRequest", {"requestId": "another-copy"}), calls)
+
+    def test_a_pdf_without_its_size_or_over_8_mb_is_read_in_pieces(self):
+        # IEEE (2026-11-18): getPDF.jsp sent a 31.8 MB PDF and a 37 MB one without a size, each
+        # read in one call (46 and 57 s of the step's 60); the step ran out.
+        from paper_search_school.browser import watchdog
+        from paper_search_school.engine import batch_capture
+
+        self.assertEqual(batch_capture.STREAM_PDF_BYTES, 8 * 1024 * 1024)
+        real = watchdog.extend_operation
+        watchdog.extend_operation = lambda seconds: None
+        try:
+            for length in (None, batch_capture.STREAM_PDF_BYTES + 1):
+                with self.subTest(length=length):
+                    captured, _, session, body, url = self.capture(length=length)
+                    self.assertEqual(captured, (body, url, None))
+                    calls = [call.args[0] for call in session.send.call_args_list]
+                    self.assertNotIn("Fetch.getResponseBody", calls)
+                    self.assertIn("IO.read", calls)
+            # A PDF that says its size, under the limit: one call, and the browser has it as before.
+            captured, _, session, body, url = self.capture()
+            self.assertEqual(captured, (body, url, None))
+            calls = [call.args[0] for call in session.send.call_args_list]
+            self.assertIn("Fetch.getResponseBody", calls)
+            self.assertNotIn("IO.read", calls)
+            session.send.assert_any_call("Fetch.continueRequest", {"requestId": "test-response"})
+        finally:
+            watchdog.extend_operation = real
+
+    def test_a_pdf_document_goes_on_without_patchrights_script(self):
+        # Cell (2026-11-18): Patchright read a 108 MB PDF whole to write its init script in,
+        # and the tab went down; during the capture a PDF address is sent on as it is.
+        self.capture()
+        matcher, handler = self.page.route.call_args.args
+        self.assertTrue(matcher("https://www.cell.com/action/showPdf?pii=S0092-8674%2826%2900165-0"))
+        self.assertFalse(matcher("https://www.cell.com/cell/fulltext/S0092-8674(26)00165-0"))
+        document, image = Mock(), Mock()
+        document.request.resource_type, image.request.resource_type = "document", "image"
+        handler(document)
+        handler(image)
+        document.continue_.assert_called_once_with()
+        document.fallback.assert_not_called()
+        image.fallback.assert_called_once_with()
+        self.page.unroute.assert_called_once_with(matcher, handler)
 
     def test_a_pdf_naming_neither_doi_nor_title_is_saved_at_once_unconfirmed(self):
         # Science (2026-11-09): its PDF names neither on the first pages; trying the

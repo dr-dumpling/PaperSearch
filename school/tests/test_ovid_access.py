@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_school.publishers.profiles import PublisherProfile
+from fixture_network import network_is_the_fixture
 
 ARTICLE = 'https://www.ovid.com/jnls/fixture/abstract/10.5435/fixture~title'
 FULLTEXT = ARTICLE.replace('/abstract/', '/fulltext/')
@@ -41,6 +42,7 @@ class OvidAccessTests(unittest.TestCase):
         cls.driver.stop()
 
     def setUp(self):
+        network_is_the_fixture(self)
         self.context = self.browser.new_context(service_workers='block')
         self.addCleanup(self.context.close)
         self.requests = []

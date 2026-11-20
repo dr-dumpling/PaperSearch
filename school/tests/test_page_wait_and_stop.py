@@ -167,11 +167,15 @@ class StatusLineTests(unittest.TestCase):
     def test_main_text_and_supplements_are_told_apart(self):
         from paper_search_school.progress_view import status_text as text
         base = {"phase": "第 3/7 篇：进入机构访问"}
-        self.assertEqual(text({**base, "part": "main", "stage": "fetching_pdf"}, True), "正文 · 正在获取 PDF")
-        self.assertEqual(text({**base, "part": "main", "stage": "waiting_login"}, True), "正文 · 等待机构登录")
-        self.assertEqual(text({**base, "part": "supplements", "supplements_total": None}, True), "附录 · 正在查找附录文件")
+        # "PDF", not "正文": the PDF, the files and the Markdown told apart (user, 2026-11-15).
+        self.assertEqual(text({**base, "part": "main", "stage": "fetching_pdf"}, True), "PDF · 正在下载")
+        self.assertEqual(text({**base, "part": "main", "stage": "waiting_login"}, True), "PDF · 等待机构登录")
+        self.assertEqual(text({**base, "part": "markdown", "page_reading": True}, True), "Markdown · 正在读取全文网页")
+        self.assertEqual(text({**base, "part": "markdown", "stage": "waiting_login"}, True), "Markdown · 等待机构登录")
+        self.assertEqual(text({**base, "part": "markdown", "stage": "access_ready"}, True), "Markdown · 全文网页已读取")
+        self.assertEqual(text({**base, "part": "supplements", "supplements_total": None}, True), "补充材料 · 正在查找文件")
         self.assertEqual(text({**base, "part": "supplements", "supplements_total": 5, "supplements_saved": 2}, True),
-                         "附录 · 已保存 2/5")
+                         "补充材料 · 已保存 2/5")
         # Between papers, after the task, or from an older backend: the phase as before.
         self.assertEqual(text({**base, "part": "main", "awaiting_next": True}, True), base["phase"])
         self.assertEqual(text({**base, "part": "main"}, False), base["phase"])

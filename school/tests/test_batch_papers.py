@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -54,6 +55,30 @@ class SyncPapersTests(unittest.TestCase):
         papers = self.listed()["papers"]
         self.assertEqual((papers["1"]["supplements_saved"], papers["1"]["path"], papers["2"]["state"]), (0, "/papers/1.pdf", "stopped"))
         self.assertNotIn("supplements_saved", papers["3"])
+
+    def test_a_page_from_a_site_not_yet_supported_is_kept_with_its_note(self):
+        # ard.eular.org before its rules (user, 2026-11-16).
+        pr.sync_papers("b1", "/papers", [
+            paper(1, "ok", markdown_cls="unsupported", markdown_reason="内容不完整", markdown_host="ard.eular.org",
+                  markdown_saved=False, markdown_note="ard.eular.org · 不完整：参考文献少 1 条",
+                  markdown_report="/runs/r/records/10.1000_1_markdown-report.json"),
+            paper(2, "ok", markdown_host="ard.eular.org", markdown_saved=True),
+            paper(3, "failed", cls="unsupported", reason="网站暂不支持转换", markdown_host="ard.eular.org",
+                  markdown_skipped=True, markdown_report="relative_markdown-report.json"),
+            paper(4, "ok", markdown_host="not a host", markdown_report="/etc/passwd"),
+            paper(5, "ok", markdown_host="www.jacc.org", markdown_saved=True, markdown_rules="<b>Atypon</b>"),
+            paper(6, "ok", markdown_doubt_reason="参考文献可能不全", markdown_doubt_note="可能缺：<i>参考文献少 2 条</i>"),
+        ])
+        papers = self.listed()["papers"]
+        self.assertEqual({k: v for k, v in papers["1"].items() if k.startswith("markdown")}, {
+            "markdown_cls": "unsupported", "markdown_reason": "内容不完整", "markdown_host": "ard.eular.org",
+            "markdown_saved": False, "markdown_note": "ard.eular.org · 不完整：参考文献少 1 条",
+            "markdown_report": "/runs/r/records/10.1000_1_markdown-report.json"})
+        self.assertEqual((papers["2"]["markdown_saved"], "markdown_reason" in papers["2"]), (True, False))
+        self.assertEqual((papers["3"]["markdown_skipped"], "markdown_report" in papers["3"]), (True, False))
+        self.assertFalse([k for k in papers["4"] if k.startswith("markdown")])
+        self.assertEqual(papers["5"]["markdown_rules"], "Atypon")
+        self.assertEqual((papers["6"]["markdown_doubt_reason"], papers["6"]["markdown_doubt_note"]), ("参考文献可能不全", "可能缺：参考文献少 2 条"))
 
     def test_a_late_report_never_takes_a_paper_back(self):
         pr.sync_papers("b1", "/papers", [paper(1, "failed", cls="no_access", reason="本校没有订阅")])
@@ -112,12 +137,12 @@ class PaperListsTests(unittest.TestCase):
 
     def test_failed_papers_by_reason_like_the_finished_card(self):
         lists = self.lists(paper(1, "failed", cls="no_access", reason="本校没有订阅"),
-                           paper(2, "failed", cls="user_or_external", reason="等学校登录到时限"),
+                           paper(2, "failed", cls="user_side", reason="等学校登录到时限"),
                            paper(3, "failed", cls="no_access", reason="本校没有订阅", doi="not a doi"))
         failed = lists["failed"]
         self.assertEqual(failed["count"], 3)
         self.assertEqual([(g["cls"], g["label"], g["count"], g["open"]) for g in failed["groups"]],
-                         [("no_access", "本校没有订阅", 2, True), ("user_or_external", "等学校登录到时限", 1, False)])
+                         [("no_access", "本校没有订阅", 2, True), ("user_side", "等学校登录到时限", 1, False)])
         self.assertEqual([p["doi"] for p in failed["groups"][0]["papers"]], ["10.1000/1", ""])
 
     def test_saved_papers_missing_supplementary_files_follow_the_failed_ones(self):
@@ -136,6 +161,85 @@ class PaperListsTests(unittest.TestCase):
         # Nothing failed yet: the shortfalls alone, the first one open.
         only = self.lists(paper(2, "ok", supplement_cls="unsupported", supplement_reason="附录在外部网站"))["failed"]
         self.assertEqual((only["count"], only["supplement_count"], only["groups"][0]["open"]), (0, 1, True))
+
+    def test_saved_papers_without_their_markdown_follow_the_files_with_a_sites_note(self):
+        note = "ard.eular.org · 不完整：参考文献少 1 条"
+        lists = self.lists(paper(1, "failed", cls="no_access", reason="本校没有订阅"),
+                           paper(2, "ok", supplement_cls="unsupported", supplement_reason="附录在外部网站"),
+                           paper(3, "ok", markdown_cls="unsupported", markdown_reason="内容不完整",
+                                 markdown_host="ard.eular.org", markdown_note=note),
+                           paper(4, "ok", markdown_cls="publisher_or_network", markdown_reason="图片没下载成功"),
+                           paper(5, "ok", markdown_host="ard.eular.org", markdown_saved=True))
+        failed = lists["failed"]
+        self.assertEqual((failed["count"], failed["supplement_count"], failed["markdown_count"]), (1, 1, 2))
+        self.assertEqual([(g["label"], bool(g.get("markdown")), bool(g.get("unverified"))) for g in failed["groups"]],
+                         [("本校没有订阅", False, False), ("附录在外部网站", False, False),
+                          ("图片没下载成功", True, False), ("内容不完整", True, True)])
+        # The site's note in place of the journal.
+        self.assertEqual(failed["groups"][3]["papers"][0]["where"], note)
+        self.assertEqual(failed["groups"][2]["papers"][0]["where"], "Nature")
+
+    def test_the_failed_papers_title_says_what_they_did_not_get(self):
+        # "未完成" beside "Markdown 未生成" did not say it was the PDF (user, 2026-11-17).
+        for content, title in (("main", "PDF 未下到"), ("both", "PDF 未下到"), ("markdown", "Markdown 未生成"),
+                               ("supplements", "补充材料未下到"), (None, "PDF 未下到")):
+            lists = self.lists(paper(1, "failed", cls="no_access", reason="本校没有订阅"), state={**self.state, "content": content})
+            self.assertEqual(lists["failed"]["failed_title"], title, content)
+            self.assertEqual(pv.summary_view({"content": content, "failures": []})["failed_title"], title, content)
+
+    def test_saved_markdown_its_checks_found_short_is_listed_last_to_look_over(self):
+        # A registered site's page whose checks against it found something short (user, 2026-11-17).
+        lists = self.lists(paper(1, "failed", cls="no_access", reason="本校没有订阅"),
+                           paper(2, "ok", markdown_cls="publisher_or_network", markdown_reason="图片没下载成功"),
+                           paper(3, "ok", markdown_doubt_reason="参考文献可能不全", markdown_doubt_note="可能缺：参考文献少 2 条"),
+                           paper(4, "ok", markdown_doubt_reason="参考文献可能不全", markdown_doubt_note="可能缺：参考文献少 1 条，正文缺约 12%"),
+                           paper(5, "ok"))
+        failed = lists["failed"]
+        self.assertEqual((failed["count"], failed["markdown_count"], failed["doubt_count"]), (1, 1, 2))
+        self.assertEqual([(g["label"], bool(g.get("doubt"))) for g in failed["groups"]],
+                         [("本校没有订阅", False), ("图片没下载成功", False), ("参考文献可能不全", True)])
+        self.assertEqual([p["where"] for p in failed["groups"][2]["papers"]],
+                         ["Nature · 可能缺：参考文献少 2 条", "Nature · 可能缺：参考文献少 1 条，正文缺约 12%"])
+        self.assertEqual(lists["ok"]["count"], 4)
+        # The finished card: a section of their own.
+        shown = pv.summary_view({"markdown_doubts": [{"reason": "正文可能不全", "note": "可能缺：正文缺约 15%", "title": "T", "doi": "10.1000/9"}]})
+        self.assertEqual((shown["markdown_doubtful"], shown["doubt_groups"][0]["reason"], shown["doubt_groups"][0]["papers"][0]["where"]),
+                         (1, "正文可能不全", "可能缺：正文缺约 15%"))
+        self.assertEqual(pv.summary_view({})["doubt_groups"], [])
+
+    def test_a_batch_of_the_markdown_alone_flags_the_failed_group_of_a_site_not_yet_supported(self):
+        note = "journals.example.org · 没有规则能读出正文"
+        lists = self.lists(paper(1, "failed", cls="unsupported", reason="网站暂不支持转换", markdown_host="journals.example.org",
+                                 markdown_note=note),
+                           paper(2, "failed", cls="publisher_or_network", reason="图片没下载成功"),
+                           state={**self.state, "content": "markdown"})
+        groups = lists["failed"]["groups"]
+        self.assertEqual([(g["label"], bool(g.get("unverified"))) for g in groups],
+                         [("图片没下载成功", False), ("网站暂不支持转换", True)])
+        self.assertEqual(groups[1]["papers"][0]["where"], note)
+        # Beside the PDF, a failed paper's reason is its PDF's: no site note on it.
+        both = self.lists(paper(1, "failed", cls="no_access", reason="本校没有订阅", markdown_host="journals.example.org",
+                                markdown_note=note))["failed"]["groups"]
+        self.assertEqual((both[0]["papers"][0]["where"], bool(both[0].get("unverified"))), ("Nature", False))
+
+    def test_the_sites_not_yet_supported_for_the_running_cards_line(self):
+        listed = {"batch_id": "b1", "papers": {str(p["index"]): p for p in (
+            paper(1, "ok", markdown_host="ard.eular.org", markdown_saved=True),
+            paper(2, "ok", markdown_host="ard.eular.org", markdown_saved=True),
+            paper(3, "ok", markdown_host="ard.eular.org", markdown_saved=False),
+            paper(4, "failed", markdown_host="b.example.org", markdown_skipped=True),
+            paper(5, "ok"))}}
+        self.assertEqual(pv.unverified_sites(listed, self.state),
+                         {"hosts": ["ard.eular.org", "b.example.org"], "saved": 2, "unsaved": 1, "skipped": 1})
+        self.assertIsNone(pv.unverified_sites({"batch_id": "b1", "papers": {"1": paper(1, "ok")}}, self.state))
+        # Whose rules were borrowed, most papers first; a page no rules read names none (2026-11-17).
+        jacc = {"batch_id": "b1", "papers": {str(i): paper(i, "ok", markdown_host="www.jacc.org", markdown_saved=True,
+                                                            markdown_rules="Atypon") for i in (1, 2)}}
+        self.assertEqual(pv.unverified_sites(jacc, self.state)["rules"], ["Atypon"])
+        jacc["papers"]["3"] = paper(3, "ok", markdown_host="b.example.org", markdown_saved=False, markdown_rules="Silverchair")
+        jacc["papers"]["4"] = paper(4, "ok", markdown_host="c.example.org", markdown_saved=False)
+        self.assertEqual(pv.unverified_sites(jacc, self.state)["rules"], ["Atypon", "Silverchair"])
+        self.assertIsNone(pv.unverified_sites({**listed, "batch_id": "b0"}, self.state))
 
     def test_the_rest_by_lane_with_the_paper_being_downloaded_first(self):
         lists = self.lists(paper(4, "open"), paper(5, "school", journal="Digestion"), paper(6, "school"), paper(7, "open"),
@@ -164,8 +268,8 @@ class PaperListsTests(unittest.TestCase):
         lists = self.lists(paper(1, "ok", supplements_saved=3), paper(2, "ok", supplements_saved=0),
                            paper(3, "ok", supplements_saved=0, journal=""))
         self.assertEqual([(g["label"], g["count"]) for g in lists["ok"]["groups"]],
-                         [("补上附录", 1), ("没有附录（已核对）", 2)])
-        self.assertEqual([p["where"] for p in lists["ok"]["groups"][1]["papers"]], ["Nature · 没有附录", "没有附录"])
+                         [("补上补充材料", 1), ("没有补充材料（已核对）", 2)])
+        self.assertEqual([p["where"] for p in lists["ok"]["groups"][1]["papers"]], ["Nature · 没有补充材料", "没有补充材料"])
 
     def test_another_batchs_papers_are_not_shown(self):
         self.assertEqual(self.lists(paper(1, "ok"), state={**self.state, "batch_id": "b2"}), {})
@@ -198,27 +302,40 @@ class OpenPaperTests(unittest.TestCase):
         return patch.object(capsule, "read_papers", return_value={
             "batch_id": batch, "folder": str(self.folder), "papers": {str(p["index"]): p for p in papers}})
 
+    @staticmethod
+    @contextmanager
+    def opening():
+        """What opens a folder or shows a file: Popen's command, or os.startfile on Windows (``_open``)."""
+        with patch("subprocess.Popen") as shown, patch("os.startfile", shown, create=True):
+            yield shown
+
+    @staticmethod
+    def opened(shown) -> str:
+        """The command or path it was opened with, as plain text (a repr doubles Windows' backslashes)."""
+        command = shown.call_args.args[0]
+        return command if isinstance(command, str) else " ".join(map(str, command))
+
     def test_the_folder_button_opens_the_batch_folder_not_the_last_papers(self):
         # Windows, 2026-11-16: each article's visit set its own folder as the task's.
         paper_dir = self.folder / "papers" / "1"
         with patch.object(capsule, "read_state", return_value={"batch_id": "b1", "status": "running",
                                                                "output_dir": str(paper_dir)}):
-            with self.listed(paper(1, "open")), patch("subprocess.Popen") as shown:
+            with self.listed(paper(1, "open")), self.opening() as shown:
                 self.assertTrue(self.api.open_folder())
-            self.assertIn(str(self.folder), str(shown.call_args))
-            self.assertNotIn(str(paper_dir), str(shown.call_args))
+            self.assertIn(str(self.folder), self.opened(shown))
+            self.assertNotIn(str(paper_dir), self.opened(shown))
             # Another batch's list, or none: the task's own folder.
             for listed in ({"batch_id": "b0", "folder": str(self.root), "papers": {}}, None):
                 with self.subTest(listed=bool(listed)), patch.object(capsule, "read_papers", return_value=listed), \
-                        patch("subprocess.Popen") as shown:
+                        self.opening() as shown:
                     self.assertTrue(self.api.open_folder())
-                    self.assertIn(str(paper_dir), str(shown.call_args))
+                    self.assertIn(str(paper_dir), self.opened(shown))
 
     def test_a_saved_pdf_of_the_batch_is_shown_in_its_folder(self):
-        with self.listed(paper(1, "ok", path=str(self.pdf))), patch("subprocess.Popen") as shown:
+        with self.listed(paper(1, "ok", path=str(self.pdf))), self.opening() as shown:
             self.assertEqual(self.api.show_paper(1), "已打开所在文件夹")
         shown.assert_called_once()
-        self.assertIn(str(self.pdf.parent), str(shown.call_args))
+        self.assertIn(str(self.pdf.parent), self.opened(shown))
 
     def test_the_folder_comes_up_with_the_file_selected(self):
         cases = [("darwin", "posix", ["open", "-R", str(self.pdf)]),
@@ -235,9 +352,9 @@ class OpenPaperTests(unittest.TestCase):
         # Papers sent to folders by topic in one batch (Windows, 2026-11-11).
         for path in (self.outside, self.folder / ".." / "other.pdf"):
             with self.subTest(path=str(path)), self.listed(paper(1, "ok", path=str(path))), \
-                    patch("subprocess.Popen") as shown:
+                    self.opening() as shown:
                 self.assertEqual(self.api.show_paper(1), "已打开所在文件夹")
-                self.assertIn(str(self.root), str(shown.call_args))
+                self.assertIn(str(self.root), self.opened(shown))
 
     def test_a_paper_saved_without_a_pdf_opens_at_what_it_saved(self):
         # A batch of the supplementary files or the Markdown alone (Windows, 2026-11-16).
@@ -245,9 +362,9 @@ class OpenPaperTests(unittest.TestCase):
             saved = self.folder / "papers" / "1" / name
             saved.parent.mkdir(parents=True, exist_ok=True)
             saved.write_text("x")
-            with self.subTest(name=name), self.listed(paper(1, "ok", path=str(saved))), patch("subprocess.Popen") as shown:
+            with self.subTest(name=name), self.listed(paper(1, "ok", path=str(saved))), self.opening() as shown:
                 self.assertEqual(self.api.show_paper(1), "已打开所在文件夹")
-                self.assertIn(str(saved.parent), str(shown.call_args))
+                self.assertIn(str(saved.parent), self.opened(shown))
 
     def test_only_a_saved_paper_of_this_batch_opens(self):
         cases = [
@@ -259,12 +376,23 @@ class OpenPaperTests(unittest.TestCase):
             (paper(1, "ok", path=str(self.pdf)), "1", "打开失败：这篇没有保存的文件"),
         ]
         for item, index, expected in cases:
-            with self.subTest(path=item.get("path"), index=index), self.listed(item), patch("subprocess.Popen") as shown:
+            with self.subTest(path=item.get("path"), index=index), self.listed(item), self.opening() as shown:
                 self.assertEqual(self.api.show_paper(index), expected)
                 shown.assert_not_called()
-        with self.listed(paper(1, "ok", path=str(self.pdf)), batch="b0"), patch("subprocess.Popen") as shown:
+        with self.listed(paper(1, "ok", path=str(self.pdf)), batch="b0"), self.opening() as shown:
             self.assertEqual(self.api.show_paper(1), "打开失败：这篇没有保存的文件")
             shown.assert_not_called()
+
+    def test_the_running_card_says_which_sites_are_not_yet_supported(self):
+        pr.papers_path().unlink(missing_ok=True)
+        with patch.object(capsule.progress_view, "view", side_effect=lambda *_: {"mode": "running"}):
+            pr.sync_papers("b1", str(self.folder), [paper(1, "open")])
+            self.assertNotIn("sites", self.api.state())
+            pr.sync_papers("b1", str(self.folder), [paper(1, "ok", markdown_host="ard.eular.org", markdown_saved=True)])
+            os.utime(pr.papers_path(), ns=(2, 2))
+            self.assertEqual(self.api.state()["sites"], {"hosts": ["ard.eular.org"], "saved": 1, "unsaved": 0, "skipped": 0})
+        with patch.object(capsule.progress_view, "view", side_effect=lambda *_: {"mode": "done"}):
+            self.assertNotIn("sites", self.api.state())
 
     def test_the_counts_open_lists_only_for_this_batchs_papers(self):
         pr.papers_path().unlink(missing_ok=True)

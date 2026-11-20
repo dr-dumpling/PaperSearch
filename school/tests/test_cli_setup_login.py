@@ -18,7 +18,8 @@ def run_cli(data_dir: str, *args: str) -> tuple[int, str, str]:
     env = {**os.environ, "SCHOOL_DATA_DIR": data_dir, "PYTHONPATH": str(ROOT), "SCHOOL_PROGRESS_BAR": "0"}
     proc = subprocess.run(
         [sys.executable, "-m", "paper_search_school.cli", *args],
-        capture_output=True, text=True, env=env, timeout=120,
+        # The CLI writes UTF-8 whatever the system's code page (GBK on a Chinese Windows).
+        capture_output=True, text=True, encoding="utf-8", env=env, timeout=120,
     )
     return proc.returncode, proc.stdout, proc.stderr
 

@@ -9,10 +9,11 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-from paper_search_school.browser.challenge_interaction import click_checkbox, observe_checkbox, prepare_context
+from paper_search_school.browser.challenge.interaction import click_checkbox, observe_checkbox, prepare_context
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_school.publishers.profiles import SPRINGER_PROFILE
 from test_pdf_after_check import article_pdf
+from fixture_network import network_is_the_fixture
 
 ORIGIN = "https://link.springer.com"
 DOI = "10.1007/s00000-026-00001-1"
@@ -60,6 +61,7 @@ def check_page(*, pdf=False, overlay=False, outer_closed=False):
 
 class InteractionFixture:
     def setUp(self):
+        network_is_the_fixture(self)
         self.context = self.browser.new_context(service_workers="block")
         self.addCleanup(self.context.close)
         prepare_context(self.context)
@@ -211,7 +213,7 @@ class InteractionFixture:
             return outcome
         d = PublisherBatchDownloader({}, profile=SPRINGER_PROFILE, require_interactive_browser=True)
         result = DownloadResult(doi=DOI, status="failed", state="article_loaded")
-        with patch("paper_search_school.browser.challenge_interaction.click_checkbox", side_effect=tracked_click), \
+        with patch("paper_search_school.browser.challenge.interaction.click_checkbox", side_effect=tracked_click), \
                 patch("paper_search_school.progress_reporter.set_attention") as attention:
             self.assertTrue(d._wait_for_challenge(self.page, result))
         self.assertEqual(len(times), 3)

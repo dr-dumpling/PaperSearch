@@ -34,7 +34,7 @@ paper-search config list --pretty
 | `paper-search smoke --live --pretty` | 小规模真实检查：免费元数据来源、已配置 key 的功能、Sci-Hub 镜像是否可用 | 用户要求本机实测，或怀疑来源、网络有问题 |
 | `paper-search skills status --pretty` | 显示已安装的 Skill 是否与包内 Skill 一致 | 安装、更新检查，或排查 agent 读到旧 Skill |
 | `paper-search skills diff --format text` | 预览包内 Skill 与已安装 Skill 的差异 | 更新 Skill 之前 |
-| `paper-search skills update --pretty` | 把包管理的 Skill 文件同步到用户的 Skill 目录，保留用户自己加的文件 | 用户确认更新 Skill 之后 |
+| `paper-search skills update --pretty` | 把包管理的 Skill 文件同步到用户的 Skill 目录，旧版留下、新版不再用的文件移到备份文件夹，保留用户自己加的文件 | 用户确认更新 Skill 之后 |
 | `paper-search tools --pretty` | 列出 `paper-search run` 的工具名和参数结构 | 不确定工具名或参数时 |
 | `paper-search config list --pretty` | 显示脱敏后的配置状态 | 确认 key、email、开关是否已配置 |
 
@@ -100,9 +100,9 @@ paper-search skills diff --format text
 paper-search skills update --pretty
 ```
 
-`skills update` 覆盖包管理的文件，保留用户自己加的文件；`skills diff` 只显示包管理文件的差异，用户自己加的文件只列文件名。
+`skills update` 覆盖包管理的文件；旧版装进来、新版已不再有的文件（`retiredFiles`）移到 `skill-backups/<时间>-update/` 备份文件夹；保留用户自己加的文件。每份 Skill 里的 `.paper-search-files.json` 记着上次装进去的文件，据此分辨旧文件和用户自己加的文件，不要删改它。`skills diff` 只显示包管理文件的差异，用户自己加的文件只列文件名。
 
-升级后自动同步：升级 PaperSearch 后第一次运行 `paper-search`（`skills`、`setup` 除外）时，它把用户已经装过的 Skill 更新到包内版本：只更新原来装过的位置，保留用户自己加的文件，替换下来的旧文件备份在 `${XDG_DATA_HOME:-~/.local/share}/paper-search-cli/skill-backups/`，并在 stderr 写一行说明；一个都没装时只提示一次怎么装。`paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false` 关闭，之后用 `skills update` 手动同步。`doctor` 的 `skills` 一项列出各位置是否最新。看到 stderr 里的更新说明时，告诉用户新开的 AI 会话才会读到新版本。
+升级后自动同步：升级 PaperSearch 后第一次运行 `paper-search`（`skills`、`setup` 除外）时，它把用户已经装过的 Skill 更新到包内版本：只更新原来装过的位置，保留用户自己加的文件，替换下来的旧文件和旧版留下、新版不再用的文件备份在 `${XDG_DATA_HOME:-~/.local/share}/paper-search-cli/skill-backups/`，并在 stderr 写一行说明；一个都没装时只提示一次怎么装。`paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false` 关闭，之后用 `skills update` 手动同步。`doctor` 的 `skills` 一项列出各位置是否最新。看到 stderr 里的更新说明时，告诉用户新开的 AI 会话才会读到新版本。
 
 已装的 Skill 比命令行程序新时（Skill 开头的 `metadata.version` 更大），自动同步不会用旧的包内 Skill 覆盖它，stderr 每天最多提示一次“PaperSearch 有新版本……本机版本为……”，`doctor` 里这一处也这样写。这时要更新的是命令行程序：告诉用户，问要不要运行 `npm install -g papersearch@latest`，不要运行 `skills update`（会换回旧 Skill）。
 

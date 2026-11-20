@@ -16,7 +16,7 @@
   <a href="#1-学校订阅下载"><img src="https://img.shields.io/badge/school%20login-eduGAIN%20%2B%20OpenAthens-7284CE?style=flat-square" alt="学校订阅下载：eduGAIN 中的学术身份联盟和 OpenAthens"></a>
   <a href="docs/guide.zh.md#agent-skill"><img src="https://img.shields.io/badge/Agent%20Skill-bundled-D97757?style=flat-square" alt="随包 Agent Skill"></a>
   <a href="#快速开始"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-555555?style=flat-square" alt="支持 macOS 和 Windows"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2F9E44?style=flat-square" alt="MIT 许可证"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-2F9E44?style=flat-square" alt="AGPL-3.0 许可证"></a>
   <a href="https://linux.do/"><img src="https://img.shields.io/badge/LINUX%20DO-community-F1A033?style=flat-square" alt="LINUX DO 社区"></a>
 </p>
 
@@ -102,7 +102,7 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 <p align="center"><img src="assets/results.webp" width="840" alt="拿到结果：对话里列出下好的 6 篇和各自的补充材料数量；带补充材料时下载文件夹里每篇一个文件夹，补充材料在 supplements/ 里"></p>
 
 - 检索、正文片段、期刊指标和引文，直接在对话里列给你。
-- 每次下载在下载文件夹里新建一个 `年月日-时分秒_PaperSearchDownload` 文件夹：PDF 直接放在里面，取到了补充材料的论文才单独一个文件夹，补充材料在 supplements/ 里；没拿到的篇目告诉你原因。
+- 每次下载在下载文件夹里新建一个 `年月日-时分秒_PaperSearchDownload` 文件夹：PDF 直接放在里面；取到了补充材料的论文单独一个文件夹，PDF、补充材料（supplements/）都在其中；每篇的 PDF 和补充材料在这一篇下载时一起完成；没拿到的篇目告诉你原因。
 
 ## 可选配置
 
@@ -121,7 +121,6 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 | &emsp;下载非 OA 文章 | — | ✅（Elsevier、Springer） | ✅（30+主流出版社） |
 | &emsp;下载补充材料 | — | — | ✅ |
 
-
 ### 1. 学校订阅下载
 
 开放渠道下不到的论文，可以借你学校的订阅来下：程序经你学校所属的学术身份联盟登录出版社，用学校账号下载。配置时只要说出学校名称，即可登录下载非OA文献。
@@ -129,7 +128,12 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 1.通过 [eduGAIN](https://edugain.org/) 互联，如中国CARSI、香港HKAF，新加坡SGAF等；
 2.没有加入本国联盟的学校，有 [OpenAthens](https://www.openathens.net/) 权限的，也能经它登录。
 
-**支持的学术身份联盟**（按大洲和区域）
+**支持的学术身份联盟**
+
+<p align="center"><img src="assets/federation-map.png" width="840" alt="学校订阅下载能用的国家和地区：经本国学术身份联盟（eduGAIN）的 76 个国家和地区，遍及亚洲、欧洲、美洲、大洋洲和非洲；台湾、泰国、菲律宾等经 OpenAthens"></p>
+
+<details>
+<summary>展开查看各国联盟（按大洲和区域）</summary>
 
 | 大洲 | 区域 | 已支持（地区：联盟） |
 |---|---|---|
@@ -149,6 +153,8 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 | 非洲 | 东部非洲 | 乌干达：RIF；肯尼亚：RAFIKI；坦桑尼亚：TERNET IF；马拉维：MAREN；赞比亚：FIDERN |
 | 非洲 | 西部非洲 | 尼日利亚：NgRENID；加纳：GARNET；布基纳法索：eduID.bf；多哥：eduID.tg |
 | 非洲 | 北部、南部非洲 | 摩洛哥：eduIDM；南非：SAFIRE |
+
+</details>
 
 - 各联盟的全称、学校数和实测过的学校，见 [学术联盟支持表](skills/paper-search/references/federation-support.md)。
 - 学校登录不上，或想支持你的学校，请用“学校登录不上”模板[提 Issue](https://github.com/dr-dumpling/PaperSearch/issues/new?template=school-login.yml)，写明学校名称、官网域名，以及出问题的出版社和文章 DOI。
@@ -242,8 +248,7 @@ paper-search school status --format text   # 查看是否装好
 
 1. **进度胶囊优化**：提醒时机更准，学校登录页能自动放行时不提前打扰；减少 Windows 上浏览器启动、换页时短暂跳到前台的情况，优化显示效果。
 2. **并行下载**：不同出版社之间并行下载，同时处理多篇，缩短几十上百篇的总耗时；每家出版社仍遵守下载上限。
-3. **Markdown 全文包**：除了 PDF，再交付原始 XML/HTML、Markdown 阅读副本和正文图片，图号、图注和正文引用一一对应，方便直接交给 AI 阅读和引用。
-4. **检索论文、搜正文片段再优化**：参考同类工具的做法，进一步提升检索论文和搜正文片段的效果。
+3. **检索论文、搜正文片段再优化**：参考同类工具的做法，进一步提升检索论文和搜正文片段的效果。
 
 完整计划见 [路线图](docs/ROADMAP.zh.md)，原理和代码结构见 [架构说明](docs/ARCHITECTURE.zh.md)。还想要什么功能，欢迎提 [Issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) 和 PR；下载失败或想支持某家出版社，请用对应的 Issue 模板，想自己加出版社规则见 [school/CONTRIBUTING.md](school/CONTRIBUTING.md)。
 
@@ -256,4 +261,4 @@ paper-search school status --format text   # 查看是否装好
 
 ## License
 
-MIT
+[AGPL-3.0](LICENSE)，另提供商业授权。

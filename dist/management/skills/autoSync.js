@@ -1,17 +1,12 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'fs';
-import { homedir } from 'os';
-import { dirname, join, resolve } from 'path';
-import { SKILL_TARGETS, bundledSkillHash, describeSkillTargets, installSkillTargets, statusSkillTargets } from '../../skills/SkillInstaller.js';
+import { dirname, join } from 'path';
+import { SKILL_LAYOUT, SKILL_TARGETS, backupStamp, bundledSkillHash, paperSearchDataRoot, describeSkillTargets, installSkillTargets, statusSkillTargets } from '../../skills/SkillInstaller.js';
 const DAY = 24 * 60 * 60 * 1000;
 const INSTALL_HINT = [
     'paper-search：还没有给 AI 工具安装 paper-search 的 Skill，AI 工具因此不知道怎么调用 paper-search。',
     '运行 paper-search setup 选择要装到哪些工具，或运行 paper-search skills update --targets claude（换成你用的工具：codex、cursor 等）。（这条提示只出现一次）'
 ].join('\n');
-/** `${XDG_DATA_HOME:-~/.local/share}/paper-search-cli` */
-export function paperSearchDataRoot(env = process.env, home = homedir()) {
-    const base = env.XDG_DATA_HOME ? resolve(env.XDG_DATA_HOME) : join(home, '.local', 'share');
-    return join(base, 'paper-search-cli');
-}
+export { paperSearchDataRoot };
 /** The PaperSearch version a copy of the Skill names in its SKILL.md front matter (``metadata.version``). */
 export function skillVersion(directory) {
     let text;
@@ -23,7 +18,8 @@ export function skillVersion(directory) {
     }
     const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? '';
     const metadata = /^metadata:[ \t]*\r?\n((?:[ \t]+.*(?:\r?\n|$))*)/m.exec(front)?.[1] ?? '';
-    return /^[ \t]+version:[ \t]*["']?(\d+\.\d+\.\d+)["']?[ \t]*$/m.exec(metadata)?.[1];
+    // A preview names its prerelease too (0.7.0-preview.1); comparisons use X.Y.Z alone.
+    return /^[ \t]+version:[ \t]*["']?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)["']?[ \t]*$/m.exec(metadata)?.[1];
 }
 /** ``a`` is a later X.Y.Z than ``b``; false when either is missing. */
 export function isNewerVersion(a, b) {
@@ -74,6 +70,7 @@ export function skillLocations(options = {}) {
             staleFiles: target.staleFiles,
             missingFiles: target.missingFiles,
             extraFiles: target.extraFiles,
+            retiredFiles: target.retiredFiles,
             ...(target.error ? { error: target.error } : {}),
             ...(skillVersion(target.path) ? { version: skillVersion(target.path) } : {})
         });
@@ -110,11 +107,11 @@ export function autoSyncSkill(options = {}) {
         return notice ? { ...result, notice } : result;
     };
     const bundledHash = bundledSkillHash(options.sourceRoot);
-    if (state.bundledHash === bundledHash)
+    if (state.bundledHash === bundledHash && state.layout === SKILL_LAYOUT)
         return withNotice({ action: 'unchanged' });
     const locations = skillLocations(options);
     if (locations.length === 0) {
-        writeState(statePath, { ...state, bundledHash, installHintShown: true });
+        writeState(statePath, { ...state, bundledHash, layout: SKILL_LAYOUT, installHintShown: true });
         return state.installHintShown ? { action: 'not_installed' } : { action: 'not_installed', notice: INSTALL_HINT };
     }
     const stale = locations.filter(location => location.status === 'stale' && !isNewerVersion(location.version, options.version));
@@ -122,20 +119,21 @@ export function autoSyncSkill(options = {}) {
         .filter(location => location.status === 'error')
         .map(location => `${location.path}：${location.error}`);
     if (stale.length === 0 && failures.length === 0) {
-        writeState(statePath, { ...state, bundledHash });
+        writeState(statePath, { ...state, bundledHash, layout: SKILL_LAYOUT });
         return withNotice({ action: 'up_to_date' });
     }
-    const backupDir = join(dataRoot, 'skill-backups', `${stamp(now)}-auto`);
+    const backupDir = join(dataRoot, 'skill-backups', `${backupStamp(now)}-auto`);
     let backedUp = 0;
     const updated = [];
     for (const location of stale) {
         try {
             backedUp += backUp(location, join(backupDir, location.targets[0]));
-            const result = installSkillTargets([location.targets[0]], options);
+            const result = installSkillTargets([location.targets[0]], { ...options, backupDir });
             if (result.failed.length > 0) {
                 failures.push(`${location.path}：${result.failed[0].error}`);
                 continue;
             }
+            backedUp += result.installed[0]?.retired.length ?? 0;
             updated.push(location);
         }
         catch (error) {
@@ -154,7 +152,7 @@ export function autoSyncSkill(options = {}) {
                 `可运行 paper-search skills update --targets ${targets.join(',')} 手动更新。`
         });
     }
-    writeState(statePath, { ...state, bundledHash });
+    writeState(statePath, { ...state, bundledHash, layout: SKILL_LAYOUT });
     const version = options.version ? ` ${options.version}` : '';
     return withNotice({
         action: 'updated',
@@ -196,10 +194,5 @@ function realDirectory(path) {
     catch {
         return path;
     }
-}
-function stamp(date) {
-    const pad = (value) => String(value).padStart(2, '0');
-    return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-` +
-        `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 //# sourceMappingURL=autoSync.js.map

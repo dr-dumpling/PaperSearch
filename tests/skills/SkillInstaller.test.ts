@@ -85,6 +85,35 @@ describe('SkillInstaller', () => {
     expect(existsSync(extraFile)).toBe(true);
   });
 
+  it("moves away the files an earlier version left, keeping the user's own", () => {
+    // Renamed files stayed behind after updates (user, 2026-11-18): the list a copy keeps of the files
+    // it was given tells them from the user's; files shipped before that list are known by name.
+    const source = join(tempRoot, 'bundled');
+    mkdirSync(join(source, 'references'), { recursive: true });
+    writeFileSync(join(source, 'SKILL.md'), 'skill\n');
+    writeFileSync(join(source, 'references', 'old.md'), 'old\n');
+    installSkillTargets(['agents'], { skillsRoot: tempRoot, sourceRoot: source });
+    const dest = join(tempRoot, '.agents', 'skills', 'paper-search');
+    writeFileSync(join(dest, 'NOTES.md'), 'mine\n');
+    writeFileSync(join(dest, 'references', 'carsi-setup.md'), 'from 0.5\n');
+    rmSync(join(source, 'references', 'old.md'));
+    writeFileSync(join(source, 'references', 'new.md'), 'new\n');
+
+    expect(statusSkillTargets(['agents'], { skillsRoot: tempRoot, sourceRoot: source }).targets[0]).toMatchObject({
+      status: 'stale', retiredFiles: ['references/carsi-setup.md', 'references/old.md'], extraFiles: ['NOTES.md'] });
+
+    const backup = join(tempRoot, 'backup');
+    const result = installSkillTargets(['agents'], { skillsRoot: tempRoot, sourceRoot: source, backupDir: backup });
+    expect(result.installed[0].retired).toEqual(['references/carsi-setup.md', 'references/old.md']);
+    expect(result.backupDir).toBe(backup);
+    expect(readFileSync(join(backup, 'agents', 'references', 'old.md'), 'utf8')).toBe('old\n');
+    expect(readFileSync(join(backup, 'agents', 'references', 'carsi-setup.md'), 'utf8')).toBe('from 0.5\n');
+    expect(existsSync(join(dest, 'references', 'old.md'))).toBe(false);
+    expect(existsSync(join(dest, 'references', 'carsi-setup.md'))).toBe(false);
+    expect(readFileSync(join(dest, 'NOTES.md'), 'utf8')).toBe('mine\n');
+    expect(result.status.targets[0]).toMatchObject({ status: 'extra_files', retiredFiles: [], extraFiles: ['NOTES.md'] });
+  });
+
   it('diffs only managed files and lists extra file names without reading their contents', () => {
     const installed = installSkillTargets(['agents'], { skillsRoot: tempRoot });
     expect(installed.ok).toBe(true);

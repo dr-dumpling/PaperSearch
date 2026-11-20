@@ -26,8 +26,8 @@ paper-search run search_semantic_snippets --arg query="propensity score matching
 # 下载一篇
 paper-search download "<DOI>" --platform crossref
 
-# 批量下载正文和补充材料（只要正文去掉 content；只要补充材料用 "supplements"）
-paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>"},{"doi":"<DOI-2>"}],"content":"both"}'
+# 批量下载 PDF 和补充材料（content 可写 pdf、supplements，或两样都写；不写只下 PDF）
+paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>"},{"doi":"<DOI-2>"}],"content":"pdf,supplements"}'
 
 # 没下到的篇目和原因
 paper-search failures --format text
@@ -72,7 +72,7 @@ paper-search failures --format text
 
 ### 下载结果
 
-每次下载在下载目录里新建一个 `<年月日-时分秒>_PaperSearchDownload` 文件夹，这次的论文都在里面：PDF 直接放在这个文件夹里；取到了补充材料的论文单独一个文件夹，正文和该篇的 `supplements/`（保留原文件名）在其中，没取到补充材料的仍是平铺的 PDF。正文按“期刊缩写_年月_标题”命名（年月是文章首次发表的年月），同名的 PDF 自动加一段短编号，不会互相覆盖；文件夹名末尾的短标识用来区分同名论文。出过问题或需要核查的论文，诊断记录和截图不放在下载文件夹里，放在 PaperSearch 自己的运行记录里（`~/.local/share/paper-search-cli/runs/`，30 天后自动删除），查问题时用；里面可能带登录信息，不要发给别人。缺少期刊或年份时写“未知期刊”“未知年份”。命令返回的 JSON 里写着每个文件的实际位置。
+每次下载在下载目录里新建一个 `<年月日-时分秒>_PaperSearchDownload` 文件夹，这次的论文都在里面：PDF 直接放在这个文件夹里；取到了补充材料的论文单独一个文件夹，正文和该篇的 `supplements/`（保留原文件名）在其中，没取到补充材料的仍是平铺的 PDF。正文按“期刊缩写_年月_标题”命名（年月是文章首次发表的年月），同名的 PDF 自动加一段短编号，不会互相覆盖；两篇论文名字相同时，后一篇的文件夹名后加 `_2`。出过问题或需要核查的论文，诊断记录和截图不放在下载文件夹里，放在 PaperSearch 自己的运行记录里（`~/.local/share/paper-search-cli/runs/`，30 天后自动删除），查问题时用；里面可能带登录信息，不要发给别人。缺少期刊或年份时写“未知期刊”“未知年份”。命令返回的 JSON 里写着每个文件的实际位置。
 
 ## 检索来源
 
@@ -117,7 +117,7 @@ paper-search skills update
 
 不写 `--targets` 时只检查、更新已经装了 Skill 的位置，不会在别处多装一份。`--targets` 可选 `codex`、`claude`、`cursor`、`gemini`、`antigravity`、`agents`（共享目录 `~/.agents/skills/`）。其他读取 Skill 文件夹的 AI 工具，把随包 Skill 复制到它的 Skill 目录即可：`npm root -g` 可查看全局 npm 目录，随包 Skill 位于其下的 `papersearch/skills/paper-search/`；复制时保留完整文件夹及 `references/`，更新时从新版本复制。安装后新开 AI 会话即可使用。
 
-- `--targets all` 会同步到所有内置位置。更新会覆盖包里管理的文件，保留你在 Skill 目录里自己加的文件。
+- `--targets all` 会同步到所有内置位置。更新会覆盖包里管理的文件，旧版装进来、新版已不再用的文件移到 `skill-backups` 备份文件夹，保留你在 Skill 目录里自己加的文件。
 - 升级 PaperSearch 后第一次运行时，装过的 Skill 会自动更新，被替换的旧文件备份在 `~/.local/share/paper-search-cli/skill-backups/`。不想自动更新：`paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false`。装的 Skill 比命令行程序新时（例如先从 GitHub 装了新版 Skill），不会被换回旧版，命令行每天提示一次运行 `npm install -g papersearch@latest`。
 - 装了学校订阅下载的，升级后第一次用到它时，扩展也会先自动更新（终端里有一行说明），再接着下载。不想自动更新：`paper-search config set PAPER_SEARCH_SCHOOL_AUTO_UPDATE false`，之后自己运行 `paper-search school update`。
 - `paper-search doctor` 显示内置安装目标中的 Skill 位置和版本状态。

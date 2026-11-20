@@ -15,6 +15,7 @@ from paper_search_school.engine import batch
 from paper_search_school.engine.batch import DownloadResult, PaperRecord, PublisherBatchDownloader
 from paper_search_school.engine.batch_user import PdfFoundWhileWaiting
 from paper_search_school.publishers.model import PublisherProfile
+from tests.thread_clock import this_thread_only
 
 DOI = "10.1061/jsendh.steng-16404"
 TITLE = "Synthetic structural engineering article for the PDF probe"
@@ -87,6 +88,30 @@ class PdfFirstTests(unittest.TestCase):
         d._save_captured_pdf.assert_called_once()
         states = [e["state"] for e in result.events]
         self.assertLess(states.index("access_unknown_pdf_first"), states.index("access_unknown_pdf_failed"))
+
+    def test_an_open_page_whose_pdf_entry_asks_for_access_signs_in_once(self):
+        """PNAS 2026-11-17: a Creative Commons line in the copyright notes, "GET ACCESS" by the
+        title, the PDF addresses 403 without the school's login."""
+        for gate in (True, False):
+            with self.subTest(gate=gate):
+                d = self.downloader()
+                d._access_decision = Mock(return_value=("in", "reader", "licence: is distributed under Creative Commons"))
+                replies = iter([(None, "", None), (pdf(), PDF, None)])
+
+                def capture(page, doi, result):
+                    if gate:
+                        d._event(result, "pdf_entry_gated", "get access / access through institution shown")
+                    return next(replies)
+
+                d._article_access_available = Mock(return_value=False)
+                d._login_block_reason = Mock(return_value="")
+                d._looks_logged_out = Mock(return_value=False)
+                result = self.fetch(d, capture)
+                states = [e["state"] for e in result.events]
+                self.assertEqual(d._capture_pdf.call_count, 2 if gate else 1)
+                self.assertEqual(d._complete_login_from_current_page.call_count, 1 if gate else 0)
+                self.assertEqual("open_access_pdf_gated" in states, gate)
+                self.assertNotIn("access_unknown_pdf_first", states)
 
     def test_public_access_is_reused_only_until_the_main_document_changes(self):
         for navigation in (None, "iframe", "reload"):
@@ -248,7 +273,8 @@ class LoginWaitProbeTests(unittest.TestCase):
         def sleep(seconds):
             clock[0] += seconds
             page.url = next(steps, page.url)
-        with patch.object(batch.time, "sleep", sleep), patch.object(batch.time, "time", lambda: clock[0]):
+        fake_time, fake_sleep = this_thread_only(lambda: clock[0], sleep)
+        with patch.object(batch.time, "sleep", fake_sleep), patch.object(batch.time, "time", fake_time):
             try:
                 return d, result, d._complete_login_from_current_page(page, result), clock[0] - 1000
             except PdfFoundWhileWaiting as found:

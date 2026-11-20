@@ -12,13 +12,18 @@ import re
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 PROFILE_RELEASE_TIMEOUT_SEC = 20.0
 
 
 SESSION_COOKIES_FILE = ".paper-search-session-cookies.json"
-SESSION_COOKIES_MAX_AGE_SEC = 12 * 3600
+# How long a saved school login is restored (config: browser_login_session_max_age_hours).
+# Each paper runs in its own browser, so a session cookie lives on only through this file;
+# the school's server decides when the login really ends, and one it still accepts should
+# outlast the night (user, 2026-11-19; it was 12 hours).
+SESSION_COOKIES_MAX_AGE_SEC = 30 * 24 * 3600
 
 
 def _save_session_cookies(context: Any, profile: Path) -> None:
@@ -47,13 +52,13 @@ def _save_session_cookies(context: Any, profile: Path) -> None:
         logger.debug("browser_backend: session cookies not saved: %s", type(exc).__name__)
 
 
-def _restore_session_cookies(context: Any, profile: Path) -> int:
+def _restore_session_cookies(context: Any, profile: Path, max_age_sec: float = SESSION_COOKIES_MAX_AGE_SEC) -> int:
     path = profile / SESSION_COOKIES_FILE
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return 0
-    if time.time() - float(data.get("saved_at", 0)) > SESSION_COOKIES_MAX_AGE_SEC:
+    if time.time() - float(data.get("saved_at", 0)) > max_age_sec:
         return 0
     restored = 0
     for cookie in data.get("cookies") or []:
@@ -63,6 +68,52 @@ def _restore_session_cookies(context: Any, profile: Path) -> int:
         except Exception:
             continue
     return restored
+
+
+def school_login_hosts(config: dict[str, Any] | None) -> tuple[set[str], set[str]]:
+    """The saved school's login hosts (its entityID's host, those its federation lists) and its
+    own domains (``schools/lookup.py``): where its sign-in keeps its cookies, whatever it runs
+    (Shibboleth, CAS, ADFS) and whatever it names them."""
+    from ..schools import lookup as schools
+
+    cfg = config or {}
+    return set(schools.login_hosts(cfg)), set(schools.domains(cfg))
+
+
+def cross_site_login(context: Any, hosts: set[str], domains: set[str] = frozenset()) -> int:
+    """The school's login cookies sent with a publisher's SAML POST too: those of its login
+    hosts (and of the hosts above them) and of its own domains, re-set as SameSite=None (and
+    Secure: these sites are https). A sign-in that sets them without SameSite gets Lax from the
+    browser, which leaves them out of the cross-site POST many publishers reach it with, and
+    the school then asked for the password again at each such publisher: Nature, Taylor &
+    Francis and Science did, ScienceDirect, JAMA and ACS (a redirect) did not (a school tested,
+    2026-11-19). Only this download browser's, and only the school's side. How many were re-set."""
+    hosts = {h.lower() for h in hosts if h}
+    domains = {d.lower().lstrip(".") for d in domains if d}
+    if not hosts and not domains:
+        return 0
+    try:
+        cookies = context.cookies()
+    except Exception:
+        return 0
+
+    def the_idps(cookie: dict[str, Any]) -> bool:
+        domain = str(cookie.get("domain") or "").lstrip(".").lower()
+        return bool(domain) and (any(host == domain or host.endswith("." + domain) for host in hosts)
+                                 or any(domain == d or domain.endswith("." + d) for d in domains))
+
+    changed = 0
+    for cookie in cookies:
+        if not the_idps(cookie) or cookie.get("sameSite") == "None":
+            continue
+        entry = {k: v for k, v in cookie.items() if k != "expires" or v not in (None, -1)}
+        entry.update(sameSite="None", secure=True)
+        try:
+            context.add_cookies([entry])
+            changed += 1
+        except Exception as exc:
+            logger.debug("browser_backend: login cookie %s not re-set: %s", cookie.get("name"), type(exc).__name__)
+    return changed
 
 
 def _profile_owner_pid(user_data_dir: str) -> int | None:

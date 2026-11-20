@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import {
   appendFileSync,
+  copyFileSync,
+  existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -13,7 +15,7 @@ import { dirname, join, resolve } from "node:path";
 import type {
   DownloadStageRecord,
   DownloadWithFallbackResult,
-} from "../../capabilities/pdf-discovery/types.js";
+} from "../../capabilities/download/types.js";
 import { describeFailure } from "./failureClass.js";
 
 /**
@@ -77,8 +79,12 @@ export interface RunLedgerStart {
   mode?: string;
   batchId?: string;
   savePath?: string;
-  /** What the batch downloads (main, supplements, both): 接着下 asks for the same. */
+  /** What the batch downloads (main, supplements, both, markdown): 接着下 asks for the same. */
   content?: string;
+  /** Each paper's Markdown too. */
+  fulltext?: boolean;
+  /** Another saved school this batch used, as the user asked: 接着下 uses it too. */
+  school?: string;
   /** The batch this run goes on with (接着下). */
   resumeOf?: string;
 }
@@ -129,6 +135,10 @@ export class RunLedger {
   private succeeded = 0;
   private failed = 0;
   private warned = false;
+  /** A copy of the run's files, written as they are (the batch folder's _run/<run id>, user 2026-11-17). */
+  private mirror?: string;
+  /** Called after each paper is recorded. */
+  onItem?: () => void;
 
   private constructor(
     readonly dir: string,
@@ -229,6 +239,21 @@ export class RunLedger {
     );
     this.stages.delete(item.index);
     this.started.delete(item.index);
+    this.onItem?.();
+  }
+
+  /** Keeps a copy of run.json, items.jsonl and timeline.log in ``dir`` too, from now on. */
+  mirrorTo(dir: string): void {
+    try {
+      mkdirSync(dir, { recursive: true });
+      for (const file of ["run.json", "items.jsonl", "timeline.log"]) {
+        const from = join(this.dir, file);
+        if (existsSync(from)) copyFileSync(from, join(dir, file));
+      }
+      this.mirror = dir;
+    } catch (error) {
+      this.warn(error);
+    }
   }
 
   /** Where the run's papers that went fine keep their backend records. */
@@ -255,10 +280,13 @@ export class RunLedger {
   }
 
   private writeRun(): void {
-    try {
-      writeFileSync(join(this.dir, "run.json"), `${JSON.stringify(this.run, null, 2)}\n`);
-    } catch (error) {
-      this.warn(error);
+    for (const dir of [this.dir, this.mirror]) {
+      if (!dir) continue;
+      try {
+        writeFileSync(join(dir, "run.json"), `${JSON.stringify(this.run, null, 2)}\n`);
+      } catch (error) {
+        this.warn(error);
+      }
     }
   }
 
@@ -267,10 +295,13 @@ export class RunLedger {
   }
 
   private append(file: string, text: string): void {
-    try {
-      appendFileSync(join(this.dir, file), text);
-    } catch (error) {
-      this.warn(error);
+    for (const dir of [this.dir, this.mirror]) {
+      if (!dir) continue;
+      try {
+        appendFileSync(join(dir, file), text);
+      } catch (error) {
+        this.warn(error);
+      }
     }
   }
 

@@ -26,8 +26,8 @@ paper-search run search_semantic_snippets --arg query="propensity score matching
 # Download one paper
 paper-search download "<DOI>" --platform crossref
 
-# Download main texts and supplementary files in a batch (omit content for main text only; "supplements" for supplementary files only)
-paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>"},{"doi":"<DOI-2>"}],"content":"both"}'
+# Download PDFs and supplementary files in a batch (content: pdf, supplements or both; without it, PDFs only)
+paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>"},{"doi":"<DOI-2>"}],"content":"pdf,supplements"}'
 
 # Papers not downloaded, and why
 paper-search failures --format text
@@ -117,7 +117,7 @@ paper-search skills update
 
 Without `--targets`, these check and update only the places where the Skill is already installed, never adding a copy elsewhere. `--targets` takes `codex`, `claude`, `cursor`, `gemini`, `antigravity` or `agents` (the shared `~/.agents/skills/` directory). For other AI tools that read Skill folders, copy the bundled Skill into their Skill directory: run `npm root -g` to locate the global npm directory; the bundled Skill is under `papersearch/skills/paper-search/` there. Copy the entire folder, including `references/`, and copy it again after an update. Start a new AI session after installation.
 
-- `--targets all` syncs the Skill to all built-in locations. Updating overwrites the files the package manages and keeps files you added to the Skill directory.
+- `--targets all` syncs the Skill to all built-in locations. Updating overwrites the files the package manages, moves files an earlier version installed and this one no longer has into the `skill-backups` folder, and keeps files you added to the Skill directory.
 - The first run after upgrading PaperSearch updates the Skill you installed; replaced files are backed up under `~/.local/share/paper-search-cli/skill-backups/`. To turn this off: `paper-search config set PAPER_SEARCH_SKILL_AUTO_UPDATE false`. A Skill newer than the command (installed from GitHub first, say) is never put back to an older one; the command says once a day to run `npm install -g papersearch@latest`.
 - If you installed school subscription downloads, the first download that uses them after an upgrade updates the extension first (one line in the terminal says so) and then goes on. To turn this off: `paper-search config set PAPER_SEARCH_SCHOOL_AUTO_UPDATE false`, then run `paper-search school update` yourself.
 - `paper-search doctor` shows Skill locations and version status for the built-in installation targets.

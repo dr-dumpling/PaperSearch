@@ -4,11 +4,14 @@ choosers name it, and its own school-choosing pages.
 The federation layer stands beside the publisher layers (engine, platforms,
 publishers, journals; ADR 0014). Publisher rules never name a federation: they
 ask the configured one whether a chooser's entry is it (``Federation.matches``).
-Each federation is one data file in ``builtin/`` (``schema`` below); one whose
-own pages need code gets a module of its own. No school is named here (ADR
-0009): the school is the user's setting (``schools``).
+Each federation is one data file in ``data/<continent>/`` (asia, europe, americas,
+oceania, africa; global for a service across countries, OpenAthens) (``schema``
+below); one whose own pages need code gets a module of its own here (``carsi.py``,
+CARSI's member list). No school is named here (ADR 0009): the school is the
+user's setting, found and saved by the ``schools`` package (the user, 2026-11-17:
+federations and schools apart).
 
-``builtin/<code>.json``:
+``data/<continent>/<code>.json``:
 
 - ``code``: the value of ``publisher_institution_federation`` ("carsi").
 - ``name``: its short name, as users and the records call it.
@@ -49,7 +52,7 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import urlparse
 
-_BUILTIN = Path(__file__).with_name("builtin")
+_DATA = Path(__file__).with_name("data")
 
 
 @dataclass(frozen=True)
@@ -120,7 +123,7 @@ def _load(path: Path) -> Federation:
 @lru_cache(maxsize=1)
 def all_federations() -> tuple[Federation, ...]:
     """Every built-in federation, CARSI first (the default)."""
-    found = [_load(path) for path in sorted(_BUILTIN.glob("*.json"))]
+    found = [_load(path) for path in sorted(_DATA.glob("*/*.json"), key=lambda path: path.name)]
     return tuple(sorted(found, key=lambda f: (f.code != "carsi", f.code)))
 
 

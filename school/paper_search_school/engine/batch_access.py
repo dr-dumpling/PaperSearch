@@ -192,6 +192,17 @@ class AccessMixin:
             return {}
         return probe if isinstance(probe, dict) else {}
 
+    def _open_access_signal(self, page: Any) -> str:
+        """The page's own word that its article is open to all (access_rules.OPEN_SIGNS_JS:
+        a Creative Commons licence in its metadata or licence block, a world-readable
+        flag); "" without, or when the page cannot be read."""
+        try:
+            return access_rules.open_access_evidence(page.evaluate(access_rules.OPEN_SIGNS_JS))
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return ""
+
     def _access_snapshot(self, page: Any) -> SimpleNamespace:
         """The page's whole visible text, by lines, and its probe, read once. Text the
         browser could not give (the page navigating) is said so in ``unreadable``:
@@ -351,7 +362,7 @@ class AccessMixin:
                                      "library", "libraries", "hospital", "the", "and", "for"})
 
     def _school_names(self) -> list[str]:
-        from ..federations import schools
+        from ..schools import lookup as schools
 
         return [n for n in [*schools.names(self.config), str(self.institution_query or "").strip()] if n]
 

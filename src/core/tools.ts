@@ -8,8 +8,10 @@ import { QUERY_JOURNAL_METRICS_TOOL } from '../capabilities/journal-metrics/tool
 import {
   DOWNLOAD_BATCH_TOOL,
   DOWNLOAD_PAPER_TOOL,
-  DOWNLOAD_WITH_FALLBACK_TOOL
-} from '../capabilities/pdf-discovery/tools.js';
+  DOWNLOAD_WITH_FALLBACK_TOOL,
+  downloadTools
+} from '../capabilities/download/tools.js';
+import { proFeatures } from '../config/edition.js';
 import {
   GET_PAPER_BY_DOI_TOOL,
   SEARCH_PAPERS_TOOL
@@ -542,4 +544,10 @@ function createRegistrySearchTools(): CliTool[] {
   return tools;
 }
 
-export const TOOLS: CliTool[] = [...BASE_TOOLS, ...createRegistrySearchTools()];
+const ALL_TOOLS: CliTool[] = [...BASE_TOOLS, ...createRegistrySearchTools()];
+
+/** The tools as this edition offers them: without PaperSearch Pro's features (config/edition.ts), no Markdown. */
+export function toolList(pro: boolean = proFeatures()): CliTool[] {
+  const download = new Map<string, CliTool>(downloadTools(pro).map((tool) => [tool.name, tool]));
+  return ALL_TOOLS.map((tool) => download.get(tool.name) ?? tool);
+}

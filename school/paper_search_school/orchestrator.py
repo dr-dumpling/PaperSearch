@@ -43,6 +43,8 @@ def download_institutional(
     title: str | None = None,
     login_only: bool = False,
     login_wait: int | None = None,
+    fulltext: bool | str | None = None,
+    school: str | None = None,
 ) -> dict[str, Any]:
     """Download one DOI through institutional access only.
 
@@ -87,8 +89,14 @@ def download_institutional(
             extra["title"] = title
         if login_only:
             extra["login_only"] = True
+        if fulltext:
+            # "with" (or True): the page beside the PDF; "only": the page alone, no PDF;
+            # "sample": a maintainer's sample of a site without page rules (publisher-check).
+            extra["fulltext"] = fulltext if fulltext in ("only", "sample") else "with"
         if login_wait:
             extra["login_wait"] = login_wait
+        if school and school.strip():
+            extra["school"] = school.strip()
         return _download_impl(doi, output_dir, **extra)
     finally:
         with _INFLIGHT_LOCK:
@@ -98,8 +106,24 @@ def download_institutional(
 def _download_impl(doi: str, output_dir: str | Path | None, *,
                    supplements: str | None = None, user_wait: str | None = None,
                    diagnostics_dir: str | None = None, title: str | None = None,
-                   login_only: bool = False, login_wait: int | None = None) -> dict[str, Any]:
+                   login_only: bool = False, login_wait: int | None = None,
+                   fulltext: str | None = None, school: str | None = None) -> dict[str, Any]:
     config = load_config()
+    if school:
+        # Another saved school for this download alone, as the user asked; the config's own
+        # school is not changed (user, 2026-11-17).
+        from .schools.saved import use_for_download
+
+        problem = use_for_download(config, school)
+        if problem:
+            return fail(doi, problem, error_type=problem, action="review_school")
+    if fulltext:
+        # The article's full-text page is saved while on it (engine/fulltext_page.py).
+        # A main text already cached is not fetched again, so neither is its page.
+        config["fulltext"] = "sample" if fulltext == "sample" else True
+    if fulltext == "only":
+        # The page alone: the article's access as for `login`, then its page, no PDF.
+        login_only = True
     if login_only:
         config["login_only"] = True
     if login_wait:

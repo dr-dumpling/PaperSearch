@@ -161,7 +161,7 @@ class TestChromeLaunch:
     def test_configured_proxy_is_passed_explicitly(self, monkeypatch, tmp_path):
         seen = {}
         monkeypatch.setattr(bb, "wait_for_profile_release", lambda *a, **k: True)
-        monkeypatch.setattr(bb, "_keep_session_cookies", lambda context, profile: None)
+        monkeypatch.setattr(bb, "_keep_session_cookies", lambda *a, **k: None)
         monkeypatch.setattr(bb, "_launch_chrome_persistent",
                             lambda profile, headless, proxy, args, config: seen.update(proxy=proxy) or
                             type("Ctx", (), {"pages": [], "new_page": lambda self: None})())
@@ -189,7 +189,8 @@ def test_session_cookies_survive_the_next_launch(tmp_path):
     persistent = {"name": "pref", "value": "1", "domain": "x.org", "path": "/", "expires": 9999999999}
     bb._save_session_cookies(Ctx([session, persistent]), tmp_path)
     saved = tmp_path / bb.SESSION_COOKIES_FILE
-    assert oct(saved.stat().st_mode & 0o777) == "0o600"
+    if os.name != "nt":  # Windows has no owner-only mode bits; the file is in the user's own data folder
+        assert oct(saved.stat().st_mode & 0o777) == "0o600"
     nxt = Ctx([])
     assert bb._restore_session_cookies(nxt, tmp_path) == 1
     assert nxt.added[0]["name"] == "CASTGC" and "expires" not in nxt.added[0]

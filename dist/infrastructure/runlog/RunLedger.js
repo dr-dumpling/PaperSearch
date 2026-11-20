@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { describeFailure } from "./failureClass.js";
@@ -88,6 +88,10 @@ export class RunLedger {
     succeeded = 0;
     failed = 0;
     warned = false;
+    /** A copy of the run's files, written as they are (the batch folder's _run/<run id>, user 2026-11-17). */
+    mirror;
+    /** Called after each paper is recorded. */
+    onItem;
     constructor(dir, run) {
         this.dir = dir;
         this.run = run;
@@ -176,6 +180,22 @@ export class RunLedger {
                 : ""));
         this.stages.delete(item.index);
         this.started.delete(item.index);
+        this.onItem?.();
+    }
+    /** Keeps a copy of run.json, items.jsonl and timeline.log in ``dir`` too, from now on. */
+    mirrorTo(dir) {
+        try {
+            mkdirSync(dir, { recursive: true });
+            for (const file of ["run.json", "items.jsonl", "timeline.log"]) {
+                const from = join(this.dir, file);
+                if (existsSync(from))
+                    copyFileSync(from, join(dir, file));
+            }
+            this.mirror = dir;
+        }
+        catch (error) {
+            this.warn(error);
+        }
     }
     /** Where the run's papers that went fine keep their backend records. */
     get records() {
@@ -198,22 +218,30 @@ export class RunLedger {
         this.line(`end succeeded=${this.succeeded} failed=${this.failed}`);
     }
     writeRun() {
-        try {
-            writeFileSync(join(this.dir, "run.json"), `${JSON.stringify(this.run, null, 2)}\n`);
-        }
-        catch (error) {
-            this.warn(error);
+        for (const dir of [this.dir, this.mirror]) {
+            if (!dir)
+                continue;
+            try {
+                writeFileSync(join(dir, "run.json"), `${JSON.stringify(this.run, null, 2)}\n`);
+            }
+            catch (error) {
+                this.warn(error);
+            }
         }
     }
     line(text) {
         this.append("timeline.log", `${localTime(new Date())} ${text}\n`);
     }
     append(file, text) {
-        try {
-            appendFileSync(join(this.dir, file), text);
-        }
-        catch (error) {
-            this.warn(error);
+        for (const dir of [this.dir, this.mirror]) {
+            if (!dir)
+                continue;
+            try {
+                appendFileSync(join(dir, file), text);
+            }
+            catch (error) {
+                this.warn(error);
+            }
         }
     }
     warn(error) {

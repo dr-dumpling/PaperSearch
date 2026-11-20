@@ -458,11 +458,12 @@ def _append_oxford_candidates(candidates: list[str], doi: str, source_url: str) 
     source_path = parsed.path.rstrip("/")
     if parsed.scheme not in {"http", "https"} or not host.endswith("academic.oup.com"):
         return
-    match = re.match(r"^/(?P<journal>[^/]+)/article/(?P<rest>.+)$", source_path, flags=re.IGNORECASE)
+    # An advance article's PDF is under advance-article-pdf.
+    match = re.match(r"^/(?P<journal>[^/]+)/(?P<kind>advance-article|article)/(?P<rest>.+)$", source_path, flags=re.IGNORECASE)
     if not match:
         return
     suffix = doi.rsplit("/", 1)[-1] if "/" in doi else doi
-    pdf_path = f"/{match.group('journal')}/article-pdf/{match.group('rest')}/{suffix}.pdf"
+    pdf_path = f"/{match.group('journal')}/{match.group('kind').lower()}-pdf/{match.group('rest')}/{suffix}.pdf"
     _append_candidate(candidates, urlunparse((parsed.scheme, parsed.netloc, pdf_path, "", "", "")))
 
 

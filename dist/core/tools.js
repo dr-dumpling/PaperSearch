@@ -2,7 +2,8 @@ import { getGenericPlatformToolDescriptors } from '../registry/platformMetadata.
 import { SEARCH_SEMANTIC_SNIPPETS_TOOL } from '../capabilities/body-snippet-search/tools.js';
 import { GET_PAPER_CITATIONS_TOOL, GET_PAPER_REFERENCES_TOOL } from '../capabilities/citation-expansion/tools.js';
 import { QUERY_JOURNAL_METRICS_TOOL } from '../capabilities/journal-metrics/tools.js';
-import { DOWNLOAD_BATCH_TOOL, DOWNLOAD_PAPER_TOOL, DOWNLOAD_WITH_FALLBACK_TOOL } from '../capabilities/pdf-discovery/tools.js';
+import { DOWNLOAD_BATCH_TOOL, DOWNLOAD_PAPER_TOOL, DOWNLOAD_WITH_FALLBACK_TOOL, downloadTools } from '../capabilities/download/tools.js';
+import { proFeatures } from '../config/edition.js';
 import { GET_PAPER_BY_DOI_TOOL, SEARCH_PAPERS_TOOL } from '../capabilities/metadata-search/tools.js';
 const BASE_TOOLS = [
     SEARCH_PAPERS_TOOL,
@@ -515,5 +516,10 @@ function createRegistrySearchTools() {
     });
     return tools;
 }
-export const TOOLS = [...BASE_TOOLS, ...createRegistrySearchTools()];
+const ALL_TOOLS = [...BASE_TOOLS, ...createRegistrySearchTools()];
+/** The tools as this edition offers them: without PaperSearch Pro's features (config/edition.ts), no Markdown. */
+export function toolList(pro = proFeatures()) {
+    const download = new Map(downloadTools(pro).map((tool) => [tool.name, tool]));
+    return ALL_TOOLS.map((tool) => download.get(tool.name) ?? tool);
+}
 //# sourceMappingURL=tools.js.map

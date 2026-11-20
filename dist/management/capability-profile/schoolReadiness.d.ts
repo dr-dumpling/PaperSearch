@@ -1,4 +1,4 @@
-import { type SchoolBackend, type SchoolReadiness } from "../../capabilities/pdf-discovery/school/index.js";
+import { type SchoolBackend, type SchoolReadiness } from "../../infrastructure/school/index.js";
 export interface DisabledEntitledAccessReadiness {
     state: "disabled";
     code: "integration_disabled";

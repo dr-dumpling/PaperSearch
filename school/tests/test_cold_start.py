@@ -4,7 +4,9 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
+from unittest.mock import patch
 
 from paper_search_school import cold_start
 from paper_search_school.browser.backend import SESSION_COOKIES_FILE
@@ -29,7 +31,8 @@ def build(root: Path) -> tuple[Path, Path]:
     default = profile / "Default"
     (default / "Sessions").mkdir(parents=True)
     cache.mkdir()
-    with sqlite3.connect(default / "Cookies") as db:
+    # closing() as in the cold start itself: an open connection keeps the file locked on Windows.
+    with closing(sqlite3.connect(default / "Cookies")) as db, db:
         db.execute("CREATE TABLE cookies (creation_utc INTEGER NOT NULL, host_key TEXT NOT NULL,"
                    " top_frame_site_key TEXT NOT NULL, name TEXT NOT NULL, value TEXT NOT NULL,"
                    " encrypted_value BLOB NOT NULL, path TEXT NOT NULL)")
@@ -55,6 +58,11 @@ def build(root: Path) -> tuple[Path, Path]:
     return profile, cache
 
 
+def rows(cookies: Path) -> int:
+    with closing(sqlite3.connect(cookies)) as db:
+        return db.execute("SELECT count(*) FROM cookies").fetchone()[0]
+
+
 class ColdStartTests(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -78,13 +86,12 @@ class ColdStartTests(unittest.TestCase):
         self.assertEqual(plan["site_data"]["local_storage_hosts"], ["service.seamlessaccess.org"])
         self.assertEqual(sorted(Path(f["path"]).name for f in plan["files"] if f["action"] == "delete"),
                          ["Local Storage", "Session Storage", "Session_13438509334969058", "Tabs_13438509335217404"])
-        with sqlite3.connect(self.profile / "Default" / "Cookies") as db:
-            self.assertEqual(db.execute("SELECT count(*) FROM cookies").fetchone()[0], len(COOKIES))
+        self.assertEqual(rows(self.profile / "Default" / "Cookies"), len(COOKIES))
 
     def test_applying_keeps_verification_personal_accounts_and_consent(self):
         done = self.run.apply()
         self.assertEqual(done["cookies"], 7)
-        with sqlite3.connect(self.profile / "Default" / "Cookies") as db:
+        with closing(sqlite3.connect(self.profile / "Default" / "Cookies")) as db:
             left = set(db.execute("SELECT host_key, name FROM cookies"))
         self.assertEqual(left, {(".sciencedirect.com", "cf_clearance"), ("www.sciencedirect.com", "OptanonConsent"),
                                 ("id.elsevier.com", "ELS_SESSION")})
@@ -116,16 +123,30 @@ class ColdStartTests(unittest.TestCase):
         self.assertTrue(self.run.plan()["browser_running"])
         with self.assertRaises(RuntimeError):
             self.run.apply()
-        with sqlite3.connect(self.profile / "Default" / "Cookies") as db:
-            self.assertEqual(db.execute("SELECT count(*) FROM cookies").fetchone()[0], len(COOKIES))
+        self.assertEqual(rows(self.profile / "Default" / "Cookies"), len(COOKIES))
 
     def test_windows_keeps_cookies_under_network(self):
         network = self.profile / "Default" / "Network"
         network.mkdir()
         (self.profile / "Default" / "Cookies").rename(network / "Cookies")
         self.assertEqual(self.run.apply()["cookies"], 7)
-        with sqlite3.connect(network / "Cookies") as db:
-            self.assertEqual(db.execute("SELECT count(*) FROM cookies").fetchone()[0], 3)
+        self.assertEqual(rows(network / "Cookies"), 3)
+
+    def test_the_cookie_store_is_closed_again(self):
+        # Windows, 2026-11-18: Chrome cannot open a cookie file the cold start still holds.
+        opened, real = [], sqlite3.connect
+
+        def connect(*args, **kwargs):
+            opened.append(real(*args, **kwargs))
+            return opened[-1]
+
+        with patch.object(cold_start.sqlite3, "connect", side_effect=connect):
+            self.run.plan()
+            self.run.apply()
+        self.assertGreaterEqual(len(opened), 3)
+        for db in opened:
+            with self.assertRaises(sqlite3.ProgrammingError):  # "Cannot operate on a closed database."
+                db.execute("SELECT 1")
 
 
 if __name__ == "__main__":

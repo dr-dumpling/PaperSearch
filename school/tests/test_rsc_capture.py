@@ -3,6 +3,8 @@ import os
 import unittest
 from unittest.mock import Mock, patch
 
+from fixture_network import network_is_the_fixture
+
 DOI = '10.1039/d6fd99999x'
 TITLE = 'Synthetic Faraday Discussions lecture'
 ARTICLE = 'https://pubs.rsc.org/fd/article/doi/10.1039/D6FD99999X/1299999/Synthetic-Faraday-Discussions-lecture'
@@ -37,6 +39,7 @@ class RSCNativeTests(unittest.TestCase):
         self.d = publisher_batch.PublisherBatchDownloader({}, profile=RSC_PROFILE, pdf_timeout_sec=2)
         self.d._fetch_page_state_pdf = Mock(return_value=(None, '', None))
         self.d._fetch_pdf_url_with_browser_state = Mock(return_value=(None, '', None))
+        network_is_the_fixture(self)
         self.context = self.browser.new_context(service_workers='block')
         self.addCleanup(self.context.close)
         self.requests = []

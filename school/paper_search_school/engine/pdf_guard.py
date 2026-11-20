@@ -16,7 +16,10 @@ misread letters, reading order) does not matter, and the evidence is weighed:
 
 Strong evidence, or two single pieces, verify the PDF; one single piece verifies
 it while the pages print no other DOI. Other DOIs and no evidence at all:
-another article. A title's numbers must always be exact. An attachment
+another article. A title's numbers must always be exact. Nothing after the first
+reference list counts, unless the article begins there: its title on lines of its
+own and its DOI alone on a line soon after (a short piece sharing its first page
+with the end of the one before it, Cell's Previews). An attachment
 (supplementary material, disclosure form) and a notice about the article
 (correction, retraction, briefing, letter to the editor), each known by its own
 heading line, are not the article, unless the notice is itself the requested
@@ -53,6 +56,7 @@ LETTERS_PER_ERROR = 12  # one misread letter allowed per this many letters
 HEAD_CHARS = 400  # where an attachment or a notice announces itself
 SHARED_SUFFIX = 10  # a suffix this long names one article under whichever prefix
 SCAN_MAX_LETTERS = 300  # fewer letters on the pages read: a scan without a text layer
+HEAD_REACH = 1200  # an article's own DOI line after its title: authors, affiliations, correspondence
 
 # A reference list cites other articles: its DOIs and titles are not evidence.
 _REFERENCES_HEADING = re.compile(r"^\s*(?:references?|literature cited)\s*$", re.I | re.M)
@@ -62,6 +66,10 @@ _ATTACHMENT_HEADING = re.compile(
     r"(?:information|materials?|data|content|appendix|methods|figures?|figure legends|tables?|text|files?)"
     r"\s*(?:for\b.*|:.*)?$|^\s*appendix(?:\s+[a-z0-9])?\s*:?\s*$|^\s*plain language summary\b|^\s*(?:icmje\s+)?disclosure\s+form"
     r"|^\s*conflicts?\s+of\s+interest\s+(?:form|disclosure)", re.I | re.M)
+# A line that ends mid-sentence: the next line goes on with it and is no heading (a Lancet
+# margin note, "For the Spanish translation of the abstract see Online for" then "appendix 1",
+# 2026-11-19).
+_GOES_ON = re.compile(r"\b(?:see|for|in|of|the|and|or|to|at|on|with|from|by)\s*$", re.I)
 # A notice's own heading line: the word opens the line, alone or followed by ":" or
 # "to" ("CORRECTION", "Correction to: …", "Retraction Note", "RETRACTED ARTICLE: …",
 # "Notice of Retraction"), or closes it after a colon ("<title>: Erratum"); not a
@@ -83,6 +91,10 @@ _ABOUT_LABEL = re.compile(
 _ABOUT_REACH = 200  # how far after its label the DOI of the article a notice is about may be
 # A DOI may break right after its prefix ("https://doi.org/10.1016/" then "S0140-…", The Lancet).
 _DOI_IN_TEXT = re.compile(r"10\.\d{4,9}/(?:[ \t]*\n[ \t]*)?[^\s\"<>]+")
+# DOIs of registrations and deposited data, which name no other article: OSF (a review's protocol,
+# "https://doi.org/10.17605/OSF.IO/J483F", eClinicalMedicine, 2026-11-19), Zenodo, figshare,
+# Dryad, Mendeley Data, Harvard Dataverse.
+_DEPOSIT_PREFIXES = ("10.17605/", "10.5281/", "10.6084/", "10.5061/", "10.17632/", "10.7910/")
 _LETTER = re.compile(r"[a-zЀ-ӿ一-鿿]")
 # The copyright line right after a DOI ("https://doi.org/…" then "1063-4584/© 2025 …"):
 # the item's own footer. Text extraction can put the footer after the reference list
@@ -155,6 +167,18 @@ def _numbers_match(window: str, title: str) -> bool:
 
 
 def _title_evidence(text: str, chars: str, at: list[int], title: str) -> str | None:
+    """How the title is printed: "strong", "single" or None. A title that opens with a label
+    and a colon may be printed without the label: the rest, when long enough to name the
+    article alone, is one piece of evidence ("Spiers Memorial Lecture: Mechanistic
+    Non-Adiabatic Chemistry: …", an RSC accepted manuscript, 2026-11-19)."""
+    found = _printed_title(text, chars, at, title)
+    rest = re.split(r"[:：]", title, maxsplit=1)[1] if found is None and re.search(r"[:：]", title) else ""
+    if _weight(_letters(normalize_doi_text(_plain_title(rest)))[0]) >= STRONG_TITLE and _printed_title(text, chars, at, rest):
+        return "single"
+    return found
+
+
+def _printed_title(text: str, chars: str, at: list[int], title: str) -> str | None:
     plain = normalize_doi_text(_plain_title(title))
     key = _letters(plain)[0]
     if _weight(key) < SHORT_TITLE:
@@ -212,7 +236,9 @@ def _doi_named(pages: str, target: str) -> bool:
         return False
     pattern = lambda value: r"\s*".join(re.escape(char) for char in value)  # noqa: E731
     suffix = _suffix(target)
-    head = r"10\.\d{4,9}/\s*" if len(_bare(suffix)) >= SHARED_SUFFIX else pattern(target[:-len(suffix)]) + r"\s*"
+    # A margin can break a DOI after "10." as well ("https://doi.org/10." / "1016/j.eclinm.2025." /
+    # "103705", eClinicalMedicine, 2026-11-19).
+    head = r"10\.\s*\d{4,9}/\s*" if len(_bare(suffix)) >= SHARED_SUFFIX else pattern(target[:-len(suffix)]) + r"\s*"
     return re.search(rf"(?<![0-9.]){head}{pattern(suffix)}(?![0-9a-z_/-]|\.[0-9a-z])", pages) is not None
 
 
@@ -235,8 +261,10 @@ def _same_article(doi: str, target: str) -> bool:
 
 
 def _other_dois(pages: str, target: str) -> list[str]:
-    """DOIs printed that are not the target, nor a piece, an extension, a misprint or an older prefix of it."""
-    return [doi for doi in map(_clean_doi, _DOI_IN_TEXT.finditer(pages)) if not _same_article(doi, target)]
+    """DOIs printed that are not the target, nor a piece, an extension, a misprint or an older prefix of it,
+    nor a registration's or data's."""
+    return [doi for doi in map(_clean_doi, _DOI_IN_TEXT.finditer(pages))
+            if not _same_article(doi, target) and not doi.startswith(_DEPOSIT_PREFIXES)]
 
 
 def _about_dois(pages: str) -> list[str]:
@@ -266,10 +294,39 @@ def _not_the_article(head: str, title: str, named: bool) -> bool:
     # A supplementary file opens with its heading and names the article after it;
     # an article whose toolbar lists "Supporting Information" below its own title
     # is the article (ACS, 2026-11-02).
-    attachment = _ATTACHMENT_HEADING.search(head)
+    attachment = next((found for found in _ATTACHMENT_HEADING.finditer(head)
+                       if not _GOES_ON.search(head[:found.start()])), None)
     if attachment and not _title_before(head[:attachment.start()], title):
         return True
     return bool(_NOTICE.search(head)) and not named and not _NOTICE_TITLE.search(_plain_title(title))
+
+
+def _head_after_references(text: str, target: str, title: str) -> str:
+    """The requested article's own text when it begins after another article's reference
+    list on the same pages, from its title to its own reference list; "" when it does not.
+    A short piece can share its first page with the end of the one before it, references
+    included (Cell's Previews, 2026-11-18). It takes the title standing on its own lines
+    and, within HEAD_REACH after it and no other DOI between, the target DOI alone on its
+    line: a reference list cites an article on lines it shares with its authors, year
+    and journal, and ends its DOI with a full stop."""
+    first = _REFERENCES_HEADING.search(text)
+    plain = normalize_doi_text(_plain_title(title))
+    key = _letters(plain)[0]
+    if not first or not re.match(r"10\.\d{4,9}/\S", target) or _weight(key) < SHORT_TITLE:
+        return ""
+    doi_line = re.compile(rf"^[ \t]*(?:https?://(?:dx\.)?doi\.org/|doi:?[ \t]*)?{re.escape(target)}[ \t]*$", re.M)
+    for line in doi_line.finditer(text, first.end()):
+        offset = max(first.end(), line.start() - HEAD_REACH)
+        chars, at = _letters(text[offset:line.start()])
+        found = chars.rfind(key)
+        while found >= 0:
+            begin, end = offset + at[found], offset + at[found + len(key) - 1] + 1
+            if (_numbers_match(text[max(0, begin - 25):end + 26], plain) and _stands_alone(text, begin, end)
+                    and not _DOI_IN_TEXT.search(text, end, line.start())):
+                after = _REFERENCES_HEADING.search(text, line.end())
+                return text[begin:after.start() if after else len(text)]
+            found = chars.rfind(key, 0, found)
+    return ""
 
 
 def evidence(first_pages: str, identifier: str, title: str = "") -> dict | None:
@@ -279,6 +336,9 @@ def evidence(first_pages: str, identifier: str, title: str = "") -> dict | None:
     text = normalize_doi_text(first_pages)
     front = _REFERENCES_HEADING.split(text, maxsplit=1)[0]
     target = _target_doi(identifier)
+    # Nothing of the article before the first reference list: it may begin after another's.
+    if not _doi_named(front, target) and not ((title or "").strip() and _title_evidence(front, *_letters(front), title)):
+        front = _head_after_references(text, target, title or "") or front
     chars, at = _letters(front)
     own_footer = _doi_above_copyright(text, target)
     doi = _doi_named(front, target) or own_footer

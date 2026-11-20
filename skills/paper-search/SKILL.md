@@ -4,7 +4,7 @@ description: |
   用本机 paper-search 命令做文献工作：检索论文、核对 DOI/PMID、搜正文片段（找方法和结果的原文）、查期刊影响因子与分区、查施引和参考文献、下载全文和补充材料。
   用户要找文献、查期刊、下载论文，或说“请开始配置”时使用；英文请求（literature search、journal metrics、paper download、start setup）同样适用。
 metadata:
-  version: "0.6.11"
+  version: "0.7.0"
 ---
 
 # 文献检索与下载（paper-search）
@@ -46,11 +46,11 @@ metadata:
      ├─ ③ 机构下载（学校订阅下载，电脑上经用户同意后安装；paper-search school install）
      │    entitled_access：浏览器打开出版社网站 → 程序选学校所属的联盟和学校
      │    → 用户登录学校，后端尝试简单验证、必要时提示人工接管 → 程序取 PDF
-     │    补充材料只走这一步：正文已由 ①② 拿到时，content=both 也会单独来这里取
+     │    补充材料只走这一步：PDF 已由 ①② 拿到又要补充材料时，也单独来这里取
      │
      ├─ ④ arXiv 预印本最后兜底：正式版路线未成功才尝试，必须告知用户 version=preprint
      ├─ 每一步拿到文件都核对身份（首页的 DOI、题名）；通过就保存，后面的步骤不再试
-     └─ 都没拿到 → paper-search failures --format text，按四类失败向用户说明
+     └─ 都没拿到 → paper-search failures --format text，按失败分类向用户说明
 
 管理命令：doctor（体检）、setup / config（配置 key）、skills（同步 Skill）、school（学校订阅下载的安装、状态、更新、卸载）
 ```
@@ -109,8 +109,8 @@ paper-search doctor --pretty
 | 查已知论文的施引文献或参考文献 | `citation_expansion` | `paper-search run get_paper_citations` / `paper-search run get_paper_references` | 需要已知的 `paperId`、DOI 或 arXiv ID；不是关键词检索 |
 | 查影响因子、JCR/SSCI/中科院分区、JCI、ESI、预警、期刊等级 | `journal_metrics` | `paper-search journal-metrics` / `paper-search run query_journal_metrics` | 查期刊，不查论文；需要 `EASYSCHOLAR_KEY` |
 | 下载已确认论文的 PDF | `pdf_discovery` | `paper-search download` / `paper-search run download_with_fallback` | 先核验论文身份；默认只走开放下载，装了学校订阅下载时最后再用学校权限 |
-| 批量下载一组已确认的论文（几十到几百篇） | `pdf_discovery` | `paper-search run download_batch` | 一次调用，不自己循环单篇；用学校权限时读 `references/browser-download.md` |
-| 下载补充材料（附录、Supporting Information） | `pdf_discovery` | `download_with_fallback` / `download_batch` 设 `content` 为 `supplements` 或 `both` | 只有机构下载能取；只有部分出版社有规则，见 `references/publisher-support.md` |
+| 批量下载一组已确认的论文（几十篇以上，篇数不限） | `pdf_discovery` | `paper-search run download_batch` | 一次调用，不自己循环单篇；用学校权限时读 `references/browser-download.md` |
+| 下载补充材料（附录、Supporting Information） | `pdf_discovery` | `download_with_fallback` / `download_batch` 的 `content` 里写 `supplements` | 只有机构下载能取；只有部分出版社有规则，见 `references/publisher-support.md` |
 | 在论文正文片段中找 Methods、参数、写法线索 | `body_snippet_search` | `paper-search run search_semantic_snippets` | 查 Semantic Scholar 开放获取片段索引；需要 `SEMANTIC_SCHOLAR_API_KEY`；不是完整全文解析 |
 
 ## 两种下载方式
@@ -146,15 +146,14 @@ paper-search doctor --pretty
 
 直接下载请求（用户给出单个 DOI、PMID、PMCID 或已核验的清单，并明确要求下载）可以跳过广泛检索：先核验目标身份，再下载。
 
-下载前问清要什么：机构下载已启用、用户又没说要不要补充材料时，开始下载前问一次（批量也只问一次），三个选项：
+下载前问清要什么：用户没说要哪些内容时，开始下载前问一次（批量也只问一次）。两样内容各自单独取，可以只要一样，也可以都要（`"pdf,supplements"`）：
 
-- 只要正文（默认，`content` 为 `main`）；
-- 正文加补充材料（`content` 为 `both`）；
-- 只要补充材料（`content` 为 `supplements`，正文已有时用）。
+- `pdf`：正文 PDF（不写 `content` 时就是它）；
+- `supplements`：补充材料；
 
-问的时候顺带说明：补充材料只有部分出版社支持，见 `references/publisher-support.md`。用户已经说明的不再问。机构下载没启用时只走开放下载、只下正文；用户要补充材料时，告诉用户补充材料要靠学校订阅下载（`references/school-setup.md`）；用户说过不装时只说明这一点，不劝装。
+问的时候顺带说明：补充材料只有部分出版社支持，见 `references/publisher-support.md`。用户已经说明的不再问。机构下载没启用时只走开放下载：取不到补充材料；用户要补充材料时，告诉用户补充材料要靠学校订阅下载（`references/school-setup.md`）；用户说过不装时只说明这一点，不劝装。
 
-几十到几百篇用一次 `download_batch`，不要自己循环调用单篇下载。下载结束后运行 `paper-search failures --format text`，按失败类别向用户说明。需要向维护者报告时用 `paper-search failures --export ./failure-report.zip` 导出副本，先核对包内公开检查清单；详见 `references/browser-download.md`。不自动上传或提交 issue。
+几十篇以上（篇数不限）用一次 `download_batch`，不要自己循环调用单篇下载。批量要传 `folderName`，按这一批的内容起名：某期刊的文章用期刊缩写加年份，期刊缩写与每篇文件夹开头的相同（NLM 缩写，如 `Osteoarthritis Cartilage_2024-2026`），不自拟首字母缩写；主题检索写主题词加年份，不用默认的时间文件夹；它建在下载文件夹（或 `savePath`）下，见下面的“下载结果”。下载结束后运行 `paper-search failures --format text`，按失败类别向用户说明。需要向维护者报告时用 `paper-search failures --export ./failure-report.zip` 导出副本，先核对包内公开检查清单；详见 `references/browser-download.md`。不自动上传或提交 issue。
 
 ## 核心规则
 
@@ -173,4 +172,4 @@ paper-search doctor --pretty
 - 不写论文正文，不做语言润色。
 - 不把 API key、token、Cookie 写入 Skill、README 或回复。
 
-下载结果在下载文件夹（`savePath`，没传时用 `DEFAULT_DOWNLOAD_PATH`）里这次新建的 `<年月日-时分秒>_PaperSearchDownload/`：PDF 直接放在里面，取到了补充材料的论文才单独一个文件夹（正文和 `supplements/`）。出过问题的篇目的诊断记录和截图在结果 `runLog` 所指运行记录目录的 `diagnostics/` 里（可能带登录信息，不要发给别人；30 天后自动删除）。正文按“期刊缩写_年月_标题”命名，附件保留原名；使用结果返回的实际 `path` / `supplements[].file`，不要自行拼 DOI 文件名。过长名称会截短，完整标题见返回结果。
+下载结果在下载文件夹（`savePath`，没传时用 `DEFAULT_DOWNLOAD_PATH`）里这次的文件夹：批量传了 `folderName` 就是这个名字，否则新建 `<年月日-时分秒>_PaperSearchDownload/`。PDF 直接放在里面，取到了补充材料的论文单独一个文件夹（正文、`supplements/`）。批量的文件夹里另有 `_run/`：`batch-args.json` 这批要下的内容、`batch.log` 进度记录、每次运行一个子文件夹的明细（“接着下”的也在里面），以及 `article_index.csv`（每篇的结果：PDF、来源、补充材料、失败原因、所在文件夹，路径从批量文件夹算起），随下载更新；向用户汇报时可以让用户打开这份清单。出过问题的篇目的诊断记录和截图在结果 `runLog` 所指运行记录目录的 `diagnostics/` 里（可能带登录信息，不要发给别人；30 天后自动删除）。正文按“期刊缩写_年月_标题”命名，附件保留原名；使用结果返回的实际 `path` / `supplements[].file`，不要自行拼 DOI 文件名。过长名称会截短，完整标题见返回结果。

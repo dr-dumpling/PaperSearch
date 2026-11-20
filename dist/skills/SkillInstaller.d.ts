@@ -1,4 +1,18 @@
 export declare const SKILL_NAME = "paper-search";
+/**
+ * Beside each installed copy: the files it was last given. A later version that no longer ships
+ * one of them moves it away on update (to the backup folder), while files the user added, never
+ * in the list, stay (user, 2026-11-18: old files were left behind after files were renamed).
+ */
+export declare const SKILL_MANIFEST = ".paper-search-files.json";
+/** Files earlier versions shipped before the list above was kept; a copy holding them got them from PaperSearch. */
+export declare const RETIRED_SKILL_FILES: string[];
+/** Raised when the way copies are kept changes, so that each copy is checked once more though the Skill did not. */
+export declare const SKILL_LAYOUT = 2;
+/** `${XDG_DATA_HOME:-~/.local/share}/paper-search-cli` */
+export declare function paperSearchDataRoot(env?: NodeJS.ProcessEnv, home?: string): string;
+/** A backup folder's time stamp: 20261118-143000. */
+export declare function backupStamp(date: Date): string;
 export interface SkillTarget {
     id: string;
     label: string;
@@ -18,6 +32,8 @@ export interface SkillTargetStatus {
     extraFiles: string[];
     missingFiles: string[];
     staleFiles: string[];
+    /** Files an earlier version gave this copy and this one no longer has: moved to the backup on update. */
+    retiredFiles: string[];
     error?: string;
 }
 export interface SkillStatusResult {
@@ -40,7 +56,10 @@ export interface SkillInstallResult {
         label: string;
         path: string;
         files: number;
+        retired: string[];
     }>;
+    /** Where the files an earlier version left were moved, when there were any. */
+    backupDir?: string;
     failed: Array<{
         target: string;
         label: string;
@@ -73,6 +92,7 @@ export interface SkillTargetDiff {
     extraFiles: string[];
     missingFiles: string[];
     staleFiles: string[];
+    retiredFiles: string[];
     error?: string;
 }
 export interface SkillDiffResult {
@@ -103,9 +123,15 @@ export declare function statusSkillTargets(targetIds: string[], options?: {
 }): SkillStatusResult;
 /** Digest of the bundled Skill's files, the `bundledHash` of a status. */
 export declare function bundledSkillHash(sourceRoot?: string): string;
+/**
+ * Writes the bundled Skill into each target, moves the files an earlier version left there and
+ * this one no longer has into ``backupDir/<target>/`` (by default a new ``skill-backups`` folder
+ * in PaperSearch's data), and records the files it wrote; files the user added stay.
+ */
 export declare function installSkillTargets(targetIds: string[], options?: {
     skillsRoot?: string;
     sourceRoot?: string;
+    backupDir?: string;
 }): SkillInstallResult;
 export declare function diffSkillTargets(targetIds: string[], options?: {
     skillsRoot?: string;

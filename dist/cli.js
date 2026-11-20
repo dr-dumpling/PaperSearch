@@ -4,13 +4,14 @@ import { randomBytes } from "crypto";
 import { readFileSync, unlinkSync } from "fs";
 import { createInterface as createPromiseInterface } from "readline/promises";
 import { emitKeypressEvents } from "readline";
-import { TOOLS } from "./core/tools.js";
+import { toolList } from "./core/tools.js";
+import { proFeatures, proFeaturesOf, setPackageProFeatures } from "./config/edition.js";
 import { initializeSearchers } from "./core/searchers.js";
 import { handleToolCall } from "./core/handleToolCall.js";
 import { diagnoseError, diagnoseToolResult, diagnosticContextFromCli, getRequirementStatus, } from "./management/diagnostics/index.js";
 import { buildCapabilityProfile } from "./management/capability-profile/index.js";
 import { resolveSchoolReadiness } from "./management/capability-profile/schoolReadiness.js";
-import { createSchoolBackend, } from "./capabilities/pdf-discovery/school/index.js";
+import { createSchoolBackend, } from "./infrastructure/school/index.js";
 import { CONFIG_KEYS, getConfigPath, importEnvFile, initUserConfig, listConfigEntries, loadUserConfigIntoEnv, maskValue, readUserConfig, assertConfigKey, applyLegacyEnvironment, canonicalConfigKey, getConfigValue, migrateLegacyConfigFile, setUserConfigValue, isConfigTrue, resolveDownloadPath, unsetUserConfigValue, } from "./management/config/index.js";
 import { apiKeySignupUrl } from "./config/apiKeySignup.js";
 import { setupGlobalProxy } from "./infrastructure/http/HttpClient.js";
@@ -19,18 +20,22 @@ import { firstInstallNextSteps, nextStepsNotice } from "./management/skills/next
 import { renderDoctorTextReport, renderSkillDiffTextReport, } from "./management/reports/index.js";
 import { beginUpdateNotification, checkForUpdate, renderUpdateNotice } from "./management/updates/index.js";
 import { exportFailureReport } from "./management/failures/exportReport.js";
+import { exportMarkdownReport, markdownPages, markdownSites, renderMarkdownSitesText } from "./management/failures/markdownReport.js";
+import { prepareProSchoolLogin } from "./capabilities/download/content/markdown/pro.js";
 import { renderFailuresText, summarizeFailures } from "./management/failures/index.js";
 import { createNodeHost } from "./management/school/host.js";
 import { InstallError, installSchool, schoolStatus, renderStatusText, uninstallSchool, updateSchool, } from "./management/school/installer.js";
-import { resolveDefaultSchoolProfileDir, takeDownloadLock } from "./capabilities/pdf-discovery/school/index.js";
+import { markdownProEntry, resolveDefaultSchoolProfileDir, takeDownloadLock } from "./infrastructure/school/index.js";
 import { autoUpdateSchool, withAutoUpdate } from "./management/school/autoUpdate.js";
 import { withCliSchoolProgress } from "./management/school/cliProgress.js";
 import { openSettingsWindow, settingsWindowEnv as windowEnv } from "./management/school/settingsWindow.js";
+import { checkPro, installPro, proStatus } from "./management/pro/install.js";
 import { schoolLogin } from "./management/school/login.js";
 import { moveLegacyDataDir } from "./management/school/legacy.js";
 import { paperSearchCommand } from "./config/selfCommand.js";
 import { TESTABLE_KEYS, probeKeyFor, testApiKey } from "./config/apiKeyTest.js";
 import { hasScreen } from "./management/school/runtime.js";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveRunLogRoot } from "./infrastructure/runlog/RunLedger.js";
 import { NPM_UNINSTALL, renderUninstallPlan, runUninstall, uninstallPlan } from "./management/uninstall/index.js";
@@ -68,13 +73,16 @@ const GLOBAL_FLAGS = new Set([
     "version",
     "v",
 ]);
+function packageJson() {
+    return JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+}
 function packageVersion() {
-    const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-    return pkg.version || "0.0.0";
+    return packageJson().version || "0.0.0";
 }
 /** This package's own Skill, whatever the working directory. */
 const PACKAGE_SKILL_ROOT = fileURLToPath(new URL("../skills/paper-search", import.meta.url));
-function usage() {
+/** The usage; without PaperSearch Pro's features (config/edition.ts), no Markdown and no \`pro\`. */
+function usage(pro = proFeatures()) {
     return `paper-search - PaperSearch, an agent-friendly academic paper search command
 
 Usage:
@@ -87,7 +95,8 @@ Usage:
   paper-search status [--validate]
   paper-search doctor [--validate]
   paper-search failures [--run <id>|latest] [--since 2026-11-01] [--runs 5] [--doi <DOI>] [--export <file.zip>] [--all]
-  paper-search school <install|status> [--browser chrome|ego] [--yes] [--force] [--skip-school]
+${pro ? `  paper-search failures --markdown [--run <id>|latest] [--export [<file.zip>]]
+` : ""}  paper-search school <install|status> [--browser chrome|ego] [--yes] [--force] [--skip-school]
   paper-search school update [--force]
   paper-search school login --doi <DOI> [--max-wait <seconds>]
   paper-search school uninstall [--yes] [--remove-data]
@@ -97,9 +106,10 @@ Usage:
   paper-search tools
   paper-search diagnostics
   paper-search config <init|set|get|unset|list|doctor|path|import-env|keys|test>
-  paper-search settings [download|wait|keys|<API_KEY_NAME>]
-  paper-search setup [--all] [--install-skills agents,codex] [--skip-skills] [--skip-school|--install-school]
-  paper-search download <paper-id> --platform pmc [--save-path ./downloads]
+  paper-search settings [download|wait|keys|${pro ? "markdown|" : ""}<API_KEY_NAME>]
+${pro ? `  paper-search pro <status|check|install> [--from <folder|address|github:owner/repo>] [--progress]
+` : ""}  paper-search setup [--all] [--install-skills agents,codex] [--skip-skills] [--skip-school|--install-school]
+  paper-search download <paper-id> --platform pmc [--save-path ./downloads]${pro ? " [--content pdf|markdown|pdf,markdown] [--markdown]" : ""}
 
 Global flags:
   --pretty         Pretty-print JSON output
@@ -364,15 +374,18 @@ function schoolBackendForToolCall(tool, args) {
     // After an upgrade, the extension is updated before the backend first starts.
     return withCliSchoolProgress(withAutoUpdate(createSchoolBackend(), updateSchoolFirst));
 }
-/** After a PaperSearch upgrade: the extension brought up to it (autoUpdateSchool), under the download lock. */
-function updateSchoolFirst() {
+/**
+ * After a PaperSearch upgrade: the extension brought up to it (autoUpdateSchool), under the
+ * download lock, before a download or ``next`` (what is said it goes on to).
+ */
+function updateSchoolFirst(next) {
     return autoUpdateSchool(createNodeHost(() => Promise.resolve("")), schoolContext(), () => {
         const lockPath = takeDownloadLock(resolveDefaultSchoolProfileDir());
         return () => unlinkSync(lockPath);
-    });
+    }, next);
 }
 function getToolNames() {
-    return TOOLS.map((tool) => tool.name);
+    return toolList().map((tool) => tool.name);
 }
 function assertToolName(tool) {
     if (!getToolNames().includes(tool)) {
@@ -403,7 +416,7 @@ async function run(parsed) {
     if (command === "tools") {
         return {
             ok: true,
-            tools: TOOLS.map((tool) => ({
+            tools: toolList().map((tool) => ({
                 name: tool.name,
                 description: tool.description,
                 inputSchema: tool.inputSchema,
@@ -435,18 +448,28 @@ async function run(parsed) {
         return handleFailuresCommand(flags);
     }
     // "carsi": the command's name before 0.6.1, still taken from older Skills and scripts.
+    // PaperSearch Pro's school sign-in for the backend these commands may start (markdown/pro.ts).
+    if (["school", "carsi", "settings", "download"].includes(command)
+        || (command === "run" && /^download/.test(String(positionals[0] ?? "")))) {
+        await prepareProSchoolLogin().catch((error) => process.stderr.write(`[学校订阅] PaperSearch Pro 的自动登录没有准备好：${error instanceof Error ? error.message : String(error)}\n`));
+    }
     if (command === "school" || command === "carsi") {
         return handleSchoolCommand(positionals, flags);
     }
     if (command === "uninstall") {
         return handleUninstallCommand(flags);
     }
+    if (command === "pro" && proFeatures()) {
+        return handleProCommand(positionals, flags);
+    }
     if (command === "settings") {
         // Keys are typed into the window, which saves them; none pass through this command.
+        // The window is the backend's: after an upgrade it is updated first, as before a download.
         const opened = await openSettingsWindow({
-            executable: getConfigValue("PAPER_SEARCH_SCHOOL_EXECUTABLE"),
+            executable: () => getConfigValue("PAPER_SEARCH_SCHOOL_EXECUTABLE"),
             target: positionals[0],
             env: settingsWindowEnv(),
+            update: () => updateSchoolFirst("打开设置窗口"),
         });
         return flags.format === "text" && opened.ok ? "设置窗口已打开。" : opened;
     }
@@ -829,9 +852,32 @@ async function testConfiguredKeys(key, flags) {
     }
     return key !== undefined ? { ok, ...results[0], exitCode: ok ? 0 : 1 } : { ok, results, exitCode: ok ? 0 : 1 };
 }
+/**
+ * `paper-search pro <status|install>`: PaperSearch Pro (the Markdown) on this computer. install
+ * takes `--from <folder|address>` (else Pro's release address) and, with `--progress`, writes a
+ * line of progress as it downloads (the settings window's 安装 reads them).
+ */
+async function handleProCommand(positionals, flags) {
+    const action = positionals[0] || "status";
+    if (action === "status")
+        return proStatus();
+    if (action === "check") {
+        const from = typeof flags.from === "string" ? flags.from : undefined;
+        const result = await checkPro(from ? { from } : {});
+        return result.ok ? result : { ...result, exitCode: 1 };
+    }
+    if (action === "install") {
+        const from = typeof flags.from === "string" ? flags.from : undefined;
+        const result = await installPro({ ...(from ? { from } : {}),
+            ...(flags.progress === true ? { onProgress: (done, total) => process.stdout.write(`${JSON.stringify({ event: "progress", done, total })}\n`) } : {}) });
+        return result.ok ? result : { ...result, exitCode: 1 };
+    }
+    return { ok: false, error: `没有这个命令：paper-search pro ${action}（可用 status、check、install）`, exitCode: 2 };
+}
 /** What the settings window needs: the backend's data directory, this config, and this CLI for key tests. */
 function settingsWindowEnv() {
-    return windowEnv({ dataDir: resolveDefaultSchoolProfileDir(), configFile: getConfigPath(), cli: paperSearchCommand() });
+    return windowEnv({ dataDir: resolveDefaultSchoolProfileDir(), configFile: getConfigPath(), cli: paperSearchCommand(),
+        proEntry: markdownProEntry() });
 }
 /**
  * `paper-search uninstall [--dry-run] [--yes]` (user, 2026-11-11): PaperSearch's data (school
@@ -983,13 +1029,31 @@ async function handleSchoolCommand(positionals, flags) {
         session?.close();
     }
 }
+/** A run's download folder (its run.json's savePath), when absolute. */
+function batchFolder(root, runId) {
+    if (!runId)
+        return undefined;
+    try {
+        const run = JSON.parse(readFileSync(join(root, runId, "run.json"), "utf8"));
+        return typeof run.savePath === "string" && isAbsolute(run.savePath) ? run.savePath : undefined;
+    }
+    catch {
+        return undefined;
+    }
+}
 /** Failed institutional downloads from the run ledgers, by class (ADR 0012). */
 async function handleFailuresCommand(flags) {
     const root = resolveRunLogRoot();
     if (!root) {
         return { ok: false, error: "运行记录已关闭（PAPER_SEARCH_RUNLOG=0），没有可汇总的失败。" };
     }
+    // The Markdown is one of PaperSearch Pro's features (config/edition.ts).
+    if (flags.markdown !== undefined && !proFeatures())
+        throw new Error("这个版本没有 --markdown。");
     for (const name of ["export", "doi", "run", "since", "runs"]) {
+        // The Markdown report's ZIP goes to the batch's folder when no path is given.
+        if (name === "export" && flags.markdown === true && flags.export === true)
+            continue;
         if (flags[name] !== undefined && (typeof flags[name] !== "string" || !String(flags[name]).trim())) {
             throw new Error(`--${name} 需要一个值。`);
         }
@@ -1009,6 +1073,21 @@ async function handleFailuresCommand(flags) {
         ...(typeof flags.since === "string" ? { since: flags.since } : {}),
         ...(typeof flags.runs === "string" && Number(flags.runs) > 0 ? { runs: Number(flags.runs) } : {}),
     };
+    // Pages from sites not yet supported whose Markdown was not kept (user, 2026-11-16).
+    if (flags.markdown === true) {
+        const pages = markdownPages(root, query);
+        if (flags.export === undefined) {
+            const sites = markdownSites(pages);
+            return flags.format === "text" ? renderMarkdownSitesText(sites) : { ok: true, sites, papers: pages.length };
+        }
+        const runs = [...new Set(pages.map((page) => page.runId))];
+        const report = await exportMarkdownReport({ pages, folder: batchFolder(root, runs.at(-1)) ?? process.cwd(),
+            ...(typeof flags.export === "string" ? { output: flags.export } : {}), version: packageVersion(),
+            command: getConfigValue("PAPER_SEARCH_SCHOOL_EXECUTABLE") || "paper-search-school" });
+        return flags.format === "text"
+            ? `已导出 ${report.papers} 篇的 Markdown 报告：${report.path}\n公开前请阅读包内 summary.md 并核对个人信息。提 issue（已填好网站、版本和篇数，不含 DOI 和题目）：${report.issueUrl}`
+            : report;
+    }
     if (typeof flags.export === "string") {
         const report = await exportFailureReport({ root, query, output: flags.export, version: packageVersion(),
             command: getConfigValue("PAPER_SEARCH_SCHOOL_EXECUTABLE") || "paper-search-school" });
@@ -1290,6 +1369,8 @@ function moveLegacySchoolData() {
     }
 }
 async function main() {
+    // Whether this edition has PaperSearch Pro's features (config/edition.ts).
+    setPackageProFeatures(proFeaturesOf(packageJson()));
     const parsed = parseCli(process.argv.slice(2));
     let update;
     try {

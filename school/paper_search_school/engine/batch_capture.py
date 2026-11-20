@@ -4,6 +4,7 @@ Part of ``PublisherBatchDownloader`` (batch.py), which combines the mixins."""
 
 from __future__ import annotations
 
+from .. import progress_reporter
 from ..browser import watchdog
 
 import base64
@@ -32,14 +33,40 @@ from .batch_common import (
     _REFERENCE_AREA,
     _IP_BLOCK_STATUS_CODES,
     _is_browser_error,
+    browser_closed,
     goto_retrying,
 )
+
+
+def _browser_error_said(exc: BaseException) -> str:
+    """A browser error for the record: its class and the first line of what it said."""
+    said = (str(exc).strip().splitlines() or [""])[0][:160]
+    return f"{type(exc).__name__}: {said}" if said else type(exc).__name__
 
 
 def _sent_as_attachment(headers: dict[str, str]) -> bool:
     """The site sends the PDF to be saved, not shown (Content-Disposition: attachment):
     Chrome downloads it besides the capture, which holds it already."""
     return headers.get("content-disposition", "").strip().lower().startswith("attachment")
+
+
+# A PDF larger than this is read in pieces (Fetch.takeResponseBodyAsStream), the step's time
+# going on while pieces arrive: read whole in one call it was cut at the step's minute, and the
+# page's own copy then fetched in its place took the tab down (Cell, 108 MB, 2026-11-18).
+# A PDF over this, or one whose size is not given, is read in pieces, the PDF step's time going on
+# while they arrive: IEEE's getPDF.jsp sent a 31.8 MB PDF and a 37 MB one without a size, read in one
+# call in 46 and 57 s of the step's 60 (2026-11-18; 32 MB before).
+STREAM_PDF_BYTES = 8 * 1024 * 1024
+STREAM_PIECE_BYTES = 4 * 1024 * 1024
+# How long a piece may take before the read counts as stalled.
+STREAM_STALL_SEC = 45
+
+
+def _content_length(headers: dict[str, str]) -> int:
+    try:
+        return int(headers.get("content-length", "") or 0)
+    except ValueError:
+        return 0
 
 
 class CaptureMixin:
@@ -371,6 +398,202 @@ class CaptureMixin:
             if not _is_browser_error(exc):
                 raise
 
+    # Reading the page waits for its body (at most 8 + 15 + 8 s, fulltext_page.py) and runs
+    # the adapter's preparation (Springer Nature fetches its tables, at most 12 s); a budget
+    # of its own, so the PDF step's is not spent on it (Wiley ran out of it, 2026-11-14).
+    FULLTEXT_READ_SEC = 50
+
+    def _remember_fulltext_page(self, page: Any, doi: str, result: DownloadResult, *, target: str = "") -> None:
+        """--fulltext: the article's full-text page, read on the article page before the
+        PDF step (``fulltext_page.read_page``), under its own time budget; its images are
+        fetched after the PDF, in the bridge, with the browser's session, or with the session
+        kept here once the browser can no longer be asked then (``_fulltext_session``).
+        ``target``: an address to read in a tab of its own instead (the article page again,
+        once the school's login came later)."""
+        if not self.config.get("fulltext") or getattr(result, "_fulltext_read", None):
+            return
+
+        target = self.adapter.fulltext_page_url(doi, str(getattr(page, "url", "") or "")) or target
+        tab = None
+        # The window says the Markdown's page is being read, then goes back to the part it was on.
+        before = progress_reporter.current_part()
+        progress_reporter.update(part="markdown", page_reading=True)
+        try:
+            with watchdog.operation(self.FULLTEXT_READ_SEC, "fulltext_page"):
+                if target:
+                    # The full text is another page than the article's (Thieme): a tab of its own.
+                    from .batch_common import open_page
+
+                    tab = page.context.new_page()
+                    open_page(tab, target, timeout_ms=30_000)
+                read, why = self._read_fulltext_page(tab or page, doi, result)
+                if read is None and why.startswith("fulltext_not_shown") and not self._pdf_only(why):
+                    # No full text on the page: a paywall or a denial there is no access, not a
+                    # page without its text (pnas.org's "Get full access to this article",
+                    # said 文章页没有正文, 2026-11-17). The shared rules, as the access check reads them.
+                    closed = self._page_closed(tab or page)
+                    if closed:
+                        why = f"fulltext_denied: {closed}"
+                if read is not None:
+                    result._fulltext_session = self._fulltext_session(tab or page)
+        except watchdog.BrowserBudgetExhausted:
+            # Between browser calls: the browser is fine, only the page is not saved.
+            read, why = None, "time_limit"
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            read, why = None, f"browser: {_browser_error_said(exc)}"
+        finally:
+            progress_reporter.update(part=before or "main", page_reading=False)
+            if tab is not None:
+                try:
+                    tab.close()
+                except Exception:
+                    pass  # the browser closes it with the context
+        if read is None:
+            self._event(result, "fulltext_page_not_saved", why)
+            return
+        result._fulltext_read = read
+        prepared = f"; prepared: {read['prepared']}" if read.get("prepared") else ""
+        general = "; general rules (the site has no page scripts)" if read.get("general") else ""
+        self._event(result, "fulltext_page_read",
+                    f"{len(read['html'])} chars, {len(read['image_urls'])} images{prepared}{general}")
+
+    # The longest wait for the page to load again before the second read.
+    FULLTEXT_REREAD_SETTLE_MS = 5_000
+
+    def _read_fulltext_page(self, page: Any, doi: str, result: DownloadResult) -> tuple[dict[str, Any] | None, str]:
+        """``fulltext_page.read_page``, once more when a browser error cut it and the page is
+        still there: read right after the school's login, the page went on loading meanwhile
+        (IEEE, 2026-11-18: a call of the read ended in an error after 11 s, the PDF step found
+        the page fine a second later, and the page was not saved). Both reads share the
+        read's one budget (``FULLTEXT_READ_SEC``); a page closed under it is not read again."""
+        from .fulltext_page import read_page
+
+        sample = self.config.get("fulltext") == "sample"
+        try:
+            return read_page(page, doi, self.adapter, sample=sample)
+        except Exception as exc:
+            if not _is_browser_error(exc) or browser_closed(exc):
+                raise
+            self._event(result, "fulltext_page_read_again", _browser_error_said(exc))
+        settle(page, self.FULLTEXT_REREAD_SETTLE_MS)
+        return read_page(page, doi, self.adapter, sample=sample)
+
+    @staticmethod
+    def _fulltext_session(page: Any) -> dict[str, Any] | None:
+        """The browser's session as the page was read (its user agent and cookies), for the
+        page's images after the PDF when the browser can no longer be asked then: a PDF step
+        past its time ends every browser call of the process (``watchdog.fired``), and the page
+        read before it was dropped (IEEE's 32 and 37 MB PDFs, 2026-11-18). None when the browser
+        cannot say now; the page read stays."""
+        from .supplement_transfer import browser_session
+
+        try:
+            return browser_session(page)
+        except watchdog.BrowserBudgetExhausted:
+            return None
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return None
+
+    def _page_closed(self, page: Any) -> str:
+        """Evidence the page shows a reader without access (a denial, an offer to buy, a
+        paywall box), by the shared rules; "" without, or when the page cannot be read."""
+        try:
+            snap = self._access_snapshot(page)
+            url = str(getattr(page, "url", "") or "")
+            return (access_rules.denial_evidence(url, snap.lines, snap.probe)[0]
+                    or access_rules.offer_evidence(snap.lines, snap.probe, gate=False))[:200]
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return ""
+
+    @staticmethod
+    def _pdf_only(why: str) -> bool:
+        """The page is the PDF, or sends the reader to it for the text (``fulltext_page.PDF_ONLY``)."""
+        from .fulltext_page import PDF_ONLY
+
+        return why.startswith(f"fulltext_not_shown: {PDF_ONLY}")
+
+    def _fulltext_hidden(self, result: DownloadResult) -> bool:
+        """The page was read for its full text and showed none (``fulltext_not_shown``), when
+        the school's login might show it: not a page whose text is in its PDF alone (a
+        one-page figure article read twice with a login between, a minute for nothing,
+        2026-11-18)."""
+        if not self.config.get("fulltext") or getattr(result, "_fulltext_read", None):
+            return False
+        missed = [event for event in result.events if event.get("state") == "fulltext_page_not_saved"]
+        # A paywall on it too (fulltext_denied): the school's login may be what is missing.
+        why = str(missed[-1].get("detail", "")) if missed else ""
+        return why.startswith(("fulltext_not_shown", "fulltext_denied")) and not self._pdf_only(why)
+
+    @staticmethod
+    def _fulltext_denied(result: DownloadResult) -> bool:
+        """The page read for its full text showed a paywall or a denial (``fulltext_denied``)."""
+        missed = [event for event in result.events if event.get("state") == "fulltext_page_not_saved"]
+        return bool(missed) and str(missed[-1].get("detail", "")).startswith("fulltext_denied")
+
+    def _fulltext_after_login_only(self, page: Any, doi: str, result: DownloadResult) -> None:
+        """A visit for the page alone whose page showed no full text before any school login
+        (Wiley's page says nothing either way, so no login came first, 2026-11-14): the
+        school's login from the article page, then the page again. Not for an article taken
+        as open to all (its badge, licence or metadata, ``_taken_as_open``, read by the
+        access check before this) whose page shows no paywall either: the school's login
+        adds nothing to it, and the page is said to show no full text (an MDPI page went on
+        to MDPI's own account login, 2026-11-18). A paywall on it contradicts that (PNAS's
+        licence line, 2026-11-17)."""
+        if not self._fulltext_hidden(result) or self._school_login_done():
+            return
+        open_to_all = getattr(result, "_taken_as_open", "")
+        if open_to_all and not self._fulltext_denied(result):
+            self._event(result, "open_access_no_login",
+                        f"the page showed no full text; open to all ({str(open_to_all)[:160]}): no school login")
+            return
+        self._event(result, "fulltext_login", "the page showed no full text before the school's login")
+        if self._complete_login_from_current_page(page, result):
+            settle(page, 2_000)
+            self._remember_fulltext_page(page, doi, result)
+
+    def _fulltext_after_pdf_login(self, page: Any, doi: str, result: DownloadResult) -> None:
+        """Read before the school's login, the page showed no full text; the login came for
+        the PDF: the article page again, in a tab of its own (the PDF's page stays)."""
+        if not self._fulltext_hidden(result) or not self._school_login_done():
+            return
+        self._remember_fulltext_page(page, doi, result, target=str(result.final_url or self._article_url(doi)))
+
+    def _read_paused_pdf(self, cdp_session: Any, request_id: str, result: DownloadResult,
+                         captured: dict[str, Any]) -> bytes:
+        """A large paused PDF response, read in pieces: while they arrive, the PDF step's time
+        goes on (``watchdog.extend_operation``); a piece that takes STREAM_STALL_SEC ends it."""
+        captured["receiving"] = True
+        handle = ""
+        pieces: list[bytes] = []
+        started = time.monotonic()
+        try:
+            with transfer(result):
+                handle = cdp_session.send("Fetch.takeResponseBodyAsStream", {"requestId": request_id})["stream"]
+                while True:
+                    watchdog.extend_operation(STREAM_STALL_SEC)
+                    piece = cdp_session.send("IO.read", {"handle": handle, "size": STREAM_PIECE_BYTES})
+                    data = piece.get("data") or ""
+                    if data:
+                        pieces.append(base64.b64decode(data) if piece.get("base64Encoded") else data.encode("latin-1"))
+                    if piece.get("eof"):
+                        break
+            body = b"".join(pieces)
+            self._event(result, "pdf_read_in_pieces", f"{len(body)} bytes in {time.monotonic() - started:.0f} s")
+            return body
+        finally:
+            captured["receiving"] = False
+            if handle:
+                try:
+                    cdp_session.send("IO.close", {"handle": handle})
+                except Exception:
+                    pass
+
     def _capture_pdf_channels(self, page: Any, doi: str, result: DownloadResult) -> tuple[bytes | None, str, str | None]:
         """Capture the PDF for ``doi`` from ``page``.
 
@@ -380,7 +603,7 @@ class CaptureMixin:
         """
         self._event(result, "pdf_capture_started")
         self._remember_listed_supplements(page, doi, result)
-        captured: dict[str, Any] = {"bytes": None, "url": "", "deferred_url": "", "block_reason": None,
+        captured: dict[str, Any] = {"bytes": None, "url": "", "deferred_url": "", "block_reason": None, "receiving": False,
                                     "suspect_block": None, "closed": False, "readers": set()}
         cdp_session = None
         native_redirects: dict[str, list[Any]] = {}
@@ -459,6 +682,22 @@ class CaptureMixin:
                 }
                 url = event.get("request", {}).get("url", "")
                 history = native_redirects.get(event.get("networkId", ""), []) or cdn_redirects.get(url, [])
+                is_pdf = "application/pdf" in headers.get("content-type", "").lower()
+
+                def passed_over(why: str) -> None:
+                    # A PDF the browser showed, not taken, and why: a 108 MB Cell PDF went to the
+                    # viewer with nothing said, and the step stalled there (2026-11-18).
+                    if is_pdf:
+                        self._event(result, "pdf_response_passed_over", f"{why} | {url[:200]}")
+                if is_pdf and captured["receiving"]:
+                    # A PDF already being read: another copy answered empty, not read (IEEE's stamp.jsp
+                    # frame and its getPDF.jsp address each read a 37 MB PDF, 2026-11-19).
+                    passed_over("another copy is being read")
+                    cdp_session.send("Fetch.fulfillRequest", {
+                        "requestId": request_id, "responseCode": 204, "responseHeaders": [], "body": "",
+                    })
+                    response_completed = True
+                    return
                 if (self.adapter.discards_unbound_pdfs
                         and "application/pdf" in headers.get("content-type", "").lower()
                         and (url in rejected_pdf_urls or self._is_supplementary_url(url)
@@ -469,6 +708,7 @@ class CaptureMixin:
                                      or self._bound_pdf_copy(url, SimpleNamespace(url=url, history=history),
                                                              doi, article_options)))):
                     rejected_pdf_urls.add(url)
+                    passed_over("not this article's bound PDF")
                     return
                 if ("application/pdf" in headers.get("content-type", "").lower()
                         and self._is_partial_pdf_response(SimpleNamespace(
@@ -477,10 +717,12 @@ class CaptureMixin:
                     self._event(result, "partial_pdf_response", "native")
                     return
                 if url in rejected_pdf_urls:
+                    passed_over("refused before")
                     return
                 if metadata_pdf_urls and (url.split("?", 1)[0] not in metadata_pdf_urls
                         or self._is_supplementary_url(headers.get("content-disposition", ""))):
                     rejected_pdf_urls.add(url)
+                    passed_over("not the page's citation_pdf_url")
                     return
                 if (
                     not captured["bytes"]
@@ -505,16 +747,35 @@ class CaptureMixin:
                         if (len(history) > 20 or not final_pdf
                                 or not self._response_matches_article(response, doi, **article_options)):
                             rejected_pdf_urls.update(self._response_urls(response))
+                            passed_over("not this article's PDF address" if not final_pdf
+                                        else "redirects" if len(history) > 20 else "does not match the article")
                             return
-                    with transfer(result):
-                        payload = cdp_session.send("Fetch.getResponseBody", {"requestId": request_id})
-                    body = (
-                        base64.b64decode(payload["body"], validate=True)
-                        if payload.get("base64Encoded")
-                        else payload["body"].encode("latin-1")
-                    )
+                    size = _content_length(headers)
+                    if not size or size > STREAM_PDF_BYTES:
+                        try:
+                            body = self._read_paused_pdf(cdp_session, request_id, result, captured)
+                        finally:
+                            # Its body taken, the request cannot go on as it was: answered empty,
+                            # the tab stays on the article page (as for an attachment below).
+                            cdp_session.send("Fetch.fulfillRequest", {
+                                "requestId": request_id, "responseCode": 204, "responseHeaders": [], "body": "",
+                            })
+                            response_completed = True
+                    else:
+                        captured["receiving"] = True
+                        try:
+                            with transfer(result):
+                                payload = cdp_session.send("Fetch.getResponseBody", {"requestId": request_id})
+                        finally:
+                            captured["receiving"] = False
+                        body = (
+                            base64.b64decode(payload["body"], validate=True)
+                            if payload.get("base64Encoded")
+                            else payload["body"].encode("latin-1")
+                        )
                     if self._accept_pdf_body(body, url):
-                        if self.adapter.keeps_pdf_out_of_downloads or _sent_as_attachment(headers):
+                        if not response_completed and (self.adapter.keeps_pdf_out_of_downloads
+                                                       or _sent_as_attachment(headers)):
                             # We own the validated bytes and save them under the
                             # DOI below. Do not also hand the response to Chrome's
                             # download manager, which exposes a UUID temp file and,
@@ -686,6 +947,24 @@ class CaptureMixin:
                 self._record_pdf_attempt(result, page, dict(pending), captured)
                 pending.clear()
 
+        def pdf_address(url: str) -> bool:
+            return self._is_pdf_candidate_url(url) and not self._is_supplementary_url(url)
+
+        def as_sent(route: Any) -> None:
+            # A PDF address opened in the tab goes on untouched: Patchright reads the whole body
+            # of every document of a tab with an init script to write the script in, and a
+            # 108 MB Cell PDF took the tab down that way, never reaching on_paused_response
+            # (2026-11-18). A verification page met there is observed when it is read
+            # (challenge_interaction.observe_checkbox).
+            try:
+                if route.request.resource_type == "document":
+                    route.continue_()
+                else:
+                    route.fallback()
+            except Exception:
+                pass  # the request ended meanwhile
+
+        plain_pdf_route = False
         page.on("response", on_response)
         page.on("requestfailed", on_request_failed)
         # PDF requests come from the article page, as a reader's click would
@@ -702,6 +981,8 @@ class CaptureMixin:
                     cdp_session.send("Network.enable")
                 cdp_session.on("Fetch.requestPaused", on_paused_response)
                 cdp_session.send("Fetch.enable", {"patterns": self._chromium_pdf_patterns(native_pdf_patterns)})
+                page.route(pdf_address, as_sent)
+                plain_pdf_route = True
             self._return_to_record_article_if_needed(page, result, doi)
             # A login can return directly to a PDF before these listeners were
             # installed. PDF.js has no article button or metadata to discover.
@@ -725,6 +1006,16 @@ class CaptureMixin:
             before_click = self._pdf_candidates(page, doi) if bound_pdf_urls is None else []
             click_started = time.time()
             fallback = getattr(self, "_fallback_pdf", None)
+
+            def wait_for_read() -> None:
+                # The PDF is arriving: nothing else is tried meanwhile (the page fetching its own
+                # copy of a 108 MB PDF took the tab down, Cell 2026-11-18; IEEE's address tried
+                # while its frame's copy was read read it again, 2026-11-19). A read in pieces keeps
+                # the step's time going; a read in one call ends within the watchdog's limit.
+                while captured["receiving"] and not (captured["bytes"] or captured["block_reason"]):
+                    pump_until(page, lambda: bool(captured["bytes"] or captured["block_reason"]
+                                                  or not captured["receiving"]), 5_000)
+
             if self._click_pdf_entry(page, result, doi=doi, bound=bound_pdf_urls):
                 begin("click", self._clicked_pdf_control(result), click_started)
                 # Until the PDF (or a block) arrives, or Firefox shows one it may
@@ -734,6 +1025,7 @@ class CaptureMixin:
                                               or getattr(self, "_fallback_pdf", None) is not fallback) or (
                     not self._is_chromium(page) and self._pdf_viewer_present(page)
                     and self._native_viewer_pdf_allowed(str(getattr(page, "url", "") or ""), **fallback_options)), 5_000)
+                wait_for_read()
                 if captured["bytes"] or captured["block_reason"]:
                     return captured["bytes"], str(captured["url"]), captured["block_reason"]
                 if getattr(self, "_fallback_pdf", None) is not fallback:
@@ -783,6 +1075,7 @@ class CaptureMixin:
             # document; try each URL once.
             candidates = list(dict.fromkeys(str(url).split("#", 1)[0] for url in candidates if url))
             for pdf_url in candidates:
+                wait_for_read()
                 if captured["bytes"] or captured["block_reason"] or getattr(self, "_fallback_pdf", None) is not None:
                     break  # a PDF naming neither DOI nor title is in hand: saved unconfirmed, as after the click
                 if pdf_url in rejected_pdf_urls:
@@ -806,6 +1099,7 @@ class CaptureMixin:
                 try:
                     response = goto_retrying(page, pdf_url, timeout_ms=self.pdf_timeout_ms,
                                              **({"referer": article_page} if article_page.startswith("https://") else {}))
+                    wait_for_read()
                     if not self._resolve_suspect_block(page, result, captured):
                         return None, "", captured["block_reason"]
                     if captured["block_reason"]:
@@ -848,6 +1142,7 @@ class CaptureMixin:
                             captured["block_reason"] = block_reason
                 except Exception as exc:
                     self._event(result, "pdf_navigation_error", f"{type(exc).__name__}: {exc}")
+                    wait_for_read()
                     if (not captured["bytes"] and not captured["block_reason"] and pdf_url not in rejected_pdf_urls
                             and not self._is_download_navigation_abort(exc)):
                         # e.g. Firefox "Response body ... was evicted" while PDF.js shows the file
@@ -908,6 +1203,11 @@ class CaptureMixin:
             for event, listener in (("response", on_response), ("requestfailed", on_request_failed)):
                 try:
                     page.remove_listener(event, listener)
+                except Exception:
+                    pass
+            if plain_pdf_route:
+                try:
+                    page.unroute(pdf_address, as_sent)
                 except Exception:
                     pass
         return captured["bytes"], str(captured["url"]), captured["block_reason"]

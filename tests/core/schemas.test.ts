@@ -140,6 +140,7 @@ describe("schemas", () => {
       useEntitledAccess: true,
       useSciHub: true,
       content: "main",
+      fulltext: false,
     });
   });
 
@@ -153,6 +154,8 @@ describe("schemas", () => {
       paperId: "10.1000/example",
       platform: "crossref",
       useEntitledAccess: true,
+      content: "main",
+      fulltext: false,
     });
     expect(
       parseToolArgs("download_with_fallback", {
@@ -167,6 +170,7 @@ describe("schemas", () => {
       useEntitledAccess: true,
       useSciHub: true,
       content: "main",
+      fulltext: false,
     });
   });
 
@@ -181,6 +185,8 @@ describe("schemas", () => {
       paperId: "10.1000/example",
       platform: "crossref",
       useEntitledAccess: false,
+      content: "main",
+      fulltext: false,
     });
     expect(
       parseToolArgs("download_with_fallback", {
@@ -196,6 +202,7 @@ describe("schemas", () => {
       useEntitledAccess: false,
       useSciHub: true,
       content: "main",
+      fulltext: false,
     });
   });
 });

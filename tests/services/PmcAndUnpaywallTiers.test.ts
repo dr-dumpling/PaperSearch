@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import { textPdf } from "../fixtures/textPdf.js";
-import { createRepositoryTier } from "../../src/capabilities/pdf-discovery/tiers/repositories.js";
-import { createUnpaywallTier } from "../../src/capabilities/pdf-discovery/tiers/unpaywall.js";
-import { oaHostPolicy } from "../../src/capabilities/pdf-discovery/oaHosts.js";
+import { createRepositoryTier } from "../../src/capabilities/download/content/pdf/open/tiers/repositories.js";
+import { createUnpaywallTier } from "../../src/capabilities/download/content/pdf/open/tiers/unpaywall.js";
+import { oaHostPolicy } from "../../src/capabilities/download/content/pdf/open/oaHosts.js";
 
 const pdf = textPdf([["Example article", "doi:10.1000/example"]]);
 const pdfResponse = { status: 200, headers: { "content-type": "application/pdf", "content-length": String(pdf.length) }, data: pdf };

@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 from ..base import PublisherAdapter, SupplementLink, register
 from ..platforms import silverchair
+from ..platforms.silverchair import SILVERCHAIR_FULLTEXT_IMAGES_JS, SILVERCHAIR_FULLTEXT_SHOWN_JS
 
 
 @register
@@ -27,6 +28,9 @@ class ACSAdapter(PublisherAdapter):
     metadata_pdf_patterns = ("https://pubs.acs.org/*/article-pdf/*",)
     # ACS's IP-block page names its contact mailbox (moved from the engine, review 2026-11-02).
     block_page_markers = ("ipblock@acs.org",)
+    # The full-text page for the Markdown: Silverchair's (JACS, 2026-11-15).
+    fulltext_shown_js = SILVERCHAIR_FULLTEXT_SHOWN_JS
+    fulltext_images_js = SILVERCHAIR_FULLTEXT_IMAGES_JS
 
     def login_url(self) -> str | None:
         return "https://pubs.acs.org/"

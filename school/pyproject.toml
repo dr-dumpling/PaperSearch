@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "Institutional (publisher-authorized) PDF and supplementary-file download backend for PaperSearch"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { file = "LICENSE" }
+license = "AGPL-3.0-only"
+license-files = ["LICENSE", "LICENSE-scansci-pdf", "NOTICE"]
 # Ranges below the next major version; the browser driver is pinned (ADR 0013, 0016).
 dependencies = [
     "requests>=2.31,<3",
@@ -39,7 +40,7 @@ where = ["."]
 include = ["paper_search_school*"]
 
 [tool.setuptools.package-data]
-paper_search_school = ["publishers/builtin/*.json", "federations/builtin/*.json", "publishers/schema.json", "data/*.json", "assets/*.png", "assets/*.html", "assets/*.json", "assets/papersearch-notifier"]
+paper_search_school = ["publishers/builtin/*.json", "federations/data/*/*.json", "publishers/schema.json", "data/*.json", "assets/*.png", "assets/*.html", "assets/*.json", "assets/papersearch-notifier"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

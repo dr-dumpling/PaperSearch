@@ -1,6 +1,6 @@
 # 机构下载：各出版社支持情况
 
-本表只适用于机构下载（学校订阅下载），说明它在哪些出版社网站上能走通（截至 2026-11-08）。“能走通”是说：用户学校订阅了这篇文章、出版社有这所学校的登录路线时，程序能自己取到本文的 PDF。学校有没有订阅，看实际的下载结果。开放获取的文章通常先由开放下载拿到，用不到这张表。
+本表的“正文”“补充材料”两列只适用于机构下载（学校订阅下载），说明它在哪些出版社网站上能走通（截至 2026-11-08）。“能走通”是说：用户学校订阅了这篇文章、出版社有这所学校的登录路线时，程序能自己取到本文的 PDF。学校有没有订阅，看实际的下载结果。开放获取的文章通常先由开放下载拿到，用不到这张表。
 
 - 支持按网站算，不按期刊算：同一网站上的期刊共享规则，实际结果以目标文章为准。
 - 程序按 DOI 实际跳转到的网站判断属于哪一行。DOI 前缀只是线索，期刊换了出版社时前缀不变（例如 ARD 的 `10.1136` 文章现在在 Elsevier）。
@@ -13,8 +13,8 @@
 | 出版社 | 网站 | 常见 DOI 前缀 | 正文 | 补充材料 |
 | --- | --- | --- | --- | --- |
 | Elsevier | ScienceDirect（期刊文章、书籍章节） | `10.1016` | ✓ | ✓ |
-| Elsevier | 期刊自有网站（cell.com、thelancet.com、gastrojournal.org、jacc.org 等） | `10.1016`、`10.1053` | ✓ | ✓ |
-| ASH（Blood、Blood Advances） | ScienceDirect、ashpublications.org | `10.1182/blood.`、`10.1182/bloodadvances.` | ✓OA | ✓ |
+| Elsevier | 期刊自有网站（cell.com、thelancet.com、ard.eular.org、oarsijournal.com、gastrojournal.org、jacc.org 等） | `10.1016`、`10.1053` | ✓ | ✓ |
+| ASH（Blood、Blood Advances 等） | ScienceDirect、ashpublications.org | `10.1182`（`10.1182/blood.`、`10.1182/bloodadvances.` 经 Elsevier） | ✓OA | ✓ |
 | Wiley | onlinelibrary.wiley.com 及学会子域名（agupubs、acsjournals、physoc 等） | `10.1002`、`10.1111` | ✓ | ✓ |
 | Springer Nature | SpringerLink、nature.com、BMC、SpringerOpen | `10.1007`、`10.1038`、`10.1186` | ✓ | ✓ |
 | Oxford Academic（OUP） | academic.oup.com | `10.1093` | ✓ | ✓ |
@@ -30,7 +30,7 @@
 | Science | science.org（Science、Science Advances 等） | `10.1126` | ✓OA | ✓ |
 | PNAS | pnas.org | `10.1073` | ✓ | ✓ |
 | ACM Digital Library | dl.acm.org | `10.1145` | ✓ | ✓ |
-| World Scientific | worldscientific.com | `10.1142` | ✓OA | ✓ |
+| World Scientific | worldscientific.com | `10.1142` | ✓ | ✓ |
 | Karger | karger.com | `10.1159` | ✓ | ✓ |
 | RSC | pubs.rsc.org | `10.1039` | ✓OA | ✓ |
 | IEEE | ieeexplore.ieee.org | `10.1109` | ✓ | ✓ |
@@ -71,7 +71,7 @@ DOI 跳转到表外的网站时，程序按通用规则尝试：找机构登录�
 这些结果说明的是“用户学校在这家出版社的情况”，不是程序故障：
 
 - `institution_federation_unavailable`：出版社的机构列表里找不到用户学校所属的联盟或这所学校，即这家出版社没有这所学校的登录路线。AMS（journals.ametsoc.org）只有会员登录、机构靠学校网络地址访问，也按这条结束。程序立即结束；建议在校园网或学校 VPN 下下载。
-- `institution_not_registered`：认证应用或入口未注册，或与当前认证渠道不兼容，属于外部认证配置问题；核查入口，不把它当作学校没有论文订阅。
+- `institution_not_registered`：学校的这个登录入口和这家出版社之间没有开通（出版社或学校的登录系统这样说），经这个入口没有权限，归入“没权限”；学校的其他入口、校园网或 VPN 可能仍可访问，不把它当作学校没有论文订阅。
 - `idp_no_return_to_publisher`：学校登录后停在学校自己的网站，没回到出版社，通常也是学校没开通。
 - `entitlement_missing`：出版社认出了学校，判定本篇不在订阅内。只说本篇、当前学校没有权限，不推断整个出版社。
 - `no_entitlement`：用 `paper-search-school entitlements set` 标过本刊或本出版社无权限，之后同刊或同出版社直接跳过；查看或撤销用 `paper-search-school entitlements`（`list` / `clear <key>`）。

@@ -17,6 +17,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from ...engine.batch_common import _is_browser_error, open_page, pump_until
+from ...engine.fulltext_page import MATHJAX_SOURCES_JS
 from ..base import PublisherAdapter, SupplementLink, register
 
 _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href]')].map(a => ({
@@ -108,6 +109,28 @@ def _error(exc: Exception) -> str:
 class AnnualReviewsAdapter(PublisherAdapter):
     publisher = "annual reviews"
 
+    # --fulltext (engine/fulltext_page.py; PaperSearch's sites/templates/annualreviews.ts):
+    # the full text is the "Full-Text" tab's #html-body; its paragraphs outside the title,
+    # the abstract, the tables and the literature cited are the body. A figure's full-size
+    # image is its .image a.media-link (the image shown is a thumbnail); a table given only
+    # as an image is an <img> in its .table-container. Formula GIFs are not fetched
+    # (PaperSearch writes a placeholder). The page loads MathJax 4, which keeps no MathML
+    # in a formula it typesets: its source is written onto the formula first (2026-11-14).
+    fulltext_shown_js = """() => [...document.querySelectorAll('#html-body p')]
+      .filter((p) => !p.closest('.article-abstract, .article-title-and-authors, .references, .table-container, .figure, .modal'))
+      .reduce((sum, p) => sum + p.textContent.trim().length, 0) > 500"""
+    fulltext_images_js = """() => [
+      ...[...document.querySelectorAll('#html-body .figure')].map((figure) => {
+        const link = figure.querySelector('.image a.media-link[href]');
+        const img = [...figure.querySelectorAll('img')].find((node) => !node.closest('.caption') && !node.classList.contains('inline-formula'));
+        return link ? link.href : img ? img.src : '';
+      }),
+      ...[...document.querySelectorAll('#html-body .table-container table img')]
+        .filter((img) => !img.classList.contains('inline-formula') && !img.closest('table').textContent.trim())
+        .map((img) => img.src),
+    ].filter((url) => /^https?:/.test(url))"""
+    fulltext_prepare_js = MATHJAX_SOURCES_JS
+
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink]:
         return supplement_links_from_rows(page.evaluate(_SUPPLEMENT_ROWS_JS), doi)
 
@@ -145,7 +168,7 @@ class AnnualReviewsAdapter(PublisherAdapter):
         try:
             input_box = page.locator(_OPENATHENS_BOX).first
             if input_box.is_visible(timeout=1_500):
-                input_box.fill(d.institution_query)
+                input_box.fill(d._typed_school_name())
                 page.locator("text=Find Your Organization").last.click(timeout=5_000, no_wait_after=True)
                 d._event(result, "institution_search", f"OpenAthens: {d.institution_query}")
                 pump_until(page, lambda: d._any_visible(page, d._institution_result_selectors()), 2_000)

@@ -161,15 +161,17 @@ paper-search download "<DOI>" --platform crossref
 paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"<DOI>","doi":"<DOI>","title":"<paper title>","useSciHub":false,"useEntitledAccess":true}'
 ```
 
-一组论文（几十到几百篇）用一次按顺序执行的 `download_batch`，不要循环调用单篇下载：
+一组论文（几十篇以上，篇数不限）用一次按顺序执行的 `download_batch`，不要循环调用单篇下载：
 
-- `"mode"`：默认 `"two_phase"`，每篇先试开放渠道，没拿到的随即走机构下载（一次一篇），两路同时进行，浏览器和学校登录在开始后几秒就出现；进度窗口按整批计数（k / N），装了学校订阅下载时，5 篇以上的批量从开头就显示；`"per_item"` 每篇走完整个漏斗；`"entitled_only"` 跳过开放渠道，每篇直接走机构下载（用于测试学校这条路）。
+- `"mode"`：默认 `"two_phase"`，每篇先试开放渠道，没拿到的随即走机构下载（一次一篇），两路同时进行，浏览器和学校登录在开始后几秒就出现；进度窗口按整批计数（k / N），装了学校订阅下载时，5 篇以上的批量从开头就显示；`"per_item"` 每篇走完整个漏斗；`"entitled_only"` 只走机构：跳过开放渠道，每篇直接走机构下载；用户要只走机构下载或测试学校这条路时用。`resume`（接着下）不写 `mode` 时沿用这一批原来的模式。
 - 不传 `savePath` 时存到 `DEFAULT_DOWNLOAD_PATH`；整批或每篇都可以带自己的 `savePath`，用户指定了别的文件夹时才传。
-- `"content"`：`"main"`（默认，只要正文）、`"supplements"`（只要本文的补充材料，不走正文的各层）、`"both"`。补充材料存在 `<savePath>/<期刊缩写_年月_标题_短标识>/supplements/`（只下正文时正文直接放在 `<savePath>` 里），清单与浏览器诊断在结果 `runLog` 所指运行记录目录的 `diagnostics/`（都下到时在 `records/`），结果的 `supplements` 列出每个文件的状态；只经机构下载后端获取，哪些出版社有规则见 `publisher-support.md`。
-- 每次下载都会写一份本地运行记录，结果里的 `runLog` 是它的目录（`run.json`；`items.jsonl`，含每一层的耗时、代码，以及后端的页面事件和截图；`timeline.log`）。排查失败时读它，不要猜。结果列出每一篇和它的各次尝试。
+- `"folderName"`：这一批自己的文件夹名，按内容起（某期刊的文章用与每篇文件夹开头相同的期刊缩写加年份，如 `"Osteoarthritis Cartilage_2024-2026"`），建在下载文件夹（或 `savePath`）下；每篇的文件夹直接放在里面，旁边是 `_run/`（下载参数、进度记录、每次运行的明细，以及每篇结果的清单 `article_index.csv`）。“接着下”补进同一个文件夹。不传时新建 `<年月日-时分秒>_PaperSearchDownload`，里面的结构相同。
+- `"content"`：两样内容各自单独取，可以都要，用逗号连起来写：`"pdf"`（正文 PDF，默认）、`"supplements"`（本文的补充材料，只写它时不走正文的各层），如 `"pdf,supplements"`。批量结果的 `content` 按同样的写法回显。补充材料存在 `<savePath>/<期刊缩写_年月_标题>/supplements/`（同一次下载里同名的另一篇加 `_2`）（只下正文时正文直接放在 `<savePath>` 里），清单与浏览器诊断在结果 `runLog` 所指运行记录目录的 `diagnostics/`（都下到时在 `records/`），结果的 `supplements` 列出每个文件的状态；只经机构下载后端获取，哪些出版社有规则见 `publisher-support.md`。
+- 每次下载都会写一份本地运行记录，结果里的 `runLog` 是它的目录（`run.json`；`items.jsonl`，含每一层的耗时、代码，以及后端的页面事件和截图；`timeline.log`）。排查失败时读它，不要猜。
+- 批量结果只给汇总，不列每一篇：`status`、`total`、`succeeded`、`failed`、`failureClasses`（按类别的失败数）、`supplementsMissing`（PDF 下到了、补充材料没拿全的篇数）、`folder`（批量文件夹）和 `index`（每篇结果的清单 `_run/article_index.csv`）。每篇的 PDF、补充材料 和失败原因看 `index`，失败按类别说明用 `paper-search failures --format text`，各次尝试看 `runLog`。
 
 ```bash
-paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>","title":"<title 1>"},{"doi":"<DOI-2>"}],"useSciHub":false}'
+paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>","title":"<title 1>"},{"doi":"<DOI-2>"}],"folderName":"<批量文件夹名>","useSciHub":false}'
 ```
 
 必须由外部循环逐篇调用 `download_with_fallback` 时，传 `"batch":{"id":"<同一个 id>","index":k,"total":N,"done":…,"succeeded":…,"failed":…}`，可以得到同样的进度窗口。

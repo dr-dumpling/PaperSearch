@@ -12,7 +12,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse
 
 from .. import federations
-from ..federations import schools
+from ..schools import lookup as schools
 from . import access_rules
 from .batch_common import (DownloadResult, _is_browser_error, _is_navigation_cut, logger, open_page,
                            pump_until, settle)
@@ -23,6 +23,12 @@ def _school_auth_patterns(config: dict[str, Any]) -> tuple[str, ...]:
     (``schools.login_hosts``: its entityID's host and those its federation lists);
     empty without one. The package names no school itself."""
     return schools.login_hosts(config)
+
+
+def _latin_letters(name: str) -> bool:
+    """Written in Latin letters (accents allowed): no Chinese, Japanese, Cyrillic…"""
+    return any(ch.isalpha() for ch in name) and all(
+        not ch.isalpha() or unicodedata.name(ch, "").startswith("LATIN") for ch in name)
 
 
 # Institution search input selectors, tried in order on WAYF pages
@@ -148,7 +154,7 @@ class InstitutionMixin:
             try:
                 inp = page.locator(selector).first
                 if inp.is_visible(timeout=5_000):
-                    inp.fill(self.institution_query)
+                    inp.fill(self._typed_school_name())
                     self._event(result, "institution_search", selector)
                     settle(page, 2_000)
                     if self._click_institution_search_result(page, result):
@@ -432,6 +438,48 @@ class InstitutionMixin:
         if closed:
             self._event(result, "overlay_closed", str(closed)[:120])
 
+    # A federation's school list on a page of its own, valued with the schools' entityIDs
+    # (Thieme's CARSI list after its federation step: 31 schools, 2026-11-14).
+    _ENTITY_VALUE = re.compile(r"(?:https?://|urn:mace:)\S+$", re.I)
+    ENTITY_LIST_MIN = 5
+
+    def _entity_lists(self, lists: Any) -> dict:
+        return {str(s.get("name")): list(s.get("options") or ()) for s in lists or ()
+                if sum(1 for o in s.get("options") or () if isinstance(o, (list, tuple)) and len(o) == 2
+                       and self._ENTITY_VALUE.match(str(o[0]))) >= self.ENTITY_LIST_MIN}
+
+    def _check_entity_list(self, page: Any, result: DownloadResult, lists: list[dict], url: str) -> None:
+        """A filled list of schools by entityID without the configured school, the same a
+        second later: the publisher has no route for it (``_institution_not_listed``), so
+        the login ends instead of waiting on the user for a school that is not there."""
+        found = self._entity_lists(lists)
+        if not found:
+            return
+        page.wait_for_timeout(1_000)
+        again = self._page_selects(page)
+        if self._school_option(again) is not None or self._entity_lists(again) != found:
+            return
+        name, options = next(iter(found.items()))
+        sample = ", ".join(str(o[1]) for o in options[:5])
+        code = getattr(self.federation, "code", "")
+        if self._searched_instead(page, result, again, found, f"{code} list {name} ({len(options)} options) @ {url}"):
+            return
+        self._event(result, "auto_institution_not_found", f"{code} list {name} ({len(options)} options: {sample}) @ {url}")
+        result._institution_not_listed = True
+
+    def _searched_instead(self, page: Any, result: DownloadResult, lists: Any, lacking: dict, detail: str) -> bool:
+        """A school list without the school, hidden, on a page showing an institution search
+        box: the list settles nothing, the box is searched instead (True, with the event
+        ``institution_list_lacks_school``). JAMA's hidden CARSI list named 7 schools while its
+        search box found the school it lacked (2026-11-17)."""
+        hidden = [s for s in lists or () if str(s.get("name")) in lacking]
+        if not hidden or any(s.get("shown") for s in hidden):
+            return False
+        if not self._any_visible(page, self._institution_search_selectors(page)):
+            return False
+        self._event(result, "institution_list_lacks_school", f"hidden; the search box is used: {detail}")
+        return True
+
     def _select_from_institution_lists(self, page: Any, result: DownloadResult) -> bool:
         """One rule for school lists in <select>s, shown or hidden: the federation
         list's entry for the school's federation, then the school's option (by entityID, the
@@ -441,13 +489,16 @@ class InstitutionMixin:
         url = str(getattr(page, "url", "") or "")
         host = (urlparse(url).hostname or "").lower()
         if (self._is_idp_host(host) or not (self._on_publisher_host(url) or self._is_federation_chooser(url))
-                or any(e["state"] == "institution_list_submitted" and e.get("detail", "").endswith(f"@ {url}")
-                       for e in result.events)):
-            return False  # only the publisher's and the federations' choosers
+                or any(e["state"] in ("institution_list_submitted", "institution_list_lacks_school")
+                       and e.get("detail", "").endswith(f"@ {url}") for e in result.events)):
+            # Only the publisher's and the federations' choosers; a list already used, or
+            # already found without the school beside a search box (not waited on again).
+            return False
         lists = self._page_selects(page)
         school = self._school_option(lists)
         federation = None if school else self._federation_option(lists)
         if school is None and federation is None:
+            self._check_entity_list(page, result, lists, url)
             return False
         if federation is not None:
             select, value, label = federation
@@ -477,6 +528,9 @@ class InstitutionMixin:
                     # Filled, unchanged a second later, and without the school.
                     name, options = next(iter(filled.items()))
                     sample = ", ".join(str(o[1]) for o in options[1:6])
+                    if self._searched_instead(page, result, seen["lists"], filled,
+                                              f"{self.federation.code} list {name} ({len(options)} options) @ {url}"):
+                        return False
                     self._event(result, "auto_institution_not_found",
                                 f"{self.federation.code} list {name} ({len(options)} options: {sample}) @ {url}")
                     result._institution_not_listed = True
@@ -542,8 +596,10 @@ class InstitutionMixin:
         return " ".join(text.split()).lower()
 
     # A login server's words after the school's name ("<entry> Single Sign-On Service",
-    # a national entry on Springer Nature's list, 2026-11-14), as ``_comparable`` writes them.
-    _LOGIN_SERVER_WORDS = r"(?: (?:idp|sso|identity provider|single sign on(?: service)?|login service))?"
+    # a national entry on Springer Nature's list, 2026-11-14), or its route ("<school>
+    # (<other name>) - OpenAthens", PNAS's only entry of a school, 2026-11-17), as
+    # ``_comparable`` writes them.
+    _LOGIN_SERVER_WORDS = r"(?: (?:idp|sso|identity provider|single sign on(?: service)?|login service|openathens))?"
 
     def _institution_match_score(self, text: str) -> int:
         """3 = exactly the configured school, 2 = "<school> University" or "<school>,
@@ -554,7 +610,7 @@ class InstitutionMixin:
         the name before them: Elsevier lists a school as "<Chinese name>(<English
         name>) (<English name>)", next to other schools whose names contain its own."""
         text = self._comparable(text)
-        # Long English names fit: "华中科技大学(Huazhong University of Science and Technology) (...)".
+        # Long English names fit: "红木兰大学(Hong Mu-lan University of Science and Technology) (...)".
         aliased = re.fullmatch(r"([^()]+?)((?:\s*\([^()]{1,120}\))+)", text)
         if aliased:
             head = self._institution_match_score(aliased.group(1))
@@ -708,6 +764,10 @@ class InstitutionMixin:
 
     # How long a search by one of the school's names may show nothing before the next is typed.
     SEARCH_RETRY_SEC = 6
+    # Every name searched: this long with nothing shown, the school is not in the publisher's list.
+    SEARCH_NOTHING_SEC = 10
+    # The attribute marking the institution search box the school was typed into.
+    _SEARCH_BOX_MARK = "data-paper-search-box"
 
     @staticmethod
     def _same_address(recorded: str, url: str) -> bool:
@@ -719,16 +779,29 @@ class InstitutionMixin:
 
     def _search_queries(self, names: list[str]) -> list[str]:
         """The school's names to search by (straight apostrophes): its English name
-        first, then the others in Latin letters, then the rest, its shared login
-        entry's own name last. A school's own language may be written in Latin
-        letters with no accent ("Kitan yliopisto", 2026-11-13), and publishers
-        list schools in English more often."""
+        first, then the others in Latin letters, its shared login entry's own name
+        last. A school's own language may be written in Latin letters with no accent
+        ("Kitan yliopisto", 2026-11-13), and publishers list schools in English more
+        often. Names in other scripts (Chinese, Japanese…) only for a school with none
+        in Latin letters (user, 2026-11-19: only the English name typed)."""
         typed = [n.translate(self._QUOTES) for n in names]
         english, entry = (str(self.config.get(key) or "").strip().translate(self._QUOTES)
                           for key in ("school_name_en", "school_entry_name"))
         schools_own = [q for q in typed if q != entry]
-        return list(dict.fromkeys([q for q in schools_own if q == english] + [q for q in schools_own if q.isascii()]
-                                  + [q for q in schools_own if not q.isascii()] + [q for q in typed if q == entry]))
+        ordered = ([q for q in schools_own if q == english] + [q for q in schools_own if q.isascii()]
+                   + [q for q in schools_own if not q.isascii()] + [q for q in typed if q == entry])
+        latin = [q for q in ordered if _latin_letters(q)]
+        ordered = latin or ordered
+        # A name with a leading "The", next also without it: a search matching the
+        # words as typed finds "University of <town>" by it alone (JAMA's list, 2026-11-17).
+        return list(dict.fromkeys(variant for q in ordered
+                                  for variant in (q, re.sub(r"^the\s+", "", q, flags=re.I)) if variant))
+
+    def _typed_school_name(self) -> str:
+        """The name typed into an institution search: the first of ``_search_queries``,
+        the English one for a school that has it."""
+        queries = self._search_queries(list(self._institution_names()))
+        return queries[0] if queries else self.institution_query
 
     def _search_again_by_another_name(self, page: Any, result: DownloadResult, url: str, names: list[str],
                                       settled: bool = False) -> bool:
@@ -749,21 +822,45 @@ class InstitutionMixin:
             if event["state"] == "auto_institution_search" and self._same_address(where, url):
                 tried.append(query)
         left = [q for q in self._search_queries(names) if q not in tried]
-        if not left:
-            return False
         baseline = getattr(result, "_search_baseline", None)
         before = baseline[1] if isinstance(baseline, tuple) and self._same_address(baseline[0], url) else set()
+        if not left:
+            # Every name searched, the last showing nothing at all for SEARCH_NOTHING_SEC: the
+            # publisher lists no entry for the school (IEEE for a school it has none for,
+            # 2026-11-19: not one suggestion, and the wait ran to its end for the user). Never once
+            # the school's entry was shown and chosen here: it is listed (Science for a school tested,
+            # 2026-11-19: chosen, the page slow to go on, searched again, said not listed).
+            chosen = any(e["state"] == "auto_institution_entry"
+                         and self._same_address(str(e.get("detail", "")).partition(" @ ")[2], url) for e in result.events)
+            if (not settled and not chosen and not getattr(result, "_institution_not_listed", False)
+                    and time.time() - float(getattr(result, "_search_typed_at", 0) or 0) >= self.SEARCH_NOTHING_SEC
+                    and (self._search_list_closed(page, result, url) or not self._entry_texts(page) - before)):
+                result._institution_not_listed = True
+                self._event(result, "institution_search_found_nothing", f"{', '.join(tried)[:120]} @ {url[:200]}")
+            return False
         if not settled and not self._search_list_closed(page, result, url) and self._entry_texts(page) - before:
             return False  # results shown: they decide
         box = page.locator(box_at[1]).first
         try:
-            if str(box.input_value(timeout=2_000) or "").strip() not in tried:
+            marked = page.locator(f"[{self._SEARCH_BOX_MARK}]").first
+            if marked.is_visible(timeout=500) is True:
+                box = marked  # the box typed in, whatever it shows now
+            value = str(box.input_value(timeout=2_000) or "").strip()
+            # Our query, or, once the page has answered it, an empty box (Atypon's empties
+            # itself showing "no result", Science 2026-11-17); anything else is the user's.
+            if value not in tried and not (settled and not value):
+                if settled:
+                    self._event(result, "institution_search_retry_skipped", f"box holds {value[:60]!r} @ {url[:200]}")
                 return False
             box.fill("")
             box.press_sequentially(left[0], delay=40)
         except Exception as exc:
             if not _is_browser_error(exc):
                 raise
+            if settled:
+                # Why the next name was not searched, for the record (Science, 2026-11-17).
+                self._event(result, "institution_search_retry_skipped",
+                            f"{box_at[1]}: {type(exc).__name__}: {str(exc)[:120]} @ {url[:200]}")
             return False
         result._search_typed_at = time.time()
         result._search_miss = None
@@ -859,6 +956,11 @@ class InstitutionMixin:
                 # tell the school's entry from the others by (Elsevier listed two
                 # entries with one school's name, neither its federation's, 2026-11-11).
                 self._event(result, "institution_entries_ambiguous", f"{seen} @ {url[:200]}")
+            # Several entries by the school's name on OpenAthens' wayfinder (its CARSI sign-in and
+            # its library's OpenAthens account, Karger and Optica, 2026-11-19): the one of its
+            # configured sign-in, by its entityID, the one this browser keeps the session of.
+            if top >= 2 and len(best) > 1 and self._select_openathens_wayfinder(page, result):
+                return True
             return False
         target = best[0]
         before = str(getattr(page, "url", "") or "")
@@ -876,7 +978,10 @@ class InstitutionMixin:
         try:
             # A real click, as the user's: the GWT rows of OpenAthens Wayfinder
             # (Wolters Kluwer OneID) ignore a script's click() (cold start, 2026-11-01).
-            page.locator("[data-paper-search-entry]").first.click(timeout=3_000)
+            # Not waiting for the navigation it starts (``_left_page`` below waits): Oxford's
+            # went on to the school after 3 s, the click counted as failed and the script's
+            # click on the leaving page stalled 34 s (2026-11-17).
+            page.locator("[data-paper-search-entry]").first.click(timeout=3_000, no_wait_after=True)
         except Exception as exc:
             if not _is_browser_error(exc):
                 raise
@@ -980,6 +1085,11 @@ class InstitutionMixin:
                     return False  # the reply names a different query
             elif not any(value in ours for value in typed):
                 return False
+            # The reply is about the one name typed: the school's next name is searched
+            # before a list is opened or the school called missing ("The University of
+            # <town>" found as "University of <town>": PNAS, Science, 2026-11-17).
+            if self._search_again_by_another_name(page, result, url, list(self._institution_names()), settled=True):
+                return True
             listing = page.get_by_role("link", name=self._INSTITUTION_LIST_LINK).filter(visible=True).first
             if listing.is_visible() is True:
                 href = listing.get_attribute("href", timeout=800)
@@ -1101,6 +1211,9 @@ class InstitutionMixin:
                         continue
                     if str(box.input_value(timeout=2_000) or "").strip():
                         return False  # the user is typing; never replace it
+                    # Marked before typing: a box found by its placeholder loses it once it holds a
+                    # name, and the next name is typed into it again (Science, 2026-11-17).
+                    box.evaluate(f"el => el.setAttribute('{self._SEARCH_BOX_MARK}', '')")
                     # The English name, with a straight apostrophe (CARSI writes "Xi’an", 2026-11-01).
                     query = self._search_queries(names)[0]
                     # What the page lists before the search (its own links): no result of it.
@@ -1220,7 +1333,7 @@ class InstitutionMixin:
                     continue
                 if (box.input_value(timeout=2_000) or "").strip():
                     return False  # the user already typed; never overwrite
-                box.fill(self.institution_query)
+                box.fill(self._typed_school_name())
                 self._event(result, "institution_search", f"{federation.code}:{selector}")
                 pump_until(page, lambda: self._any_visible(page, self._institution_result_selectors()), 2_000)
                 for result_selector in self._institution_result_selectors():
@@ -1417,6 +1530,8 @@ class InstitutionMixin:
         if not kind:
             return
         host = (urlparse(url).hostname or "").lower()
+        if kind == "school":
+            self._note_login_host(host)
         if kind in ("school", "route"):
             self._route_away = True
             if kind == "route" and self._names_identity_provider(url) and not self._login_service_host(host):
@@ -1428,8 +1543,15 @@ class InstitutionMixin:
             self._publisher_hosts.add(host)
         elif self._route_away and host not in self._route_hosts and host not in self._school_side_hosts:
             self._school_side_hosts.add(host)
+            self._note_login_host(host)
             self._event(result, "school_side_host", f"{host} after {self._route_last_host}")
         self._route_last_host = host
+
+    def _note_login_host(self, host: str) -> None:
+        """A host the school's sign-in went through, for the rest of the batch: its cookies go
+        with a publisher's SAML POST too (``login_hosts_reached``, browser/profiles.py)."""
+        if host:
+            self.login_hosts_reached = getattr(self, "login_hosts_reached", set()) | {host}
 
     def _route_hop(self, url: str) -> str:
         """What one navigation hop is to the login: ``school`` (the school's side by
@@ -1530,10 +1652,12 @@ class InstitutionMixin:
                             "/wayf", "/discovery", "/ds/", "institution-search")
 
     # A search box naming an institution in its placeholder or label, or in its id or
-    # name (De Gruyter's LibLynx box has neither placeholder nor label, 2026-11-02).
+    # name (De Gruyter's LibLynx box has neither placeholder nor label, 2026-11-02), or
+    # an institution search in its class (JAMA's box has nothing else, 2026-11-17).
     _INSTITUTION_INPUTS = ("input[placeholder*='nstitution']", "input[placeholder*='rganization']",
                            "input[placeholder*='机构']", "input[aria-label*='nstitution']",
-                           "input[type='search'][id*='nstitution']", "input[type='search'][name*='nstitution']")
+                           "input[type='search'][id*='nstitution']", "input[type='search'][name*='nstitution']",
+                           "input[class*='institution-search']:not([type='hidden']):not([type='checkbox'])")
 
     def _institution_search_selectors(self, page: Any) -> tuple[str, ...]:
         """Inputs the school may be typed into. A publisher's broad selectors

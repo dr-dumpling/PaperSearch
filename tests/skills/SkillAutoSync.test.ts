@@ -13,6 +13,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { autoSyncSkill, isNewerVersion, skillLocations, skillVersion } from '../../src/management/skills/index.js';
+import { bundledSkillHash } from '../../src/skills/SkillInstaller.js';
 
 describe('Skill auto-sync after an upgrade', () => {
   let temp: string;
@@ -47,6 +48,23 @@ describe('Skill auto-sync after an upgrade', () => {
     expect(sync()).toEqual({ action: 'unchanged' });
     writeFileSync(join(source, 'SKILL.md'), 'newer skill\n');
     expect(sync()).toEqual({ action: 'not_installed' });
+  });
+
+  it('checks the copies once more when the way they are kept changes, moving away what an earlier version left', () => {
+    // The same Skill as last synced, but a file an earlier version shipped is still there (user, 2026-11-18).
+    mkdirSync(installed('references'), { recursive: true });
+    writeFileSync(installed('SKILL.md'), 'new skill\n');
+    writeFileSync(installed('references', 'a.md'), 'new reference\n');
+    writeFileSync(installed('references', 'carsi-setup.md'), 'old setup\n');
+    mkdirSync(data, { recursive: true });
+    writeFileSync(join(data, 'skill-sync.json'), JSON.stringify({ bundledHash: bundledSkillHash(source) }));
+
+    const result = sync();
+    expect(result.action).toBe('updated');
+    expect(existsSync(installed('references', 'carsi-setup.md'))).toBe(false);
+    expect(readFileSync(join(String(result.backupDir), 'agents', 'references', 'carsi-setup.md'), 'utf8')).toBe('old setup\n');
+    expect(result.notice).toContain(String(result.backupDir));
+    expect(sync()).toEqual({ action: 'unchanged' });
   });
 
   it('updates the copies the user installed once, keeps their own files and backs up the replaced ones', () => {
@@ -98,6 +116,10 @@ describe('Skill auto-sync after an upgrade', () => {
     mkdirSync(installed(), { recursive: true });
     writeFileSync(installed('SKILL.md'), '---\r\nname: paper-search\r\nmetadata:\r\n  short-description: x\r\n  version: 0.5.12\r\n---\r\nbody\r\n');
     expect(skillVersion(installed())).toBe('0.5.12');
+    writeFileSync(installed('SKILL.md'), '---\nname: paper-search\nmetadata:\n  version: "0.7.0-preview.1"\n---\nbody\n');
+    expect(skillVersion(installed())).toBe('0.7.0-preview.1');
+    expect(isNewerVersion('0.7.0-preview.1', '0.6.6')).toBe(true);
+    expect(isNewerVersion('0.7.0-preview.2', '0.7.0-preview.1')).toBe(false);  // the same X.Y.Z: its content decides
     writeFileSync(installed('SKILL.md'), '---\nname: paper-search\ndescription: |\n  version: 9.9.9\n---\nmetadata:\n  version: 9.9.9\n');
     expect(skillVersion(installed())).toBeUndefined();  // only metadata.version in the front matter counts
     expect(skillVersion(join(home, 'nowhere'))).toBeUndefined();
@@ -157,13 +179,14 @@ describe('the CLI syncs the installed Skill on its first run after an upgrade', 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       HOME: temp,
+      USERPROFILE: temp, // the home directory on Windows
       XDG_DATA_HOME: join(temp, 'data'),
       PAPER_SEARCH_CONFIG_FILE: join(temp, 'config.json'),
       PAPER_SEARCH_HIDE_SETUP_HINT: '1'
     };
     delete env.PAPER_SEARCH_SKILL_AUTO_UPDATE;
     if (autoUpdate !== undefined) env.PAPER_SEARCH_SKILL_AUTO_UPDATE = autoUpdate;
-    return spawnSync(process.execPath, [join(process.cwd(), 'node_modules/.bin/tsx'), 'src/cli.ts', ...args], {
+    return spawnSync(process.execPath, [join(process.cwd(), 'node_modules/tsx/dist/cli.mjs'), 'src/cli.ts', ...args], {
       cwd: process.cwd(),
       env,
       encoding: 'utf8',

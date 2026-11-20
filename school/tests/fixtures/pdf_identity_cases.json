@@ -137,6 +137,22 @@
  },
  {
   "group": "doi",
+  "name": "broken after '10.' and inside its suffix (eClinicalMedicine)",
+  "text": "eClinicalMedicine\n2026;91: 103705\nPublished Online 18\nDecember 2025\nhttps://doi.org/10.\n1016/j.eclinm.2025.\n103705\nwww.thelancet.com Vol 91 January, 2026 1\nArticles",
+  "doi": "10.1016/j.eclinm.2025.103705",
+  "title": "",
+  "expected": "verified"
+ },
+ {
+  "group": "doi",
+  "name": "another DOI broken the same way is not the article",
+  "text": "eClinicalMedicine\n2026;91: 103705\nPublished Online 18\nDecember 2025\nhttps://doi.org/10.\n1016/j.eclinm.2025.\n103706\nwww.thelancet.com Vol 91 January, 2026 1\nArticles",
+  "doi": "10.1016/j.eclinm.2025.103705",
+  "title": "",
+  "expected": "unverified"
+ },
+ {
+  "group": "doi",
   "name": "broken after a hyphen (British Journal of Cancer)",
   "text": "Journal\nhttps://doi.org/10.1038/s41416-026-\n03614-8\nAbstract",
   "doi": "10.1038/s41416-026-03614-8",
@@ -497,8 +513,24 @@
  },
  {
   "group": "decision",
+  "name": "a short title with the DOI of the review's registered protocol (OSF, eClinicalMedicine)",
+  "text": "Identifying subtypes of Long COVID: a systematic review\nSummary\nBackground Long COVID varies between patients.\nMethods We searched four databases. The protocol was registered in OSF\n(https://doi.org/10.17605/OSF.IO/J483F).\nFindings Forty-seven cohort studies",
+  "doi": "10.1000/target",
+  "title": "Identifying subtypes of Long COVID: a systematic review",
+  "expected": "verified"
+ },
+ {
+  "group": "decision",
+  "name": "the same short title with another article's DOI",
+  "text": "Identifying subtypes of Long COVID: a systematic review\nSummary\nBackground Long COVID varies between patients.\nMethods We searched four databases. The protocol was registered in OSF\n(https://doi.org/10.1016/S0140-6736(22)02403-5).\nFindings Forty-seven cohort studies",
+  "doi": "10.1000/target",
+  "title": "Identifying subtypes of Long COVID: a systematic review",
+  "expected": "unverified"
+ },
+ {
+  "group": "decision",
   "name": "a misread title with other DOIs",
-  "text": "Clinical features of patlents infected with a novel coronavirus\nData: https://doi.org/10.6084/m9.figshare.32873816",
+  "text": "Clinical features of patlents infected with a novel coronavirus\nSee also: https://doi.org/10.1000/other",
   "doi": "10.1000/target",
   "title": "Clinical features of patients infected with a novel coronavirus",
   "expected": "unverified"
@@ -542,6 +574,38 @@
   "doi": "10.1000/target",
   "title": "Clinical features of patients infected with a novel coronavirus",
   "expected": "mismatch"
+ },
+ {
+  "group": "decision",
+  "name": "a short piece that begins after the reference list of the one before it on its first page (Cell Previews)",
+  "text": "References\n1. Author, A., and Author, B. (2024). Another study\nof something else. Cell 1, 1-2.\nhttps://doi.org/10.1000/other.1.\n2. Author, C. (2023). More work on it. Cell 2, 3-4.\nhttps://doi.org/10.1000/other.2.\nA short commentary on\nmembrane rupture in dying cells\nA. Author1,* and B. Author2,*\n1Department of Biology, Example University, City, Country\n*Correspondence: a@example.org\nhttps://doi.org/10.1000/target\nThe commentary itself goes on here for a while.\nReferences\n1. Author, D. (2022). Its own source. Cell 3, 5-6.\nhttps://doi.org/10.1000/other.3.\n",
+  "doi": "10.1000/target",
+  "title": "A short commentary on membrane rupture in dying cells",
+  "expected": "verified"
+ },
+ {
+  "group": "decision",
+  "name": "the same, the page opening with the end of the piece before it",
+  "text": "and so the previous piece ends its discussion here.\nReferences\n1. Author, A., and Author, B. (2024). Another study\nof something else. Cell 1, 1-2.\nhttps://doi.org/10.1000/other.1.\n2. Author, C. (2023). More work on it. Cell 2, 3-4.\nhttps://doi.org/10.1000/other.2.\nA short commentary on\nmembrane rupture in dying cells\nA. Author1,* and B. Author2,*\n1Department of Biology, Example University, City, Country\n*Correspondence: a@example.org\nhttps://doi.org/10.1000/target\nThe commentary itself goes on here for a while.\nReferences\n1. Author, D. (2022). Its own source. Cell 3, 5-6.\nhttps://doi.org/10.1000/other.3.\n",
+  "doi": "10.1000/target",
+  "title": "A short commentary on membrane rupture in dying cells",
+  "expected": "verified"
+ },
+ {
+  "group": "decision",
+  "name": "the requested article only cited in another article's reference list",
+  "text": "Another article\nhttps://doi.org/10.1000/other\nIts text.\nReferences\n1. Author, A. (2020).\nA short commentary on membrane rupture in dying cells.\nJ. Ex. 1, 1-2. https://doi.org/10.1000/target.\n",
+  "doi": "10.1000/target",
+  "title": "A short commentary on membrane rupture in dying cells",
+  "expected": "mismatch"
+ },
+ {
+  "group": "decision",
+  "name": "a title after a reference list with another DOI before the requested one is no head of the article",
+  "text": "References\n1. Author, A., and Author, B. (2024). Another study\nof something else. Cell 1, 1-2.\nhttps://doi.org/10.1000/other.1.\n2. Author, C. (2023). More work on it. Cell 2, 3-4.\nhttps://doi.org/10.1000/other.2.\nA short commentary on\nmembrane rupture in dying cells\nhttps://doi.org/10.1000/other.4\nhttps://doi.org/10.1000/target\n",
+  "doi": "10.1000/target",
+  "title": "A short commentary on membrane rupture in dying cells",
+  "expected": "unverified"
  },
  {
   "group": "decision",
@@ -622,6 +686,30 @@
   "doi": "10.1000/target",
   "title": "Nutrition and health in a long article title",
   "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "an attachment headed Appendix 1",
+  "text": "Appendix 1\nNutrition and health in a long article title\ndoi:10.1000/target",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "a supplementary appendix's cover that names the article (The Lancet)",
+  "text": "Supplementary appendix\nThis appendix formed part of the original submission and has been peer reviewed. \nWe post it as supplied by the authors.\nSupplement to: Nutrition and health in a long article title. Lancet 2024; 5: e480–92.",
+  "doi": "10.1000/target",
+  "title": "Nutrition and health in a long article title",
+  "expected": "unverified"
+ },
+ {
+  "group": "type",
+  "name": "an article whose margin notes break before 'appendix 1' (see Online for / appendix 1, The Lancet), its DOI not printed",
+  "text": "www.thelancet.com/healthy-longevity Vol 5 July 2024 e480\nArticles\nLancet Healthy Longev 2024; \n5: e480–92\nSee Comment page e448\nFor the Spanish translation of the \nabstract see Online for \nappendix 1\nFor the French translation of the \nabstract see Online for \nappendix 2\n*Joint senior authors\nInstitute of Aging, Toulouse \nUniversity Hospital, Toulouse, \nFrance\nAssociation of intrinsic capacity with functional decline \nand mortality in older adults: a systematic review and \nmeta-analysis of longitudinal studies\nSummary\nBackground Together with environmental factors, intrinsic capacity",
+  "doi": "10.1016/S2666-7568(24)00092-8",
+  "title": "Association of intrinsic capacity with functional decline and mortality in older adults: a systematic review and meta-analysis of longitudinal studies",
+  "expected": "verified"
  },
  {
   "group": "type",
@@ -1054,6 +1142,30 @@
   "doi": "10.1000/ad1",
   "title": "Filler advert",
   "source": "https://www.journal.example/article/ad1/pdf",
+  "expected": "unverified"
+ },
+ {
+  "group": "title",
+  "name": "a title printed without the label before its colon (RSC accepted manuscript, 2026-11-19)",
+  "text": "Faraday\nDiscussions\nAccepted Manuscript\nPublished on 02 September 2026\nLicensed under CC-BY 4.0\nThis is an Accepted Manuscript, which has been through the\nRoyal Society of Chemistry peer review process and has been accepted\nfor publication.\nwww.rsc.org/faraday_d\n\fPage 1 of 44\nFaraday Discussions\nPERSPECTIVE\nMechanistic Non-Adiabatic Chemistry: Everything you always Wanted to Know\nAbout but Were Afraid to Ask\nDepartment of Chemistry, Molecular Sciences Research Hub, Imperial College London,\nAbstract\nWe review the central concepts (e.g. conical intersections) of mechanistic nonadiabatic chemistry as well dynamics methods that can be used where more than one\npotential surface is involved.\n",
+  "doi": "10.1039/d6fd00129g",
+  "title": "Spiers Memorial Lecture: Mechanistic Non-Adiabatic Chemistry: Everything you always Wanted to Know About but Were Afraid to Ask",
+  "expected": "verified"
+ },
+ {
+  "group": "title",
+  "name": "the title without its label is one piece of evidence: not with another article's DOI printed",
+  "text": "Faraday\nDiscussions\nAccepted Manuscript\nPublished on 02 September 2026\nLicensed under CC-BY 4.0\nThis is an Accepted Manuscript, which has been through the\nRoyal Society of Chemistry peer review process and has been accepted\nfor publication.\nwww.rsc.org/faraday_d\n\fPage 1 of 44\nFaraday Discussions\nPERSPECTIVE\nMechanistic Non-Adiabatic Chemistry: Everything you always Wanted to Know\nAbout but Were Afraid to Ask\nDepartment of Chemistry, Molecular Sciences Research Hub, Imperial College London,\nAbstract\nWe review the central concepts (e.g. conical intersections) of mechanistic nonadiabatic chemistry as well dynamics methods that can be used where more than one\npotential surface is involved.\nhttps://doi.org/10.1039/d5fd00777x\n",
+  "doi": "10.1039/d6fd00129g",
+  "title": "Spiers Memorial Lecture: Mechanistic Non-Adiabatic Chemistry: Everything you always Wanted to Know About but Were Afraid to Ask",
+  "expected": "unverified"
+ },
+ {
+  "group": "title",
+  "name": "the part after a colon too short to name the article alone",
+  "text": "Journal of Examples\nAn Introduction\nSome text of a page that names nothing else.\n",
+  "doi": "10.1000/label1",
+  "title": "Spiers Memorial Lecture: An Introduction",
   "expected": "unverified"
  }
 ]

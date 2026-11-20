@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 
 from paper_search_school import federations
 from paper_search_school.engine.batch import PublisherBatchDownloader
-from paper_search_school.federations import schools
+from paper_search_school.schools import lookup as schools
 from paper_search_school.publishers.profiles import ELSEVIER_PROFILE
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -227,6 +227,18 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
         athens = federations.by_code("openathens")
         self.assertEqual((athens.kind, athens.secondary, athens.openathens_entries), ("service", True, True))
         self.assertTrue(athens.matches("OpenAthens Federation"))
+        # As publishers' federation choosers write them (JAMA's hidden list, Atypon's federation
+        # page; 2026-11-17): each is its own federation's entry and no other's.
+        for code, label in (("cstcloud", "China (CSTCloudFederation)"), ("cstcloud", "China Science and Technology Network"),
+                            ("eduidhu", "Hungarian Research and Educational Federation (HREF)"),
+                            ("ukfederation", "UK Access Management Federation"), ("dfnaai", "Germany (DFN AAI)"),
+                            ("dfnaai", "German Higher Education (DFN-AAI)"), ("aaf", "Australia (AAF)"),
+                            ("gakunin", "Japan (GakuNin)"), ("incommon", "InCommon"), ("hkaf", "Hong Kong Access Federation"),
+                            ("switchaai", "Swiss Higher Education (SWITCHaai)"), ("wayf", "Danish Federation (WAYF.DK)"),
+                            ("edugate", "Edugate(Ireland)"), ("safire", "SAFIRE (South Africa)")):
+            hits = [f.code for f in federations.all_federations() if f.matches(label)]
+            self.assertEqual(hits, [code], label)
+        self.assertFalse(federations.by_code("eduidhu").matches('<a href="/action/ssostart">'))
 
     def test_federations_added_by_region(self):
         # India, Turkey, Sri Lanka, Bangladesh, Pakistan, Oman; the United States (2026-11-12);
@@ -379,8 +391,10 @@ class AsiaAndOpenAthensTests(unittest.TestCase):
         schools.save(config, found.school)
         self.assertEqual(schools.names(config), ("港湾生物所", "Kita Bay Institute", "Harbour Research ID"))
         d = PublisherBatchDownloader(config, profile=ELSEVIER_PROFILE, institution_query="港湾生物所")
+        # Only names in Latin letters are typed when the school has one (user, 2026-11-19).
         self.assertEqual(d._search_queries(list(d._institution_names())),
-                         ["Kita Bay Institute", "港湾生物所", "Harbour Research ID"])
+                         ["Kita Bay Institute", "Harbour Research ID"])
+        self.assertEqual(d._typed_school_name(), "Kita Bay Institute")
         # Only its domain given: the entry's own name stays.
         self.assertEqual(self.find({"kbi.ac.cn": [shared]}, "kbi.ac.cn").school.name, "Harbour Research ID")
         # The English name is the one given beside the school's own, even when that
@@ -634,6 +648,8 @@ class LoginRouteTests(unittest.TestCase):
         self.assertTrue(self.d._is_idp_host("idm.kita.unisys.edu.tw"))
         self.assertEqual([e["detail"] for e in self.result.events if e["state"] == "school_side_host"],
                          ["idm.kita.unisys.edu.tw after login.openathens.net"])
+        # Kept for the batch: their cookies go with a publisher's SAML POST too (browser/profiles.py).
+        self.assertIn("idm.kita.unisys.edu.tw", self.d.login_hosts_reached)
         page = Mock(url=self.SYSTEM_LOGIN)
         self.d._assist_configured_institution = Mock(return_value=True)
         self.d.adapter.leave_email_step = lambda page, result: False
@@ -647,6 +663,8 @@ class LoginRouteTests(unittest.TestCase):
                 "https://pdf.sciencedirectassets.com/271/1-s2.0-S0000/main.pdf")
         for host in ("doi.org", "www.example-society.org", "pdf.sciencedirectassets.com"):
             self.assertFalse(self.d._is_idp_host(host), host)
+        self.assertFalse({"doi.org", "www.example-society.org", "www.sciencedirect.com", "pdf.sciencedirectassets.com"}
+                         & getattr(self.d, "login_hosts_reached", set()))
         self.assertFalse(any(e["state"] == "school_side_host" for e in self.result.events))
 
     def test_a_sign_in_hub_asking_for_the_school_is_not(self):
@@ -777,7 +795,8 @@ class SearchListsNoSchoolTests(unittest.TestCase):
         self.assertIsNone(result._search_miss)
 
     def test_a_search_showing_nothing_is_tried_again_by_the_next_name(self):
-        d, result = self.downloader(name="Kita University", local="北大学")
+        d, result = self.downloader(name="Kita University", local="Kitan yliopisto")
+        result._institution_not_listed = False
         result.events = [{"state": "auto_institution_search", "detail": f"Kita University @ {self.URL}"}]
         result._search_box, result._search_baseline = (self.URL, "#search"), (self.URL, {"Help"})
         box = Mock(**{"input_value.return_value": "Kita University"})
@@ -785,23 +804,50 @@ class SearchListsNoSchoolTests(unittest.TestCase):
         from paper_search_school.engine import batch_institution
         result._search_typed_at = 100.0
         with patch.object(batch_institution.time, "time", return_value=103.0):
-            self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["北大学", "Kita University"]))
+            self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["Kitan yliopisto", "Kita University"]))
         with patch.object(batch_institution.time, "time", return_value=107.0):
-            self.assertTrue(d._search_again_by_another_name(page, result, self.URL, ["北大学", "Kita University"]))
-        box.press_sequentially.assert_called_once_with("北大学", delay=40)
-        self.assertEqual(result.events[-1]["detail"], f"北大学 @ {self.URL}")
+            self.assertTrue(d._search_again_by_another_name(page, result, self.URL, ["Kitan yliopisto", "Kita University"]))
+        box.press_sequentially.assert_called_once_with("Kitan yliopisto", delay=40)
+        self.assertEqual(result.events[-1]["detail"], f"Kitan yliopisto @ {self.URL}")
         # Every name tried, or a box holding the user's own text: nothing more is typed.
-        with patch.object(batch_institution.time, "time", return_value=200.0):
-            self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["北大学", "Kita University"]))
+        with patch.object(batch_institution.time, "time", return_value=108.0):
+            self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["Kitan yliopisto", "Kita University"]))
+        self.assertFalse(getattr(result, "_institution_not_listed", False))
+        result._search_typed_at = 107.0
+        # Every name searched and still nothing shown: the publisher does not list the school (IEEE, 2026-11-19).
+        with patch.object(batch_institution.time, "time", return_value=107.0 + d.SEARCH_NOTHING_SEC):
+            self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["Kitan yliopisto", "Kita University"]))
+        self.assertIs(result._institution_not_listed, True)
+        self.assertEqual(result.events[-1]["state"], "institution_search_found_nothing")
+        # Its entry shown and chosen here once: listed, whatever a later search shows.
+        result._institution_not_listed = False
+        result.events.append({"state": "auto_institution_entry", "detail": f"Kita University kita.ac.jp @ {self.URL}"})
+        with patch.object(batch_institution.time, "time", return_value=107.0 + d.SEARCH_NOTHING_SEC):
+            self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["Kitan yliopisto", "Kita University"]))
+        self.assertIs(result._institution_not_listed, False)
         result.events.pop()
         box.input_value.return_value = "Kita"
         with patch.object(batch_institution.time, "time", return_value=300.0):
+            self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["Kitan yliopisto", "Kita University"]))
+        box.press_sequentially.assert_called_once()
+        # A name in Chinese is not typed when the school has one in Latin letters (user, 2026-11-19).
+        d, result = self.downloader(name="Kita University", local="北大学")
+        result.events = [{"state": "auto_institution_search", "detail": f"Kita University @ {self.URL}"}]
+        result._search_box, result._search_baseline = (self.URL, "#search"), (self.URL, {"Help"})
+        result._search_typed_at = 100.0
+        box.press_sequentially.reset_mock()
+        box.input_value.return_value = "Kita University"
+        with patch.object(batch_institution.time, "time", return_value=107.0):
             self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["北大学", "Kita University"]))
+        box.press_sequentially.assert_not_called()
 
     def test_settled_results_without_the_school_try_its_next_name_first(self):
         # Its own name in Latin letters with no accent: the English one is searched first.
         d, result = self.downloader(name="Kita University", local="Kitan yliopisto")
         self.assertEqual(d._search_queries(["Kitan yliopisto", "Kita University"]), ["Kita University", "Kitan yliopisto"])
+        # A name with a leading "The" is next searched without it (2026-11-17).
+        self.assertEqual(d._search_queries(["The Kita University", "北大学"]), ["The Kita University", "Kita University"])
+        self.assertEqual(d._search_queries(["北大学"]), ["北大学"])  # no name in Latin letters: its own
         result.events = [{"state": "auto_institution_search", "detail": f"Kita University @ {self.URL}"}]
         result._search_box, result._search_baseline = (self.URL, "#search"), (self.URL, {"Help"})
         box = Mock(**{"input_value.return_value": "Kita University"})
@@ -861,9 +907,42 @@ class SearchListsNoSchoolTests(unittest.TestCase):
         self.assertEqual(d._institution_match_score("Universitat de Kita Single Sign-On Service"), 2)
         self.assertEqual(d._institution_match_score("Universitat de Kita IdP"), 2)
         self.assertEqual(d._institution_match_score("Universitat de Kita Login Portal Bitola"), 1)
+        # Its route after a dash: the school's own entry there (PNAS, 2026-11-17).
+        self.assertEqual(d._institution_match_score("Universitat de Kita (Kita University) - OpenAthens"), 2)
+        self.assertEqual(d._institution_match_score("Universitat de Kita Bitola - OpenAthens"), 1)
 
     def test_the_schools_own_names_and_a_leading_the(self):
         d, _ = self.downloader(name="Kita University", local="北大学")
         self.assertEqual(d._institution_match_score("北大学 Kita University"), 3)
         self.assertEqual(d._institution_match_score("The Kita University"), 3)
         self.assertEqual(d._institution_match_score("Kita University of Advanced Science"), 1)
+
+
+class WayfinderSameNameTests(unittest.TestCase):
+    """Two entries by the school's name on OpenAthens' wayfinder: its configured sign-in is
+    taken by its entityID instead of waiting for the user (Karger, Optica, 2026-11-19)."""
+
+    def test_the_configured_sign_in_is_taken_by_its_entity_id(self):
+        from paper_search_school.engine import batch_institution
+        config = {"publisher_institution_federation": "carsi", "school_name": "红木兰大学",
+                  "school_name_en": "Hong Mu-lan University", "idp_entity_id": "https://idp.example.edu.cn/idp/shibboleth"}
+        d = PublisherBatchDownloader(config, profile=ELSEVIER_PROFILE, institution_query="红木兰大学")
+        d._event = lambda result, state, detail: result.events.append({"state": state, "detail": detail})
+        result = Mock(events=[])
+        url = ("https://wayfinder.openathens.net/?return=https%3A%2F%2Fconnect.openathens.net%2Fsaml%2F2%2Fauth"
+               "%3Fr%3Dfixture")
+        page = Mock(url=url)
+        two = [{"t": "Hong Mu-lan University", "h": "", "ids": ""}, {"t": "Hong Mu-lan University", "h": "", "ids": ""}]
+        d._listed_entries = Mock(return_value=two)
+        d._institution_entry_score = Mock(return_value=3)
+        with patch.object(batch_institution, "open_page") as opened:
+            self.assertTrue(d._click_unique_institution_entry(page, result, url))
+        target = opened.call_args.args[1]
+        self.assertTrue(target.startswith("https://connect.openathens.net/saml/2/auth?r=fixture&entityID="))
+        self.assertIn("idp.example.edu.cn", target)
+        self.assertEqual([e["state"] for e in result.events], ["institution_entries_ambiguous", "institution_selected"])
+        # One entry of the name: clicked as before, no entityID route.
+        d._listed_entries = Mock(return_value=two[:1])
+        with patch.object(batch_institution, "open_page") as opened:
+            d._click_unique_institution_entry(page, Mock(events=[]), url)
+        opened.assert_not_called()

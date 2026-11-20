@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import type { SchoolBackend } from "../../src/capabilities/pdf-discovery/school/types.js";
+import type { SchoolBackend } from "../../src/infrastructure/school/types.js";
 import { withAutoUpdate } from "../../src/management/school/autoUpdate.js";
 import { withCliSchoolProgress } from "../../src/management/school/cliProgress.js";
 
@@ -9,7 +9,7 @@ import { withCliSchoolProgress } from "../../src/management/school/cliProgress.j
  * until an integration test missed its calls (2026-11-10).
  */
 const METHODS = ["probe", "downloadLegalDoi", "withBatchSession", "reportBatchProgress", "reportBatchPapers", "keepSession",
-  "holdSupported", "takeBatchRequests"] as const;
+  "hourlyWait", "holdSupported", "takeBatchRequests"] as const;
 // Fails to compile when SchoolBackend gains a method this list does not name.
 const unlisted: Record<Exclude<keyof SchoolBackend, (typeof METHODS)[number]>, never> = {};
 
@@ -39,6 +39,10 @@ function backend(calls: string[]): SchoolBackend {
       calls.push("keepSession");
       return true;
     },
+    hourlyWait: async () => {
+      calls.push("hourlyWait");
+      return { waitSec: 0, limit: 500 };
+    },
     holdSupported: async () => {
       calls.push("holdSupported");
       return true;
@@ -60,6 +64,7 @@ async function callEach(wrapped: SchoolBackend, methods: readonly (typeof METHOD
     }
     if (method === "reportBatchPapers") await wrapped.reportBatchPapers!({ id: "b", folder: "/tmp", papers: [] });
     if (method === "keepSession") await wrapped.keepSession!();
+    if (method === "hourlyWait") await wrapped.hourlyWait!("Elsevier");
     if (method === "holdSupported") await wrapped.holdSupported!();
     if (method === "takeBatchRequests") wrapped.takeBatchRequests!("b");
   }

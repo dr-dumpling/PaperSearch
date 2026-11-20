@@ -29,7 +29,10 @@ export function selectFailures(root, query = {}, options = {}) {
             const code = String((part ? incomplete?.reason : stage.code) || "download_failed");
             const backend = stage.backend;
             const current = describeFailure(code, backend, stage.trace);
+            // An unregistered entry's evidence as said now: records before 2026-11-19 may carry an old
+            // inference of no subscription for it.
             const description = !part && FAILURE_CLASSES.includes(stage.failureClass)
+                && code !== "institution_not_registered"
                 && (current.failureClass === "unexplained" || current.failureClass === stage.failureClass)
                 ? { failureClass: stage.failureClass,
                     ...(typeof stage.evidence === "string" ? { evidence: stage.evidence } : {}),
@@ -85,7 +88,7 @@ export function summarizeFailures(root, query = {}) {
         groups: [...groups.values()].sort((a, b) => order(a.failureClass) - order(b.failureClass) || b.count - a.count) };
 }
 /** Run directories are named <yyyymmdd>-<hhmmss>-<id>, so names sort by start time. */
-function selectRuns(root, query) {
+export function selectRuns(root, query) {
     if (!existsSync(root))
         return [];
     const all = readdirSync(root, { withFileTypes: true })
@@ -102,7 +105,7 @@ function selectRuns(root, query) {
         return all.slice(-query.runs);
     return all.slice(-1);
 }
-function readItems(file) {
+export function readItems(file) {
     if (!existsSync(file))
         return [];
     if (statSync(file).size > 64 * 1024 * 1024)

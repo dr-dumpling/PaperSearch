@@ -22,7 +22,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .. import federations
-from ..federations import schools
+from ..schools import lookup as schools
 from ..log import get_logger
 
 log = get_logger()
@@ -50,6 +50,8 @@ _FAILURE_KINDS = {
     "unexpected_error": ("source_exception", ""),
     # The user closed the download browser (or it quit) before the article was done.
     "browser_closed": ("browser_closed", ""),
+    # The driver process went away under the article: the client starts a new backend.
+    "browser_connection_lost": ("browser_connection_lost", "review_browser"),
     "user_marked_no_entitlement": ("no_entitlement", "skipped_by_user"),
     "user_skipped": ("user_skipped", "skipped_by_user"),
     "batch_stopped": ("batch_stopped", "stopped_by_user"),
@@ -69,6 +71,9 @@ _FAILURE_KINDS = {
     "doi_not_registered": ("doi_not_registered", "review_publisher_error"),
     # A site without a publisher profile: the shared rules found no institution entry.
     "generic_institution_entry_missing": ("generic_institution_entry_missing", "review_publisher_profiles"),
+    # The site's page shows no way to any school's login (an open-access site, one with personal
+    # accounts only): no school login was started (user, 2026-11-18).
+    "no_institution_entry": ("no_institution_entry", ""),
     **{code: (code, "review_browser") for code in _LOGIN_FAILURE_CODES},
 }
 
@@ -300,10 +305,17 @@ def _try_builtin_institutional(
         # Without a profile there is no site to build one for.
         return _failure(doi, "doi_not_resolved") if profile else _unsupported_publisher(doi)
 
+    from ..publishers.profiles import infer_publisher_profile_from_url, journal_platform
+    hosted = (infer_publisher_profile_from_url(resolved_url, profiles=profiles)
+              if profiles is not None else infer_publisher_profile_from_url(resolved_url))
     if not profile:
-        from ..publishers.profiles import infer_publisher_profile_from_url
-        profile = (infer_publisher_profile_from_url(resolved_url, profiles=profiles)
-                   if profiles is not None else infer_publisher_profile_from_url(resolved_url))
+        profile = hosted
+    elif hosted is not None and hosted is not profile and not journal_platform(doi):
+        # A journal moved to another publisher's platform keeps its DOI prefix: the
+        # site its DOI resolves to decides (Karger's Neuroepidemiology on Oxford
+        # Academic, 2026-11-14). A journal listed in _JOURNAL_PLATFORMS keeps its entry.
+        log.info("   [Institutional] DOI resolves to %s's site: its rules, not %s's", hosted.name, profile.name)
+        profile = hosted
     if not profile:
         # No profile names the site: the publisher driver with the shared rules
         # only, on the site the DOI resolves to.
@@ -372,6 +384,8 @@ def _try_builtin_institutional(
             failure["artifacts"] = result["artifacts"]
         if isinstance(result.get("supplements"), list):
             failure["supplements"] = result["supplements"]
+        if isinstance(result.get("fulltext_page"), dict):
+            failure["fulltext_page"] = result["fulltext_page"]
         if failure["error_type"] in _LOGIN_FAILURE_CODES:
             failure.update(reason=failure["error_type"], action="review_browser")
         if (result.get("error_type") == "paywall"
@@ -403,7 +417,7 @@ def _try_builtin_institutional(
         denial = next((f for f in failures if f.get("reason_code") ==
                        "institution_pdf_entitlement_missing"), None)
         primary = next((f for code in ("source_exception", "unsupported_platform", "article_not_yet_published",
-                                      "generic_institution_entry_missing",
+                                      "generic_institution_entry_missing", "no_institution_entry",
                                       "publisher_content_error", "access_blocked", *_LOGIN_FAILURE_CODES,
                                       "download_timeout")
                         for f in failures if f["error_type"] == code), denial or failures[-1])
@@ -425,6 +439,9 @@ def _try_builtin_institutional(
                             if isinstance(f.get("supplements"), list)), None)
         if supplements is not None:
             result["supplements"] = supplements
+        page = next((f["fulltext_page"] for f in reversed(failures) if isinstance(f.get("fulltext_page"), dict)), None)
+        if page is not None:
+            result["fulltext_page"] = page
         return result
     if not profile:
         # Nothing could run. Said as such, not as a login that is needed.
@@ -726,6 +743,8 @@ def _try_browser_batch_download(
                     ):
                         downloader._drop_snapshot_pictures(result)
                     _note_supplements(result, written)
+            if config.get("fulltext") and getattr(result, "_fulltext_read", None):
+                result.fulltext_page = _save_fulltext_page(downloader, context, result, output_path.parent, doi)
         finally:
             if batch is not None:
                 if not watchdog.fired:
@@ -737,6 +756,7 @@ def _try_browser_batch_download(
                     pass
     except Exception as e:
         log.info("   [Institutional] Browser batch download error: %s", type(e).__name__)
+        from ..browser.driver import driver_lost
         from .batch_common import browser_closed
 
         if isinstance(e, watchdog.BrowserOperationTimeout):
@@ -745,6 +765,8 @@ def _try_browser_batch_download(
             state = "browser_unresponsive"
         elif browser_closed(e):
             state = "browser_closed"
+        elif driver_lost(e):
+            state = "browser_connection_lost"
         else:
             state = "unexpected_error"
         error_type, action = _FAILURE_KINDS[state]
@@ -755,11 +777,16 @@ def _try_browser_batch_download(
                               "state": state}}
 
     if getattr(result, "state", "") == "access_ready":
-        # `login`: the article opens in full; whether the school's login was part of it.
+        # `login`: the article opens in full; whether the school's login was part of it. A visit
+        # for the page alone whose page was not saved says why: it came back as success with
+        # nothing in it, "后端结果无法使用" (Oxford, Karger, PNAS, 2026-11-17).
+        missed = "" if getattr(result, "fulltext_page", None) else _page_not_saved(result)
         return {"success": True, "identifier": doi, "doi": doi,
                 "source": f"institutional:browser:{profile.name}",
                 "login": {"signed_in": bool(getattr(result, "signed_in", False))},
-                "artifacts": _browser_artifacts(result, profile)}
+                "artifacts": _browser_artifacts(result, profile),
+                **({"fulltext_page": result.fulltext_page} if getattr(result, "fulltext_page", None) else {}),
+                **({"fulltext_page_not_saved": missed} if missed else {})}
 
     if result.ok and result.pdf_path:
         src = Path(result.pdf_path)
@@ -776,6 +803,8 @@ def _try_browser_batch_download(
                 "full_text_length": result.text_length,
                 "artifacts": _browser_artifacts(result, profile),
                 **({"supplements": result.supplements} if supplements_mode in ("with", "only") else {}),
+                **({"fulltext_page": result.fulltext_page} if getattr(result, "fulltext_page", None) else {}),
+                **({"fulltext_page_not_shown": True} if _page_showed_no_fulltext(result) else {}),
             }
 
     reason_code = _failure_reason_code(result)
@@ -785,10 +814,85 @@ def _try_browser_batch_download(
                "artifacts": _browser_artifacts(result, profile)}
     if supplements_mode in ("with", "only"):
         failure["supplements"] = result.supplements
+    if getattr(result, "fulltext_page", None) and reason_code != "institution_pdf_entitlement_missing" \
+            and error_type not in ("paywall", "entitlement_missing"):
+        # The page showed the full text though the PDF failed for another reason: still
+        # worth packaging. Without the entitlement it may be only a publisher's preview.
+        failure["fulltext_page"] = result.fulltext_page
     if reason_code == "institution_pdf_entitlement_missing":
         failure["reason"] = reason_code
         failure["reason_code"] = reason_code
     return failure
+
+
+def _page_not_saved(result: Any) -> str:
+    """--fulltext: why the article page was not saved on this visit, as a code with no page
+    text (fulltext_not_shown, page_not_stable, page_moved, other_article, time_limit,
+    browser); "" when it was, or was not read at all."""
+    missed = [event for event in getattr(result, "events", None) or []
+              if isinstance(event, dict) and event.get("state") == "fulltext_page_not_saved"]
+    if not missed:
+        return ""
+    code = re.split(r"[:\s]", str(missed[-1].get("detail", "")), maxsplit=1)[0]
+    return code if re.fullmatch(r"[a-z_]{1,40}", code) else "page_not_saved"
+
+
+def _page_showed_no_fulltext(result: Any) -> bool:
+    """--fulltext: the article page was read on this visit, after the school's login when one
+    came for the PDF, and showed no full text. A visit for the page alone reads it the same way
+    and would find none either (ACM, IOP: a minute or two each for nothing, 2026-11-15)."""
+    if getattr(result, "fulltext_page", None):
+        return False
+    missed = [event for event in getattr(result, "events", None) or []
+              if isinstance(event, dict) and event.get("state") == "fulltext_page_not_saved"]
+    return bool(missed) and str(missed[-1].get("detail", "")).startswith(("fulltext_not_shown", "fulltext_denied"))
+
+
+def _save_fulltext_page(downloader: Any, context: Any, result: Any, output_dir: Path, doi: str) -> dict[str, Any]:
+    """--fulltext: the page read on the article (``fulltext_page.read_page``), saved
+    beside the PDF with its images, fetched through the same session: the browser's as it is
+    now, or, once the watchdog has ended the item, as it was when the page was read."""
+    from ..browser import watchdog
+    from .batch_common import _is_browser_error
+    from .fulltext_page import save_page
+    from .supplement_transfer import browser_request, session_request
+
+    read = result._fulltext_read
+    proxy = downloader._context_proxy.get(id(context))
+    if watchdog.fired:
+        # Every browser call raises now, and an exception's diagnostic took the place of the
+        # item's own, its events with it (Cell's PDF step, Windows, 2026-11-18): no browser call.
+        # The page was read before the PDF step ran past its time; its HTML is in hand and its
+        # images are fetched with the session kept then (IEEE's 32 and 37 MB PDFs: the page
+        # read was dropped, and with it the Markdown, 2026-11-18).
+        kept = getattr(result, "_fulltext_session", None)
+        if not kept:
+            downloader._event(result, "fulltext_page_not_saved", f"browser_stopped: {watchdog.failure_code()}")
+            return {}
+        with session_request(kept, downloader.config, referer=read["url"], proxy=proxy) as request:
+            saved = save_page(read, output_dir, doi, request)
+        downloader._event(result, "fulltext_page_saved",
+                          f"{len(saved['images'])}/{len(read['image_urls'])} images; "
+                          f"with the session as read ({watchdog.failure_code()} ended the browser's calls)")
+        return saved
+    try:
+        page = context.new_page()
+    except Exception as exc:
+        if not _is_browser_error(exc):
+            raise
+        downloader._event(result, "fulltext_page_not_saved", f"browser closed: {type(exc).__name__}")
+        return {}
+    try:
+        with browser_request(page, downloader.config, proxy=proxy, referer=read["url"]) as request:
+            saved = save_page(read, output_dir, doi, request)
+        downloader._event(result, "fulltext_page_saved",
+                          f"{len(saved['images'])}/{len(read['image_urls'])} images")
+        return saved
+    finally:
+        try:
+            page.close()
+        except Exception:
+            pass
 
 
 def _browser_closed_at_start(result: Any) -> bool:
@@ -858,6 +962,13 @@ def _browser_artifacts(result: Any, profile: Any) -> dict[str, str]:
         "diagnostic": str(getattr(result, "diagnostic_path", "") or ""),
         "state": state if re.fullmatch(r"[a-z0-9_]{1,64}", state) else "",
     }
+    from ..browser import watchdog
+
+    if watchdog.fired:
+        # The watchdog ended this process's browser calls, every later one fails at once: the
+        # caller starts another backend for what comes next, also after a PDF saved here (IEEE,
+        # 2026-11-18: the Markdown's visit for the page alone went to this one and ended in 3 s).
+        artifacts["browser_stopped"] = True
     # The publisher's list was seen without the school in this run, and the school was
     # chosen nowhere in it: only this is remembered as no route (``login_routes``); an
     # article that ended on the earlier finding, or whose school was chosen, is not.

@@ -1,4 +1,4 @@
-export { createDefaultDownloadTiers, downloadWithFallback, insertDownloadTierBefore } from '../capabilities/pdf-discovery/OpenAccessFallbackService.js';
-export type { DownloadTier, DownloadTierContext, DownloadTierResult } from '../capabilities/pdf-discovery/DownloadTier.js';
-export type { DownloadWithFallbackOptions, DownloadWithFallbackResult } from '../capabilities/pdf-discovery/types.js';
+export { createDefaultDownloadTiers, downloadWithFallback, insertDownloadTierBefore } from '../capabilities/download/content/pdf/OpenAccessFallbackService.js';
+export type { DownloadTier, DownloadTierContext, DownloadTierResult } from '../capabilities/download/content/pdf/DownloadTier.js';
+export type { DownloadWithFallbackOptions, DownloadWithFallbackResult } from '../capabilities/download/types.js';
 //# sourceMappingURL=OpenAccessFallbackService.d.ts.map

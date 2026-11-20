@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_school.publishers.profiles import ELSEVIER_PROFILE
+from fixture_network import network_is_the_fixture
 
 
 @unittest.skipUnless(os.environ.get('SCHOOL_LOCAL_BROWSER_TEST') == '1', 'local Chrome fixture opt-in')
@@ -38,6 +39,7 @@ class NativeCaptureTests(unittest.TestCase):
         with sync_playwright() as driver:
             browser = driver.chromium.launch(channel='chrome', headless=True)
             try:
+                network_is_the_fixture(self)
                 context = browser.new_context()
                 context.route('**/*', local_response)
                 page = context.new_page()

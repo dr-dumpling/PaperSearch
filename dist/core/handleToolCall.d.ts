@@ -1,5 +1,5 @@
 import type { Searchers } from "./searchers.js";
-import type { SchoolBackend } from "../capabilities/pdf-discovery/school/index.js";
+import type { SchoolBackend } from "../infrastructure/school/index.js";
 export interface ToolCallDependencies {
     schoolBackend?: SchoolBackend;
 }

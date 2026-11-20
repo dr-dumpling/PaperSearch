@@ -102,7 +102,8 @@ class PublisherExtensionWiringTests(unittest.TestCase):
         self.assertIs(self.constructor.call_args.kwargs["profile"], catalog["fixture"])
         self.assertIs(self.constructor.call_args.kwargs["config"], self.config)
         self.assertEqual(self.config, original)
-        self.from_url.assert_not_called()
+        # The site the DOI resolves to is looked up in the same mapping; it is the same profile's.
+        self.from_url.assert_called_once_with(LANDING, profiles=catalog)
         self.downloader._launch_context.return_value.close.assert_called_once()
 
     def test_unknown_doi_uses_known_landing_host_in_the_same_loaded_mapping(self):

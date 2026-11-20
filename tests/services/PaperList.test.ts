@@ -1,6 +1,6 @@
 import { describe, it, expect, jest, afterEach } from '@jest/globals';
-import { PaperList, PAPERS_RETRY_MS } from '../../src/capabilities/pdf-discovery/batchPapers.js';
-import type { SchoolBatchPapers } from '../../src/capabilities/pdf-discovery/school/index.js';
+import { PaperList, PAPERS_RETRY_MS } from '../../src/capabilities/download/batch/batchPapers.js';
+import type { SchoolBatchPapers } from '../../src/infrastructure/school/index.js';
 
 const waiting = (doi: string) => ({ doi, title: doi, journal: '', state: 'school' as const });
 

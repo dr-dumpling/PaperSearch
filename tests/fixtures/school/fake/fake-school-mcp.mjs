@@ -131,6 +131,11 @@ if (
       log("call", { tool: "school_keep_session" });
       return { content: [{ type: "text", text: '{"kept":true}' }] };
     });
+    server.registerTool("school_hourly_wait", { description: "How long the hourly limit still holds",
+      inputSchema: { publisher: z.string() } }, async ({ publisher }) => {
+      log("call", { tool: "school_hourly_wait", publisher });
+      return { content: [{ type: "text", text: JSON.stringify(publisher === "Elsevier" ? { wait_sec: 0, limit: 500 } : { wait_sec: 1200, limit: 100 }) }] };
+    });
   }
 
   if (scenario !== "missing_download") {
@@ -146,6 +151,21 @@ if (
           // The first download lasts until the open-access lane has reported beside it.
           await (args.identifier.endsWith("/one") ? Promise.race([laneReported, delay(8000)]) : delay(100));
           log("done", { tool: "school_download", identifier: args.identifier });
+        }
+
+        if (scenario === "batch_browser_driver_lost" && args.identifier.endsWith("/first")) {
+          return { content: [{ type: "text", text: JSON.stringify({
+            success: false, identifier: args.identifier, error_type: "browser_connection_lost",
+            action: "review_browser", artifacts: { state: "browser_connection_lost" },
+          }) }] };
+        }
+
+        if (scenario === "batch_browser_stopped_after_pdf" && args.identifier.endsWith("/first")) {
+          // The PDF was saved, then the watchdog ended every browser call of this backend.
+          return { content: [{ type: "text", text: JSON.stringify({
+            success: true, identifier: args.identifier, doi: args.identifier, file: resultFile, source: resultSource,
+            artifacts: { state: "pdf_response_captured", browser_stopped: true },
+          }) }] };
         }
 
         if (scenario === "batch_browser_verification_timeout" && args.identifier.endsWith("/first")) {

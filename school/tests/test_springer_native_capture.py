@@ -15,6 +15,8 @@ from collections import Counter
 from unittest.mock import Mock
 from urllib.parse import quote
 
+from fixture_network import network_is_the_fixture
+
 
 DOI = "10.1007/s00000-026-00001-1"
 TITLE = "Synthetic Springer native capture fixture"
@@ -59,6 +61,7 @@ class SpringerNativeCaptureTests(unittest.TestCase):
             side_effect=AssertionError("plain HTTP fallback forbidden"))
         self.downloader._save_publisher_session = Mock(
             side_effect=AssertionError("credential I/O forbidden"))
+        network_is_the_fixture(self)
         self.context = self.browser.new_context(service_workers="block")
         self.addCleanup(self.context.close)
         self.context.set_default_timeout(3_000)

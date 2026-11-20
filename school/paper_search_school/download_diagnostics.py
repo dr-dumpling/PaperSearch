@@ -28,7 +28,7 @@ profile_busy cancelled interrupted skipped_cached_attempt target_verified_reache
 unsupported_platform unsupported_publisher user_skipped user_marked_no_entitlement pdf_wrong_article
 article_not_yet_published doi_not_resolved doi_not_registered network_unavailable
 institution_federation_unavailable browser_unresponsive browser_operation_timeout login_not_reached idp_no_return_to_publisher
-generic_institution_entry_missing browser_closed
+generic_institution_entry_missing no_institution_entry browser_closed browser_connection_lost
 """.split())
 _STATES = _FAILURES | _STATUSES | frozenset("""
 started article_loaded article_loaded_after_sso pdf_response_captured
@@ -64,6 +64,7 @@ shared_cookies_exported shared_cookies_loaded sso_entry_clicked sso_entry_error 
 access_unknown_pdf_first access_unknown_pdf_failed pdf_step_login_required login_round_trip_returned
 pdf_probe pdf_probe_captured pdf_probe_refused no_access_after_login pdf_found_while_waiting
 login_entry_missing login_entry_controls access_menu_opened access_menu_entry_refused access_menu_error
+open_access_signal open_access_no_login no_institution_entry_remembered
 article_reopen_error supplements_skipped browser_start
 """.split()) | _FAILURES
 _DETAIL_CATEGORIES = {

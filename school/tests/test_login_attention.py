@@ -7,6 +7,7 @@ from paper_search_school import progress_reporter, progress_view
 from paper_search_school.engine import batch_login
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_school.publishers.profiles import ELSEVIER_PROFILE
+from tests.thread_clock import this_thread_only
 
 
 @pytest.mark.parametrize("user_step", ["school_login", "school_choice", "automatic"])
@@ -15,10 +16,13 @@ def test_login_loop_attention_lifecycle(tmp_path, monkeypatch, user_step, ending
     monkeypatch.setenv("SCHOOL_DATA_DIR", str(tmp_path))
     progress_reporter.start_task("论文下载", total=1)
     clock = [1000.0]
-    monkeypatch.setattr(batch_login.time, "time", lambda: clock[0])
-    monkeypatch.setattr(batch_login.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    fake_time, fake_sleep = this_thread_only(lambda: clock[0], lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    monkeypatch.setattr(batch_login.time, "time", fake_time)
+    monkeypatch.setattr(batch_login.time, "sleep", fake_sleep)
     monkeypatch.setattr(batch_login, "settle", lambda *a: None)
     d = PublisherBatchDownloader({}, profile=ELSEVIER_PROFILE, login_timeout_sec=5)
+    # The reminder at once: its life is tested here, its grace in test_school_route_rule.py.
+    d.LOGIN_PROMPT_GRACE_SEC = 0
     result = DownloadResult(doi="10.1016/fixture", status="failed")
     page = Mock(url="https://cas.school.example/login")
     page.frames = []

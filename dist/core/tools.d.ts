@@ -3,5 +3,6 @@ export interface CliTool {
     description: string;
     inputSchema: Record<string, unknown>;
 }
-export declare const TOOLS: CliTool[];
+/** The tools as this edition offers them: without PaperSearch Pro's features (config/edition.ts), no Markdown. */
+export declare function toolList(pro?: boolean): CliTool[];
 //# sourceMappingURL=tools.d.ts.map

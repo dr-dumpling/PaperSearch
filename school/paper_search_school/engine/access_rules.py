@@ -82,8 +82,11 @@ _ABSTRACT_ONLY = re.compile(r"/article-abstract/|/abs/pii/", re.I)
 
 # The publisher shows the article as accepted, its full text not online yet:
 # Optica's page "This paper has been accepted for publication. The DOI ... has been
-# registered ... will redirect to the published article when available" (2026-11-08).
-_NOT_YET_PUBLISHED = (("accepted for publication", "redirect to the published article when available"),)
+# registered ... will redirect to the published article when available" (2026-11-08);
+# APS's "Accepted Paper", whose supplemental materials "will be available upon
+# publication of the version of record" (2026-11-15).
+_NOT_YET_PUBLISHED = (("accepted for publication", "redirect to the published article when available"),
+                      ("accepted paper", "upon publication of the version of record"))
 
 
 def not_yet_published(text: str) -> bool:
@@ -172,6 +175,63 @@ _LICENCE = re.compile(
     r"open access\s+this article is (?:licensed|distributed) under"
     r"|\b(?:is|are) (?:licensed|distributed) under (?:the terms of )?(?:a |the )?creative commons\b"
     r"|\bthis is an open[ -]access article\b", re.I)
+
+
+# What a publisher writes into an open article's page for indexers, read apart from
+# the access verdict (it never makes a page readable, only tells that no school login
+# is needed for it): a Creative Commons licence in its DC, PRISM or citation meta or
+# a rel="license" link, Highwire's citation_fulltext_world_readable, schema.org's
+# isAccessibleForFree, a Creative Commons link in the article's own licence or
+# copyright block. A footer's licence is the site's, a figure's or a reference's
+# another work's: neither counts.
+OPEN_SIGNS_JS = r"""() => {
+    const CC = /creativecommons\.org\/(?:licenses|publicdomain)\//i;
+    const CC_WORDS = /creative\s*commons|\bcc[\s-]?by\b|\bcc0\b/i;
+    const RIGHTS = /^(?:dc|dcterms|dc\.terms|prism)\.(?:rights|license|licence|accessrights)$|^citation_(?:license|licence|rights)$/i;
+    const short = s => String(s || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    for (const meta of document.querySelectorAll('meta[name], meta[property]')) {
+        const name = (meta.getAttribute('name') || meta.getAttribute('property') || '').trim();
+        const content = meta.getAttribute('content') || '';
+        if (/^citation_fulltext_world_readable$/i.test(name)) return 'meta citation_fulltext_world_readable';
+        if (RIGHTS.test(name) && (CC.test(content) || CC_WORDS.test(content))) return `meta ${name}: ${short(content)}`;
+    }
+    const NOT = 'footer, [role="contentinfo"], [class*="footer" i], [id*="footer" i], nav, aside, figure, figcaption, '
+        + '[class*="caption" i], [class*="reference" i], [id*="reference" i], [class*="related" i], [class*="recommend" i]';
+    for (const link of document.querySelectorAll('link[rel][href], a[rel][href]')) {
+        if (/(?:^|\s)license(?:\s|$)/i.test(link.getAttribute('rel')) && CC.test(link.href) && !link.closest(NOT))
+            return `licence link: ${short(link.href)}`;
+    }
+    for (const script of [...document.querySelectorAll('script[type="application/ld+json"]')].slice(0, 8)) {
+        let data;
+        try { data = JSON.parse((script.textContent || '').slice(0, 200000)); } catch (_) { continue; }
+        const items = [].concat(data).flatMap(item => item && item['@graph'] ? [].concat(item['@graph']) : [item]);
+        for (const item of items) {
+            if (!item || typeof item !== 'object') continue;
+            if (item.isAccessibleForFree === true || /^true$/i.test(String(item.isAccessibleForFree || '')))
+                return 'json-ld isAccessibleForFree';
+            if (CC.test(String(item.license || ''))) return `json-ld license: ${short(item.license)}`;
+        }
+    }
+    const BLOCK = /licen[cs]|copyright|permission|rights|open-?access/i;
+    for (const a of document.querySelectorAll('a[href*="creativecommons.org/"]')) {
+        if (!CC.test(a.href) || a.closest(NOT)) continue;
+        for (let el = a.parentElement, n = 0; el && el !== document.body && n < 6; el = el.parentElement, n++) {
+            if (BLOCK.test(`${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`))
+                return `licence block: ${short(a.href)}`;
+        }
+    }
+    return '';
+}"""
+
+
+_OPEN_SIGN_KINDS = ("meta ", "licence link: ", "json-ld ", "licence block: ")
+
+
+def open_access_evidence(found: object) -> str:
+    """``OPEN_SIGNS_JS``'s answer as evidence: "" for anything but one of its own lines."""
+    if not isinstance(found, str) or not found.startswith(_OPEN_SIGN_KINDS):
+        return ""
+    return f"open licence: {found.strip()}"[:200]
 
 
 def reader_access(lines: list[str], text: str, probe: dict) -> str:

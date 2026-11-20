@@ -19,6 +19,7 @@ import re
 from typing import Any
 from urllib.parse import quote, urlparse
 
+from ...engine.fulltext_page import MATHJAX_SOURCES_JS
 from ...browser.driver import is_driver_error
 from ...engine.router import elsevier_journal_article, extract_elsevier_pii
 from ..base import PublisherAdapter, SupplementLink, register
@@ -185,6 +186,38 @@ class ElsevierAdapter(PublisherAdapter):
     async_pdf_navigation = True
     sciencedirect_class = ScienceDirectSite
     journal_site_class = JournalSite
+
+    # --fulltext: ScienceDirect's body is #body (absent from an abstract-only page); each
+    # figure links its high-res image (_lrg), else its shown one (2026-11-13). A journal's
+    # own site (cell.com, thelancet.com: Atypon in Elsevier's build, PaperSearch's
+    # templates/elsevierJournal.ts) has its body in section#bodymatter, each citation's
+    # reference in a pop-up inside it (left out of the count), and each figure's large
+    # image (_lrg, another asset than the one shown) in data-viewer-src, else in the
+    # full-screen link (2026-11-14).
+    fulltext_shown_js = """() => {
+      if (location.hostname.endsWith('sciencedirect.com')) return (document.querySelector('#body')?.innerText.length || 0) > 500;
+      const body = document.querySelector('section#bodymatter');
+      if (!body || document.querySelector('.denial-block')) return false;
+      const popups = [...body.querySelectorAll('.dropBlock__holder')].reduce((sum, node) => sum + node.textContent.length, 0);
+      return body.textContent.length - popups > 500;
+    }"""
+    fulltext_images_js = """() => location.hostname.endsWith('sciencedirect.com')
+      ? [...document.querySelectorAll('#body figure, #abstracts figure')].map((figure) => {
+        const large = figure.querySelector('a.download-link[href*="_lrg."]');
+        const shown = figure.querySelector('img');
+        return large ? large.href : shown ? (shown.currentSrc || shown.src) : '';
+      }).filter(Boolean)
+      : [...document.querySelectorAll('section#bodymatter figure img, #abstracts figure img, section#backmatter figure img')]
+        .filter((img) => !img.closest('figcaption'))
+        .map((img) => {
+          const viewer = img.getAttribute('data-viewer-src');
+          const link = img.parentElement?.matches('a[href*="_lrg."]') ? img.parentElement.href : '';
+          return viewer ? new URL(viewer, location.href).href : link || img.src;
+        })
+        .filter((url) => /^https?:/.test(url))"""
+    # MathJax 4 keeps no MathML in the page: each formula's source is written onto its
+    # element as data-original-mathml, which PaperSearch reads; MathJax 2 pages too.
+    fulltext_prepare_js = MATHJAX_SOURCES_JS
 
     def __init__(self, downloader: Any):
         super().__init__(downloader)

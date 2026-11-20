@@ -82,7 +82,7 @@ from .batch_common import (
     logger,
     safe_name,
 )
-from .batch_login import GENERIC_ENTRY_MISSING, LoginMixin
+from .batch_login import GENERIC_ENTRY_MISSING, NO_INSTITUTION_ENTRY, LoginMixin
 from .batch_institution import InstitutionMixin
 from .batch_access import AccessMixin
 from .batch_waits import UserWaitMixin
@@ -135,7 +135,7 @@ class PublisherBatchDownloader(
         file (a later file's download never started); new tabs took 8 of 8
         (Taylor & Francis with ego, 2026-11-01)."""
         from .page_activity import transfer
-        from .supplements import MAX_FILE_BYTES
+        from .supplements import VIEWER_MAX_BYTES
 
         tab = page.context.new_page()
         path = None
@@ -172,7 +172,7 @@ class PublisherBatchDownloader(
                     # native reader, copying at most 1 MiB across each bridge
                     # call directly to disk, under the attachment size limit.
                     with transfer(result):
-                        saved = self._capture_loaded_pdf_viewer(tab, url, output=path, max_bytes=MAX_FILE_BYTES)
+                        saved = self._capture_loaded_pdf_viewer(tab, url, output=path, max_bytes=VIEWER_MAX_BYTES)
                     if saved == path:
                         completed = True
                         return path, Path(unquote(urlparse(url).path)).name or "supplement.pdf"
@@ -258,6 +258,9 @@ class PublisherBatchDownloader(
                     return [{"status": "failed", "reason": incomplete, "url": "", "label": ""}]
                 self._event(result, "supplements_found", str(len(links)))
                 progress_reporter.update(supplements_total=len(links))
+            if self.config.get("fulltext"):
+                # --fulltext on a visit for the attachments alone: the article page it opened.
+                self._remember_fulltext_page(page, doi, result)
             files = []
             if links:
                 with browser_request(page, self.config, proxy=self._context_proxy.get(id(context))) as request:
@@ -355,6 +358,23 @@ class PublisherBatchDownloader(
         except Exception:
             self._adapter_issns = ()
 
+    def _warm_session(self, page: Any, result: DownloadResult) -> None:
+        """Open the article site's root once per run before its first article there.
+
+        Gives the site a first-party document before the deep article URL, so the
+        session it reads starts on the root. One visit per site per process; the
+        outcome is recorded and never blocks the article. Off with
+        ``browser_session_warmup: false``.
+        """
+        if not self.config.get("browser_session_warmup", True):
+            return
+        from ..browser.challenge import warmup as session_warmup
+
+        url = result.article_url or ""
+        outcome = session_warmup.warm(page, url)
+        if outcome != "skipped":
+            self._event(result, "session_warmup", f"{session_warmup.site_root(url)}: {outcome}")
+
     def __init__(
         self,
         config: dict | None = None,
@@ -427,7 +447,7 @@ class PublisherBatchDownloader(
             config["browser_headless"] = False
         started = time.time()
         ctx = get_persistent_context(profile_path, config)
-        from ..browser.challenge_interaction import prepare_context
+        from ..browser.challenge.interaction import prepare_context
         prepare_context(ctx)
         self._browser_start = {**dict(getattr(browser_backend, "LAST_LAUNCH", {}) or {}),
                                "seconds": round(time.time() - started, 1), **({"relaunch": relaunch} if relaunch else {})}
@@ -472,7 +492,12 @@ class PublisherBatchDownloader(
         from ..browser import watchdog
 
         self._phase(result, "open")
-        progress_reporter.update(part="main", supplements_saved=0, supplements_total=None,
+        # A visit for the page alone is the Markdown's from the start: the orchestrator keeps it as
+        # fulltext and login_only (the article's access, no PDF), never "only" (Windows, 2026-11-16:
+        # every such visit showed "PDF" and the PDF steps).
+        page_alone = bool(self.config.get("fulltext") and self.config.get("login_only"))
+        progress_reporter.update(part="markdown" if page_alone else "main",
+                                 supplements_saved=0, supplements_total=None, page_reading=False,
                                  title=record.title or "")
         self._run_dir = run_dir
         watchdog.on_slow_call = lambda name, seconds, ended, where: self._event(
@@ -493,13 +518,18 @@ class PublisherBatchDownloader(
         page.on("framenavigated", invalidate_open_access)
         stop_following_route = self._follow_login_route(page, result)
         try:
+            self._warm_session(page, result)
             preparation = self._prepare_article(page, result, run_dir)
             if preparation is not None:
                 return preparation
+            # --fulltext: the article page as it is now, before the PDF step moves it (also
+            # for a visit for the page alone, which ends with the access below).
+            self._remember_fulltext_page(page, record.doi, result)
             if self.config.get("login_only"):
-                # The article's title in the window, as the PDF step shows it (a visit given
-                # no title showed only the DOI, 2026-11-16).
+                # The article's title in the window, as the PDF step shows it (a visit for the
+                # page alone given no title showed only the DOI, 2026-11-16).
                 self._show_title(page)
+                self._fulltext_after_login_only(page, record.doi, result)
                 # `login` (cli): the school's login and the article's access, then stop; no PDF.
                 result.signed_in = self._school_login_done()
                 result.state = "access_ready"
@@ -523,12 +553,18 @@ class PublisherBatchDownloader(
                 wall = self._pdf_step_login_required(result) or self._looks_logged_out(page)
                 # The PDF was tried first (nothing said either way, or only the
                 # reader's access showed): the school's login, once, then the PDF again.
-                retry = (not wall and getattr(result, "_pdf_first", False) and not self._school_login_done())
+                # So too for a page taken as open to all whose PDF entry asked for access
+                # (PNAS 2026-11-17: a Creative Commons line in the copyright notes, "GET
+                # ACCESS" by the title, the PDF addresses 403 until the school's login).
+                gated = (getattr(result, "_taken_as_open", False)
+                         and any(e["state"] == "pdf_entry_gated" for e in result.events))
+                retry = (not wall and (getattr(result, "_pdf_first", False) or gated) and not self._school_login_done())
                 if wall or retry:
                     if wall:
                         self._event(result, "auth_wall_after_pdf_attempt", self._decision_text(page))
                     else:
-                        self._event(result, "access_unknown_pdf_failed", getattr(page, "url", ""))
+                        self._event(result, "open_access_pdf_gated" if gated and not getattr(result, "_pdf_first", False)
+                                    else "access_unknown_pdf_failed", getattr(page, "url", ""))
                         self._reopen_article_page(page, result)
                         result._pdf_retry_login = True
                     logged_in = self._complete_login_from_current_page(page, result)
@@ -584,9 +620,10 @@ class PublisherBatchDownloader(
                         self._write_diagnostic(page, result, run_dir)
                         return result
                     if not pdf_bytes:
-                        # A site without rules whose page offered no institution entry says so.
-                        result.reason = result.state = (GENERIC_ENTRY_MISSING if result.reason == GENERIC_ENTRY_MISSING
-                                                        else "pdf_not_captured")
+                        # A site whose page offered no institution entry (one without rules, or
+                        # a sign-in that was the publisher's own account's) says so.
+                        result.reason = result.state = (result.reason if result.reason in (
+                            GENERIC_ENTRY_MISSING, NO_INSTITUTION_ENTRY) else "pdf_not_captured")
                         result.final_url = page.url
                         result.title = self._title(page)
                         self._write_diagnostic(page, result, run_dir)
@@ -617,6 +654,7 @@ class PublisherBatchDownloader(
                 self._write_diagnostic(page, result, run_dir)
                 return result
 
+            self._fulltext_after_pdf_login(page, record.doi, result)
             return self._save_captured_pdf(page, record, result, run_dir, pdf_bytes, pdf_url)
         except UserProvidedPdf as provided:
             watchdog.clear_interrupt()
@@ -720,6 +758,12 @@ class PublisherBatchDownloader(
                 progress_reporter.report_stage("route_failed", current=record.doi)
             if not stopped:
                 self._hold_after_run(page, result)
+                # The school's login kept for the next paper (browser/backend.py): saved now, not
+                # only when the browser closes, and its IdP cookies made to go with a publisher's
+                # SAML POST, which otherwise asked for the password again (user, 2026-11-19).
+                keep_login = getattr(getattr(page, "context", None), "paper_search_keep_login", None)
+                if callable(keep_login):
+                    keep_login(getattr(self, "login_hosts_reached", set()))
             if _owns_page:
                 try:
                     page.close()

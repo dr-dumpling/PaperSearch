@@ -17,7 +17,6 @@ from ....entitlements import UserMarkedNoEntitlement
 _API = "https://api.figshare.com/v2"
 _MAX_RESOURCES = 5
 _MAX_ARTICLES = 50
-_MAX_BYTES = 200 * 1024 * 1024
 _BUDGET_SEC = 30
 _PAGE_LINKS = """() => {
  // A cited dataset is not a supplement of the article citing it.
@@ -181,8 +180,6 @@ def supplement_links(page: Any, doi: str, *, clock=time.monotonic, pause=time.sl
                         error = "figshare_link_only"
                     elif not isinstance(file.get("size"), int) or file["size"] < 0:
                         error = "figshare_invalid_file"
-                    elif file["size"] > _MAX_BYTES:
-                        error = "too_large"
                     links.append(SupplementLink(url, name, error=error))
                     count += 1
             if count == 0:

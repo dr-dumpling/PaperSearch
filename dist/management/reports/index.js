@@ -78,6 +78,9 @@ export function renderSkillDiffTextReport(report) {
         if (target.staleFiles.length > 0) {
             lines.push(`Stale managed files: ${target.staleFiles.join(", ")}`);
         }
+        if (target.retiredFiles.length > 0) {
+            lines.push(`Files from an earlier version, moved to the backup on update: ${target.retiredFiles.join(", ")}`);
+        }
         if (target.extraFiles.length > 0) {
             lines.push(`Extra Skill Files (${target.extraFiles.length}, names only): ${target.extraFiles.join(", ")}`);
         }
@@ -115,7 +118,7 @@ function skillLocationState(location, version) {
         return `PaperSearch 有新版本 ${location.version}，本机版本为 ${version}，请运行 npm install -g papersearch@latest 更新`;
     }
     if (location.status === "stale") {
-        const files = location.staleFiles.length + location.missingFiles.length;
+        const files = location.staleFiles.length + location.missingFiles.length + location.retiredFiles.length;
         return `不是最新（${files} 个文件要更新），运行 paper-search skills update --targets ${location.targets[0]}`;
     }
     if (location.status === "extra_files") {

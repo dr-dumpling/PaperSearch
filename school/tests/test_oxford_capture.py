@@ -4,6 +4,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
+from fixture_network import network_is_the_fixture
+
 DOI = '10.1093/jnci/fixture123'
 ARTICLE = 'https://academic.oup.com/jnci/advance-article/doi/' + DOI + '/12345'
 PDF = 'https://academic.oup.com/jnci/advance-article-pdf/doi/' + DOI + '/98765/fixture123.pdf'
@@ -62,6 +64,21 @@ class OxfordGuardTests(unittest.TestCase):
         self.assertTrue(self.d._is_supplementary_url(
             'https://oup.silverchair-cdn.com/oup/backfile/Content_public/Journal/eurheartjsupp/28/Supplement_11/suag119.023/1/suag119.023_supplement.docx'))
 
+    def test_a_journal_hosted_for_another_publisher_is_matched_by_its_own_doi(self):
+        # Karger's Neuroepidemiology on Oxford Academic: its DOI is Karger's (2026-11-14).
+        doi = '10.1159/ned/adwag066'
+        article = 'https://academic.oup.com/ned/advance-article/doi/10.1159/ned/adwag066/9022322'
+        pdf = 'https://academic.oup.com/ned/advance-article-pdf/doi/10.1159/ned/adwag066/9022322/adwag066.pdf'
+        self.assertTrue(self.d._article_pdf_url_matches(pdf, doi))
+        self.assertFalse(self.d._article_pdf_url_matches(pdf, '10.1159/ned/adwag067'))  # another article's
+        response = SimpleNamespace(url='https://watermark02.silverchair.com/adwag066.pdf?fixture-signature=local',
+                                   status=200, headers={}, history=[SimpleNamespace(url=pdf, headers={})])
+        self.assertTrue(self.d._response_matches_article(response, doi))
+        from paper_search_school.engine.router import _append_oxford_candidates
+        urls = []
+        _append_oxford_candidates(urls, doi, article)
+        self.assertEqual(urls, [pdf])
+
     def test_response_redirect_to_unrelated_pdf_cannot_be_captured(self):
         response = SimpleNamespace(url=ANNUAL, status=200, headers={}, history=[
             SimpleNamespace(url=PDF, headers={})])
@@ -103,6 +120,7 @@ class OxfordNativeTests(OxfordGuardTests):
     def setUp(self):
         super().setUp()
         import pymupdf
+        network_is_the_fixture(self)
         self.context = self.browser.new_context(service_workers='block')
         self.addCleanup(self.context.close)
         self.requests = []

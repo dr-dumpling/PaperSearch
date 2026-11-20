@@ -27,7 +27,10 @@ from ..browser import watchdog
 from ..entitlements import UserMarkedNoEntitlement, UserSkippedArticle, UserStoppedBatch
 
 MAX_FILES = 50
-MAX_FILE_BYTES = 200 * 1024 * 1024
+# No size cap on a file written to disk (user, 2026-11-17: a 310 MB data file is the paper's too,
+# and 2 of ARD's and AR's files were left for it). A file the browser's own PDF viewer holds is
+# read out of its memory: at most this much.
+VIEWER_MAX_BYTES = 1024 * 1024 * 1024
 # No progress for this long ends the collection; active transfers refresh it.
 TIME_BUDGET_SEC = 180
 # Still bounded even when a server trickles bytes forever; below the MCP cap.
@@ -225,8 +228,6 @@ def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi
                 length = int(response.headers.get("content-length") or 0)
                 if not response.ok:
                     entry.update(status="failed", reason=f"http_{response.status}")
-                elif length > MAX_FILE_BYTES:
-                    entry.update(status="skipped", reason="too_large", size=length)
                 elif "text/html" in content_type.lower():
                     # A login wall or landing page instead of the file: which one, for the record.
                     # A firewall's human verification page is told apart (Figshare's AWS WAF,
@@ -251,16 +252,12 @@ def collect(request: Any, links: Iterable[SupplementLink], output_dir: Path, doi
                                 if not chunk:
                                     continue
                                 size += len(chunk)
-                                if size > MAX_FILE_BYTES:
-                                    break
                                 fh.write(chunk)
                                 last_progress = now
                                 if activity is not None:
                                     activity()
                         _check_interrupted()
-                        if size > MAX_FILE_BYTES:
-                            entry.update(status="skipped", reason="too_large", size=size)
-                        elif not size or (length and not response.headers.get("content-encoding") and size != length):
+                        if not size or (length and not response.headers.get("content-encoding") and size != length):
                             entry.update(status="failed", reason="incomplete_body", size=size)
                         else:
                             temporary.replace(path)

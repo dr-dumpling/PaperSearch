@@ -1,5 +1,8 @@
 import { describe, expect, it } from "@jest/globals";
-import { TOOLS } from "../../src/core/tools.js";
+import { toolList } from "../../src/core/tools.js";
+
+// The contract of the edition with PaperSearch Pro's features; the one without them at the end.
+const TOOLS = toolList(true);
 
 const EXPECTED_TOOL_NAMES = [
   "search_papers",
@@ -131,7 +134,7 @@ const EXPECTED_SCHEMA_SUMMARY: Record<
   },
   download_paper: {
     required: ["paperId", "platform"],
-    properties: ["paperId", "platform", "savePath", "useEntitledAccess"],
+    properties: ["paperId", "platform", "savePath", "useEntitledAccess", "content", "markdown"],
   },
   search_google_scholar: {
     required: ["query"],
@@ -241,13 +244,14 @@ const EXPECTED_SCHEMA_SUMMARY: Record<
       "useEntitledAccess",
       "useSciHub",
       "content",
+      "markdown",
       "batch",
     ],
   },
   download_batch: {
     // items, or resume to go on with an earlier batch (接着下, 2026-11-15).
     required: [],
-    properties: ["items", "savePath", "useEntitledAccess", "useSciHub", "content", "mode", "resume"],
+    properties: ["items", "savePath", "folderName", "school", "useEntitledAccess", "useSciHub", "content", "markdown", "mode", "resume"],
   },
   search_dblp: {
     required: ["query"],
@@ -387,6 +391,7 @@ describe("tools contract", () => {
       "useEntitledAccess",
       "useSciHub",
       "content",
+      "markdown",
       "batch",
     ]);
     expect(schema.properties.useEntitledAccess).toEqual(
@@ -412,6 +417,18 @@ describe("tools contract", () => {
     );
     expect(schema.properties).not.toHaveProperty("authorizedBackend");
     expect(schema.properties).not.toHaveProperty("school");
+  });
+
+  it("without PaperSearch Pro's features: the same tools, with no Markdown kind, field or word (src/config/edition.ts)", () => {
+    const open = toolList(false);
+    expect(open.map((tool) => tool.name)).toEqual(EXPECTED_TOOL_NAMES);
+    const summary = Object.fromEntries(open.map((tool) => [tool.name,
+      { required: tool.inputSchema.required || [], properties: Object.keys(tool.inputSchema.properties || {}) }]));
+    expect(summary).toEqual(Object.fromEntries(Object.entries(EXPECTED_SCHEMA_SUMMARY).map(([name, schema]) =>
+      [name, { ...schema, properties: schema.properties.filter((property) => property !== "markdown") }])));
+    expect(JSON.stringify(open)).not.toMatch(/markdown|article\.md|full-text package/i);
+    const paper = open.find((tool) => tool.name === "download_paper")!.inputSchema as any;
+    expect(paper.properties.content.enum).toEqual(["pdf"]);
   });
 
   it("does not expose the removed Wiley TDM search shim", () => {

@@ -65,13 +65,64 @@ describe("paper-search settings", () => {
   });
 });
 
+describe("paper-search settings after an upgrade", () => {
+  const env = { SCHOOL_DATA_DIR: "/data" };
+  const opened = '{"ok": true, "window": "opened", "page": "markdown"}\n';
+
+  it("brings the backend up to date before it draws the window, which the updated backend then opens", async () => {
+    // The window is the backend's: an old one lacks the pages of this PaperSearch (Markdown, 2026-11-18).
+    const events: string[] = [];
+    let executable = "/old/paper-search-school";
+    const update = async () => {
+      events.push("update");
+      executable = "/new/paper-search-school"; // an install from before the rename moves it
+      return "updated";
+    };
+    const run = async (file: string) => {
+      events.push(`window from ${file}`);
+      return { stdout: opened, code: 0 };
+    };
+    expect(await openSettingsWindow({ executable: () => executable, target: "markdown", env, exists: () => true, run, update }))
+      .toEqual({ ok: true, window: "opened", page: "markdown" });
+    expect(events).toEqual(["update", "window from /new/paper-search-school"]);
+  });
+
+  it("opens the window at once when the update does not happen: switched off, or a running download holds the backend", async () => {
+    for (const outcome of ["off", "busy", "not_needed", "failed"]) {
+      const events: string[] = [];
+      const update = async () => { events.push(outcome); return outcome; };
+      const run = async () => { events.push("window"); return { stdout: opened, code: 0 }; };
+      expect(await openSettingsWindow({ executable: "/rt/paper-search-school", env, exists: () => true, run, update }))
+        .toMatchObject({ ok: true });
+      expect(events).toEqual([outcome, "window"]);
+    }
+  });
+
+  it("updates nothing when there is no window to open", async () => {
+    const update = async () => { throw new Error("must not update"); };
+    const run = async () => { throw new Error("must not run"); };
+    expect(await openSettingsWindow({ executable: "", env, run, update })).toMatchObject({ ok: false, exitCode: 1 });
+    expect(await openSettingsWindow({ executable: "/rt/x", target: "--help", env, exists: () => true, run, update }))
+      .toMatchObject({ ok: false, exitCode: 2 });
+  });
+});
+
 describe("the settings window's environment", () => {
   it("carries UTF-8 pipes, its screen, proxy and paths, and none of PaperSearch's keys", () => {
-    const env = settingsWindowEnv({ dataDir: "/data", configFile: "/cfg.json", cli: '["node","cli.js"]' },
-      { EASYSCHOLAR_KEY: "secret", ELSEVIER_API_KEY: "secret", DISPLAY: ":0", HTTPS_PROXY: "http://proxy:7890" });
+    const env = settingsWindowEnv({ dataDir: "/data", configFile: "/cfg.json", cli: '["node","cli.js"]', proEntry: "/data/pro/index.js" },
+      { EASYSCHOLAR_KEY: "secret", ELSEVIER_API_KEY: "secret", DISPLAY: ":0", HTTPS_PROXY: "http://proxy:7890",
+        PAPER_SEARCH_PRO_FEATURES: "1" });
+    // Where PaperSearch Pro is, for the Markdown page (the same path the CLI loads it from).
     expect(env).toMatchObject({ SCHOOL_DATA_DIR: "/data", PAPER_SEARCH_CONFIG_FILE: "/cfg.json", PAPER_SEARCH_CLI: '["node","cli.js"]',
+      PAPER_SEARCH_PRO_PATH: "/data/pro/index.js",
       DISPLAY: ":0", HTTPS_PROXY: "http://proxy:7890", PYTHONIOENCODING: "utf-8" });
     expect(Object.values(env)).not.toContain("secret");
+  });
+
+  it("says whether this edition has PaperSearch Pro's Markdown page (src/config/edition.ts)", () => {
+    const paths = { dataDir: "/data", configFile: "/cfg.json", cli: "" };
+    expect(settingsWindowEnv(paths, { PAPER_SEARCH_PRO_FEATURES: "0" }).PAPER_SEARCH_PRO_FEATURES).toBe("0");
+    expect(settingsWindowEnv(paths, { PAPER_SEARCH_PRO_FEATURES: "1" }).PAPER_SEARCH_PRO_FEATURES).toBe("1");
   });
 });
 

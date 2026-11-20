@@ -149,6 +149,14 @@ def operation(seconds: float, label: str):
         stack.pop()
 
 
+def extend_operation(seconds: float) -> None:
+    """Data still arriving (a large PDF read in pieces): every enclosing budget lasts at
+    least ``seconds`` more. Calls already sent keep the deadline they were sent with."""
+    until = time.monotonic() + seconds
+    for budget in getattr(_local, "budgets", []):
+        budget[0] = max(budget[0], until)
+
+
 def operation_remaining() -> float | None:
     """Remaining automation time, so a human handoff can happen before expiry."""
     budgets = getattr(_local, "budgets", [])

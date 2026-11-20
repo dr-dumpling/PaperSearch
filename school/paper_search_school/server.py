@@ -18,7 +18,6 @@ import asyncio
 import json
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from typing import Any, Literal
 
@@ -30,7 +29,7 @@ except ModuleNotFoundError:  # mcp >= 2.0 renamed FastMCP to MCPServer
 from .cache import cache_clear
 from .config import load_config
 from .orchestrator import download_institutional as download
-from .browser.batch_session import BatchBrowser, active_batch
+from .browser.batch_session import BatchBrowser, BatchThread, active_batch
 
 SERVER_NAME = "paper-search-school"
 Strategy = Literal["legal_only", "institutional_only"]
@@ -48,8 +47,9 @@ mcp_app = FastMCP(
 )
 
 _DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.I)
-_batch_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="school-batch")
 _batch_browser = BatchBrowser()
+# Its tab answers between papers too (BatchThread, BatchBrowser.pump).
+_batch_worker = BatchThread(_batch_browser.pump)
 
 
 def _with_batch_browser(batch_id: str, operation) -> str:
@@ -82,6 +82,8 @@ def school_download(
     user_wait: str | None = None,
     diagnostics_dir: str | None = None,
     title: str | None = None,
+    fulltext: str | None = None,
+    school: str | None = None,
 ) -> str:
     """Synchronous download entry; ``download`` is module-level so tests can stub it.
 
@@ -93,7 +95,11 @@ def school_download(
     batch = progress_reporter.BatchContext.from_args(
         batch_id, batch_index, batch_total, batch_done, batch_succeeded, batch_failed)
     content = {"with": "both", "only": "supplements"}.get(supplements or "", "main")
-    with progress_reporter.tracked_download(current, output_dir, batch, content=content) as outcome:
+    # A visit for the page alone is the Markdown's; one with the PDF or the files, theirs and it.
+    if fulltext == "only" and not supplements:
+        content = "markdown"
+    with progress_reporter.tracked_download(current, output_dir, batch, content=content,
+                                            markdown=fulltext in ("with", "only")) as outcome:
         kwargs = {"supplements": supplements} if supplements in ("with", "only") else {}
         if user_wait == "short":
             kwargs["user_wait"] = user_wait
@@ -101,6 +107,10 @@ def school_download(
             kwargs["diagnostics_dir"] = diagnostics_dir
         if title:
             kwargs["title"] = title
+        if fulltext in ("with", "only"):
+            kwargs["fulltext"] = fulltext
+        if school and school.strip():
+            kwargs["school"] = school.strip()
         from .entitlements import batch_stop_requested
 
         if batch_stop_requested():
@@ -124,9 +134,8 @@ def school_download(
                 outcome["failure_phase"] = "网站已阻止当前访问，未取得 PDF"
             if result.get("error_type") == "rate_limited":
                 until = time.time() + int(result.get("retry_after_sec") or 0)
-                resume = time.strftime("%H:%M", time.localtime(until))
-                outcome["paused"] = outcome["failure_phase"] = (
-                    f"{result.get('publisher')} 一小时内已打开 {result.get('limit')} 篇（每小时上限），{resume} 继续这一篇")
+                outcome["paused"] = outcome["failure_phase"] = progress_reporter.hourly_phase(
+                    str(result.get("publisher") or ""), result.get("limit"), until)
                 # The window says so until then, beside the other lane's lines (2026-11-12).
                 outcome["hourly_wait"] = {"publisher": str(result.get("publisher") or ""),
                                           "limit": result.get("limit"), "until": until,
@@ -159,6 +168,8 @@ async def _school_download_with_progress(
     diagnostics_dir: str | None = None,
     keep_browser: bool = False,
     title: str | None = None,
+    fulltext: Literal["with", "only"] | None = None,
+    school: str | None = None,
     ctx: Context = None,
 ) -> str:
     """Download one paper by DOI through institutional access only.
@@ -182,6 +193,18 @@ async def _school_download_with_progress(
     it when the article page gives no title of its own (citation_title): Science on Atypon
     gives none, and its older PDFs print the DOI only on the last page.
 
+    fulltext: "with" also saves the article's full-text page and its figure images while the
+    browser is on the article for the PDF (no extra page load), for publishers whose page
+    PaperSearch converts to Markdown: ``<output_dir>/<DOI>_fulltext_page/`` (article.html,
+    images/), given in the result's ``fulltext_page`` (file, url, images). Kept when the PDF fails
+    for another reason than entitlement but the page showed the full text. "only" opens the
+    article for its page alone, no PDF (the main text came from elsewhere); with
+    ``supplements="only"`` the page is read on that visit.
+
+    school: another saved school (`paper-search-school schools`) for this download alone, as the
+    user asked; the configured school is not changed. Not saved: the result's error_type is
+    school_not_saved (or school_ambiguous).
+
     user_wait: "short" when the user seems away (an earlier article of the batch waited on them
     until its time was up): each wait on the user (school login, human verification) lasts at
     most 60 s, unless someone starts typing on the login page.
@@ -192,7 +215,7 @@ async def _school_download_with_progress(
                         use_vpnsci, bibtex, strategy, batch_id=batch_id, batch_index=batch_index,
                         batch_total=batch_total, batch_done=batch_done, batch_succeeded=batch_succeeded,
                         batch_failed=batch_failed, supplements=supplements, user_wait=user_wait,
-                        diagnostics_dir=diagnostics_dir, title=title)
+                        diagnostics_dir=diagnostics_dir, title=title, fulltext=fulltext, school=school)
     if keep_browser and batch_id:
         return await run_with_progress(ctx, identifier, partial(_with_batch_browser, batch_id, operation),
                                        executor=_batch_worker)
@@ -214,6 +237,26 @@ async def school_keep_session() -> str:
     that did not save its PDF. Answers {"kept": true} or {"kept": false, "reason": ...}."""
     result = await asyncio.get_running_loop().run_in_executor(_batch_worker, _batch_browser.keep_session)
     return json.dumps(result)
+
+
+@mcp_app.tool()
+def school_hourly_wait(publisher: str) -> str:
+    """While a batch waits for the hourly limit the user set: the seconds until ``publisher`` (as
+    the rate_limited answer named it) may open another article. With the switch beside the limit
+    on (马上生效, ``publisher_hourly_limit_now``), under the limit as it is now: one raised in the
+    settings window, or set to 0 (none), lets the batch go on at once, and one changed and still
+    reached shows in the progress window; off, the wait goes on until the hour is over
+    (2026-11-19). Opens no browser. Answers {"wait_sec": n, "limit": n}."""
+    from . import progress_reporter, rate_limit, user_settings
+
+    config = load_config()
+    limit = int(config.get("publisher_hourly_limit", rate_limit.DEFAULT_LIMIT) or 0)
+    if config.get(user_settings.HOURLY_NOW_KEY) is not True:
+        return json.dumps({"wait_sec": rate_limit.hour_left(publisher), "limit": limit})
+    wait = rate_limit.wait_seconds(publisher, limit)
+    if wait:
+        progress_reporter.hourly_limit_now(publisher, limit, time.time() + wait)
+    return json.dumps({"wait_sec": wait, "limit": limit})
 
 
 @mcp_app.tool()
@@ -275,7 +318,8 @@ def school_batch_papers(batch_id: str, folder: str, papers: list[dict[str, Any]]
     doi, title, journal, state ("open": open access not checked yet, "school": waiting
     for or in the institutional download, "ok", "failed"); a saved one adds via
     (开放下载 or 机构下载), detail (出版社 API, Sci-Hub, 预印本) and path (the PDF,
-    absolute); a failed one cls (no_access, user_or_external, unsupported, unexplained)
+    absolute); a failed one cls (no_access, user_side, school_side, publisher_or_network,
+    article_or_site, unsupported, unexplained)
     and reason}]. folder: the batch's download folder (absolute); the window opens
     a PDF only from inside it. Never touches the running download's progress.
     """

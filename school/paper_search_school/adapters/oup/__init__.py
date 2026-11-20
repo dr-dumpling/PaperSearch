@@ -20,12 +20,16 @@ from ...browser.driver import is_driver_error
 from ...engine.batch_common import AWAY_WAIT_SEC, open_page
 from ...engine.router import _append_oxford_candidates
 from ..base import PublisherAdapter, SupplementLink, register
+from ..platforms.silverchair import SILVERCHAIR_FULLTEXT_IMAGES_JS, SILVERCHAIR_FULLTEXT_SHOWN_JS
 
 HOST = "academic.oup.com"
 CDN_HOST = "watermark02.silverchair.com"
 _ARTICLE = re.compile(r"/[^/]+/(?:advance-)?article(?:-abstract|-pdf)?/")
 _PDF = re.compile(r"/[^/]+/(?:advance-)?article-pdf/")
 _ENTRY = "a.js-shibboleth-action.at-institutional-sign-in"
+# The control's click is sometimes not taken (the page's script not ready just after its
+# verification, 2026-11-17): still on the article this long after, it is clicked again.
+ENTRY_RECLICK_SEC = 10
 CDN_FILES = "oup.silverchair-cdn.com"
 # Links in the article's "Supplementary data" section, with their text.
 _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('[class*="supplementary-material"] a[href]')]
@@ -46,6 +50,9 @@ class OUPAdapter(PublisherAdapter):
     article_pdf_candidates_only = True
     diagnostic_screenshots = False
     returns_from_home_page = True
+    # --fulltext: Silverchair's article page (platforms/silverchair).
+    fulltext_shown_js = SILVERCHAIR_FULLTEXT_SHOWN_JS
+    fulltext_images_js = SILVERCHAIR_FULLTEXT_IMAGES_JS
 
     # --- pages and PDFs -------------------------------------------------------
 
@@ -67,8 +74,10 @@ class OUPAdapter(PublisherAdapter):
             return False
         if not doi:
             return True
+        # <prefix>/<journal>/<id>: Oxford's own 10.1093 and the journals it hosts for
+        # others under their prefixes (Karger's 10.1159/ned/…, 2026-11-14).
         parts = doi.lower().split("/", 2)
-        if len(parts) != 3 or parts[0] != "10.1093":
+        if len(parts) != 3:
             return False
         return (f"/doi/{doi.lower()}/" in path
                 or (path.startswith(f"/{parts[1]}/article-pdf/")
@@ -82,7 +91,7 @@ class OUPAdapter(PublisherAdapter):
         """A CDN filename alone is insufficient; callers also require provenance."""
         parsed = urlparse(url)
         parts = doi.lower().split("/", 2)
-        return (len(parts) == 3 and parts[0] == "10.1093"
+        return (len(parts) == 3
                 and parsed.scheme == "https" and parsed.hostname == CDN_HOST
                 and unquote(parsed.path).lower().rsplit("/", 1)[-1] == parts[2] + ".pdf"
                 and not self.d._is_supplementary_url(url))
@@ -268,6 +277,7 @@ class OUPAdapter(PublisherAdapter):
         action_done = False
         pending_retry = ""
         waiting = None  # (since, page marker) while the page is the user's
+        clicked_at, reclicks = 0.0, 0  # the control's last click, and its clicks again
         with d._login_wait_budget(result, "_oxford_login_deadline", deadline, time.monotonic) as wait:
             while time.monotonic() < wait.deadline:
                 deadline = wait.deadline
@@ -278,6 +288,14 @@ class OUPAdapter(PublisherAdapter):
                     if time.monotonic() >= deadline:
                         break
                     user_step = state == "human_login" or (state == "institution_chooser" and d._users_login_step(page))
+                    if state == "human_login" and d._school_side_steps(page, result):
+                        # The school's consent agreed to, or its sign-in filled in: as on every
+                        # publisher's way (SAMS Sigma for a school tested, 2026-11-19: its 信息释放 waited).
+                        last_progress_at = time.monotonic()
+                        continue
+                    if getattr(result, "_survey_finished", False):
+                        result.reason = "survey_done"  # a maintainer's survey: on to the next school
+                        return False
                     wait.observe(page, user_step)
                     deadline = wait.deadline
                     message = ("请在浏览器窗口选择学校并完成机构登录" if state == "institution_chooser"
@@ -305,6 +323,13 @@ class OUPAdapter(PublisherAdapter):
                         last_progress_at = time.monotonic()
                         if state == "institution_chooser":
                             d._select_institution(page, result)
+                            if getattr(result, "_institution_not_listed", False):
+                                # The publisher's list has no entry for the school: the login
+                                # ends at once, as everywhere (SAMS Sigma's list, 2026-11-17:
+                                # the finding repeated each second until the wait ran out).
+                                result.reason = "institution_federation_unavailable"
+                                d._event(result, result.reason, "the school is not in the publisher's institution list")
+                                return False
                         if wait.paused:
                             waiting = None
                         if d._user_away and not wait.paused:
@@ -354,6 +379,13 @@ class OUPAdapter(PublisherAdapter):
                             action_done = self.advance_login(page, result, deadline)
                             if action_done:
                                 result._oxford_login_entry_attempt = attempt
+                                clicked_at, reclicks = time.monotonic(), 0
+                        elif (state == "publisher_login" and action_done and reclicks < 2
+                              and time.monotonic() - clicked_at >= ENTRY_RECLICK_SEC):
+                            # Still on the article: the click was not taken; twice more at
+                            # most, not the whole stall before the article is opened again.
+                            if self.advance_login(page, result, deadline):
+                                clicked_at, reclicks = time.monotonic(), reclicks + 1
                     remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
                     if remaining_ms:
                         page.wait_for_timeout(min(1_000, remaining_ms))

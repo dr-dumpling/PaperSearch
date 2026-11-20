@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { describe, expect, it } from "@jest/globals";
-import { TOOLS } from "../../src/core/tools.js";
+import { proFeatures } from "../../src/config/edition.js";
+import { toolList } from "../../src/core/tools.js";
 import { skillVersion } from "../../src/management/skills/index.js";
 
 const SKILL_ROOT = join(process.cwd(), "skills", "paper-search");
@@ -220,7 +221,7 @@ describe("paper-search bundled skill contract", () => {
     )
       .map((match) => match[1])
       .sort();
-    const sourceTools = TOOLS.map((tool) => tool.name).sort();
+    const sourceTools = toolList().map((tool) => tool.name).sort();
 
     expect(contractTools).toEqual(sourceTools);
   });
@@ -237,14 +238,20 @@ describe("paper-search bundled skill contract", () => {
     expect(readSkillFile("references/setup.md")).toContain("问一次要不要装");
     expect(skill).not.toContain("不用先问");
     expect(skill).toMatch(/\|\s*\|\s*开放下载\s*\|\s*机构下载（学校订阅下载）\s*\|/);
-    // The agent asks once, before downloading, whether supplementary files are wanted.
+    // The agent asks once, before downloading, which kinds are wanted: with PaperSearch Pro's features
+    // (package.json's paperSearch.proFeatures) the Markdown too; the public export takes its words out
+    // by their marks (maintainer/release-public.py), and then none is left.
+    const PRO_FEATURES = proFeatures();
     expect(skill).toContain("下载前问清要什么");
-    for (const choice of ["只要正文", "正文加补充材料", "只要补充材料"]) {
+    for (const choice of ["`pdf`：正文 PDF", "`supplements`：补充材料", ...(PRO_FEATURES ? ["`markdown`：论文的 Markdown", "任意组合"] : [])]) {
       expect(skill).toContain(choice);
     }
-    expect(support).toMatch(
-      /\|\s*出版社\s*\|\s*网站\s*\|\s*常见 DOI 前缀\s*\|\s*正文\s*\|\s*补充材料\s*\|\s*\n/,
-    );
+    expect(support).toMatch(PRO_FEATURES
+      ? /\|\s*出版社\s*\|\s*网站\s*\|\s*常见 DOI 前缀\s*\|\s*正文\s*\|\s*补充材料\s*\|\s*Markdown <!-- pro-column -->\s*\|\s*\n/
+      : /\|\s*出版社\s*\|\s*网站\s*\|\s*常见 DOI 前缀\s*\|\s*正文\s*\|\s*补充材料\s*\|\s*\n/);
+    if (!PRO_FEATURES) {
+      for (const file of ["SKILL.md", ...REFERENCE_FILES]) expect(readSkillFile(file)).not.toMatch(/markdown|PaperSearch Pro\b|<!-- \/?(pro|public)/i);
+    }
     for (const code of [
       "supplements_not_supported",
       "institution_federation_unavailable",

@@ -89,6 +89,41 @@ class BackendBrowserChooserTests(unittest.TestCase):
         page.wait_for_url(chooser + alternate)
         self.assertTrue(any(e["state"] == "auto_institution_list_opened" for e in result.events))
 
+    def test_a_reply_finding_nothing_tries_the_schools_next_name_first(self):
+        """"The University of <town>" found nothing where "University of <town>" is listed
+        (PNAS, Science, 2026-11-17): the next name is searched before the list is opened."""
+        from paper_search_school.browser.backend import launch
+        browser = launch(headless=True, humanize=False, config={})
+        self.addCleanup(browser.close)
+        page = browser.new_page(service_workers="block")
+        from paper_search_school.publishers.site import site_profile
+        chooser, alternate = "https://pubs.example.org/action/ssostart", "?mode=list"
+        reply, box = ["The Example University"], [""]  # the box emptied with its reply (Atypon)
+        page.route("**/*", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=(
+            '<title>Choose federation</title>' if route.request.url.endswith(alternate) else
+            '<title>Institutional Login</title><h1>Find your institution</h1>'
+            f'<input type="text" class="ms-inv" data-paper-search-box value="{box[0]}">'
+            f'<span class="ms-helper"><div class="ms-empty-res"><h4>We couldn’t find any result for<em>{reply[0]}</em></h4></div></span>'
+            f'<div><span>or</span></div><a href="{alternate}">Select your institution from a list</a>')))
+        d = PublisherBatchDownloader({"publisher_institution_federation": "carsi"},
+                                      profile=site_profile("10.1148/example", "https://pubs.example.org/doi/10.1148/example"),
+                                      institution_query="The Example University")
+        page.goto(chooser)
+        result = DownloadResult(doi="10.1148/example", status="failed")
+        d._event(result, "auto_institution_search", f"The Example University @ {chooser}")
+        # Found by a placeholder it no longer shows (Science, 2026-11-17): its mark finds it.
+        result._search_box = (chooser, "input[placeholder*='nstitution']")
+        self.assertTrue(d._assist_configured_institution(page, result))
+        self.assertEqual((page.url, page.locator("input.ms-inv").input_value()), (chooser, "Example University"))
+        self.assertEqual(result.events[-1]["detail"], f"Example University @ {chooser}")
+        self.assertFalse(any(e["state"] == "auto_institution_list_opened" for e in result.events))
+        # Every name searched and found nothing: the list is opened, as before.
+        reply[0] = box[0] = "Example University"
+        page.goto(chooser)
+        self.assertTrue(d._assist_configured_institution(page, result))
+        page.wait_for_url(chooser + alternate)
+        self.assertTrue(any(e["state"] == "auto_institution_list_opened" for e in result.events))
+
     def test_a_publisher_terms_form_is_accepted_but_not_on_the_school_idp(self):
         """SIAM's SAML consent (Atypon's saml2post) is agreed to; the school's own pages are not."""
         from paper_search_school.browser.backend import launch
@@ -132,7 +167,16 @@ class BackendBrowserChooserTests(unittest.TestCase):
                  '<input type="checkbox" name="_shib_idp_consentIds" value="terms" required>'
                  '<input type="submit" name="_eventId_TermsRejected" value="Reject">'
                  '<input type="submit" name="_eventId_proceed" value="Accept"></form>')
-        pages = {"/release": release, "/terms": terms,
+        # SimpleSAMLphp's consent module and Apereo CAS's attribute consent (2026-11-19).
+        ssp = ('<title>Consent</title><form method="get" action="getconsent.php">'
+               '<input type="hidden" name="StateId" value="state"><input type="checkbox" name="saveconsent" value="1">'
+               '<button type="submit" name="yes" value="1">Yes, continue</button></form>'
+               '<form method="get" action="noconsent.php"><input type="hidden" name="StateId" value="state">'
+               '<button type="submit" name="no" value="1">No, cancel</button></form>')
+        cas = ('<title>Attribute Consent</title><form method="get"><input type="radio" name="option" value="ALWAYS" checked>'
+               '<button type="submit" name="_eventId_cancel">Cancel</button>'
+               '<button type="submit" name="_eventId_confirm">Confirm</button></form>')
+        pages = {"/release": release, "/terms": terms, "/ssp": ssp, "/cas": cas,
                  "/duo": "<title>Duo</title><p>Authentication with Duo is required for the requested service.</p>"}
         page.route("**/*", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=(
             "<title>Next</title>" if "_eventId_" in route.request.url
@@ -155,6 +199,18 @@ class BackendBrowserChooserTests(unittest.TestCase):
         self.assertIn("_shib_idp_consentIds=terms", page.url)
         self.assertEqual([e["detail"].split(" @ ")[0] for e in result.events if e["state"] == "idp_confirmation_accepted"],
                          ["attribute-release", "terms-of-use"])
+
+        for path, sent, kind in (("/ssp", "yes=1", "attribute-release-simplesamlphp"),
+                                 ("/cas", "_eventId_confirm", "attribute-release-cas")):
+            other_software = DownloadResult(doi="10.1142/example", status="failed")
+            page.goto("https://idp.example.edu.cn/idp" + path)
+            self.assertTrue(d._accept_idp_confirmation(page, other_software))
+            page.wait_for_url(f"**{sent}**")
+            if path == "/ssp":
+                self.assertIn("saveconsent=1", page.url)  # remembered, as Shibboleth's preselected choice
+            self.assertNotIn("no=1", page.url)
+            self.assertNotIn("cancel", page.url)
+            self.assertEqual(other_software.events[-1]["detail"].split(" @ ")[0], kind)
 
         duo = DownloadResult(doi="10.1142/example", status="failed")
         page.goto("https://idp.example.edu.cn/idp/duo")

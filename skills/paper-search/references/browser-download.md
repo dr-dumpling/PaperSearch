@@ -6,7 +6,7 @@
 
 - 核验目标 DOI 和标题；不要用虚构 DOI 做下载探测。
 - 目标出版社能不能走通、能不能取补充材料，先看 `publisher-support.md`；表里没有的网站按通用规则尝试。
-- 用户没说要不要补充材料时，开始前问一次：只要正文（`main`）、正文加补充材料（`both`）、只要补充材料（`supplements`）；批量也只问一次。
+- 用户没说要哪些内容时，开始前问一次：`pdf`（正文 PDF）、`supplements`（补充材料）可以只要一样，也可以都要；批量也只问一次。
 - `paper-search school status --format text` 确认扩展已安装并启用，或“PaperSearch 配置”一行已启用并给出后端路径（用户自己维护的后端，第一行显示“未安装”是正常的）；都没有时按 `school-setup.md` 处理。本文的 `paper-search-school` 命令不在 PATH 上时，用这里“后端”后面的完整路径调用。
 - 开始前运行 `paper-search-school issues`，看有没有之前没处理的问题报告；看完用 `issues resolve <ID> --note "结论"` 记下结论。
 
@@ -14,7 +14,8 @@
 
 单篇用 `paper-search download` 或 `paper-search run download_with_fallback`，多篇用一次 `paper-search run download_batch`，参数见 `cli-contract.md`。下载顺序固定为 `primary → direct_pdf_url → repositories → unpaywall → publisher_api → scihub → entitled_access → preprint`。机构下载失败后才尝试 DOI 明确关联的 arXiv 预印本。
 
-- 只用开放来源和学校权限（不用 Sci-Hub）：`download_with_fallback` / `download_batch` 设 `useSciHub=false`。只有明确只测学校权限这一步时，`download_batch` 才设 `"mode":"entitled_only"`；它会跳过可用的公开副本，普通下载保留默认 `two_phase`。
+- 只用开放来源和学校权限（不用 Sci-Hub）：`download_with_fallback` / `download_batch` 设 `useSciHub=false`。
+- 用户说只走机构下载（或只测学校权限这一步）时，`download_batch` 设 `"mode":"entitled_only"`：PDF、补充材料都直接走机构下载；“接着下”沿用这一批的模式。它会跳过可用的公开副本，用户没这样说时保留默认 `two_phase`。
 - 测试下载也走上面的命令，保持默认的等待时间和数据目录。先登录学校或测试登录用 `paper-search school login --doi <DOI>`（见 `school-setup.md`）。
 - 同一个数据目录同时只跑一个下载。命令没结束时，不因窗口看似停住而重新下载或登录。
 - 机构下载一次一篇，开放渠道同时查后面的篇目。遇到学校登录或验证时停在这一篇；出现人工处理提示后，提醒用户到下载浏览器操作。等待时限：停在学校登录页（以及没配置学校、要用户自己选学校的页面）最多 3 分钟（后端配置 `browser_login_timeout`，秒）；停在其他页面（人机验证、出版社页面、选机构页、取 PDF 时等待处理）连续超过 1 分钟就结束这一篇（`browser_page_wait_timeout`）。两项都能在进度窗口右上角的设置（齿轮）里改，从下一篇起生效。学校统一认证登录一次后，其余篇目通常自动通过。一篇等满时限后（日志写“这一篇等你登录或验证已到时限”），后面每篇只等 60 秒；用户在登录框输入时照常等。
@@ -31,15 +32,15 @@
 ## 进度窗口和问题报告
 
 - 判断批量下载有没有卡住：看运行记录（结果的 `runLog`，或 stderr 里 `[批量] 运行记录：…` 给出的目录）里 `timeline.log` 最后一行的时间，和系统当前时间比，不要按自己估计的等待时长判断。最后一行超过 5 分钟没有更新时，先看进度窗口是不是在等登录或验证；不要因此关掉某个来源或重跑整批。
-- 进度窗口是屏幕角落的小胶囊（macOS 右上、Windows 右下）：显示完成数/总数、正在下正文还是附录、出版社；需要用户登录或验证时变成琥珀色，背景与边缘轻柔呼吸并显示倒计时，开启系统通知时同时发一条通知；系统开启“减少动态效果”时只变色。鼠标指上去展开，看当前论文、步骤、成功/失败/剩余和下面的按钮；点成功、失败、剩余的数字列出是哪些论文（成功的点一篇打开所在文件夹并选中 PDF，失败的按原因分组、点一篇在浏览器打开文章页，附录没下全的另列在后面，剩余的分正在下载、排队等机构下载、开放下载还没查，点一篇同样打开文章页；只下补充材料的批量，成功的分“补上附录”和“没有附录（已核对）”，点一篇打开它原有的 PDF 所在文件夹），下载中和结束后都能点；右上角“–”最小化到程序坞或任务栏。全部成功时结束 8 秒后自动关，有失败或终止时留着，等用户点 × 关闭。pywebview 或网页引擎用不了时不显示窗口，下载照常。
+- 进度窗口是屏幕角落的小胶囊（macOS 右上、Windows 右下）：显示完成数/总数、正在下正文还是附录、出版社；需要用户登录或验证时变成琥珀色，背景与边缘轻柔呼吸并显示倒计时，开启系统通知时同时发一条通知；系统开启“减少动态效果”时只变色。鼠标指上去展开，看当前论文、步骤、成功/失败/剩余和下面的按钮；点成功、失败、剩余的数字列出是哪些论文（成功的点一篇打开所在文件夹并选中 PDF，失败的按原因分组、点一篇在浏览器打开文章页，附录没下全的另列在后面，剩余的分正在下载、排队等机构下载、开放下载还没查，点一篇同样打开文章页；只下补充材料的批量，成功的分“补上附录”和“没有附录（已核对）”，点一篇打开它原有的 PDF 所在文件夹），下载中和结束后都能点；右上角“–”最小化到程序坞或任务栏，图钉按钮“钉住”后鼠标移开也不收起，再点一下取消；只对这个窗口有效。全部成功时结束 8 秒后自动关，有失败或终止时留着，等用户点 × 关闭。pywebview 或网页引擎用不了时不显示窗口，下载照常。
 - 下载用的 Google Chrome 窗口保持运行，但启动、跳转、开新标签及等待人工处理时不主动抢前台。需要操作时点击胶囊的“请登录学校”等提醒，可切到当前任务的下载浏览器；下载进行中，展开胶囊后点正在下载的题名那一行也能切过去（开放获取阶段没有浏览器，不可点）。
-- 结束时卡片按原因列出没下到正文的篇目。正文加补充材料一起下（`both`）时，正文已保存但补充材料没下全的篇目另列“附录未下全”，按原因分行、默认收起；命令行最后一行同样分开写（“附录未下全 N 篇：原因 n”）。用户在窗口里终止时，没处理的篇目不算失败：结束卡片的三个数字是成功、失败、已终止，点“已终止”列出它们；命令行最后一行写“成功 n，失败 n，已终止 n”。
+- 结束时卡片按原因列出没下到正文的篇目。PDF 和补充材料一起下（`pdf,supplements`）时，PDF 已保存但补充材料没下全的篇目另列“附录未下全”，按原因分行、默认收起；命令行最后一行同样分开写（“附录未下全 N 篇：原因 n”）。用户在窗口里终止时，没处理的篇目不算失败：结束卡片的三个数字是成功、失败、已终止，点“已终止”列出它们；命令行最后一行写“成功 n，失败 n，已终止 n”。
 - Mac 的系统通知使用 PaperSearch 名称与图标；通知点击共用胶囊的当前任务浏览器恢复入口。系统通知权限或专注模式可能限制横幅，胶囊提醒仍保留。设置的“等待和提醒”页打开通知时会检查系统是否允许 PaperSearch 弹出通知，开关旁有“测试”可发一条测试通知；系统没允许或用户说没看到时，胶囊列出要改的地方并能打开系统的通知设置（Windows 上通知以“Windows PowerShell”的名义发出）。无需另外安装通知工具，不替用户修改系统通知设置。
 - 胶囊齿轮可修改默认下载文件夹（输入绝对路径或选择文件夹），与 `paper-search config set DEFAULT_DOWNLOAD_PATH "/完整路径/论文"` 共用配置。新任务自动采用它；显式 `savePath` / `--save-path` 优先，运行中批次不改目录。
 - “终止”（旧版窗口里叫“终止任务”）：确认后当前这一篇立即结束，整批停下，剩下的篇目记为 `batch_stopped`（未下载）。用户想停下整批时让他点这个，不要另外中止命令。
 - 当前源码（未发布修复）：`browser_operation_timeout` 表示自动页面操作耗尽共享预算，不是无权限，也不是等待用户登录。不要因此反复登录；先检查是否误用了 `entitled_only`。附件阶段终止同样停止后续篇目，保留已保存的正文。
 - 展开后写明正在下哪部分和哪一步：正文有五段步骤条（打开文章、权限、取 PDF、核对、附录），附录显示“附录 2/5”。
-- 右上角齿轮（设置）：手动输入学校登录页、其他页面的最长等待（秒）、页面持续无进展的提醒时间（默认 30 秒）和每家出版社每小时最多下载篇数，保存后用于后续篇目；“系统通知”开关点击即保存，可随时开启或关闭；关闭后胶囊仍变色呼吸，点击提醒仍可唤回浏览器。
+- 右上角齿轮（设置）：手动输入学校登录页、其他页面的最长等待（秒）、页面持续无进展的提醒时间（默认 30 秒）和每家出版社每小时最多下载篇数，保存后用于后续篇目；上限旁的小开关“马上生效”（默认关）打开时，正在等上限的篇目立即按新上限接着下，关闭时等这一小时过后再按新上限；“系统通知”开关点击即保存，可随时开启或关闭；关闭后胶囊仍变色呼吸，点击提醒仍可唤回浏览器。
 - “跳过”：只结束当前这一篇，点击后 1–2 秒内生效。学校有没有权限由下载自己判断，进度窗口里不用标；“⋯”打开“报告问题”。
 - “⋯”里的“报告问题”：用户选择看到的问题后，后端截下页面并处理（读取已打开的 PDF、回到文章、刷新、停止自动选校），窗口显示处理结果。
 - 发起机构下载时同时监听用户的报告（与下载相同的 `SCHOOL_DATA_DIR`）：
@@ -85,20 +86,23 @@ SCHOOL_DATA_DIR="<数据目录>" paper-search-school preview --run-id "<本次 r
 paper-search failures --format text
 ```
 
-（默认最近一批；`--since YYYY-MM-DD`、`--runs N`、`--all`）。它把失败分成四类；向用户说明时按类别说：
+（默认最近一批；`--since YYYY-MM-DD`、`--runs N`、`--all`）。它把失败分成七类；向用户说明时按类别说：
 
 | 类别 | 常见 code | 怎么说、怎么做 |
 | --- | --- | --- |
-| 没权限（有依据） | `entitlement_missing`、`institution_federation_unavailable`、`no_entitlement` | 附上汇总里的依据（页面原话或决定性的一步）。只说本篇、当前学校没有权限，不推断整个平台。出版社没有学校所在联盟的登录路线时，建议在校园网或学校 VPN 下下载。 |
-| 用户或外部原因 | `login_timeout`（停在学校登录页）、`login_paused`（这家出版社的学校登录在本批中途失效，这篇暂停、没试；不代表没有权限）、`login_page_closed`、`login_credentials_rejected`、`captcha_required`、`idp_login_error`、`institution_not_registered`（认证应用或入口未注册，不代表没有订阅）、`user_skipped`、`cancelled`、`access_blocked`、`cloudflare_blocked`、`publisher_content_error`、`article_not_yet_published`（论文已录用，出版社还没上线全文）、`doi_not_resolved`（doi.org 还查不到这个 DOI，常见于刚上线几天的文章；过几天再下）、`network_unavailable`（网络中断：doi.org 和 PubMed 都连不上，不是 DOI 不存在；批量下载会等网络恢复后重下，单篇联网后再试）、`doi_not_registered`（文章已发表一个多月，DOI 从没在 doi.org 登记，PubMed 也没有出版社的其他链接；重下也查不到，请用户在出版社网站按标题找到后自己下载）、`rate_limited`、`batch_stopped`、`profile_busy` | 说明需要用户做什么（登录、验证、等待、联系图书馆），原调用结束、资源释放后再决定是否重试；不连续重新提交登录。 |
+| 没权限（有依据） | `entitlement_missing`、`institution_federation_unavailable`、`institution_not_registered`（学校的这个登录入口和这家出版社之间没有开通）、`no_entitlement` | 附上汇总里的依据（页面原话或决定性的一步）。只说本篇、当前学校没有权限，不推断整个平台。出版社没有学校所在联盟的登录路线、或学校的这个入口和出版社之间没有开通时，不说成学校没有订阅，建议在校园网或学校 VPN 下下载。 |
+| 你这边 | `login_timeout`（停在学校登录页，没在等待时间内登录完）、`login_page_closed`、`browser_closed`、`user_skipped`、`cancelled`、`batch_stopped`、`profile_busy`（另一个下载任务正占着下载浏览器） | 说明需要用户做什么（登录、等另一个任务结束），原调用结束、资源释放后再决定是否重试；不连续重新提交登录。 |
+| 学校那边 | `login_credentials_rejected`、`idp_login_error`、`idp_account_locked`、`idp_password_expired`、`idp_no_return_to_publisher`（学校登录后停在学校自己的网站，没回到出版社）、`login_paused`（这家出版社的学校登录在本批中途失效，这篇暂停、没试；不代表没有权限） | 说明是学校登录这一步的问题；账号锁定、密码过期请用户联系学校；中途失效的请用户重新登录后说“接着下”。 |
+| 出版社或网络 | `access_blocked`、`cloudflare_blocked`、`captcha_required`、`publisher_content_error`、`publisher_unreachable`、`network_unavailable`（网络中断：doi.org 和 PubMed 都连不上，不是 DOI 不存在；批量下载会等网络恢复后重下，单篇联网后再试）、`rate_limited` | 说明是出版社网站或网络的问题；建议稍后再试、换网络，或在校园网或学校 VPN 下下载。 |
+| 文章或网站本身 | `article_not_yet_published`（论文已录用，出版社还没上线全文）、`doi_not_resolved`（doi.org 还查不到这个 DOI，常见于刚上线几天的文章；过几天再下）、`doi_not_registered`（文章已发表一个多月，DOI 从没在 doi.org 登记，PubMed 也没有出版社的其他链接；重下也查不到，请用户在出版社网站按标题找到后自己下载）、`no_institution_entry`（网站没有学校登录入口：只有网站自己的个人账户登录，或是开放获取的网站；程序没有去登录。开放获取的文章到网站上直接下载，订阅内容在校园网或学校 VPN 下下载） | 说明是文章或网站本身的情况，不说成没有权限，也不说成程序出错。 |
 | 暂不支持的网站 | `unsupported_platform`（如只在 ClinicalKey 上的内容）、`unsupported_publisher`（DOI 没有指向能登录的出版社网站，没有打开浏览器）、`generic_institution_entry_missing`（这家出版社还没有专门的规则，按通用规则没找到机构登录入口） | 说明这类网站还不支持，不说成没有权限；后者可以建议用户把这篇报告给维护者补规则，或在校园网下下载。 |
-| 原因不明（需排查） | `download_failed`、`download_timeout`、`login_not_reached`（程序没进入学校登录页）、`login_required`、`source_exception`、`browser_unresponsive`、`pdf_identity_unverified`、`pdf_identity_mismatch`、`pdf_wrong_article` 等 | 不说成没有权限；说明原因待查，给出汇总里的“停在哪一步”和诊断文件位置。 |
+| 原因不明（需排查） | `download_failed`、`download_timeout`、`login_not_reached`（程序没进入学校登录页）、`login_required`、`source_exception`、`browser_unresponsive`、`browser_connection_lost`（浏览器连接断了，批量已换新浏览器）、`pdf_identity_unverified`、`pdf_identity_mismatch`、`pdf_wrong_article` 等 | 不说成没有权限；说明原因待查，给出汇总里的“停在哪一步”和诊断文件位置。 |
 
 `pdf_identity_unverified` / `pdf_identity_mismatch`：不能报成功，`review.path` 只是待核查的文件。
 
 ## 学校登录中途失效、接着下
 
-- 批量下载中，一家出版社前面的篇目经学校登录下到了，之后有一篇停在学校自己的登录页、没有完成登录（登录过期；跳转卡住、网络慢、人机验证这类没到学校登录页的失败都不算），程序把这家出版社的篇目暂停：PDF 和补充材料都先不下，其他出版社照常下载。收起的进度窗口在进度旁挂“已暂停 N 篇”，展开后有“学校登录中途失败，已暂停 N 篇”和“登录并继续”；用户随时可以点，其他篇目还在下载时也行，这一篇下完暂停的篇目就接着下，需要时会打开学校登录页。其他篇目都完成后，整批一直等用户点“登录并继续”或“终止”；这时命令还在运行，告诉用户回到进度窗口处理，不要另开下载。终止后这些篇目记为 `login_paused`。
+- 批量下载中，一家出版社前面的篇目经学校登录下到了，之后有一篇停在学校自己的登录页、没有完成登录（登录过期；跳转卡住、网络慢、人机验证这类没到学校登录页的失败都不算），程序把这家出版社的篇目暂停：PDF、补充材料都先不下，其他出版社照常下载。收起的进度窗口在进度旁挂“已暂停 N 篇”，展开后有“学校登录中途失败，已暂停 N 篇”和“登录并继续”；用户随时可以点，其他篇目还在下载时也行，这一篇下完暂停的篇目就接着下，需要时会打开学校登录页。其他篇目都完成后，整批一直等用户点“登录并继续”或“终止”；这时命令还在运行，告诉用户回到进度窗口处理，不要另开下载。终止后这些篇目记为 `login_paused`。
 - 批量下载中电脑断网（doi.org 和 PubMed 都连不上）时，程序停下来等网络，进度窗口写“网络断了，等网络恢复后接着下”；网络恢复后重下断网时那一篇，再往下走，不把断网时的篇目判为失败。单篇下载遇到断网报 `network_unavailable`（网络中断），不是 DOI 不存在。
 - 用户说“接着下”“继续下载”“重试失败的”时，不要自己从失败列表里挑 DOI，运行：
 
@@ -106,7 +110,7 @@ paper-search failures --format text
 paper-search run download_batch --json-args '{"resume":"latest"}'
 ```
 
-  它读上一批的运行记录：没下到的篇目按原来的内容重下，PDF 已有但补充材料没下全的只补补充材料，都放进原来那批的下载文件夹。文章页查过、没有补充材料的篇目不再重查；某次接着下被终止时，没处理的篇目照旧按原来的情况算。要接着下更早的一批，把 `latest` 换成 `paper-search failures` 给出的运行 ID。原来那批设过环境变量（如 `XDG_DATA_HOME`，换学校的单独数据目录）时，用同样的环境变量运行。
+  它读上一批的运行记录：没下到的篇目按原来的内容重下；PDF 已有、补充材料没下全（没轮到、失败、登录失效）的只补缺的部分，不再下 PDF；都放进原来那批的下载文件夹。确实没有全文来源的不再补。批量被强行中断（如电脑重启）时，还没轮到、运行记录里没有的篇目也照这一批要下的清单重下。文章页查过、没有补充材料的篇目不再重查；某次接着下被终止时，没处理的篇目照旧按原来的情况算。要接着下更早的一批，把 `latest` 换成 `paper-search failures` 给出的运行 ID。原来那批设过环境变量（如 `XDG_DATA_HOME`，换学校的单独数据目录）时，用同样的环境变量运行。
 
 ## 导出失败记录
 
@@ -123,11 +127,11 @@ paper-search failures --run <运行ID> --doi <DOI> --export ./failure-report.zip
 
 ## 补充材料
 
-- `download_with_fallback` / `download_batch` 的 `content`：`main`（默认，只要正文）、`supplements`（只要补充材料，不走正文的各层）、`both`（正文和补充材料）。
-- 补充材料只经学校订阅下载的浏览器取得：正文由开放渠道拿到时，`both` 会再请它单独取补充材料；它没装或没启用时，这一步记为 `skipped`，写明没有可用的后端。
+- `download_with_fallback` / `download_batch` 的 `content` 里写 `supplements`：只写它时只取补充材料，不走正文的各层；和 `pdf` 一起写时 PDF 和补充材料都取。
+- 补充材料只经学校订阅下载的浏览器取得：PDF 由开放渠道拿到时，会再请它单独取补充材料；它没装或没启用时，这一步记为 `skipped`，写明没有可用的后端。
 - 哪些出版社有补充材料规则见 `publisher-support.md`。完成检查但页面未列出附件时返回空 `supplements`，attempt 为 `skipped/no_supplements`；只取补充材料时整体 `status=ok`，表示检查完成，不表示保存了文件。这家网站没有补充材料专门规则时先按通用规则取文章页补充材料区块里地址带本文 DOI 的文件，仍没有找到时 attempt 为 `skipped/supplements_not_supported`，整体仍为 `ok`：不知道有没有附件，告诉用户“网站暂不支持自动下载附录”，需要的话打开文章页手动下载，不要说成没有附录。登录未完成（`login_required`）、验证未完成（`challenge_timeout`）、网站的人机验证页挡住了附件下载（`verification_page`，如 Figshare）、拿到网页而不是文件（`html_page`）与其他下载失败分别报告，只取补充材料时为 `error`，不影响已保存正文。
-- 文件存在 `<savePath>/<期刊缩写_年月_标题_短标识>/supplements/`，正文也移进这个文件夹；没取到附件的论文，正文平铺在 `<savePath>` 里；`…_supplements-manifest.json` 记录每个文件的状态（`saved`、`failed`、`skipped`）和原因，在结果 `runLog` 所指的运行记录目录里：有文件没下到时在 `diagnostics/`，都下到时在 `records/`；结果里的 `supplements` 给出实际文件路径。
-- 上限：每篇最多 50 个文件，每个不超过 200 MB，一篇总共 3 分钟；超出的记 `skipped`（原因 `file_limit`、`too_large`、`time_budget`）。`html_page` 表示链接打开的是网页而不是文件，`http_403` 一类是网站拒绝。
+- 文件存在 `<savePath>/<期刊缩写_年月_标题>/supplements/`（同一次下载里同名的另一篇加 `_2`），正文也移进这个文件夹；没取到附件的论文，正文平铺在 `<savePath>` 里；`…_supplements-manifest.json` 记录每个文件的状态（`saved`、`failed`、`skipped`）和原因，在结果 `runLog` 所指的运行记录目录里：有文件没下到时在 `diagnostics/`，都下到时在 `records/`；结果里的 `supplements` 给出实际文件路径。
+- 上限：每篇最多 50 个文件；文件不限大小（在浏览器自带的 PDF 阅读器里打开的除外，超过 1 GB 记 `too_large`）；3 分钟没有进展、或一篇总共超过 15 分钟就停。超出的记 `skipped`（原因 `file_limit`、`too_large`、`time_budget`）。`html_page` 表示链接打开的是网页而不是文件，`http_403` 一类是网站拒绝。
 - 只收本文的文件：别的文章的文件、本文的插图、参考文献里的链接都不收。Figshare 公开 article/collection 链接按原文 DOI 关联后解析文件；其他外部附件平台仍需适配。
 - 补充材料、利益冲突声明里也可能印着目标标题和 DOI；不要把补充材料 PDF 当正文交付，正文成功也不代表补充材料齐全。
 - 个别网站（目前 Taylor & Francis）拒绝程序直接下载补充材料时，改由浏览器自己下载，清单里写 `via: browser_download`；浏览器下载列表里会出现以一串编号命名、没有扩展名的记录，文件已按真实文件名保存在 `_supplements` 目录，这些记录可在浏览器下载页清除。

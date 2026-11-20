@@ -16,6 +16,7 @@ from urllib.parse import quote
 
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_school.publishers.profiles import SPRINGER_PROFILE, get_publisher_profile
+from fixture_network import network_is_the_fixture
 
 KARGER = SimpleNamespace(
     profile=get_publisher_profile("karger"), doi="10.1159/000000001",
@@ -47,6 +48,7 @@ class CheckAtPdfAddress:
     """The fixture, run by a browser's own test class below."""
 
     def setUp(self):
+        network_is_the_fixture(self)
         self.context = self.browser.new_context(service_workers="block")
         self.addCleanup(self.context.close)
         self.answers = []

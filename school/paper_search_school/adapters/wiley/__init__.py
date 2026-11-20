@@ -11,6 +11,7 @@ import re
 from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
 
+from ...engine.fulltext_page import MATHJAX_SOURCES_JS
 from ...engine.router import is_wiley_article_pdf_url
 from ...engine.batch_common import open_page
 from ..base import PublisherAdapter, SupplementLink, register
@@ -77,6 +78,33 @@ class WileyAdapter(PublisherAdapter):
     validates_article_pdf = True
     pdf_rejected_event = "wiley_pdf_rejected"
     unquotes_supplement_urls = True
+
+    # --fulltext (engine/fulltext_page.py; PaperSearch's sites/templates/wiley.ts). The body
+    # is section.article-section__full, which Wiley shows only to a reader with access: an
+    # abstract view has none (10.1111/apt.70020 without a licence, 2026-11-14).
+    fulltext_shown_js = """() => {
+      const full = document.querySelector('.article-section__full');
+      if (!full || document.querySelector('#accessDenialLayout')) return false;
+      const text = [...full.children]
+        .filter((part) => !part.matches('.article-section__references, .article-section__supporting, .article-section__citedBy'))
+        .reduce((total, part) => total + (part.innerText || '').length, 0);
+      return text > 500;
+    }"""
+    # Each figure's full-size image: data-lg-src (the "-m.jpg" the figure viewer opens; the
+    # image shown is a 500-pixel PNG), else the /cms/asset/ link around it; an image-only
+    # table's image. PaperSearch's converter picks the same address.
+    fulltext_images_js = """() => [...document.querySelectorAll(
+        '.abstract-group figure img, .article-section__full figure img, '
+        + '.article-section__full .article-table-content:not(:has(table)) img')]
+      .filter((img) => !img.closest('figcaption, header'))
+      .map((img) => img.getAttribute('data-lg-src') || img.closest('a[href*="/cms/asset/"]')?.getAttribute('href')
+        || img.getAttribute('src') || img.getAttribute('data-src') || '')
+      .filter((src) => src && !src.startsWith('data:'))
+      .map((src) => new URL(src, location.href).href)"""
+    # Wiley's MathJax (4.1, lazy) typesets a formula only once it is scrolled to and leaves an
+    # empty <math> in the others: each formula's MathML is written onto its element as
+    # data-original-mathml, which PaperSearch reads (as on ScienceDirect).
+    fulltext_prepare_js = MATHJAX_SOURCES_JS
 
     @classmethod
     def belongs_to_article(cls, url: str, doi: str, source_url: str) -> bool | None:

@@ -8,9 +8,21 @@
   "按原因": "by reason",
   "正文已保存": "main text saved",
   "没权限": "No access",
-  "外部原因": "External",
+  "你这边": "Your side",
+  "学校那边": "School",
+  "出版社或网络": "Publisher or network",
+  "文章或网站": "Article or site",
   "暂不支持": "Unsupported",
   "原因不明": "Unclear",
+  "待核对": "Check",
+  "PDF 未下到": "No PDF",
+  "补充材料未下到": "Files not downloaded",
+  "Markdown 未生成": "No Markdown",
+  "可能缺": "May lack",
+  "参考文献可能不全": "References may be short",
+  "图片可能不全": "Figures may be short",
+  "正文可能不全": "Text may be short",
+  "可能缺表": "A table may be missing",
   "其他": "Other",
   "文件夹": "Folder",
   "打开文件夹": "Open folder",
@@ -63,16 +75,20 @@
   "正文": "Main",
   "附录": "Supp.",
   "正文+附录": "Main+Supp.",
+  "正在读取全文网页": "Reading full-text page",
+  "全文网页已读取": "Full-text page read",
+  "读全文网页": "Read the page",
   "准备中": "Preparing",
   "正在打开文章": "Opening article",
   "正在检查访问权限": "Checking access",
   "等待机构登录": "Waiting for login",
   "等待人机验证": "Waiting for check",
-  "正在获取 PDF": "Getting PDF",
-  "已读到 PDF，正在核对": "Checking PDF",
+  "正在下载": "Downloading now",
+  "已读到，正在核对": "Checking",
   "已保存": "Saved",
   "这条路没走通，正在换路": "Trying another route",
   "附录检查完成": "Supp. checked",
+  "已确认访问，未取 PDF": "Access confirmed; no PDF",
   "打开文章": "Open",
   "权限": "Access",
   "取 PDF": "PDF",
@@ -121,6 +137,7 @@
   "跳过已尝试": "Skipping tried",
   "进入机构访问": "School access",
   "PDF 已保存，待内容核验": "PDF saved; checking",
+  "已确认全文访问，未取 PDF": "Access confirmed; no PDF",
   "下载未完成": "Not finished",
   "下载进程已结束，结果未确认": "Download ended; unconfirmed",
   "已检查，页面未列出补充材料": "Checked; no supp. listed",
@@ -161,6 +178,7 @@
   "学校账号被锁定": "School account locked",
   "找不到学校的登录路线": "No login route for school",
   "找不到机构登录入口": "No institution login",
+  "网站没有学校登录入口": "Site has no school login",
   "拿到的 PDF 无效": "Invalid PDF",
   "拿到的是别篇 PDF": "Another paper's PDF",
   "拿到网页不是文件": "Got a page, not a file",
@@ -168,6 +186,15 @@
   "没找到可用 PDF": "No usable PDF",
   "没进入学校登录页": "School login not reached",
   "浏览器没有响应": "Browser not responding",
+  "浏览器连接断了": "Browser connection lost",
+  "需要 PaperSearch Pro": "Needs PaperSearch Pro",
+  "Markdown 全文": "Markdown full text",
+  "测试中": "Testing",
+  "未安装": "Not installed",
+  "已安装": "Installed",
+  "提交 issue": "Report an issue",
+  "读取失败": "Couldn't read",
+  "PaperSearch Pro 暂不可用": "PaperSearch Pro unavailable now",
   "登录后没回到出版社": "No return to publisher",
   "登录重试已用尽": "Login retries used up",
   "登录页被关闭": "Login page closed",
@@ -238,7 +265,6 @@
   "被拒绝：key 不对，或已失效": "Rejected: wrong or expired key",
   "服务器限流，稍后再试；key 本身可能没问题": "Rate-limited; try later",
   "没连上服务器，没法判断；检查网络或代理后再试": "Couldn't reach the server",
-  "正在下载": "Downloading now",
   "排队等机构下载": "Queued for school",
   "开放下载还没查": "Open not checked yet",
   "没有论文": "No papers",
@@ -282,6 +308,14 @@
   "填你常用的邮箱就行，不用注册": "Your usual email will do; no sign-up",
   "网站暂不支持自动下载附录": "No supp. rule; get by hand",
   "已达每小时上限": "Hourly limit reached",
+  "补充材料": "Supp.",
+  "PDF、补充材料": "PDF, Supp.",
+  "Markdown、补充材料": "Markdown, Supp.",
+  "PDF、Markdown、补充材料": "PDF, Markdown, Supp.",
+  "补充材料检查完成": "Supp. checked",
+  "查找补充材料": "Finding supp.",
+  "正在查找文件": "Finding files",
+  "PDF 已保存": "PDF saved",
   "这批下载已没有暂停的篇目": "Nothing is paused",
   "学校登录中途失效，已暂停": "School login lapsed; paused",
   "继续": "Resume",
@@ -292,13 +326,133 @@
   "展开进度窗口": "Open the progress window",
   "已确认": "Confirmed",
   "正在继续下载": "Resuming",
+  "学校订阅下载扩展需要更新": "Extension needs an update",
+  "网站暂不支持转换": "No page rules for site",
+  "网页只有摘要": "Page has abstract only",
+  "文章页没有正文": "Page has no full text",
+  "文章页没存下来": "Page not saved",
+  "转换出错": "Conversion failed",
+  "没有可转换的全文": "No full text to convert",
+  "图片没下载成功": "Figures not downloaded",
+  "表格没取到": "Tables not fetched",
+  "PubMed Central 没响应": "PubMed Central did not answer",
   "如需登录，会打开学校登录页": "Sign-in page opens if needed",
   "其他篇目已完成，等你回来点“登录并继续”": "Others done; press Sign in & resume",
   "已终止，未处理": "Stopped, not done",
   "未处理": "Not done",
-  "没有附录（已核对）": "None listed (checked)",
-  "补上附录": "Files saved",
-  "没有附录": "None listed"
+  "没有补充材料（已核对）": "None listed (checked)",
+  "补上补充材料": "Files saved",
+  "没有补充材料": "None listed",
+  "查看": "View",
+  "内容不完整": "Incomplete",
+  "不完整": "Incomplete",
+  "这些网站尚未正式支持 Markdown，内容不完整的未保存。如需支持，欢迎提 issue 或 PR。": "Not yet officially supported for Markdown; incomplete pages were not saved. Open an issue or a PR to ask for support.",
+  "已支持的网站": "Supported sites",
+  "提 issue": "Open an issue",
+  "核对没通过": "did not pass the checks",
+  "没有规则能读出正文": "no rules read the text",
+  "本批前 3 篇都没转换完整，未再尝试": "first 3 incomplete, not tried again",
+  "这批没有保存可导出的网页": "No pages kept to export",
+  "已打开 issue 页面（这批没有留下可导出的网页）": "Issue page opened; no pages to export",
+  "这批没有暂未正式支持的网站": "No unsupported sites here",
+  "已在浏览器打开": "Opened in your browser",
+  "只读到摘要": "only the abstract read",
+  "网页显示没有权限": "page shows no access",
+  "Markdown：借用其他网站的规则转换": "Markdown: rules borrowed from other sites",
+  "没有适用的规则": "no rules fit",
+  "提 issue 纳入已登记网站": "Open an issue to list it",
+  "钉住": "Pin",
+  "取消钉住": "Unpin",
+  "已钉住，点一下取消": "Pinned; click to unpin",
+  "钉住：鼠标移开也不收起": "Pin: stay open",
+  "正在安装…": "Installing…",
+  "安装没有完成": "Install didn't finish",
+  "安装出错": "Install failed",
+  "安装": "Install",
+  "重试": "Retry",
+  "已下载的部分不会留下": "No partial file is kept",
+  "约 4 MB": "About 4 MB",
+  "PDF 和补充材料不需要它": "Not needed for PDF or supplements",
+  "正在下载…": "Downloading…",
+  "把论文全文转成 Markdown，图片、表格、公式和参考文献一并保留。": "Turns full texts into Markdown, keeping figures, tables, formulas and references.",
+  "转换有缺漏或出错？": "Missing or wrong parts?",
+  "网络连接中断": "Connection lost",
+  "服务器没有给出安装文件": "Server sent no install file",
+  "找不到安装文件": "Install file not found",
+  "安装包的说明文件不对": "Invalid package manifest",
+  "安装包不完整或被改动过": "Package broken or altered",
+  "PaperSearch Pro 的下载地址还没开放": "PaperSearch Pro's download isn't open yet",
+  "找不到 paper-search 命令": "paper-search command not found",
+  "GitHub 上没找到 Pro 安装包": "Pro package not found on GitHub",
+  "安装包不全": "Package incomplete",
+  "请先在终端运行 gh auth login 登录 GitHub": "Run gh auth login in a terminal first",
+  "测试版": "Beta",
+  "学校登录后没回到出版社": "School login didn't return",
+  "马上生效": "Apply now",
+  "开": "On",
+  "关": "Off",
+  "立即按新上限继续下载": "New limit applies now",
+  "这一小时过后按新上限": "New limit after this hour",
+  "开关必须为开启或关闭": "Switch must be on or off",
+  "设置保存失败": "Setting not saved",
+  "检查更新": "Check for updates",
+  "正在检查更新…": "Checking for updates…",
+  "检查更新出错": "Update check failed",
+  "已是最新": "Up to date",
+  "把论文全文转成 Markdown，以下内容一并保留：": "Turns a paper's full text into Markdown, keeping:",
+  "图片": "Figures",
+  "表格": "Tables",
+  "公式": "Formulas",
+  "参考文献": "References",
+  "已转换（篇）": "Converted",
+  "完整无缺": "Complete",
+  "使用状态": "Status",
+  "需要密钥": "Key required",
+  "核对完整后才替换原有的，转换记录保留": "Replaced only once checked; counts kept",
+  "测试期间免费": "Free while in testing",
+  "测试期间免费，截止日期待定": "Free in testing; end not set",
+  "出版社平台": "Publisher platforms",
+  "支持的出版社平台": "Supported platforms",
+  "学校自动登录": "School sign-in",
+  "已打开": "On",
+  "已关闭": "Off",
+  "这所学校已实测，会自动登录": "Tested: signs in by itself",
+  "这所学校正在实测，暂时只对维护者开放": "Being tested: maintainers only",
+  "这所学校还没实测，暂时不能自动登录": "Not tested yet: sign in yourself",
+  "还没有设置学校：设置好学校后再来填账号": "Set up your school first",
+  "当前学校": "Your school",
+  "学校没有接受保存的密码，自动登录已关闭；更新密码后保存，就会重新打开": "The school refused the saved password; sign-in is off until you save a new one",
+  "账号": "Account",
+  "密码": "Password",
+  "只在学校自己的登录页上填写；密码不对只试一次，然后自动关闭。账号和密码存在这台电脑的设置文件里。": "Only on the school's own sign-in page; a wrong password is tried once, then it turns off. Kept in this computer's settings.",
+  "关闭自动登录": "Turn off",
+  "打开自动登录": "Turn on",
+  "这个版本没有自动登录": "Not in this edition",
+  "请填写账号": "Enter the account",
+  "请填写密码": "Enter the password",
+  "还没有设置学校": "No school set up",
+  "学校没有接受保存的密码，自动登录已关闭：请在浏览器窗口完成机构登录，并在设置里更新密码": "The school refused the saved password: sign in in the browser, then update it in settings",
+  "功能": "Features",
+  "把论文全文转成 Markdown": "Full texts as Markdown",
+  "用着有问题？": "Something wrong?",
+  "安装 PaperSearch Pro 后可用": "Install PaperSearch Pro first",
+  "学号或工号": "Student or staff ID",
+  "显示密码": "Show password",
+  "版本与更新": "Version and updates",
+  "已清除": "Cleared",
+  "已打开自动登录": "Sign-in on",
+  "已关闭自动登录": "Sign-in off",
+  "学校还要再验证一步（如微信扫码），请在浏览器窗口完成": "One more step (e.g. a WeChat scan): finish it in the browser",
+  "学校登录页要你本人操作（验证码、扫码或另一个账号），请在浏览器窗口完成": "The school's page needs you (a code, a scan or another account): finish in the browser",
+  "学校登录页的证书和之前记下的不一样，没有自动填写：请确认是学校的网站后，在浏览器窗口完成机构登录": "The school's page has a new certificate, so nothing was filled in: check it is your school's site, then sign in",
+  "这所学校已摸底，会自动登录": "Surveyed: signs in by itself",
+  "学校登录页要输入图片验证码，请在浏览器窗口完成": "Picture code needed: finish it in the browser",
+  "学校登录页要拖动滑块拼图，请在浏览器窗口完成": "Slider puzzle needed: finish it in the browser",
+  "学校登录页要按顺序点选图中文字，请在浏览器窗口完成": "Click-the-pictures check: finish it in the browser",
+  "学校登录页要短信或动态验证码，请在浏览器窗口完成": "Text or app code needed: finish it in the browser",
+  "学校登录页要扫码，请在浏览器窗口完成": "QR scan needed: finish it in the browser",
+  "学校登录页要完成人机检查，请在浏览器窗口完成": "Human check needed: finish it in the browser",
+  "学校还要二次验证，请在浏览器窗口完成": "Second step needed: finish it in the browser"
  },
  "patterns": [
   [
@@ -558,12 +712,52 @@
    "Open download: $1/$2 checked, $3 found"
   ],
   [
+   "^补充材料未下到 (\\d+) 篇$",
+   "Files not downloaded: $1"
+  ],
+  [
+   "^PDF 未下到 (\\d+) 篇$",
+   "No PDF: $1"
+  ],
+  [
+   "^补充材料未下全 (\\d+) 篇$",
+   "Supp. missing: $1"
+  ],
+  [
+   "^补充材料 (\\d+)/(\\d+)$",
+   "Supp. $1/$2"
+  ],
+  [
+   "^PDF (\\d+) 篇$",
+   "PDF $1"
+  ],
+  [
+   "^Markdown (\\d+) 篇$",
+   "Markdown $1"
+  ],
+  [
+   "^补充材料 (\\d+) 个$",
+   "Supp. $1"
+  ],
+  [
+   "^(\\d+) 篇没有补充材料$",
+   "$1 list no supp."
+  ],
+  [
    "^学校登录中途失败，已暂停 (\\d+) 篇$",
    "Login lapsed: $1 paused"
   ],
   [
    "^已暂停 (\\d+) 篇$",
    "$1 paused"
+  ],
+  [
+   "^Markdown 未生成 (\\d+) 篇$",
+   "No Markdown: $1"
+  ],
+  [
+   "^Markdown 可能不全 (\\d+) 篇$",
+   "Markdown may be short: $1"
   ],
   [
    "^待继续 (\\d+) 篇$",
@@ -576,6 +770,114 @@
   [
    "^本篇完成后继续下载 (\\d+) 篇$",
    "$1 paused resume next"
+  ],
+  [
+   "^(\\d+) 个网站暂未正式支持 Markdown$",
+   "$1 sites not yet officially supported for Markdown"
+  ],
+  [
+   "^(.+) 暂未正式支持 Markdown$",
+   "$1 not yet officially supported for Markdown"
+  ],
+  [
+   "^已尝试转换：(\\d+) 篇完整已保存，(\\d+) 篇不完整未保存，(\\d+) 篇未再尝试$",
+   "Tried: $1 complete, saved; $2 incomplete, not saved; $3 not tried again"
+  ],
+  [
+   "^已尝试转换：(\\d+) 篇完整已保存，(\\d+) 篇不完整未保存$",
+   "Tried: $1 complete, saved; $2 incomplete, not saved"
+  ],
+  [
+   "^参考文献少 (\\d+) 条$",
+   "$1 references short"
+  ],
+  [
+   "^少 (\\d+) 张图$",
+   "$1 figures short"
+  ],
+  [
+   "^正文缺约 (\\d+)%$",
+   "about $1% of the text missing"
+  ],
+  [
+   "^已导出报告 (.+) 并打开 issue 页面，把它拖进去$",
+   "Report $1 exported, issue page opened: drag it in"
+  ],
+  [
+   "^导出报告失败：(.+)$",
+   "Report export failed: $1"
+  ],
+  [
+   "^打开 issue 页面失败：没有找到默认浏览器；报告已导出：(.+)$",
+   "No default browser for the issue page; report exported: $1"
+  ],
+  [
+   "^打开 issue 页面失败：没有找到默认浏览器$",
+   "No default browser for the issue page"
+  ],
+  [
+   "^打开 issue 页面失败：(.+)$",
+   "Could not open the issue page: $1"
+  ],
+  [
+   "^采用 (.+) 规则$",
+   "$1 rules"
+  ],
+  [
+   "^(.+) 按 (.+) 的规则转换$",
+   "$1 converted by $2's rules"
+  ],
+  [
+   "^(\\d+) 个网站$",
+   "$1 sites"
+  ],
+  [
+   "^(.+) 规则$",
+   "$1 rules"
+  ],
+  [
+   "^完整已保存 (\\d+) 篇$",
+   "$1 complete, saved"
+  ],
+  [
+   "^不完整未保存 (\\d+) 篇$",
+   "$1 incomplete, not saved"
+  ],
+  [
+   "^未再尝试 (\\d+) 篇$",
+   "$1 not tried again"
+  ],
+  [
+   "^正在下载 ([\\d.]+) / ([\\d.]+) MB$",
+   "Downloading $1 / $2 MB"
+  ],
+  [
+   "^有新版本 (.+)$",
+   "Version $1 available"
+  ],
+  [
+   "^更新到 (.+)$",
+   "Update to $1"
+  ],
+  [
+   "^共 (\\d+) 个$",
+   "$1 in all"
+  ],
+  [
+   "^测试期间免费，至 (.+)$",
+   "Free while in testing, until $1"
+  ],
+  [
+   "^共 (\\d+) 个，平台下的期刊都适用$",
+   "$1, with all their journals"
+  ],
+  [
+   "^已转换 ([\\d,]+) 篇$",
+   "$1 converted"
+  ],
+  [
+   "^(\\d+) 个平台$",
+   "$1 platforms"
   ]
  ]
 }

@@ -253,7 +253,7 @@ class PublisherAdapter:
         return False
 
     def prepare_institution_choice(self, page: Any, result: Any) -> bool | None:
-        """In the CARSI school choice, after the federation form and the school
+        """In the school choice, after the federation form and the school
         assistance, before the SeamlessAccess and publisher choosers: the
         publisher's own step on this page. False ends this pass (None = go on)."""
         return None
@@ -311,6 +311,26 @@ class PublisherAdapter:
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink] | None:
         """Supplementary files listed on the article page."""
         return None
+
+    #: --fulltext (engine/fulltext_page.py), for a publisher whose page PaperSearch turns
+    #: into Markdown: JavaScript run on the article page saying whether it shows the
+    #: full text, and listing the figures' image addresses, the largest of each.
+    fulltext_shown_js: str | None = None
+    fulltext_images_js: str | None = None
+    #: Run in the page's own world before its HTML is read (ScienceDirect keeps each formula's MathML).
+    fulltext_prepare_js: str | None = None
+
+    def fulltext_prepare_source(self, doi: str, page_url: str) -> str:
+        """The address of a document ``fulltext_prepare_js`` needs and the page cannot fetch
+        itself (PLOS's article XML is on another host without CORS): fetched in the browser
+        session and given to the script as its argument. "" when the script needs none."""
+        return ""
+
+    def fulltext_page_url(self, doi: str, page_url: str) -> str:
+        """The address of the article's full-text page when the download's article page is
+        another one (Thieme opens /abstract/, its full text is /html/): read in a tab of its
+        own on the same visit. "" when the article page is the full-text page."""
+        return ""
 
 
 def register(cls: type[PublisherAdapter]) -> type[PublisherAdapter]:

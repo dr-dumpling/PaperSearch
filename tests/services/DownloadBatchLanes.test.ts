@@ -2,9 +2,9 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "@jest/globals";
-import { downloadBatch, type DownloadBatchResult } from "../../src/capabilities/pdf-discovery/batch.js";
-import type { DownloadTier, DownloadTierContext, DownloadTierResult } from "../../src/capabilities/pdf-discovery/DownloadTier.js";
-import type { SchoolBackend, SchoolBatchPaper, SchoolBatchPapers, SchoolBatchUpdate } from "../../src/capabilities/pdf-discovery/school/types.js";
+import { downloadBatch, type DownloadBatchResult } from "../../src/capabilities/download/batch/batch.js";
+import type { DownloadTier, DownloadTierContext, DownloadTierResult } from "../../src/capabilities/download/content/pdf/DownloadTier.js";
+import type { SchoolBackend, SchoolBatchPaper, SchoolBatchPapers, SchoolBatchUpdate } from "../../src/infrastructure/school/types.js";
 
 /**
  * two_phase runs two lanes at once: open access checks every item in turn and
@@ -198,7 +198,9 @@ describe("two lanes at once", () => {
         throw new Error(`${context}\n${(error as Error).message}`);
       }
     }
-  });
+    // 300 rounds with real run records and short timers: about 11 s on Linux. Windows' timers
+    // fire at its clock tick (about 16 ms) and its file system is slower.
+  }, 120_000);
 
   it("entitled_only and per_item send the window's lists too: waiting, then each paper as it ends", async () => {
     for (const mode of ["entitled_only", "per_item"] as const) {

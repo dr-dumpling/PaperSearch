@@ -17,4 +17,10 @@ export declare function exportFailureReport(options: {
     version: string;
     command: string;
 }): Promise<ExportReportResult>;
+/**
+ * An offline backend command fed ``input`` on stdin: its JSON reply ({ok: false, error} when
+ * it failed). ``what`` names the export in the messages ("失败记录导出"); ``outdated``, what
+ * to say when a backend gave no reply (one without the command).
+ */
+export declare function runBackendExport(command: string, args: string[], input: string, what: string, outdated: string): Promise<Record<string, unknown>>;
 //# sourceMappingURL=exportReport.d.ts.map

@@ -7,6 +7,12 @@ waits the same login out. The publisher and the school are written to
 and takes an open PDF, but ends at once where it would sign in (the user,
 2026-11-11). Another school is another key; entries older than ``KEEP_SEC`` are
 dropped when the file is read, so a later batch tries again.
+
+A site whose article page showed no way to any school's login at all (no institution
+entry, no institution search or list, no federation chooser: an open-access site,
+a site with personal accounts only) is written to ``<data dir>/no_school_entry.json``
+for the batch that found it: its later papers in the same batch end at once where
+they would sign in (user, 2026-11-18). Another batch looks again.
 """
 from __future__ import annotations
 
@@ -17,6 +23,8 @@ from typing import Any
 from .entitlements import _data_dir, _read_json, _write_json
 
 KEEP_SEC = 30 * 60
+# A batch can run for hours; its own id keeps it apart from the next one.
+NO_ENTRY_KEEP_SEC = 24 * 3600
 
 
 def ledger_path() -> Path:
@@ -59,4 +67,41 @@ def remember(publisher: str, school: str, doi: str, now: float | None = None) ->
     data = _recent(now)
     data[key] = {"at": now, "doi": doi}
     _write_json(ledger_path(), data)
+    return True
+
+
+def no_entry_path() -> Path:
+    return _data_dir() / "no_school_entry.json"
+
+
+def _no_entry_key(host: str, batch: str) -> str:
+    host = " ".join(str(host or "").lower().split())
+    batch = " ".join(str(batch or "").split())
+    return f"{batch}|{host}" if host and batch else ""
+
+
+def no_entry_since(host: str, batch: str, now: float | None = None) -> dict[str, Any]:
+    """What an earlier paper of batch ``batch`` found at ``host`` (``{"doi", "reason"}``) when
+    its page showed no school login entry; {} otherwise, or without a batch."""
+    key = _no_entry_key(host, batch)
+    if not key:
+        return {}
+    now = time.time() if now is None else now
+    entry = _read_json(no_entry_path()).get(key)
+    if (not isinstance(entry, dict) or not isinstance(entry.get("at"), (int, float))
+            or not now - NO_ENTRY_KEEP_SEC < entry["at"] <= now):
+        return {}
+    return {"doi": str(entry.get("doi") or ""), "reason": str(entry.get("reason") or "")}
+
+
+def remember_no_entry(host: str, batch: str, doi: str, reason: str, now: float | None = None) -> bool:
+    """Write ``host`` as showing no school login entry in batch ``batch``; False without either."""
+    key = _no_entry_key(host, batch)
+    if not key:
+        return False
+    now = time.time() if now is None else now
+    data = {k: e for k, e in _read_json(no_entry_path()).items()
+            if isinstance(e, dict) and isinstance(e.get("at"), (int, float)) and now - NO_ENTRY_KEEP_SEC < e["at"] <= now}
+    data[key] = {"at": now, "doi": doi, "reason": reason}
+    _write_json(no_entry_path(), data)
     return True

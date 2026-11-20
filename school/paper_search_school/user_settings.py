@@ -68,6 +68,19 @@ def set_notify(on: bool) -> None:
     _config.update_config(NOTIFY_KEY, "true" if on else "false")
 
 
+HOURLY_NOW_KEY = "publisher_hourly_limit_now"
+
+
+def hourly_now() -> bool:
+    """Whether a changed hourly limit applies at once to an article waiting for it (the small
+    switch beside the limit, 2026-11-19); off, the wait goes on until its hour is over."""
+    return _config.load_config().get(HOURLY_NOW_KEY) is True
+
+
+def set_hourly_now(on: bool) -> None:
+    _config.update_config(HOURLY_NOW_KEY, "true" if on else "false")
+
+
 LANGUAGE_KEY = "progress_language"
 
 
@@ -78,3 +91,4 @@ def language() -> str:
 
 def set_language(lang: str) -> None:
     _config.update_config(LANGUAGE_KEY, "en" if lang == "en" else "zh")
+

@@ -5,7 +5,7 @@ import { tmpdir } from "os";
 import { pathToFileURL } from "url";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { textPdf } from "../fixtures/textPdf.js";
-import type { SchoolBatchPaper } from "../../src/capabilities/pdf-discovery/school/types.js";
+import type { SchoolBatchPaper } from "../../src/infrastructure/school/types.js";
 
 // Each download saves into its own <YYYYMMDD-HHmmss>_PaperSearchDownload folder inside the download folder (2026-11-11).
 const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -168,11 +168,14 @@ describe("School backend serial batch through the CLI", () => {
     expect(papers[0].papers.map((paper) => paper.index)).toEqual([1, 2, 3, 4, 5]);
     expect(papers[0].folder).toMatch(runFolder(join(tempDir, "out"), "$"));
     const ended = new Map(papers.flatMap((args) => args.papers).map((paper) => [paper.index, paper]));
-    // Each as the batch ended it (the fake gives every paper the first one's PDF).
-    const items = JSON.parse(result.stdout).data.items as Array<{ index: number; status: string }>;
-    expect([...ended.values()].map((paper) => [paper.index, paper.state])).toEqual(
-      items.map((item) => [item.index, item.status === "ok" ? "ok" : "failed"]));
-    expect(items.filter((item) => item.status === "ok").length).toBeGreaterThan(0);
+    // Each as the batch ended it (the fake gives every paper the first one's PDF). The batch tells
+    // its totals and where each paper's result is, not every paper (2026-11-17).
+    const data = JSON.parse(result.stdout).data as { succeeded: number; index?: string; items?: unknown };
+    expect(data.items).toBeUndefined();
+    expect(existsSync(data.index ?? "")).toBe(true);
+    expect([...ended.keys()].sort()).toEqual([1, 2, 3, 4, 5]);
+    expect([...ended.values()].filter((paper) => paper.state === "ok").length).toBe(data.succeeded);
+    expect(data.succeeded).toBeGreaterThan(0);
     for (const paper of ended.values()) {
       if (paper.state === "ok") expect(paper).toMatchObject({ via: "机构下载", path: expect.any(String) });
       else expect(paper.reason).toBeTruthy();

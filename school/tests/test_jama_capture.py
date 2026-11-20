@@ -4,6 +4,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from fixture_network import network_is_the_fixture
+
 DOI = '10.1001/jama.2025.99999'
 TITLE = 'Synthetic JAMA randomized clinical trial'
 ARTICLE = 'https://jamanetwork.com/journals/jama/fullarticle/2999999'
@@ -153,6 +155,7 @@ class JAMANativeTests(unittest.TestCase):
         from paper_search_school.publishers import profiles as publisher_profiles
         self.batch = publisher_batch
         self.d = publisher_batch.PublisherBatchDownloader({}, profile=profile(publisher_profiles), pdf_timeout_sec=2)
+        network_is_the_fixture(self)
         self.context = self.browser.new_context(service_workers='block')
         self.addCleanup(self.context.close)
         self.requests = []

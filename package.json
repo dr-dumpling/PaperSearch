@@ -1,9 +1,12 @@
 {
   "name": "papersearch",
-  "version": "0.6.11",
+  "version": "0.7.0",
   "description": "PaperSearch: an agent-friendly command for searching and downloading academic papers from multiple sources.",
   "main": "dist/cli.js",
   "type": "module",
+  "paperSearch": {
+    "proFeatures": false
+  },
   "bin": {
     "paper-search": "dist/cli.js"
   },
@@ -27,10 +30,13 @@
     "!assets/*.webp",
     "skills/",
     "LICENSE",
+    "NOTICE",
     ".env.example",
     "school/pyproject.toml",
     "school/README.md",
     "school/LICENSE",
+    "school/LICENSE-scansci-pdf",
+    "school/NOTICE",
     "school/paper_search_school/",
     "!**/__pycache__/**"
   ],
@@ -45,7 +51,7 @@
     "typescript"
   ],
   "author": "dr-dumpling",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
     "@types/cheerio": "^0.22.35",
@@ -68,6 +74,8 @@
     "@typescript-eslint/parser": "^7.16.0",
     "eslint": "^8.57.0",
     "jest": "^29.7.0",
+    "katex": "^0.16.47",
+    "mathml-to-latex": "^1.8.0",
     "prettier": "^3.3.2",
     "ts-jest": "^29.2.5",
     "tsx": "^4.16.2",

@@ -84,7 +84,6 @@ def test_explicit_supplement_label_fills_missing_backlink_but_never_overrides_co
 
 
 @pytest.mark.parametrize('file,error', [
-    ({**FILE, 'size': 201 * 1024 * 1024}, 'too_large'),
     ({**FILE, 'is_link_only': True}, 'figshare_link_only'),
     ({**FILE, 'size': None}, 'figshare_invalid_file'),
     ({**FILE, 'id': -1}, 'figshare_invalid_file'),

@@ -21,13 +21,13 @@ import {
   SCHOOL_STARTUP_TIMEOUT_MS,
   SchoolMcpClient,
   resolveDefaultSchoolProfileDir,
-} from "../../src/capabilities/pdf-discovery/school/SchoolMcpClient.js";
+} from "../../src/infrastructure/school/SchoolMcpClient.js";
 import {
   createSchoolBackend,
   type SchoolBackend,
   type SchoolProgress,
-} from "../../src/capabilities/pdf-discovery/school/index.js";
-import * as schoolPort from "../../src/capabilities/pdf-discovery/school/index.js";
+} from "../../src/infrastructure/school/index.js";
+import * as schoolPort from "../../src/infrastructure/school/index.js";
 
 interface FakeLogEntry {
   event: "start" | "call" | "signal" | "list";
@@ -39,6 +39,8 @@ interface FakeLogEntry {
   argv?: string[];
   tool?: string;
   arguments?: Record<string, unknown>;
+  /** school_hourly_wait: the publisher asked about. */
+  publisher?: string;
   signal?: string;
 }
 
@@ -88,9 +90,9 @@ describe("SchoolMcpClient", () => {
         { XDG_DATA_HOME: "/tmp/xdg-data" },
         "/tmp/home",
       ),
-    ).toBe("/tmp/xdg-data/paper-search-cli/school");
+    ).toBe(join(resolve("/tmp/xdg-data"), "paper-search-cli", "school"));
     expect(resolveDefaultSchoolProfileDir({}, "/tmp/home")).toBe(
-      "/tmp/home/.local/share/paper-search-cli/school",
+      join("/tmp/home", ".local", "share", "paper-search-cli", "school"),
     );
     expect(SCHOOL_STARTUP_TIMEOUT_MS).toBe(15_000);
     expect(SCHOOL_DOWNLOAD_TIMEOUT_MS).toBe(1_200_000);
@@ -147,6 +149,26 @@ describe("SchoolMcpClient", () => {
     });
     expect(result.kind).toBe("success");
     expect(onProgress).not.toHaveBeenCalled();
+  });
+
+  it("asks an extension older than the Markdown for no page alone: it says to update it", async () => {
+    // The fake's download tool has no fulltext field, as an extension from before 0.7.0.
+    const client = fakeClient("success");
+    const pageOnly = await client.downloadLegalDoi({ identifier: "10.1000/target", outputDir: tempDir, fulltext: "only" });
+    expect(pageOnly).toEqual(expect.objectContaining({ kind: "attempt_error", code: "school_update_needed",
+      message: expect.stringContaining("paper-search school update") }));
+    expect(readLog().filter((entry) => entry.event === "call" && entry.tool === "school_download")).toEqual([]);
+    // A visit for the PDF goes on, without the page.
+    const withPdf = await client.downloadLegalDoi({ identifier: "10.1000/target", outputDir: tempDir, fulltext: "with" });
+    expect(withPdf.kind).toBe("success");
+  });
+
+  it("asks an extension that cannot take another school for none: the user's school would not be used (2026-11-17)", async () => {
+    // The fake's download tool has no school field, as an extension from before several saved schools.
+    const client = fakeClient("success");
+    const other = await client.downloadLegalDoi({ identifier: "10.1000/target", outputDir: tempDir, school: "Red Magnolia University" });
+    expect(other).toEqual(expect.objectContaining({ kind: "attempt_error", code: "school_update_needed" }));
+    expect(readLog().filter((entry) => entry.event === "call" && entry.tool === "school_download")).toEqual([]);
   });
 
   it("does not let a progress observer change the result or leak its exception", async () => {
@@ -742,9 +764,7 @@ describe("SchoolMcpClient", () => {
       }),
     );
     expect(Date.now() - startedAt).toBeLessThan(800);
-    expect(readLog()).toContainEqual(
-      expect.objectContaining({ event: "signal", signal: "SIGTERM" }),
-    );
+    expectSigtermLogged();
     await expectAllChildrenExited();
   });
 
@@ -763,9 +783,7 @@ describe("SchoolMcpClient", () => {
         code: "download_timeout",
       }),
     );
-    expect(readLog()).toContainEqual(
-      expect.objectContaining({ event: "signal", signal: "SIGTERM" }),
-    );
+    expectSigtermLogged();
     await expectAllChildrenExited();
   });
 
@@ -856,6 +874,33 @@ describe("SchoolMcpClient", () => {
     await expectAllChildrenExited();
   });
 
+  it("starts a new backend for the next paper once the driver is gone", async () => {
+    // Windows, 2026-11-18: the driver went away, and every later paper of the kept backend failed at once.
+    const batch = { id: "batch-driver", index: 1, total: 2, done: 0, succeeded: 0, failed: 0 };
+    await fakeClient("batch_browser_driver_lost").withBatchSession(async (backend) => {
+      expect(await backend.downloadLegalDoi({ identifier: "10.1000/first", outputDir: tempDir, batch }))
+        .toMatchObject({ kind: "attempt_error", code: "browser_connection_lost" });
+      expect(await backend.downloadLegalDoi({ identifier: "10.1000/second", outputDir: tempDir,
+        batch: { ...batch, index: 2, done: 1, failed: 1 } })).toMatchObject({ kind: "success" });
+    });
+    expect(readLog().filter((row) => row.event === "start")).toHaveLength(2);
+    await expectAllChildrenExited();
+  });
+
+  it("starts a new backend for what comes next once the browser stopped after a saved PDF", async () => {
+    // IEEE, 2026-11-18: the PDF step ran past its time; the Markdown's visit for the page alone
+    // went to the same backend and failed in 3 s.
+    const batch = { id: "batch-stopped", index: 1, total: 2, done: 0, succeeded: 0, failed: 0 };
+    await fakeClient("batch_browser_stopped_after_pdf").withBatchSession(async (backend) => {
+      expect(await backend.downloadLegalDoi({ identifier: "10.1000/first", outputDir: tempDir, batch }))
+        .toMatchObject({ kind: "success", trace: { state: "pdf_response_captured", browserStopped: true } });
+      expect(await backend.downloadLegalDoi({ identifier: "10.1000/second", outputDir: tempDir,
+        batch: { ...batch, index: 2, done: 1, succeeded: 1 } })).toMatchObject({ kind: "success" });
+    });
+    expect(readLog().filter((row) => row.event === "start")).toHaveLength(2);
+    await expectAllChildrenExited();
+  });
+
   it("keeps the publisher's session on the batch's backend only, never starting one", async () => {
     const batch = { id: "batch-keep", index: 1, total: 2, done: 0, succeeded: 0, failed: 0 };
     await fakeClient("batch_browser_keep").withBatchSession(async (backend) => {
@@ -865,9 +910,14 @@ describe("SchoolMcpClient", () => {
       expect(await backend.downloadLegalDoi({ identifier: "10.1000/first", outputDir: tempDir, batch }))
         .toMatchObject({ kind: "success" });
       expect(await backend.keepSession!()).toBe(true);
+      // How long a publisher still waits under the hourly limit as the user set it now (2026-11-19).
+      expect(await backend.hourlyWait!("Elsevier")).toEqual({ waitSec: 0, limit: 500 });
+      expect(await backend.hourlyWait!("Wiley")).toEqual({ waitSec: 1200, limit: 100 });
     });
     expect(readLog().filter((row) => row.event === "start")).toHaveLength(1);
     expect(readLog().filter((row) => row.event === "call" && row.tool === "school_keep_session")).toHaveLength(1);
+    expect(readLog().filter((row) => row.event === "call" && row.tool === "school_hourly_wait").map((row) => row.publisher))
+      .toEqual(["Elsevier", "Wiley"]);
     await expectAllChildrenExited();
 
     // A backend without the tool is not asked.
@@ -875,8 +925,9 @@ describe("SchoolMcpClient", () => {
     await fakeClient("batch_browser").withBatchSession(async (backend) => {
       await backend.downloadLegalDoi({ identifier: "10.1000/first", outputDir: tempDir, batch });
       expect(await backend.keepSession!()).toBe(false);
+      expect(await backend.hourlyWait!("Elsevier")).toBeUndefined();
     });
-    expect(readLog().some((row) => row.tool === "school_keep_session")).toBe(false);
+    expect(readLog().some((row) => row.tool === "school_keep_session" || row.tool === "school_hourly_wait")).toBe(false);
     await expectAllChildrenExited();
   });
 
@@ -937,6 +988,15 @@ describe("SchoolMcpClient", () => {
       .split("\n")
       .filter(Boolean)
       .map((line) => JSON.parse(line) as FakeLogEntry);
+  }
+
+  // Cleanup asks the child to stop with SIGTERM first. Windows has no such signal: Node ends the
+  // child at once (TerminateProcess), so the child cannot log it; that cleanup ends it is checked after.
+  function expectSigtermLogged(): void {
+    if (process.platform === "win32") return;
+    expect(readLog()).toContainEqual(
+      expect.objectContaining({ event: "signal", signal: "SIGTERM" }),
+    );
   }
 
   // Cancel only once the fake child has reached the step under test; a fixed delay can fire before

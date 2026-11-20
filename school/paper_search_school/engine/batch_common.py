@@ -17,7 +17,7 @@ import requests
 
 from ..browser import watchdog
 from ..browser.driver import is_driver_error
-from ..browser.challenges import looks_like_challenge
+from ..browser.challenge.detection import looks_like_challenge
 from ..data_home import default_data_dir
 
 
@@ -343,6 +343,8 @@ class DownloadResult:
     events: list[dict[str, str]] = field(default_factory=list)
     #: Supplementary files collected for this article (see supplements.collect).
     supplements: list[dict[str, Any]] = field(default_factory=list)
+    #: --fulltext: the article's saved full-text page (see fulltext_page.save_page).
+    fulltext_page: dict[str, Any] = field(default_factory=dict)
     #: Where a login that waited on the user ended (``_login_wait_page``).
     login_wait_page: str = ""
     #: How the browser of this item started: who held its profile, the wait for

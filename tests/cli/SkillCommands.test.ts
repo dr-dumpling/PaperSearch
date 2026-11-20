@@ -194,7 +194,7 @@ describe("skill CLI commands", () => {
   function runCli(args: string[], extraEnv: NodeJS.ProcessEnv = {}) {
     return spawnSync(
       process.execPath,
-      [join(process.cwd(), "node_modules/.bin/tsx"), "src/cli.ts", ...args],
+      [join(process.cwd(), "node_modules/tsx/dist/cli.mjs"), "src/cli.ts", ...args],
       {
         cwd: process.cwd(),
         env: {

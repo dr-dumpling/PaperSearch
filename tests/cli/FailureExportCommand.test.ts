@@ -25,7 +25,7 @@ describe("failures export CLI", () => {
   afterEach(() => rmSync(root, { force: true, recursive: true }));
 
   function cli(args: string[], command = backend) {
-    return spawnSync(process.execPath, [join(process.cwd(), "node_modules/.bin/tsx"), "src/cli.ts", "failures", ...args], {
+    return spawnSync(process.execPath, [join(process.cwd(), "node_modules/tsx/dist/cli.mjs"), "src/cli.ts", "failures", ...args], {
       env: { ...process.env, HOME: root, XDG_DATA_HOME: join(root, "data"), XDG_CONFIG_HOME: join(root, "config"),
         SCHOOL_DATA_DIR: join(root, "school"), SCHOOL_PYTHON: python,
         PAPER_SEARCH_RUNLOG_DIR: join(root, "runs"), PAPER_SEARCH_RUNLOG: "1",

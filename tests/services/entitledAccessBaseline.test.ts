@@ -3,7 +3,7 @@ import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { CONFIG_KEYS } from "../../src/config/ConfigService.js";
-import { TOOLS } from "../../src/core/tools.js";
+import { toolList } from "../../src/core/tools.js";
 import { buildCapabilityProfile } from "../../src/management/capability-profile/index.js";
 
 const LOCAL_AUTHORIZED_IMPLEMENTATION_PATHS = [
@@ -67,28 +67,34 @@ describe("authorized PDF retrieval boundary", () => {
       "PAPER_SEARCH_SCHOOL_AUTO_UPDATE",
     ]);
 
-    expect(TOOLS.map((tool) => tool.name)).not.toContain("search_wiley");
-    const tool = TOOLS.find((item) => item.name === "download_with_fallback");
-    expect(tool).toBeDefined();
-    expect(Object.keys(tool!.inputSchema.properties || {})).toEqual([
-      "source",
-      "paperId",
-      "doi",
-      "title",
-      "savePath",
-      "useEntitledAccess",
-      "useSciHub",
-      "content",
-      "batch",
-    ]);
-    for (const knob of [
-      "institutional_access",
-      "enableInstitutionalAccess",
-      "institutionalProvider",
-      "authorizedBackend",
-      "school",
-    ]) {
-      expect(tool!.inputSchema.properties).not.toHaveProperty(knob);
+    // Both editions: with PaperSearch Pro's features (the Markdown) and without (src/config/edition.ts).
+    for (const pro of [true, false]) {
+      const tools = toolList(pro);
+      expect(tools.map((tool) => tool.name)).not.toContain("search_wiley");
+      const tool = tools.find((item) => item.name === "download_with_fallback");
+      expect(tool).toBeDefined();
+      const properties = (tool!.inputSchema.properties || {}) as Record<string, unknown>;
+      expect(Object.keys(properties)).toEqual([
+        "source",
+        "paperId",
+        "doi",
+        "title",
+        "savePath",
+        "useEntitledAccess",
+        "useSciHub",
+        "content",
+        ...(pro ? ["markdown"] : []),
+        "batch",
+      ]);
+      for (const knob of [
+        "institutional_access",
+        "enableInstitutionalAccess",
+        "institutionalProvider",
+        "authorizedBackend",
+        "school",
+      ]) {
+        expect(properties).not.toHaveProperty(knob);
+      }
     }
   });
 
@@ -150,10 +156,11 @@ describe("authorized PDF retrieval boundary", () => {
     const srcRoot = join(process.cwd(), "src");
     const adapterRoot = join(
       srcRoot,
-      "capabilities",
-      "pdf-discovery",
+      "infrastructure",
       "school",
     );
+    // A moved folder must move this check too, not leave it passing on nothing (2026-11-17).
+    expect(existsSync(join(adapterRoot, "index.ts"))).toBe(true);
     // Judged by where an import leads, not by its spelling: "../school/runtime.js"
     // from src/management/skills is the management layer's installer, not the adapter.
     const reachesAdapter = (filePath: string, specifier: string) => {

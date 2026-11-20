@@ -1,5 +1,5 @@
 """Publisher-specific behaviour belongs in adapters/: the engine's checks of a
-publisher may only go down (docs/dependencies/institutional-publisher-adapters.zh.md).
+publisher may only go down (docs/dependencies/publisher-rules-pdf.zh.md).
 
 A check is a string in the engine's code (not a docstring, not a comment, not a
 comment line of an embedded script) that names a builtin publisher, by its name,

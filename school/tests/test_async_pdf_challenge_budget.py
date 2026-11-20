@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 from paper_search_school.engine import batch
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_school.publishers.profiles import ELSEVIER_PROFILE
+from tests.thread_clock import this_thread_only
 
 PDF_URL = "https://www.sciencedirect.com/science/article/pii/S0016508524002919/pdfft"
 BODY = b"%PDF-1.7\n" + b"x" * 20000
@@ -35,7 +36,8 @@ class AsyncPdfChallengeBudgetTests(unittest.TestCase):
             clock.sleep(150)  # the user needs two and a half minutes
             return True
 
-        with patch.object(batch.time, "time", clock.time), patch.object(batch.time, "sleep", clock.sleep), \
+        fake_time, fake_sleep = this_thread_only(clock.time, clock.sleep)
+        with patch.object(batch.time, "time", fake_time), patch.object(batch.time, "sleep", fake_sleep), \
              patch.object(d, "_raise_on_publisher_content_error"), \
              patch.object(d, "_is_challenge_page", side_effect=lambda p: next(challenge, False)), \
              patch.object(d, "_wait_for_challenge_with_deadline", side_effect=verification), \

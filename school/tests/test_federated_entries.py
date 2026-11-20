@@ -97,6 +97,27 @@ class InstitutionListRuleTests(unittest.TestCase):
         self.assertEqual(self.result.events[-1]["state"], "auto_institution_not_found")
         self.d._set_select.assert_not_called()
 
+    def test_a_school_list_on_its_own_page_without_the_school_ends_the_login(self):
+        # Thieme: the federation on one page, its schools by entityID on the next (2026-11-14).
+        self.d.config["idp_entity_id"] = "https://idp.c.example/idp/shibboleth"
+        self.d.institution_query = "Third University"
+        self.page.url = "https://profile.thieme.de/HTML/sso/ejournals/shibboleth.htm"
+        self.d._on_publisher_host = Mock(return_value=True)
+        schools = [[f"https://idp.s{n}.example/idp/shibboleth", f"School {n}"] for n in range(6)]
+        self.d._page_selects = Mock(return_value=[school_list(schools, "#idp", 0)])
+        self.assertFalse(self.d._select_from_institution_lists(self.page, self.result))
+        self.assertTrue(self.result._institution_not_listed)
+        self.assertEqual(self.result.events[-1]["state"], "auto_institution_not_found")
+        # Its school there: chosen as before; a short list says nothing.
+        result = DownloadResult(doi="10.1055/x", status="failed")
+        self.d.config["idp_entity_id"] = schools[2][0]
+        self.assertTrue(self.d._select_from_institution_lists(self.page, result))
+        self.d.config["idp_entity_id"] = "https://idp.c.example/idp/shibboleth"
+        short = DownloadResult(doi="10.1055/y", status="failed")
+        self.d._page_selects = Mock(return_value=[school_list(schools[:3], "#idp", 0)])
+        self.assertFalse(self.d._select_from_institution_lists(self.page, short))
+        self.assertFalse(getattr(short, "_institution_not_listed", False))
+
     def test_a_list_still_loading_waits_for_the_next_pass(self):
         federation = school_list(self.FEDERATION, "#FederationDropdown", 0, value="11")
         self.d._page_selects = Mock(return_value=[federation, school_list([["", "Select"]], disabled=True)])
@@ -269,6 +290,49 @@ class FederatedEntryTests(unittest.TestCase):
         self.assertFalse(self.page.evaluate("() => document.querySelector('[name=remember]') === null"))
         self.assertEqual([e["state"] for e in result.events][:3],
                          ["institution_federation_selected", "institution_selected", "institution_list_submitted"])
+
+    # JAMA 2026-11-17: the hidden CARSI list names a few schools; the search box shown above
+    # it finds others (a school picked there by hand signed in).
+    JAMA_SEARCH_PAGE = """<title>Sign in via Shibboleth</title><form id="aspnetForm">
+          <input type="text" class="js-sa-institution-search sa-searchtextbox" oninput="
+            document.querySelector('#found').innerHTML = this.value.length > 5 && 'Example University'.startsWith(this.value)
+              ? `<li><a class='sa-institutionslink' onclick=&quot;location.href='/go?idp=sa'&quot;>Example University</a></li>` : '';">
+          <input type="checkbox" class="advancedSACheckbox"> Remember my institution
+          <ul id="found"></ul>
+          <select id="ddlFederations" style="display:none" onchange="setTimeout(() => {
+              document.querySelector('#ddlInstitutions').innerHTML = this.value === '49'
+                ? `<option value=''>Select Institution</option><option value='https://idp.b.example/idp/shibboleth'>Other University</option>`
+                  + `<option value='https://idp.c.example/idp/shibboleth'>Third University</option>` : '';
+            }, 300)">
+            <option value="">Select Federation</option><option value="49">China (CARSI)</option></select>
+          <select id="ddlInstitutions" style="display:none"></select>
+          <p>Find your institution by entering it in the field above.</p></form>"""
+
+    def test_a_hidden_list_without_the_school_beside_a_search_box_leaves_it_to_the_search(self):
+        self.html = self.JAMA_SEARCH_PAGE
+        self.page.goto("https://jamanetwork.com/signinshibboleth?returnUrl=%2Fjournals%2Fjama%2Ffullarticle%2F1")
+        d = self.downloader("jama", school_name="示例大学", school_name_en="Example University")
+        d.LIST_WAIT_SEC = 1
+        result = DownloadResult(doi="10.1001/jama.1", status="failed")
+        self.assertTrue(d._select_institution(self.page, result))
+        self.page.wait_for_url("**/go?idp=sa")
+        self.assertFalse(getattr(result, "_institution_not_listed", False))
+        states = [e["state"] for e in result.events]
+        self.assertIn("institution_list_lacks_school", states)
+        self.assertNotIn("auto_institution_not_found", states)
+        self.assertEqual(states[-4:], ["auto_institution_search", "auto_institution_entry", "institution_selected",
+                                       "institution_entry_data"])
+
+    def test_a_hidden_list_without_the_school_and_no_search_box_settles_it(self):
+        self.html = self.JAMA_SEARCH_PAGE.replace('<input type="text" class="js-sa-institution-search sa-searchtextbox"',
+                                                  '<input type="hidden" class="js-sa-institution-search"')
+        self.page.goto("https://jamanetwork.com/signinshibboleth?returnUrl=%2Fjournals%2Fjama%2Ffullarticle%2F1")
+        d = self.downloader("jama")
+        d.LIST_WAIT_SEC = 1
+        result = DownloadResult(doi="10.1001/jama.1", status="failed")
+        self.assertFalse(d._select_institution(self.page, result))
+        self.assertTrue(result._institution_not_listed)
+        self.assertIn("auto_institution_not_found", [e["state"] for e in result.events])
 
     def test_hidden_school_submit_is_used_before_an_unrelated_visible_store_link(self):
         """The institution form's native controls can all be behind a custom UI."""

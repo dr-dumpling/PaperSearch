@@ -27,6 +27,7 @@ class OxfordLoginRetryTests(unittest.TestCase):
         self.d.adapter.advance_login = Mock(return_value=True)
         self.state = 'publisher_login'
         self.d.adapter.login_state = Mock(side_effect=lambda page, deadline=None: self.state)
+        self.d._school_side_steps = Mock(return_value=False)  # nothing the program does itself on these pages
 
     def wait(self, milliseconds):
         self.now += milliseconds / 1000
@@ -44,6 +45,28 @@ class OxfordLoginRetryTests(unittest.TestCase):
         self.assertTrue(self.d.adapter.is_institution_chooser(
             'https://oup2-ds.sams-sigma.com/?entityID=https%3A%2F%2Foup-sp.sams-sigma.com%2Fshibboleth'))
         self.assertFalse(self.d.adapter.is_institution_chooser('https://oup-sp.sams-sigma.com/Shibboleth.sso/Login'))
+
+    def test_a_list_without_the_school_ends_the_login_at_once(self):
+        # SAMS Sigma's list had no entry for the school: the finding was made each second
+        # and the login waited out its whole budget (2026-11-17).
+        self.state = 'institution_chooser'
+        self.d._select_institution = Mock(side_effect=lambda page, result: setattr(result, '_institution_not_listed', True))
+        self.assertFalse(self.d.adapter.complete_login(self.page, self.result))
+        self.assertEqual(self.result.reason, 'institution_federation_unavailable')
+        self.d._select_institution.assert_called_once()
+        self.assertLess(self.now, 5)
+
+    def test_the_schools_own_steps_are_taken_on_oxfords_way_too(self):
+        # A school tested, through SAMS Sigma (2026-11-19): the school's 信息释放, agreed to on every other
+        # publisher's way, waited for the user here.
+        self.state = 'human_login'
+        def agreed(page, result):
+            self.state = 'article_ready'
+            return True
+        self.d._school_side_steps = Mock(side_effect=agreed)
+        self.assertTrue(self.d.adapter.complete_login(self.page, self.result))
+        self.d._school_side_steps.assert_called_once_with(self.page, self.result)
+        self.assertNotIn('human_login', self.events('login_observed'))  # nothing left for the user
 
     def test_an_away_user_ends_the_wait_on_their_page_after_the_short_wait(self):
         self.d.config['user_wait'] = 'short'
@@ -63,6 +86,16 @@ class OxfordLoginRetryTests(unittest.TestCase):
         self.assertTrue(all(call.args[0] is self.page for call in self.d.adapter.login_state.call_args_list))
         self.page.context.new_page.assert_not_called()
         self.assertLessEqual(self.now, 200)
+
+    def test_an_untaken_click_on_the_sign_in_control_is_repeated_soon(self):
+        # The control did nothing on its first click just after the verification page
+        # (Windows and Mac, 2026-11-17): clicked again every 10 s, twice at most, within
+        # a 45 s login instead of waiting out the stall.
+        self.d.login_timeout_sec = 45
+        self.assertFalse(self.d.adapter.complete_login(self.page, self.result))
+        self.assertEqual(self.d.adapter.advance_login.call_count, 3)
+        self.page.goto.assert_not_called()
+        self.assertEqual(self.result.reason, 'login_timeout')
 
     def test_manual_login_can_finish_after_the_original_deadline(self):
         self.d.config['user_wait'] = 'short'

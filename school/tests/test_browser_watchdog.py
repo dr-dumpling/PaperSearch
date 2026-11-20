@@ -98,6 +98,16 @@ class WatchdogTests(unittest.TestCase):
                     self.assertEqual(min(b[0] for b in watchdog._local.budgets), 260)
             self.assertEqual(watchdog._local.budgets, [])
 
+    def test_data_still_arriving_extends_every_budget_never_shortens_one(self):
+        clock = [100.0]
+        with patch.object(watchdog.time, "monotonic", side_effect=lambda: clock[0]):
+            with watchdog.operation(60, "_capture_pdf"), watchdog.operation(300, "outer"):
+                clock[0] = 150
+                watchdog.extend_operation(45)
+                self.assertEqual(watchdog._local.budgets, [[195, "_capture_pdf"], [400, "outer"]])
+            watchdog.extend_operation(45)  # no budget: nothing to extend
+            self.assertEqual(watchdog._local.budgets, [])
+
     def test_stacks_go_to_the_stack_file(self):
         from paper_search_school import log
         with patch.object(log, "_stack_file", None):
@@ -285,6 +295,22 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(saved["events"], [{"state": "unexpected_exception",
                                             "detail": "RuntimeError: ego relay closed the connection"}])
         self.assertIn("RuntimeError", saved["traceback"])
+
+    def test_a_lost_driver_is_reported_so_the_client_starts_a_new_backend(self):
+        """Windows, 2026-11-18: the driver went away under a Cell paper, and every later
+        call of the process failed at once; both errors are builtin classes."""
+        import tempfile
+        for error in (Exception("Locator.text_content: Connection closed while reading from the driver"),
+                      RuntimeError(": no running event loop")):
+            with self.subTest(error=str(error)), tempfile.TemporaryDirectory() as tmp:
+                downloader = MagicMock()
+                downloader.fetch_one.side_effect = error
+                with patch("paper_search_school.engine.batch.PublisherBatchDownloader", return_value=downloader), \
+                        patch("paper_search_school.browser.backend.is_available", return_value=True):
+                    out = bridge._try_browser_batch_download("10.1016/j.cell.2025.06.001", Path(tmp) / "x.pdf",
+                                                             {}, get_publisher_profile("elsevier"))
+                self.assertEqual((out["error_type"], out["artifacts"]["state"], out["action"]),
+                                 ("browser_connection_lost", "browser_connection_lost", "review_browser"))
 
     def test_startup_watchdog_keeps_its_specific_failure_class(self):
         import json

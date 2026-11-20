@@ -15,13 +15,18 @@ from urllib.parse import urljoin, urlparse
 from ...browser.driver import is_driver_error
 from ...engine.batch_common import open_page
 from ..base import register
-from ..platforms.silverchair import SilverchairAdapter
+from ..platforms.silverchair import SILVERCHAIR_FULLTEXT_IMAGES_JS, SILVERCHAIR_FULLTEXT_SHOWN_JS, SilverchairAdapter
 
 
 @register
 class KargerAdapter(SilverchairAdapter):
     publisher = "karger"
     site_hosts = frozenset({"karger.com"})
+
+    # --fulltext: Silverchair's article page (platforms/silverchair), verified on two
+    # Case Reports in Oncology pages (2026-11-14).
+    fulltext_shown_js = SILVERCHAIR_FULLTEXT_SHOWN_JS
+    fulltext_images_js = SILVERCHAIR_FULLTEXT_IMAGES_JS
 
     def open_institution_entry(self, page: Any, result: Any) -> bool | None:
         d = self.d

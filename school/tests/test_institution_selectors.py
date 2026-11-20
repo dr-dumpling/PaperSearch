@@ -34,7 +34,7 @@ class NoBuiltinSchoolTests(unittest.TestCase):
 
     def test_engine_routes_and_data_name_no_school(self):
         files = list((SRC / "engine").glob("*.py"))
-        files += [SRC / "carsi_schools.py", SRC / "cli.py", SRC / "config.py"]
+        files += [SRC / "federations" / "carsi.py", SRC / "cli.py", SRC / "config.py"]
         files += list((SRC / "data").glob("*.json"))
         for path in files:
             self.assertIsNone(self.FORBIDDEN.search(path.read_text(encoding="utf-8")), path.name)
@@ -145,8 +145,21 @@ class EntityIdEntryTests(unittest.TestCase):
         d, page = self.chooser(items)
         self.assertTrue(d._click_unique_institution_entry(page, DownloadResult(doi="10.1/x", status="failed"), page.url))
         page.locator.assert_called_with("[data-paper-search-entry]")
-        page.locator.return_value.first.click.assert_called_once_with(timeout=3_000)
+        page.locator.return_value.first.click.assert_called_once_with(timeout=3_000, no_wait_after=True)
         self.assertEqual(page.evaluate.call_count, 2)  # entries, then marking the entry
+        # A click whose navigation is slow to start is not a failed click (Oxford, 2026-11-17:
+        # waiting for it timed out, and the script's click on the leaving page stalled 34 s).
+        d, page = self.chooser(items)
+
+        def click(timeout, no_wait_after=False):
+            if not no_wait_after:
+                raise PlaywrightTimeout("Locator.click: Timeout 3000ms exceeded. waiting for scheduled navigations to finish")
+
+        page.locator.return_value.first.click.side_effect = click
+        result = DownloadResult(doi="10.1/x", status="failed")
+        self.assertTrue(d._click_unique_institution_entry(page, result, page.url))
+        self.assertEqual(page.evaluate.call_count, 2)
+        self.assertNotIn("institution_select_error", [e["state"] for e in result.events])
         d, page = self.chooser(items)
         page.evaluate.side_effect = [items, True, True]
         page.locator.return_value.first.click.side_effect = PlaywrightTimeout("Locator.click: Timeout 3000ms exceeded.")

@@ -14,17 +14,31 @@ import time
 from datetime import datetime
 from typing import Any
 
-CONTENT_LABELS = {"main": "正文", "supplements": "附录", "both": "正文+附录"}
-# The step of the main text, as the status line says it ("正文 · 正在获取 PDF").
+# The kinds of a paper the download fetches, as the window names them, in this order and
+# joined by "、" (user, 2026-11-15: "PDF", not "正文"; "补充材料", not "附录").
+CONTENT_LABELS = {"main": "PDF", "markdown": "Markdown", "supplements": "补充材料"}
+PARTS = ("main", "supplements", "markdown")
+_CONTENT_KINDS = {"main": ("main",), "supplements": ("supplements",), "both": ("main", "supplements"),
+                  "markdown": ("markdown",)}
+
+
+def content_label(content: str, markdown: bool = False) -> str:
+    """"PDF、Markdown、补充材料": the kinds a download fetches (``content`` and the Markdown)."""
+    kinds = set(_CONTENT_KINDS.get(content, ("main",))) | ({"markdown"} if markdown else set())
+    return "、".join(label for kind, label in CONTENT_LABELS.items() if kind in kinds)
+# The step of the article's visit, as the status line says it ("PDF · 正在下载").
 STAGE_TEXT = {
     "starting": "准备中", "opening_article": "正在打开文章", "checking_access": "正在检查访问权限",
-    "waiting_login": "等待机构登录", "waiting_verification": "等待人机验证", "fetching_pdf": "正在获取 PDF",
-    "pdf_captured": "已读到 PDF，正在核对", "saved_pending_verification": "已保存",
+    "waiting_login": "等待机构登录", "waiting_verification": "等待人机验证", "fetching_pdf": "正在下载",
+    "pdf_captured": "已读到，正在核对", "saved_pending_verification": "已保存",
+    "access_ready": "已确认访问，未取 PDF",
     "route_failed": "这条路没走通，正在换路",
-    "supplements_checked": "附录检查完成",
+    "supplements_checked": "补充材料检查完成",
 }
 # The capsule's five steps of one paper, and where each stage sits on them.
-STEPS = ("打开文章", "权限", "取 PDF", "核对", "附录")
+STEPS = ("打开文章", "权限", "取 PDF", "核对", "补充材料")
+# A visit for the Markdown alone: the same first two steps, then the page's read (2026-11-16).
+MARKDOWN_STEPS = ("打开文章", "权限", "读全文网页")
 STAGE_STEP = {
     "starting": (0, "准备中"), "opening_article": (0, "打开文章"),
     "checking_access": (1, "检查权限"), "waiting_login": (1, "等待登录"),
@@ -47,7 +61,7 @@ TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled", "interrupted"})
 MAX_REASON_ROWS = 5
 OPEN_FAILURES_UP_TO = 3
 MAX_LISTED_PAPERS = 200
-CLASS_ORDER = ("no_access", "user_or_external", "unsupported", "unexplained")
+CLASS_ORDER = ("no_access", "user_side", "school_side", "publisher_or_network", "article_or_site", "unsupported", "unexplained")
 DEFAULT_LINGER_SECONDS = 8.0
 NOTICE_SECONDS = 10.0  # how long the download's answer to a click stays on screen
 
@@ -104,17 +118,22 @@ def fmt_clock(seconds: float) -> str:
 
 def status_text(state: dict[str, Any], running: bool) -> str:
     """The status line: which part of the paper is being fetched and how far,
-    "正文 · 正在获取 PDF" or "附录 · 已保存 2/5"; between papers, the phase."""
+    "PDF · 正在下载", "Markdown · 正在读取全文网页" or "补充材料 · 已保存 2/5"; between
+    papers, the phase."""
     phase = str(state.get("phase") or ("处理中" if running else ""))
     part = str(state.get("part") or "")
-    if not running or state.get("awaiting_next") or part not in ("main", "supplements"):
+    if not running or state.get("awaiting_next") or part not in PARTS:
         return phase
+    if part == "markdown" and state.get("page_reading"):
+        return "Markdown · 正在读取全文网页"
+    if part == "markdown" and state.get("stage") == "access_ready":
+        return "Markdown · 全文网页已读取"
     if part == "supplements":
         total = state.get("supplements_total")
         if not isinstance(total, int):
-            return "附录 · 正在查找附录文件"
-        return f"附录 · 已保存 {int(state.get('supplements_saved') or 0)}/{total}"
-    return "正文 · " + STAGE_TEXT.get(str(state.get("stage") or ""), phase)
+            return "补充材料 · 正在查找文件"
+        return f"补充材料 · 已保存 {int(state.get('supplements_saved') or 0)}/{total}"
+    return f"{CONTENT_LABELS[part]} · " + STAGE_TEXT.get(str(state.get("stage") or ""), phase)
 
 
 def attention_items(state: dict[str, Any]) -> list[dict[str, Any]]:
@@ -180,36 +199,62 @@ def _reason_groups(failures: list[dict[str, Any]], open_up_to: int) -> list[dict
     return groups
 
 
+def failed_title(content: Any) -> str:
+    """What a batch's failed papers did not get, as their section and list say it: the PDF,
+    else (a batch of the Markdown or the files alone) those. "未完成" beside "Markdown 未生成"
+    did not say it was the PDF (user, 2026-11-17)."""
+    return {"markdown": "Markdown 未生成", "supplements": "补充材料未下到"}.get(str(content or ""), "PDF 未下到")
+
+
 def summary_view(results: Any) -> dict[str, Any] | None:
     """The finished card's lists, from the caller's end-of-batch summary.
 
     ``groups``: the papers without their main text, by reason (supplements-only
     batches: without their files); ``supplement_groups``: papers whose main text
     was saved but not every supplementary file (content "both"), by reason, all
-    closed to keep the card short (user, 2026-11-08); ``saved``: up to two short
+    closed to keep the card short (user, 2026-11-08); ``markdown_groups``: papers
+    saved without the Markdown asked for, the same way (a group of pages from sites not yet
+    supported is marked ``unverified``); ``saved``: up to two short
     lines on what was saved and where it came from (no line wraps in the narrow card)."""
     if not isinstance(results, dict):
         return None
     failures = [f for f in results.get("failures") or [] if isinstance(f, dict)]
     shortfalls = [f for f in results.get("supplement_failures") or [] if isinstance(f, dict)]
+    no_markdown = [f for f in results.get("markdown_failures") or [] if isinstance(f, dict)]
+    # Saved with a Markdown its checks found short: to look over, not failed (user, 2026-11-17).
+    doubts = [{**f, "cls": "doubt"} for f in results.get("markdown_doubts") or [] if isinstance(f, dict)]
     groups = _reason_groups(failures, OPEN_FAILURES_UP_TO)
     supplement_groups = _reason_groups(shortfalls, 0)
+    # Saved without their Markdown, by reason, closed as the files' rows (2026-11-15).
+    markdown_groups = _reason_groups(no_markdown, 0)
+    # Pages from sites not yet supported: their group carries the note and the report
+    # buttons (user, 2026-11-16).
+    for listed, grouped in ((failures, groups), (no_markdown, markdown_groups)):
+        flagged = {(str(f.get("cls")), str(f.get("reason"))) for f in listed if f.get("unverified")}
+        for item in grouped:
+            if (item["cls"], item["reason"]) in flagged:
+                item["unverified"] = True
 
     content = results.get("content")
     main, files = _count(results.get("main")), _count(results.get("supplements"))
     if content == "supplements":
-        first = [f"附录 {files} 个"]
+        first = ([f"Markdown {_count(results.get('markdown'))} 篇"] if "markdown" in results else []) + [f"补充材料 {files} 个"]
         none_listed = _count(results.get("no_supplements"))
         if none_listed:
-            first.append(f"{none_listed} 篇未列出附录")
+            first.append(f"{none_listed} 篇没有补充材料")
     else:
-        first = [f"正文 {main} 篇"] + ([f"附录 {files} 个"] if content == "both" else [])
+        # A batch of the Markdown alone counts its packages.
+        first = [f"{'Markdown' if content == 'markdown' else 'PDF'} {main} 篇"] + (
+            [f"Markdown {_count(results.get('markdown'))} 篇"] if "markdown" in results and content != "markdown" else []) + (
+            [f"补充材料 {files} 个"] if content == "both" else [])
     details = results.get("source_details") if isinstance(results.get("source_details"), dict) else {}
     sources = [f"{s[0]} {_count(s[1])}" + (f"（{details[s[0]]}）" if details.get(s[0]) else "")
                for s in results.get("sources") or [] if isinstance(s, list) and len(s) == 2 and _count(s[1])]
     saved = [" · ".join(first)] + ([" · ".join(sources)] if sources and content != "supplements" else [])
     return {"groups": groups, "supplement_groups": supplement_groups, "supplement_missing": len(shortfalls),
-            "saved": saved}
+            "markdown_groups": markdown_groups, "markdown_missing": len(no_markdown),
+            "doubt_groups": _reason_groups(doubts, 0), "markdown_doubtful": len(doubts),
+            "failed_title": failed_title(content), "saved": saved}
 
 
 OPEN_DOWNLOAD = "开放下载"
@@ -257,8 +302,8 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
     files_alone = [p for p in papers if p.get("state") == "ok" and "supplements_saved" in p]
     if files_alone:
         got = [row(p, p.get("journal")) for p in files_alone if _count(p.get("supplements_saved"))]
-        none = [row(p, p.get("journal"), "没有附录") for p in files_alone if not _count(p.get("supplements_saved"))]
-        saved = [group(label, rows) for label, rows in (("补上附录", got), ("没有附录（已核对）", none)) if rows]
+        none = [row(p, p.get("journal"), "没有补充材料") for p in files_alone if not _count(p.get("supplements_saved"))]
+        saved = [group(label, rows) for label, rows in (("补上补充材料", got), ("没有补充材料（已核对）", none)) if rows]
         by_way = {}
     for way, items in sorted(by_way.items(), key=lambda kv: -len(kv[1])):
         details: dict[str, int] = {}
@@ -269,7 +314,16 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
         saved.append(group(label, [row(p, p.get("journal"), (p.get("detail") or "开放获取") if way == OPEN_DOWNLOAD else "")
                                    for p in items]))
 
-    failed = _reason_groups([{**p, "note": ""} for p in papers if p.get("state") == "failed"], 0)
+    # A batch of the Markdown alone fails a paper for its Markdown: a site not yet supported's
+    # note stands in for the journal, as on the finished card (user, 2026-11-16).
+    markdown_alone = state.get("content") == "markdown"
+
+    def site_note(paper: dict[str, Any]) -> dict[str, Any]:
+        note = str(paper.get("markdown_note") or "")
+        return {"note": note, "journal": "" if note else paper.get("journal")}
+
+    failed_papers = [p for p in papers if p.get("state") == "failed"]
+    failed = _reason_groups([{**p, **(site_note(p) if markdown_alone else {"note": ""})} for p in failed_papers], 0)
     for item in failed:
         item.update(label=item["reason"])
     # As on the finished card, while the batch runs too (user, 2026-11-11).
@@ -277,6 +331,25 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
                             for p in papers if p.get("state") == "ok" and p.get("supplement_reason")], 0)
     for item in short:
         item.update(label=item["reason"], supplement=True)
+    # Saved without the Markdown asked for, after the supplementary files (user, 2026-11-16).
+    no_markdown = [p for p in papers if p.get("state") == "ok" and p.get("markdown_reason")]
+    markdown = _reason_groups([{**p, "cls": p.get("markdown_cls"), "reason": p["markdown_reason"], **site_note(p)}
+                               for p in no_markdown], 0)
+    for item in markdown:
+        item.update(label=item["reason"], markdown=True)
+    # Saved with a Markdown its checks found short, last: to look over (user, 2026-11-17).
+    doubt = _reason_groups([{**p, "cls": "doubt", "reason": p["markdown_doubt_reason"], "note": p.get("markdown_doubt_note") or ""}
+                            for p in papers if p.get("state") == "ok" and p.get("markdown_doubt_reason")], 0)
+    for item in doubt:
+        item.update(label=item["reason"], doubt=True)
+    # The groups of pages from sites not yet supported: the window's note and report buttons.
+    unverified = {(str(p.get("markdown_cls") if p.get("state") == "ok" else p.get("cls")),
+                   str(p.get("markdown_reason") if p.get("state") == "ok" else p.get("reason")))
+                  for p in (no_markdown + (failed_papers if markdown_alone else []))
+                  if p.get("markdown_host") and not p.get("markdown_saved")}
+    for item in (failed if markdown_alone else []) + markdown:
+        if (item["cls"], item["reason"]) in unverified:
+            item["unverified"] = True
 
     waiting: dict[str, list[dict[str, Any]]] = {key: [] for key, _ in LEFT_GROUPS}
     for paper in papers:
@@ -298,9 +371,44 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
             left = [group("未处理", undone)]
     if stopped:
         left.append(group("已终止，未处理", stopped))
-    missing = first_open(failed + short)
-    missing.update(count=sum(item["count"] for item in failed), supplement_count=sum(item["count"] for item in short))
+    missing = first_open(failed + short + markdown + doubt)
+    missing.update(count=sum(item["count"] for item in failed), supplement_count=sum(item["count"] for item in short),
+                   markdown_count=sum(item["count"] for item in markdown), doubt_count=sum(item["count"] for item in doubt),
+                   failed_title=failed_title(state.get("content")))
     return {"ok": first_open(saved), "failed": missing, "left": first_open(left)}
+
+
+def unverified_sites(listed: Any, state: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The sites not yet supported this batch's pages came from (user, 2026-11-16), for the
+    line in the running card: ``hosts`` (most papers first), how many papers' Markdown was
+    ``saved`` (converted completely and checked), ``unsaved`` (tried, not complete) and
+    ``skipped`` (not tried: the batch gave the site up after its first three failed), and
+    whose rules converted their pages or came closest, ``rules`` (most papers first; none
+    when no rules read a page): the card says which were borrowed (user, 2026-11-17)."""
+    if not isinstance(listed, dict) or not state or listed.get("batch_id") != state.get("batch_id"):
+        return None
+    counts: dict[str, int] = {}
+    rules: dict[str, int] = {}
+    saved = unsaved = skipped = 0
+    for paper in (listed.get("papers") or {}).values():
+        if not isinstance(paper, dict) or not paper.get("markdown_host"):
+            continue
+        counts[str(paper["markdown_host"])] = counts.get(str(paper["markdown_host"]), 0) + 1
+        if paper.get("markdown_rules"):
+            rules[str(paper["markdown_rules"])] = rules.get(str(paper["markdown_rules"]), 0) + 1
+        if paper.get("markdown_saved"):
+            saved += 1
+        elif paper.get("markdown_skipped"):
+            skipped += 1
+        else:
+            unsaved += 1
+    if not counts:
+        return None
+    def most_first(tally: dict[str, int]) -> list[str]:
+        return [name for name, _ in sorted(tally.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+    return {"hosts": most_first(counts), "saved": saved, "unsaved": unsaved, "skipped": skipped,
+            **({"rules": most_first(rules)} if rules else {})}
 
 
 # The longest publisher name the hourly-limit notice keeps on one line, in zh and en,
@@ -367,10 +475,10 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
         mode, tone, headline = "done", "ok", "下载完成"
 
     part_key = str(state.get("part") or "")
-    if running and not awaiting and part_key in ("main", "supplements"):
+    if running and not awaiting and part_key in PARTS:
         part = CONTENT_LABELS[part_key]
     else:
-        part = CONTENT_LABELS.get(str(state.get("content") or "main"), CONTENT_LABELS["main"])
+        part = content_label(str(state.get("content") or "main"), bool(state.get("markdown")))
     # Before any publisher (the caller's open-access stretch), the channel stands in.
     publisher = str(state.get("publisher") or "") or str(state.get("channel") or "")
     journal = str(state.get("journal") or "")
@@ -380,11 +488,23 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
         publisher = journal = current = title = ""  # the last paper is over
 
     step = None
+    steps = STEPS
     if running and not attention and not awaiting:
-        if part_key == "supplements":
+        if part_key == "markdown":
+            # Its steps as a PDF's are shown, up to the page's read (it had none, 2026-11-16).
+            steps = MARKDOWN_STEPS
+            stage = str(state.get("stage") or "")
+            if state.get("page_reading"):
+                step = {"index": 2, "label": "读全文网页"}
+            elif stage == "access_ready":
+                step = {"index": 2, "label": "全文网页已读取"}
+            elif stage in STAGE_STEP and STAGE_STEP[stage][0] <= 1:
+                index, label = STAGE_STEP[stage]
+                step = {"index": index, "label": label}
+        elif part_key == "supplements":
             found = state.get("supplements_total")
-            label = (f"附录 {_count(state.get('supplements_saved'))}/{found}"
-                     if isinstance(found, int) else "查找附录")
+            label = (f"补充材料 {_count(state.get('supplements_saved'))}/{found}"
+                     if isinstance(found, int) else "查找补充材料")
             step = {"index": 4, "label": label}
         elif part_key == "main" and str(state.get("stage") or "") in STAGE_STEP:
             index, label = STAGE_STEP[str(state.get("stage"))]
@@ -449,7 +569,7 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
         "where": " · ".join(v for v in (journal, publisher) if v),
         "title": title, "current": current,
         "run_id": str(state.get("run_id") or ""),
-        "step": step, "steps": list(STEPS), "line": line,
+        "step": step, "steps": list(steps), "line": line,
         "elapsed": elapsed, "attention": prompt, "notice": notice, "hold": bool(hold),
         "completion_detail": str(state.get("phase") or "")
             if not running and state.get("stage") == "supplements_checked" else "",

@@ -48,7 +48,21 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # 浏览器后端，二选一：chrome（默认，本机安装的 Google Chrome，经 Patchright 驱动）
     # 或 ego（正在运行的 ego-lite 浏览器，经远程调试连接）。旧值 camoufox/patchright/cloakbrowser 自动按 chrome 处理。
     "browser_backend": "chrome",
-    # 装在别处的 Google Chrome 的程序路径；留空时在默认安装位置找。
+    # 下载浏览器的语言（页面显示和发给网站的语言偏好）。默认英文：出版社和学校登录页按英文测过，
+    # 在谁的电脑上看到的都是同一套页面（用户 2026-11-19）。留空则跟随系统。
+    "browser_language": "en-US",
+    # 首次在本站点下载前先打开它的首页一次：让站点在文章地址之前读到本站的第一方
+    # 文档（Cloudflare 的 precursor clearance 按会话行为累积，用户 2026-11-18 定）。
+    "browser_session_warmup": True,
+    # 学校登录（会话 cookie）保存多久还恢复到下一个浏览器（小时）。每篇用一个新浏览器，
+    # 登录只靠这份记录接上；真正何时失效由学校那边决定（用户 2026-11-19，原来 12 小时）。
+    "browser_login_session_max_age_hours": 720,
+    # attach 后端：填正在运行的 Chrome 的远程调试地址（如 http://127.0.0.1:9222），
+    # 程序只接管自己打开的标签页、不关闭这个浏览器；留空则不使用。
+    # Chrome 136 起远程调试必须配非默认 --user-data-dir，不能用日常的 Chrome 数据目录：
+    # 用一个专用目录启动（登录学校、过一次验证后长期复用）。
+    "browser_attach_url": "",
+    # 装在本仓库之外的 Google Chrome 的程序路径；留空时在默认安装位置找。
     "chrome_executable": "",
     # 批量下载时每 N 篇回收一次浏览器上下文（cookie 内存交接，登录态不丢）。
     # 0 = 关闭。长批次（上千篇）建议 100-200，避免 Chrome 长会话内存漂移。
@@ -68,6 +82,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "browser_stall_notify_after": 30,
     # 每个出版社每小时最多打开的文章数，防止学校因下载过多被出版社暂停访问；0 = 不限。
     "publisher_hourly_limit": 100,
+    # 改了上面的上限时，正在等上限的篇目是否立即按新上限接着下；false = 这一小时过后再按新上限。
+    "publisher_hourly_limit_now": False,
     # 灰色源竞速浏览器的独立无头开关（只影响 sci-hub 竞速，机构登录仍有可见窗口）。
     # true = 竞速全程零窗口、零任务栏闪烁；指纹安全性由 UA 清洗保证。
     "scihub_browser_headless": False,
@@ -134,6 +150,11 @@ def save_config(config: dict[str, Any]) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with CONFIG_FILE.open("w", encoding="utf-8") as fh:
         json.dump(config, fh, indent=2, ensure_ascii=False)
+    try:
+        # Readable by the user only: it may hold a school's account (school_login.py).
+        CONFIG_FILE.chmod(0o600)
+    except OSError:
+        pass
 
 
 _VALIDATION_RULES: dict[str, tuple[type, Any, Any]] = {
@@ -145,6 +166,7 @@ _VALIDATION_RULES: dict[str, tuple[type, Any, Any]] = {
     "request_delay_max": (float, 0.0, 60.0),
     "json_probe_cache_seconds": (int, 0, 86400),
     "cache_ttl_hours": (int, 1, 8760),
+    "browser_login_session_max_age_hours": (int, 1, 8760),
 }
 
 
@@ -206,6 +228,8 @@ def update_config(key: str, value: str) -> dict[str, Any]:
 SENSITIVE_KEYS = [
     "elsevier_api_key",
     "elsevier_insttoken",
+    # The schools' accounts for PaperSearch Pro's sign-in (school_login.py).
+    "school_logins",
 ]
 
 # The list above is for names that do not advertise themselves. Everything else

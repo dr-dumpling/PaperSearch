@@ -1,16 +1,17 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "@jest/globals";
-import { downloadBatch } from "../../src/capabilities/pdf-discovery/batch.js";
-import type { DownloadTier } from "../../src/capabilities/pdf-discovery/DownloadTier.js";
-import { normalizeDownloadResult } from "../../src/capabilities/pdf-discovery/school/SchoolResultNormalizer.js";
-import { selectSchoolBatchSupport } from "../../src/capabilities/pdf-discovery/school/SchoolReadiness.js";
-import type { SchoolBackend, SchoolBatchUpdate, SchoolDownloadRequest } from "../../src/capabilities/pdf-discovery/school/index.js";
-import { fetchSupplementsOnly } from "../../src/capabilities/pdf-discovery/tiers/entitledAccess.js";
-import { decodeSchoolProgress } from "../../src/capabilities/pdf-discovery/school/SchoolProgress.js";
+import { downloadBatch } from "../../src/capabilities/download/batch/batch.js";
+import type { DownloadTier } from "../../src/capabilities/download/content/pdf/DownloadTier.js";
+import { normalizeDownloadResult } from "../../src/infrastructure/school/SchoolResultNormalizer.js";
+import { selectSchoolBatchSupport } from "../../src/infrastructure/school/SchoolReadiness.js";
+import type { SchoolBackend, SchoolBatchUpdate, SchoolDownloadRequest } from "../../src/infrastructure/school/index.js";
+import { fetchSupplementsOnly } from "../../src/capabilities/download/content/supplements/fetch.js";
+import { decodeSchoolProgress } from "../../src/infrastructure/school/SchoolProgress.js";
 
 const toolResult = (payload: unknown) => ({ content: [{ type: "text", text: JSON.stringify(payload) }] });
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 describe("supplementary files", () => {
   it.each([
@@ -45,14 +46,16 @@ describe("supplementary files", () => {
       expect(requests.map(r => r.batch)).toEqual([
         { id: result.batchId, index: 1, total: 3, done: 0, succeeded: 0, failed: 0 },
         { id: result.batchId, index: 2, total: 3, done: 1, succeeded: 1, failed: 0 },
+        // With its PDF a paper whose file failed counts by the PDF (the file shows in the 失败
+        // list); with supplementary files alone, the files are the paper.
         { id: result.batchId, index: 3, total: 3, done: 2,
-          succeeded: mode === "per_item" ? 2 : 1, failed: mode === "per_item" ? 0 : 1 },
+          succeeded: content === "both" ? 2 : 1, failed: content === "both" ? 0 : 1 },
       ]);
       expect(requests.every(r => r.supplements === "only")).toBe(true);
       // The last visit ends the attachment stretch; then the batch's outcome for the finished window.
       expect(sequence).toEqual(["visit:10.1000/a", "visit:10.1000/b", "visit:10.1000/c", "finished", "finished"]);
       expect(updates.at(-2)).toEqual(expect.objectContaining({ total: 3, done: 3, finished: true,
-        succeeded: mode === "per_item" ? 3 : 2, failed: mode === "per_item" ? 0 : 1 }));
+        succeeded: content === "both" ? 3 : 2, failed: content === "both" ? 0 : 1 }));
       expect(updates.at(-1)?.results).toEqual(content === "supplements"
         ? expect.objectContaining({ content, main: 0, supplements: 0, no_supplements: 2,
             failures: [{ cls: "unexplained", reason: "附录没下载成功", doi: "10.1000/b" }] })
@@ -123,7 +126,7 @@ describe("supplementary files", () => {
     expect(outcome).toEqual(
       expect.objectContaining({
         supplements: [
-          { status: "saved", file: "/out/10.1_x_supplements/S1.pdf", size: 1200, label: "Table S1 data" },
+          { status: "saved", file: resolve("/out/10.1_x_supplements/S1.pdf"), size: 1200, label: "Table S1 data" },
           { status: "failed", reason: "http_404", label: "S3" },
           { status: "failed", reason: "TimeoutError", label: "S4" },
         ],
@@ -171,7 +174,7 @@ describe("supplementary files", () => {
       backend, () => {}, tiers,
     );
     expect(result.items.map((i) => i.supplements?.[0]?.label)).toEqual(["S1", "E1"]);
-    expect(requests).toEqual([expect.objectContaining({ identifier: "10.1000/oa", supplements: "only", outputDir: expect.stringMatching(/^\/tmp\/out\/[^/]+_[0-9a-f]{10}$/) })]);
+    expect(requests).toEqual([expect.objectContaining({ identifier: "10.1000/oa", supplements: "only", outputDir: expect.stringMatching(new RegExp(`^${escapeRe(resolve("/tmp/out"))}[\\\\/][^\\\\/]+$`)) })]);
     const ledger = readFileSync(join(result.runLog!, "items.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(ledger.find((i) => i.doi === "10.1000/oa").supplements[0].label).toBe("S1");
     expect(ledger.find((i) => i.doi === "10.1000/oa").stages.map((s: { stage: string }) => s.stage)).toContain("supplements");

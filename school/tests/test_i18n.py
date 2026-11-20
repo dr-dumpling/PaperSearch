@@ -57,9 +57,11 @@ class EnglishTableTests(unittest.TestCase):
 
     @unittest.skipUnless((REPO / "src").is_dir(), "PaperSearch's source is not beside this backend")
     def test_paper_searchs_failure_reasons_and_key_tests(self):
-        attempt = (REPO / "src/capabilities/pdf-discovery/school/SchoolAttempt.ts").read_text(encoding="utf-8")
+        attempt = (REPO / "src/infrastructure/school/SchoolAttempt.ts").read_text(encoding="utf-8")
         reasons = re.findall(r':\s*"([^"]+)"', re.search(r"SHORT_REASONS[^{]*\{([\s\S]*?)\n\};", attempt).group(1))
-        summary = (REPO / "src/capabilities/pdf-discovery/batchSummary.ts").read_text(encoding="utf-8")
+        # The batch's finished card and its reasons for the supplementary files and the Markdown.
+        summary = "".join((REPO / "src/capabilities/download" / part).read_text(encoding="utf-8")
+                          for part in ("batch/batchSummary.ts", "content/supplements/shortfall.ts", "content/markdown/shortfall.ts"))
         literals = re.findall(r'"([^"\n]*[\u4e00-\u9fff][^"\n]*)"', summary)
         key_test = (REPO / "src/config/apiKeyTest.ts").read_text(encoding="utf-8")
         messages = re.findall(r'"([^"\n]*[\u4e00-\u9fff][^"\n]*)"', key_test)

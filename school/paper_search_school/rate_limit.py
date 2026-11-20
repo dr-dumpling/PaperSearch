@@ -53,6 +53,13 @@ def wait_seconds(key: str, limit: int, now: float | None = None) -> int:
     return int(hour[0] + HOUR - now) + 1
 
 
+def hour_left(key: str, now: float | None = None) -> int:
+    """Seconds until ``key``'s running hour is over; 0 when none is running."""
+    now = time.time() if now is None else now
+    hour = _hour(_read_json(ledger_path()), key, now)
+    return 0 if hour is None else int(hour[0] + HOUR - now) + 1
+
+
 def record(key: str, now: float | None = None) -> None:
     """Count one article opened on ``key``'s site, in its hour or in a new one; hours over are dropped."""
     if not key:

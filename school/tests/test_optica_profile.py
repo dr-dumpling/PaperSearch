@@ -46,3 +46,26 @@ class OpticaProfileTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OpticaLoginTests(unittest.TestCase):
+    """2026-11-18: after the institutional login Optica's home page said the organisation had no
+    access through SSO; it was taken for the article and the run waited until it timed out."""
+
+    def adapter(self):
+        from paper_search_school.adapters.optica import OpticaAdapter
+
+        return OpticaAdapter.__new__(OpticaAdapter)
+
+    def test_the_home_page_is_not_the_article(self):
+        adapter = self.adapter()
+        for url in ("https://opg.optica.org/default.cfm", "https://opg.optica.org/"):
+            self.assertIs(adapter.looks_logged_out(None, url, "optica publishing group"), True)
+        self.assertIsNone(adapter.looks_logged_out(None, "https://opg.optica.org/ao/fulltext.cfm?uri=ao-65-28-9917", "abstract"))
+
+    def test_an_organisation_without_sso_access_stops_the_login(self):
+        adapter = self.adapter()
+        text = "Your organization does not  have access via SSO. Please contact your librarian. Journals Conferences"
+        self.assertEqual(adapter.login_block_reason(None, text.lower()), "institution_not_registered")
+        self.assertIsNone(adapter.login_block_reason(None, "openathens: example university (logout) journals"))
+

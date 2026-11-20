@@ -5,10 +5,11 @@ from unittest.mock import Mock, patch
 import pytest
 
 from paper_search_school import progress_reporter
-from paper_search_school.browser import challenge_interaction as interaction
+from paper_search_school.browser.challenge import interaction
 from paper_search_school.engine import batch_login
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 from test_challenge_interaction import widget, wait_case
+from tests.thread_clock import this_thread_only
 
 
 def test_inactive_first_widget_does_not_hide_an_actionable_second_widget():
@@ -109,8 +110,9 @@ def test_login_reminder_rechecks_the_page_after_automatic_redirect(tmp_path, mon
     monkeypatch.setenv('SCHOOL_DATA_DIR', str(tmp_path))
     progress_reporter.start_task('fixture', total=1)
     clock = [0.0]
-    monkeypatch.setattr(batch_login.time, 'time', lambda: clock[0])
-    monkeypatch.setattr(batch_login.time, 'sleep', lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    fake_time, fake_sleep = this_thread_only(lambda: clock[0], lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    monkeypatch.setattr(batch_login.time, 'time', fake_time)
+    monkeypatch.setattr(batch_login.time, 'sleep', fake_sleep)
     monkeypatch.setattr(batch_login, 'settle', lambda *args: None)
     d = PublisherBatchDownloader({}, login_timeout_sec=5)
     d._users_login_step = lambda page: clock[0] < 1  # auto-submit while settling

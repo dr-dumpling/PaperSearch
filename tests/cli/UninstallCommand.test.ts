@@ -63,7 +63,7 @@ describe("paper-search uninstall (command)", () => {
       PAPER_SEARCH_CONFIG_FILE: join(tempRoot, "config.json"),
     };
     for (const key of ["PAPER_SEARCH_CONFIG_DIR", "PAPER_SEARCH_RUNLOG_DIR", "PAPER_SEARCH_RUNLOG", "DEFAULT_DOWNLOAD_PATH"]) delete env[key];
-    return spawnSync(process.execPath, [join(process.cwd(), "node_modules/.bin/tsx"), "src/cli.ts", ...args], {
+    return spawnSync(process.execPath, [join(process.cwd(), "node_modules/tsx/dist/cli.mjs"), "src/cli.ts", ...args], {
       cwd: process.cwd(), input, env, encoding: "utf8",
     });
   }

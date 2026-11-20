@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { SchoolMcpClient } from "../../src/capabilities/pdf-discovery/school/SchoolMcpClient.js";
+import { SchoolMcpClient } from "../../src/infrastructure/school/SchoolMcpClient.js";
 
 const liveDescribe =
   process.env.PAPER_SEARCH_SCHOOL_LIVE_CONTRACT === "1"

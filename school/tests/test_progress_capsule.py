@@ -7,7 +7,7 @@ import json
 import sys
 import types
 import unittest
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -41,14 +41,16 @@ class OneWindowTests(unittest.TestCase):
 
     def test_only_one_window_holds_the_claim(self):
         with TemporaryDirectory() as folder, patch.object(pv, "_lock_path", return_value=Path(folder) / "bar.pid"):
-            self.addCleanup(pv.release_window_claim)
-            self.assertTrue(pv.claim_window())
-            # Another window (another handle on the lock file) cannot claim it.
-            held, pv._WINDOW_CLAIM = pv._WINDOW_CLAIM, None
-            self.assertFalse(pv.claim_window())
-            pv._WINDOW_CLAIM = held
-            pv.release_window_claim()
-            self.assertTrue(pv.claim_window())
+            try:
+                self.assertTrue(pv.claim_window())
+                # Another window (another handle on the lock file) cannot claim it.
+                held, pv._WINDOW_CLAIM = pv._WINDOW_CLAIM, None
+                self.assertFalse(pv.claim_window())
+                pv._WINDOW_CLAIM = held
+                pv.release_window_claim()
+                self.assertTrue(pv.claim_window())
+            finally:
+                pv.release_window_claim()  # before its folder goes: Windows removes no open file
 
     def test_a_second_window_closes_before_drawing_anything(self):
         with patch.object(pv, "claim_window", return_value=False), \
@@ -64,7 +66,7 @@ class ViewTests(unittest.TestCase):
         v = pv.view(running(), NOW)
         self.assertEqual((v["mode"], v["tone"], v["headline"]), ("running", "accent", "下载中"))
         self.assertEqual((v["done"], v["total"], v["pct"], v["left"]), (12, 40, 30, 28))
-        self.assertEqual((v["part"], v["publisher"], v["where"]), ("正文", "Wiley", "Eur J Heart Fail · Wiley"))
+        self.assertEqual((v["part"], v["publisher"], v["where"]), ("PDF", "Wiley", "Eur J Heart Fail · Wiley"))
         self.assertEqual(v["step"], {"index": 2, "label": "取 PDF"})
         self.assertEqual(v["elapsed"], "3:12")
         self.assertTrue(v["actions"])
@@ -84,17 +86,36 @@ class ViewTests(unittest.TestCase):
         self.assertTrue(pv.view(running(awaiting_next=True, browser_pid=101), NOW)["browser"])
         self.assertFalse(pv.view(running(awaiting_next=True, browser_pids=[201], publisher="", channel="开放获取"), NOW)["browser"])
 
+    def test_a_visit_for_the_markdown_alone_has_its_own_steps(self):
+        # Windows, 2026-11-16: the PDF's steps showed nothing for it.
+        cases = [({"stage": "opening_article"}, {"index": 0, "label": "打开文章"}),
+                 ({"stage": "waiting_login"}, {"index": 1, "label": "等待登录"}),
+                 ({"stage": "checking_access"}, {"index": 1, "label": "检查权限"}),
+                 ({"stage": "checking_access", "page_reading": True}, {"index": 2, "label": "读全文网页"}),
+                 ({"stage": "access_ready"}, {"index": 2, "label": "全文网页已读取"}),
+                 ({"stage": "fetching_pdf"}, None)]
+        for changes, step in cases:
+            with self.subTest(**changes):
+                v = pv.view(running(part="markdown", content="markdown", **changes), NOW)
+                self.assertEqual(v["steps"], ["打开文章", "权限", "读全文网页"])
+                self.assertEqual(v["step"], step)
+        self.assertEqual(len(pv.view(running(), NOW)["steps"]), 5)
+
     def test_supplements_part(self):
         v = pv.view(running(part="supplements", supplements_total=5, supplements_saved=2), NOW)
-        self.assertEqual((v["part"], v["step"]), ("附录", {"index": 4, "label": "附录 2/5"}))
+        self.assertEqual((v["part"], v["step"]), ("补充材料", {"index": 4, "label": "补充材料 2/5"}))
         v = pv.view(running(part="supplements", supplements_total=None), NOW)
-        self.assertEqual(v["step"], {"index": 4, "label": "查找附录"})
+        self.assertEqual(v["step"], {"index": 4, "label": "查找补充材料"})
 
     def test_between_papers_shows_the_phase_and_no_buttons(self):
         v = pv.view(running(awaiting_next=True, phase="第 13/40 篇：进入机构访问"), NOW)
         self.assertIsNone(v["step"])
         self.assertFalse(v["actions"])
-        self.assertEqual(v["part"], "正文+附录")
+        # The kinds asked for, in the order PDF、Markdown、补充材料 (user, 2026-11-15).
+        self.assertEqual(v["part"], "PDF、补充材料")
+        self.assertEqual(pv.view(running(awaiting_next=True, markdown=True), NOW)["part"], "PDF、Markdown、补充材料")
+        self.assertEqual(pv.view(running(awaiting_next=True, content="main", markdown=True), NOW)["part"], "PDF、Markdown")
+        self.assertEqual(pv.view(running(awaiting_next=True, content="markdown", markdown=True), NOW)["part"], "Markdown")
         self.assertEqual(v["line"], "第 13/40 篇：进入机构访问")
 
     def test_login_prompt_with_countdown(self):
@@ -155,7 +176,7 @@ class ViewTests(unittest.TestCase):
         def fail(cls, reason, journal="", n=1, **extra):
             return [{"cls": cls, "reason": reason, "title": f"{reason} {i}", "journal": journal, "doi": "", "note": "",
                      **extra} for i in range(n)]
-        failures = (fail("user_or_external", "等学校登录超时", "Thieme", 3)
+        failures = (fail("user_side", "等学校登录超时", "Thieme", 3)
                     + fail("no_access", "学校没有订阅", "Spine", 4) + fail("no_access", "学校没有订阅", "JBJS", 8)
                     + fail("unsupported", "找不到机构登录入口", "Emerald", 2)
                     + fail("unexplained", "下载时程序出错") + fail("unexplained", "页面处理超时"))
@@ -170,7 +191,7 @@ class ViewTests(unittest.TestCase):
         self.assertEqual(groups[0]["where"], "JBJS 8 · Spine 4")
         self.assertEqual(len(groups[0]["papers"]), 12)
         self.assertFalse(any(g["open"] for g in groups))
-        self.assertEqual(v["summary"]["saved"], ["正文 182 篇 · 附录 350 个", "机构订阅 140 · 开放获取 42"])
+        self.assertEqual(v["summary"]["saved"], ["PDF 182 篇 · 补充材料 350 个", "机构订阅 140 · 开放获取 42"])
 
         crowded = results | {"failures": failures + fail("unsupported", "没有有效 DOI", "", 1)}
         groups = pv.view(running(status="done", results=crowded), NOW)["summary"]["groups"]
@@ -186,15 +207,23 @@ class ViewTests(unittest.TestCase):
         self.assertTrue(summary["groups"][0]["open"])
         # "10.1/x" is no DOI to open: the title falls back to it, the link does not.
         self.assertEqual(summary["groups"][0]["papers"], [{"title": "10.1/x", "where": "Spine", "doi": ""}])
-        self.assertEqual(summary["saved"], ["附录 5 个 · 2 篇未列出附录"])
+        self.assertEqual(summary["saved"], ["补充材料 5 个 · 2 篇没有补充材料"])
         main_only = few | {"content": "main", "main": 3, "sources": [["开放下载", 3]]}
         self.assertEqual(pv.view(running(status="done", results=main_only), NOW)["summary"]["saved"],
-                         ["正文 3 篇", "开放下载 3"])
+                         ["PDF 3 篇", "开放下载 3"])
+        # The Markdown beside the PDF and the files: its count between them (user, 2026-11-15).
+        with_markdown = main_only | {"content": "both", "markdown": 2, "supplements": 4}
+        self.assertEqual(pv.view(running(status="done", results=with_markdown), NOW)["summary"]["saved"],
+                         ["PDF 3 篇 · Markdown 2 篇 · 补充材料 4 个", "开放下载 3"])
+        # A batch of the Markdown alone counts its packages as Markdown.
+        markdown_only = main_only | {"content": "markdown"}
+        self.assertEqual(pv.view(running(status="done", results=markdown_only), NOW)["summary"]["saved"],
+                         ["Markdown 3 篇", "开放下载 3"])
         # The open way's sources other than open access, in brackets (user, 2026-11-10).
         both_ways = main_only | {"main": 9, "sources": [["开放下载", 5], ["机构下载", 4]],
                                  "source_details": {"开放下载": "出版社 API 2"}}
         self.assertEqual(pv.view(running(status="done", results=both_ways), NOW)["summary"]["saved"],
-                         ["正文 9 篇", "开放下载 5（出版社 API 2） · 机构下载 4"])
+                         ["PDF 9 篇", "开放下载 5（出版社 API 2） · 机构下载 4"])
         # Without the caller's summary (a single paper, an older caller) the card shows the totals only.
         self.assertIsNone(pv.view(running(status="done"), NOW)["summary"])
         self.assertIsNone(pv.view(running(results=few), NOW)["summary"])
@@ -206,7 +235,7 @@ class ViewTests(unittest.TestCase):
             return {"cls": cls, "reason": reason, "title": "T", "journal": journal, "doi": "", "note": ""}
         results = {"content": "both", "main": 7, "supplements": 4, "no_supplements": 0, "sources": [],
                    "failures": [item("学校没有订阅", "no_access", "Spine")],
-                   "supplement_failures": [item("网站人机验证拦截", "user_or_external", "APL")] * 2
+                   "supplement_failures": [item("网站人机验证拦截", "publisher_or_network", "APL")] * 2
                                           + [item("网站暂不支持自动下载附录", "unsupported", "SIAM J")]}
         summary = pv.view(running(status="done", results=results), NOW)["summary"]
         self.assertTrue(summary["groups"][0]["open"])  # one main-text failure: open as before
@@ -224,9 +253,9 @@ class ViewTests(unittest.TestCase):
         self.assertEqual(pv.view(running(notice={**notice, "current": "10.1/other"}), NOW)["notice"], "")
 
     def test_status_line_names_the_part_being_fetched(self):
-        self.assertEqual(pv.status_text(running(), True), "正文 · 正在获取 PDF")
+        self.assertEqual(pv.status_text(running(), True), "PDF · 正在下载")
         self.assertEqual(pv.status_text(running(part="supplements", supplements_total=5, supplements_saved=2), True),
-                         "附录 · 已保存 2/5")
+                         "补充材料 · 已保存 2/5")
 
 
 class AutoCloseRuleTests(unittest.TestCase):
@@ -265,6 +294,13 @@ class ApiTests(unittest.TestCase):
         areas.start()
         self.addCleanup(areas.stop)
 
+    @staticmethod
+    def generic_window():
+        """The drag and animation tests move pywebview's generic window (x, y, move) by the page's
+        pointer. On Windows the capsule reads the WinForms window and the pointer itself instead,
+        tested on their own (``native_window._windows_*``): run these on the generic path there too."""
+        return patch.object(capsule.sys, "platform", "linux") if sys.platform == "win32" else nullcontext()
+
     def test_notification_switch_persists_immediately_without_changing_other_settings(self):
         from paper_search_school import config, user_settings
         with TemporaryDirectory() as directory, \
@@ -281,6 +317,24 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(user_settings.current(), before)
             self.assertFalse(a.set_notifications('false')['ok'])
             self.assertFalse(user_settings.notify_enabled())
+
+    def test_the_hourly_limit_switch_is_off_by_default_and_saves_at_once(self):
+        """马上生效 beside the hourly limit (user, 2026-11-19): off by default, saved by itself."""
+        from paper_search_school import config, user_settings
+        with TemporaryDirectory() as directory, \
+                patch.object(config, 'DATA_DIR', Path(directory)), \
+                patch.object(config, 'CONFIG_FILE', Path(directory) / 'config.json'), \
+                patch.object(capsule, 'read_state', return_value=running()):
+            a = api()
+            self.assertIs(a.settings()['hourly_now'], False)
+            before = user_settings.current()
+            self.assertEqual(a.set_hourly_now(True), {'ok': True, 'hourly_now': True})
+            self.assertIs(user_settings.hourly_now(), True)
+            self.assertIs(a.settings()['hourly_now'], True)
+            self.assertEqual(a.set_hourly_now(False), {'ok': True, 'hourly_now': False})
+            self.assertIs(user_settings.hourly_now(), False)
+            self.assertEqual(user_settings.current(), before)
+            self.assertFalse(a.set_hourly_now('true')['ok'])
 
     def test_browser_focus_only_targets_the_current_running_prompt(self):
         state = running(attention={'login': {'message': '请登录学校'}}, run_id='r1', browser_pid=101)
@@ -393,6 +447,15 @@ class ApiTests(unittest.TestCase):
                          [("login", 180, 180, "wait"), ("page", 60, 60, "wait"), ("stalled", 30, 30, "wait"),
                           ("hourly", 100, 100, "download")])
 
+    def test_the_settings_say_whether_this_edition_has_the_markdown_page(self):
+        # PaperSearch Pro's features (edition.py): the command line says, the public edition before 1.0.0 has none.
+        from paper_search_school import user_settings
+
+        with patch.object(user_settings, "current", return_value={"login": 180, "page": 60, "stalled": 30, "hourly": 100}):
+            for given, pro in (("1", True), ("0", False)):
+                with self.subTest(given=given), patch.dict(capsule.os.environ, {"PAPER_SEARCH_PRO_FEATURES": given}):
+                    self.assertIs(api().settings()["pro"], pro)
+
     def test_the_settings_check_whether_the_system_lets_notifications_show(self):
         # The settings' check of system notifications (user, 2026-11-10).
         with patch.object(capsule.sys, "platform", "darwin"), \
@@ -407,7 +470,7 @@ class ApiTests(unittest.TestCase):
         with patch.object(capsule.sys, "platform", "darwin"), \
                 patch("paper_search_school.progress_macos.notifications_allowed", side_effect=RuntimeError("host")):
             self.assertEqual(api().check_notifications(), {"state": "unknown"})
-        with patch.object(capsule.sys, "platform", "linux"):
+        with patch.object(capsule.sys, "platform", "linux"), patch.object(capsule.os, "name", "posix"):
             self.assertEqual(api().check_notifications(), {"state": "unknown"})
 
     def test_a_test_notification_is_sent_unless_the_system_keeps_it_from_showing(self):
@@ -499,7 +562,7 @@ class ApiTests(unittest.TestCase):
         a._window.minimize.assert_called_once()
 
     def test_drag_keeps_geometry_stable_and_saves_only_the_actual_drop(self):
-        with TemporaryDirectory() as directory:
+        with TemporaryDirectory() as directory, self.generic_window():
             placement = capsule.Placement(Path(directory) / "capsule.json", "top")
             a = api(placement=placement)
             a._window = MagicMock(x=320, y=180, width=260, height=56)
@@ -520,15 +583,16 @@ class ApiTests(unittest.TestCase):
     def test_dragging_keeps_a_completed_window_from_auto_closing(self):
         a = api(close_after=0)
         a._window = MagicMock()
-        a.set_dragging(True)
         done = running(status="done", failed=0)
-        with patch.object(capsule, "read_state", return_value=done):
-            a.state(hovering=False)
-        a.watch_once(done, 0)
+        with self.generic_window():
+            a.set_dragging(True)
+            with patch.object(capsule, "read_state", return_value=done):
+                a.state(hovering=False)
+            a.watch_once(done, 0)
         a._window.destroy.assert_not_called()
 
     def test_drag_uses_pointer_delta_and_ignores_late_moves_after_release(self):
-        with TemporaryDirectory() as directory:
+        with TemporaryDirectory() as directory, self.generic_window():
             a = api(placement=capsule.Placement(Path(directory) / "capsule.json", "top"))
             a._window = MagicMock(x=320, y=180, width=260, height=56)
             a.set_dragging(True, 500, 200)
@@ -722,7 +786,7 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(placement.screen.name, 'left')
 
     def test_atomic_animation_ignores_stale_frames_and_returns_home(self):
-        with TemporaryDirectory() as directory:
+        with TemporaryDirectory() as directory, self.generic_window():
             placement = capsule.Placement(Path(directory) / 'capsule.json', 'top')
             a = api(placement=placement)
             a._window = MagicMock(x=10, y=30, width=260, height=56)
@@ -1283,6 +1347,8 @@ class StartTests(unittest.TestCase):
         self.addCleanup(quiet_start.stop)
         tmp = TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
+        # main() holds the window's claim for the rest of the process: let it go before the folder.
+        self.addCleanup(pv.release_window_claim)
         env = patch.dict(os.environ, {"SCHOOL_DATA_DIR": tmp.name})
         env.start()
         self.addCleanup(env.stop)

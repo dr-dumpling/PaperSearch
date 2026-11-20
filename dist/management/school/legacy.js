@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { browserProfileInUse, DOWNLOAD_LOCK_FILE, isStaleDownloadLock, LEGACY_SCHOOL_DATA_DIR, paperSearchDataHome, } from "../../capabilities/pdf-discovery/school/index.js";
+import { browserProfileInUse, DOWNLOAD_LOCK_FILE, isStaleDownloadLock, LEGACY_SCHOOL_DATA_DIR, paperSearchDataHome, } from "../../infrastructure/school/index.js";
 /**
  * Before 0.6.1 school subscription downloads were named for CARSI, the first
  * federation they supported: the config keys (ConfigService), the backend's data

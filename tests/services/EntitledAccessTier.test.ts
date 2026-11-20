@@ -9,10 +9,10 @@ import {
   it,
   jest,
 } from "@jest/globals";
-import { createEntitledAccessTier } from "../../src/capabilities/pdf-discovery/tiers/entitledAccess.js";
-import type { SchoolBackend } from "../../src/capabilities/pdf-discovery/school/index.js";
-import { normalizeDownloadResult } from "../../src/capabilities/pdf-discovery/school/SchoolResultNormalizer.js";
-import type { DownloadTierContext } from "../../src/capabilities/pdf-discovery/DownloadTier.js";
+import { createEntitledAccessTier } from "../../src/capabilities/download/content/pdf/school.js";
+import type { SchoolBackend } from "../../src/infrastructure/school/index.js";
+import { normalizeDownloadResult } from "../../src/infrastructure/school/SchoolResultNormalizer.js";
+import type { DownloadTierContext } from "../../src/capabilities/download/content/pdf/DownloadTier.js";
 import { textPdf } from "../fixtures/textPdf.js";
 
 describe("Entitled PDF acceptance", () => {
@@ -122,8 +122,9 @@ describe("Entitled PDF acceptance", () => {
     ["login_page_closed", "页面已关闭"],
     ["login_credentials_rejected", "凭证被拒绝"],
     ["login_retries_exhausted", "重试次数已用尽"],
-    ["institution_not_registered", "认证应用或入口未注册"],
+    ["institution_not_registered", "登录入口和这家出版社之间没有开通"],
     ["generic_institution_entry_missing", "按通用规则没有找到机构登录入口"],
+    ["no_institution_entry", "这个网站没有学校登录入口"],
     ["unsupported_publisher", "没有指向 PaperSearch 能登录的出版社网站"],
   ])(
     "preserves %s from MCP JSON through normalization and the tier",
@@ -154,6 +155,13 @@ describe("Entitled PDF acceptance", () => {
       );
     },
   );
+
+  it("passes on that the visit which took the PDF saw no full text on the article page", () => {
+    const outcome = (extra: Record<string, unknown>) => normalizeDownloadResult({ content: [{ type: "text",
+      text: JSON.stringify({ success: true, file: "/tmp/x.pdf", ...extra }) }] }, context.paperId);
+    expect(outcome({ fulltext_page_not_shown: true })).toMatchObject({ kind: "success", fulltextNotShown: true });
+    expect(outcome({})).not.toHaveProperty("fulltextNotShown");
+  });
 
   it("keeps where a wait on a school login ended, a fixed word only", async () => {
     for (const [page, kept] of [["school_login", "school_login"], ["publisher", "publisher"], ["somewhere?token=x", undefined]] as const) {

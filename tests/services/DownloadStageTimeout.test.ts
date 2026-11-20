@@ -1,8 +1,8 @@
 import axios from "axios";
 import { describe, expect, it, jest } from "@jest/globals";
-import { downloadWithFallback } from "../../src/capabilities/pdf-discovery/OpenAccessFallbackService.js";
-import { createRepositoryTier } from "../../src/capabilities/pdf-discovery/tiers/repositories.js";
-import type { DownloadTier } from "../../src/capabilities/pdf-discovery/DownloadTier.js";
+import { downloadWithFallback } from "../../src/capabilities/download/content/pdf/OpenAccessFallbackService.js";
+import { createRepositoryTier } from "../../src/capabilities/download/content/pdf/open/tiers/repositories.js";
+import type { DownloadTier } from "../../src/capabilities/download/content/pdf/DownloadTier.js";
 
 const never = () => new Promise<never>(() => undefined);
 

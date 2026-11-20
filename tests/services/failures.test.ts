@@ -43,7 +43,8 @@ describe("paper-search failures", () => {
     const summary = summarizeFailures(root, { since: "2026-10-31" });
     expect(summary.failed).toBe(3);
     expect(summary.notAttempted).toBe(1);
-    expect(summary.classes).toEqual({ no_access: 2, user_or_external: 0, unsupported: 0, unexplained: 1 });
+    expect(summary.classes).toEqual({ no_access: 2, user_side: 0, school_side: 0, publisher_or_network: 0, article_or_site: 0,
+      unsupported: 0, unexplained: 1 });
     expect(summary.groups.map((g) => [g.failureClass, g.publisher, g.site, g.code, g.count])).toEqual([
       ["no_access", "Elsevier", "www.sciencedirect.com", "entitlement_missing", 1],
       ["no_access", "SAGE", "login.openathens.net", "institution_federation_unavailable", 1],
@@ -90,6 +91,7 @@ it("reclassifies legacy subscription labels when the known failure code was corr
       failureClass: "no_access", evidence: "old subscription inference" },
   ] }]);
   const summary = summarizeFailures(root);
-  expect(summary.classes.user_or_external).toBe(1);
-  expect(summary.groups[0].evidence).toBeUndefined();
+  // No access by that entry (2026-11-19), said as such: never the old inference of no subscription.
+  expect(summary.classes.no_access).toBe(1);
+  expect(summary.groups[0].evidence).toBe("这个登录入口没有开通");
 });

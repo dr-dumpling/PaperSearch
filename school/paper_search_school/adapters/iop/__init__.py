@@ -54,9 +54,74 @@ def supplement_links_from_page(data: dict, page_url: str, doi: str) -> list[Supp
     return links
 
 
+# --fulltext (PaperSearch's sites/templates/iop.ts). The full text is
+# div.wd-jnl-art-full-text; a page without it shows the abstract (an accepted manuscript)
+# or, without access, the "Access this article" panel. A figure (figure.boxout around a
+# second <figure>) links its high-resolution image (a.fig-dwnld-hi-img, _hr.jpg) beside the
+# standard one it shows (_lr.jpg): the high-resolution link is taken, else the standard
+# one, else the <img>, as the converter does. Formulas keep their TeX in MathJax's scripts
+# (MathJax is off by default; the page shows GIFs), so MATHJAX_SOURCES_JS is not needed
+# (10.1088/1367-2630/aea700, open access, saved by the backend, 2026-11-15).
+FULLTEXT_SHOWN_JS = """() => {
+  const body = document.querySelector('div.wd-jnl-art-full-text');
+  if (!body) return false;
+  const text = [...body.querySelectorAll('p')].reduce((total, p) => total + (p.textContent || '').length, 0);
+  return text > 500;
+}"""
+FULLTEXT_IMAGES_JS = """() => {
+  const body = document.querySelector('div.wd-jnl-art-full-text');
+  if (!body) return [];
+  return [...body.querySelectorAll('figure')]
+    .filter((figure) => !figure.parentElement?.closest('figure'))
+    .flatMap((figure) => {
+      const links = (name) => [...figure.querySelectorAll(`a.${name}`)].map((a) => a.getAttribute('href') || '');
+      const shown = [...figure.querySelectorAll('img')]
+        .filter((img) => !img.closest('figcaption, .texImage, .inline-eqn'))
+        .map((img) => img.getAttribute('data-src') || img.getAttribute('src') || '');
+      return [links('fig-dwnld-hi-img'), links('fig-dwnld-std-img'), shown]
+        .map((list) => list.filter((src) => src && !/^(data|javascript):/i.test(src)))
+        .find((list) => list.length) || [];
+    })
+    .map((src) => new URL(src, location.href).href);
+}"""
+# The page does not hold the references: its closed "Show References" panel
+# (#references-wrapper) fetches them from /references/article/<DOI> when opened (the
+# site's article.scripts.min.js, 4.45.0). Before the page is read the same list is fetched
+# from the article page (same origin, the session's cookies, 8 s; the page read has 50 s,
+# batch_capture.FULLTEXT_READ_SEC) and put into the panel, marked
+# data-papersearch-references, when it is the list (its [data-toolbar-content=references]
+# or li[data-reference]; not a challenge or an error page). Without it the converter
+# writes the references from the page's citation_reference tags.
+FULLTEXT_PREPARE_JS = r"""async () => {
+  const wrapper = document.getElementById('references-wrapper');
+  if (!wrapper || wrapper.querySelector('li')) return 0;
+  const path = location.pathname.replace('/meta', '');
+  if (!/^\/article\/10\.\d{4,9}\/\S+$/.test(path)) return 0;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(`/references${path}`, {credentials: 'include', signal: controller.signal});
+    if (!response.ok) return 0;
+    const fragment = new DOMParser().parseFromString(await response.text(), 'text/html');
+    if (!fragment.querySelector('[data-toolbar-content="references"], li[data-reference]')) return 0;
+    fragment.querySelectorAll('script, style, link, button').forEach((node) => node.remove());
+    wrapper.replaceChildren(...[...fragment.body.childNodes].map((node) => document.importNode(node, true)));
+    wrapper.setAttribute('data-papersearch-references', `/references${path}`);
+    return wrapper.querySelectorAll('li').length;
+  } catch {
+    return 0;
+  } finally {
+    clearTimeout(timer);
+  }
+}"""
+
+
 @register
 class IOPAdapter(PublisherAdapter):
     publisher = "iop"
+    fulltext_shown_js = FULLTEXT_SHOWN_JS
+    fulltext_images_js = FULLTEXT_IMAGES_JS
+    fulltext_prepare_js = FULLTEXT_PREPARE_JS
 
     def supplements_page_urls(self, doi: str) -> list[str]:
         return [f"https://iopscience.iop.org/article/{doi}/data"]

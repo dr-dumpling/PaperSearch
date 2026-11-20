@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_school.publishers.profiles import PublisherProfile, RSC_PROFILE
+from fixture_network import network_is_the_fixture
 
 DOI = '10.1159/000000001'
 ARTICLE = 'https://karger.com/crd/article-abstract/146/6/772/123/Offline-article'
@@ -31,6 +32,7 @@ class KargerInstitutionTests(unittest.TestCase):
         cls.driver.stop()
 
     def setUp(self):
+        network_is_the_fixture(self)
         self.context = self.browser.new_context(service_workers='block')
         self.addCleanup(self.context.close)
         self.requests = []

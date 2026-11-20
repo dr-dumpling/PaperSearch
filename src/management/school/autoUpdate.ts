@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import type { SchoolBackend, SchoolBatchPapers, SchoolBatchUpdate } from "../../capabilities/pdf-discovery/school/index.js";
+import type { SchoolBackend, SchoolBatchPapers, SchoolBatchUpdate } from "../../infrastructure/school/index.js";
 import { InstallError, readInstallRecord, updateSchool, type InstallContext, type InstallerHost } from "./installer.js";
 import { legacyRuntimeRoot } from "./legacy.js";
 import { runtimePaths, runtimeRoot } from "./runtime.js";
@@ -10,7 +10,8 @@ const MANUAL = "这次用旧版本继续；可以稍后运行 paper-search schoo
 
 /**
  * After a PaperSearch upgrade, the extension is brought up to it before its
- * first use (`school update`), as the Skill is synced after an upgrade;
+ * first use (`school update`): a download, or the settings window it draws
+ * (``next`` names it in what is said), as the Skill is synced after an upgrade;
  * PAPER_SEARCH_SCHOOL_AUTO_UPDATE=false turns this off. Only the extension this
  * PaperSearch installed and uses: another backend (a developer's) is left alone.
  * ``lock`` takes the download lock and answers how to release it (it throws
@@ -22,6 +23,7 @@ export async function autoUpdateSchool(
   host: InstallerHost,
   context: InstallContext,
   lock: () => () => void,
+  next = "下载",
 ): Promise<AutoUpdateOutcome> {
   if (context.getConfig("PAPER_SEARCH_SCHOOL_AUTO_UPDATE") === "false") return "off";
   const paths = runtimePaths(runtimeRoot(host.env, host.home), host.platform);
@@ -56,10 +58,10 @@ export async function autoUpdateSchool(
     // Another PaperSearch may have updated it just before the lock was taken.
     const installed = behind();
     if (!installed) return "not_needed";
-    host.log(`学校订阅下载扩展是 PaperSearch ${installed} 时装的，先更新到 ${context.paperSearchVersion} 再下载` +
+    host.log(`学校订阅下载扩展是 PaperSearch ${installed} 时装的，先更新到 ${context.paperSearchVersion} 再${next}` +
       "（不想自动更新：paper-search config set PAPER_SEARCH_SCHOOL_AUTO_UPDATE false）。");
     await updateSchool(host, { force: false }, context);
-    host.log("扩展已更新，继续下载。");
+    host.log(`扩展已更新，继续${next}。`);
     return "updated";
   } catch (error) {
     const log = error instanceof InstallError ? `（日志：${error.logFile}）` : "";
@@ -105,6 +107,7 @@ export function withAutoUpdate(backend: SchoolBackend, update: () => Promise<unk
       : {}),
     // Only on a backend the batch already has, which the update ran before.
     ...(inner.keepSession ? { keepSession: (signal?: AbortSignal) => inner.keepSession!(signal) } : {}),
+    ...(inner.hourlyWait ? { hourlyWait: (publisher: string, signal?: AbortSignal) => inner.hourlyWait!(publisher, signal) } : {}),
     ...(inner.holdSupported
       ? { holdSupported: async () => {
           await ready();

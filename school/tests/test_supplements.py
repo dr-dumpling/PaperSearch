@@ -34,22 +34,22 @@ class CollectTests(unittest.TestCase):
                                                  disposition='attachment; filename="Table S1.xlsx"'),
             "https://x.example/login": response(b"<html>", ctype="text/html; charset=utf-8"),
             "https://x.example/gone": response(status=404),
-            "https://x.example/huge.zip": response(length=supplements.MAX_FILE_BYTES + 1),
         }
         request = MagicMock(); request.get.side_effect = lambda url, **kw: replies[url]
         links = [SupplementLink(SUPP, "Disclosure form"), SupplementLink(SUPP, "duplicate"),
                  *(SupplementLink(u, u[-6:]) for u in list(replies)[1:])]
         files = supplements.collect(request, links, self.out, DOI)
         by_url = {f["url"]: f for f in files}
-        self.assertEqual(len(files), 5)
+        self.assertEqual(len(files), 4)
         folder = self.out / "10.1002_art.70156_supplements"
         self.assertEqual(Path(by_url[SUPP]["file"]), folder / "art70156-sup-0001-Disclosureform.pdf")
         self.assertEqual(Path(by_url["https://x.example/a.xlsx"]["file"]).name, "Table S1.xlsx")
         self.assertEqual(by_url["https://x.example/login"]["reason"], "html_page")
         self.assertEqual(by_url["https://x.example/gone"]["reason"], "http_404")
-        self.assertEqual(by_url["https://x.example/huge.zip"]["reason"], "too_large")
         manifest = json.loads((folder / "manifest.json").read_text())
-        self.assertEqual([f["status"] for f in manifest["files"]], ["saved", "saved", "failed", "failed", "skipped"])
+        self.assertEqual([f["status"] for f in manifest["files"]], ["saved", "saved", "failed", "failed"])
+        # No size cap on a file written to disk (2026-11-17): a large one is no reason to skip it.
+        self.assertFalse(hasattr(supplements, "MAX_FILE_BYTES"))
 
     def test_a_page_instead_of_the_file_is_recorded_as_it_was(self):
         """Which page Figshare's download address answered, for the record (2026-11-08)."""
@@ -129,13 +129,13 @@ class CollectTests(unittest.TestCase):
 
     def test_oversized_native_viewer_attachment_is_a_size_skip(self):
         request = MagicMock(); request.get.return_value = response(status=403)
-        page = MagicMock(); page.evaluate.return_value = {"oversized": supplements.MAX_FILE_BYTES + 1}
+        page = MagicMock(); page.evaluate.return_value = {"oversized": supplements.VIEWER_MAX_BYTES + 1}
         d = PublisherBatchDownloader({})
         files = supplements.collect(request, [SupplementLink(SUPP)], self.out, DOI,
             download=lambda url: d._capture_loaded_pdf_viewer(page, url, output=self.out / 'part',
-                                                              max_bytes=supplements.MAX_FILE_BYTES))
+                                                              max_bytes=supplements.VIEWER_MAX_BYTES))
         self.assertEqual((files[0]['status'], files[0]['reason']), ('skipped', 'too_large'))
-        self.assertEqual(files[0]['size'], supplements.MAX_FILE_BYTES + 1)
+        self.assertEqual(files[0]['size'], supplements.VIEWER_MAX_BYTES + 1)
         self.assertFalse((self.out / 'part').exists())
 
     def test_stopping_mid_collection_keeps_saved_files_and_skips_the_rest(self):

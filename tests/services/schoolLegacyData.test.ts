@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "@jest/globals";
-import { resolveDefaultSchoolProfileDir } from "../../src/capabilities/pdf-discovery/school/index.js";
+import { resolveDefaultSchoolProfileDir } from "../../src/infrastructure/school/index.js";
 import { moveLegacyDataDir } from "../../src/management/school/legacy.js";
 
 /** 0.6.0's data directory (named for CARSI) with a backend config that saved its paths. */

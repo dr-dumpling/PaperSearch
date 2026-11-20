@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from "fs";
 import { join } from "path";
+import { pathToFileURL } from "url";
 import { tmpdir } from "os";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 
@@ -17,6 +18,8 @@ import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const runFolder = (root: string, below = "") =>
   new RegExp("^" + escapeRe(root) + "[\\\\/]\\d{8}-\\d{6}_PaperSearchDownload" + below);
+// A file URL: Node takes a Windows path given to --import for a URL with scheme "c:".
+const EMPTY_PMC = pathToFileURL(join(process.cwd(), "tests/fixtures/school/fake/empty-pmc.mjs")).href;
 
 describe("School backend CLI integration", () => {
   let tempDir: string;
@@ -35,7 +38,6 @@ describe("School backend CLI integration", () => {
     const xdgDataHome = join(tempDir, "xdg-data");
     const logPath = join(tempDir, "fake-school.log");
     const pdfPath = join(tempDir, "fake-entitled.pdf");
-    const wrapperPath = join(binDir, "paper-search-school");
     const fixturePath = join(
       process.cwd(),
       "tests/fixtures/school/fake/fake-school-mcp.mjs",
@@ -47,15 +49,9 @@ describe("School backend CLI integration", () => {
       pdfPath,
       textPdf([["Example article", `https://doi.org/${canonicalDoi}`]]),
     );
-    writeFileSync(
-      wrapperPath,
-      [
-        "#!/bin/sh",
-        `exec ${shellQuote(process.execPath)} ${shellQuote(fixturePath)} --scenario success --log ${shellQuote(logPath)} --file ${shellQuote(pdfPath)} "$@"`,
-        "",
-      ].join("\n"),
-    );
-    chmodSync(wrapperPath, 0o755);
+    const wrapperPath = writeFakeCommand(binDir, [
+      process.execPath, fixturePath, "--scenario", "success", "--log", logPath, "--file", pdfPath,
+    ]);
     writeFileSync(
       join(tempDir, "config.json"),
       JSON.stringify({
@@ -89,7 +85,7 @@ describe("School backend CLI integration", () => {
     const result = spawnSync(
       process.execPath,
       [
-        "--import", "tsx", "--import", join(process.cwd(), "tests/fixtures/school/fake/empty-pmc.mjs"),
+        "--import", "tsx", "--import", EMPTY_PMC,
         "src/cli.ts",
         "run",
         "download_with_fallback",
@@ -301,7 +297,7 @@ describe("School backend CLI integration", () => {
         code,
       });
       if (scenario === "success") {
-        expect(output.data.review).toEqual({ path: expect.stringContaining("/diagnostics/"), reason: code });
+        expect(output.data.review).toEqual({ path: expect.stringMatching(/[\\/]diagnostics[\\/]/), reason: code });
         expect(readFileSync(output.data.review.path)).toEqual(readFileSync(pdfPath));
         expect(existsSync(pdfPath)).toBe(true);
       }
@@ -362,7 +358,7 @@ describe("School backend CLI integration", () => {
     delete env.UNPAYWALL_EMAIL;
     return spawnSync(
       process.execPath,
-      ["--import", "tsx", "--import", join(process.cwd(), "tests/fixtures/school/fake/empty-pmc.mjs"), "src/cli.ts", ...args],
+      ["--import", "tsx", "--import", EMPTY_PMC, "src/cli.ts", ...args],
       {
         cwd: process.cwd(),
         env,
@@ -375,10 +371,13 @@ describe("School backend CLI integration", () => {
   function installMarkerExecutable(marker: string): string {
     const binDir = join(tempDir, "marker-bin");
     mkdirSync(binDir, { recursive: true });
-    const executable = join(binDir, "paper-search-school");
+    const windows = process.platform === "win32";
+    const executable = join(binDir, windows ? "paper-search-school.cmd" : "paper-search-school");
     writeFileSync(
       executable,
-      `#!/bin/sh\nprintf spawned >> ${shellQuote(marker)}\nexit 1\n`,
+      windows
+        ? `@echo off\r\necho spawned>> "${marker}"\r\nexit /b 1\r\n`
+        : `#!/bin/sh\nprintf spawned >> ${shellQuote(marker)}\nexit 1\n`,
     );
     chmodSync(executable, 0o755);
     return binDir;
@@ -390,21 +389,14 @@ describe("School backend CLI integration", () => {
     scenario = "success",
   ): string {
     const binDir = join(tempDir, "fake-bin");
-    const wrapperPath = join(binDir, "paper-search-school");
     const fixturePath = join(
       process.cwd(),
       "tests/fixtures/school/fake/fake-school-mcp.mjs",
     );
     mkdirSync(binDir, { recursive: true });
-    writeFileSync(
-      wrapperPath,
-      [
-        "#!/bin/sh",
-        `exec ${shellQuote(process.execPath)} ${shellQuote(fixturePath)} --scenario ${shellQuote(scenario)} --log ${shellQuote(logPath)} --file ${shellQuote(resultFile)} "$@"`,
-        "",
-      ].join("\n"),
-    );
-    chmodSync(wrapperPath, 0o755);
+    writeFakeCommand(binDir, [
+      process.execPath, fixturePath, "--scenario", scenario, "--log", logPath, "--file", resultFile,
+    ]);
     return binDir;
   }
 });
@@ -418,4 +410,21 @@ function readEvents(logPath: string): any[] {
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+/**
+ * A paper-search-school the CLI can start here: a shell script, or on Windows a .cmd file
+ * (found on PATH through PATHEXT, like the real one's .exe), passing its own arguments on.
+ */
+function writeFakeCommand(binDir: string, argv: string[]): string {
+  const windows = process.platform === "win32";
+  const path = join(binDir, windows ? "paper-search-school.cmd" : "paper-search-school");
+  writeFileSync(
+    path,
+    windows
+      ? `@echo off\r\n${argv.map((arg) => `"${arg}"`).join(" ")} %*\r\n`
+      : `#!/bin/sh\nexec ${argv.map(shellQuote).join(" ")} "$@"\n`,
+  );
+  chmodSync(path, 0o755);
+  return path;
 }

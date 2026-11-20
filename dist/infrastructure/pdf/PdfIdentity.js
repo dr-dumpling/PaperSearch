@@ -18,7 +18,10 @@ import { extractPages } from "./PdfFirstPage.cjs";
  * Strong evidence, or two single pieces, verify the PDF; one single piece
  * verifies it while the pages print no other DOI (a cited or related article).
  * Other DOIs and no evidence at all: another article. A title's numbers must
- * always be exact ("Type 1" is not "Type 2").
+ * always be exact ("Type 1" is not "Type 2"). Nothing after the first reference
+ * list counts, unless the article begins there: its title on lines of its own and
+ * its DOI alone on a line soon after (a short piece sharing its first page with
+ * the end of the one before it, Cell's Previews).
  * Two kinds of document repeat an article's DOI and title without being it,
  * each known by its own heading line: an attachment (supplementary material,
  * disclosure form) and a notice about it (correction, retraction, briefing,
@@ -52,12 +55,18 @@ const LETTERS_PER_ERROR = 12;
 const HEAD_CHARS = 400;
 /** Fewer letters than this on the pages read: a scan without a text layer. */
 const SCAN_MAX_LETTERS = 300;
+/** An article's own DOI line after its title: authors, affiliations, correspondence. */
+const HEAD_REACH = 1200;
 // A reference list cites other articles: its DOIs and titles are not evidence.
 const REFERENCES_HEADING = /^\s*(?:references?|literature cited)\s*$/im;
 // An attachment's own heading line ("Supplementary Information for …",
 // "Supplementary Online Content", "Appendix A", "ICMJE Disclosure Form", a plain
 // language summary), not a sentence that starts with the same words.
 const ATTACHMENT_HEADING = /^\s*(?:electronic\s+)?(?:supplement(?:ary|al)?|supporting|online(?:\s+only)?)\s+(?:online\s+)?(?:information|materials?|data|content|appendix|methods|figures?|figure legends|tables?|text|files?)\s*(?:for\b.*|:.*)?$|^\s*appendix(?:\s+[a-z0-9])?\s*:?\s*$|^\s*plain language summary\b|^\s*(?:icmje\s+)?disclosure\s+form|^\s*conflicts?\s+of\s+interest\s+(?:form|disclosure)/im;
+// A line that ends mid-sentence: the next line goes on with it and is no heading
+// (a Lancet margin note, "For the Spanish translation of the abstract see Online
+// for" then "appendix 1", 2026-11-19).
+const GOES_ON = /\b(?:see|for|in|of|the|and|or|to|at|on|with|from|by)\s*$/i;
 // A notice's own heading line: the word opens the line, alone or followed by
 // ":" or "to" ("CORRECTION", "Correction to: …", "Retraction Note", "RETRACTED
 // ARTICLE: …", "Notice of Retraction"), or closes it after a colon ("<title>:
@@ -72,6 +81,10 @@ const ABOUT_LABEL = /\b(?:doi\s+of\s+(?:the\s+)?original\s+article|(?:the\s+)?or
 const ABOUT_REACH = 200;
 // A DOI may break right after its prefix ("https://doi.org/10.1016/" then "S0140-…", The Lancet).
 const DOI_IN_TEXT = /10\.\d{4,9}\/(?:[ \t]*\n[ \t]*)?[^\s"<>]+/g;
+// DOIs of registrations and deposited data, which name no other article: OSF (a review's
+// protocol, "https://doi.org/10.17605/OSF.IO/J483F", eClinicalMedicine, 2026-11-19), Zenodo,
+// figshare, Dryad, Mendeley Data, Harvard Dataverse.
+const DEPOSIT_PREFIXES = ["10.17605/", "10.5281/", "10.6084/", "10.5061/", "10.17632/", "10.7910/"];
 /** Case, invisible characters, typographic dashes and control characters do not matter. */
 function normalise(text) {
     return text
@@ -157,7 +170,21 @@ function numbersMatch(window, title) {
     const found = new Set(window.match(/\d+/g) ?? []);
     return wanted.every((number) => found.has(number));
 }
+/**
+ * How the title is printed. A title that opens with a label and a colon may be printed
+ * without the label: the rest, when long enough to name the article alone, is one piece
+ * of evidence ("Spiers Memorial Lecture: Mechanistic Non-Adiabatic Chemistry: …", an RSC
+ * accepted manuscript, 2026-11-19).
+ */
 function titleEvidence(text, page, title) {
+    const found = printedTitle(text, page, title);
+    const colon = title.search(/[:：]/);
+    const rest = found === null && colon >= 0 ? title.slice(colon + 1) : "";
+    if (weight(letters(normalise(plainTitle(rest))).chars) >= STRONG_TITLE && printedTitle(text, page, rest))
+        return "single";
+    return found;
+}
+function printedTitle(text, page, title) {
     const plain = normalise(plainTitle(title));
     const key = letters(plain).chars;
     if (weight(key) < SHORT_TITLE)
@@ -198,7 +225,9 @@ function doiNamed(pages, target) {
         return false;
     const pattern = (value) => [...value].map((char) => char.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")).join("\\s*");
     const suffix = suffixOf(target);
-    const head = bare(suffix).length >= SHARED_SUFFIX ? "10\\.\\d{4,9}\\/\\s*" : `${pattern(target.slice(0, -suffix.length))}\\s*`;
+    // A margin can break a DOI after "10." as well ("https://doi.org/10." / "1016/j.eclinm.2025." /
+    // "103705", eClinicalMedicine, 2026-11-19).
+    const head = bare(suffix).length >= SHARED_SUFFIX ? "10\\.\\s*\\d{4,9}\\/\\s*" : `${pattern(target.slice(0, -suffix.length))}\\s*`;
     return new RegExp(`(?<![0-9.])${head}${pattern(suffix)}(?![0-9a-z_/-]|\\.[0-9a-z])`).test(pages);
 }
 // The copyright line right after a DOI ("https://doi.org/…" then "1063-4584/© 2025 …"):
@@ -222,7 +251,8 @@ function sameArticle(doi, target) {
 }
 /** DOIs printed that are not the target, nor a piece, an extension, a misprint or an older prefix of it. */
 function otherDois(pages, target) {
-    return [...pages.matchAll(DOI_IN_TEXT)].map((match) => cleanDoi(match[0])).filter((doi) => !sameArticle(doi, target));
+    return [...pages.matchAll(DOI_IN_TEXT)].map((match) => cleanDoi(match[0]))
+        .filter((doi) => !sameArticle(doi, target) && !DEPOSIT_PREFIXES.some((prefix) => doi.startsWith(prefix)));
 }
 /** DOIs the pages label as the article a notice is about: the first DOI after each label. */
 function aboutDois(pages) {
@@ -262,18 +292,59 @@ function notTheArticle(head, title, named) {
     // A supplementary file opens with its heading and names the article after
     // it; an article whose toolbar lists "Supporting Information" below its own
     // title is the article (ACS, 2026-11-02).
-    const attachment = ATTACHMENT_HEADING.exec(head);
+    const attachment = [...head.matchAll(new RegExp(ATTACHMENT_HEADING.source, "gim"))].find((found) => !GOES_ON.test(head.slice(0, found.index)));
     if (attachment && !titleBefore(head.slice(0, attachment.index), title))
         return true;
     return NOTICE.test(head) && !named && !NOTICE_TITLE.test(plainTitle(title));
+}
+/**
+ * The requested article's own text when it begins after another article's reference
+ * list on the same pages, from its title to its own reference list; "" when it does not.
+ * A short piece can share its first page with the end of the one before it, references
+ * included (Cell's Previews, 2026-11-18). It takes the title standing on its own lines
+ * and, within HEAD_REACH after it and no other DOI between, the target DOI alone on its
+ * line: a reference list cites an article on lines it shares with its authors, year and
+ * journal, and ends its DOI with a full stop.
+ */
+function headAfterReferences(text, target, title) {
+    const first = REFERENCES_HEADING.exec(text);
+    const plain = normalise(plainTitle(title));
+    const key = letters(plain).chars;
+    if (!first || !/^10\.\d{4,9}\/\S/.test(target) || weight(key) < SHORT_TITLE)
+        return "";
+    const firstEnd = first.index + first[0].length;
+    const escaped = target.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+    const doiLine = new RegExp(`^[ \\t]*(?:https?:\\/\\/(?:dx\\.)?doi\\.org\\/|doi:?[ \\t]*)?${escaped}[ \\t]*$`, "gm");
+    doiLine.lastIndex = firstEnd;
+    for (let line = doiLine.exec(text); line; line = doiLine.exec(text)) {
+        const offset = Math.max(firstEnd, line.index - HEAD_REACH);
+        const stretch = letters(text.slice(offset, line.index));
+        let found = stretch.chars.lastIndexOf(key);
+        while (found >= 0) {
+            const begin = offset + stretch.at[found];
+            const end = offset + stretch.at[found + key.length - 1] + 1;
+            if (numbersMatch(text.slice(Math.max(0, begin - 25), end + 26), plain) && standsAlone(text, begin, end)
+                && !new RegExp(DOI_IN_TEXT.source).test(text.slice(end, line.index))) {
+                const next = new RegExp(REFERENCES_HEADING.source, "gim");
+                next.lastIndex = line.index + line[0].length;
+                const after = next.exec(text);
+                return text.slice(begin, after ? after.index : text.length);
+            }
+            found = found - key.length >= 0 ? stretch.chars.lastIndexOf(key, found - key.length) : -1;
+        }
+    }
+    return "";
 }
 /** What the first pages show; null without any text. */
 export function identityEvidence(firstPages, identifier, title) {
     if (!firstPages.trim())
         return null;
     const text = normalise(firstPages);
-    const front = text.split(REFERENCES_HEADING)[0];
+    let front = text.split(REFERENCES_HEADING)[0];
     const target = targetDoi(identifier);
+    // Nothing of the article before the first reference list: it may begin after another's.
+    if (!doiNamed(front, target) && !(title?.trim() && titleEvidence(front, letters(front), title)))
+        front = headAfterReferences(text, target, title ?? "") || front;
     const ownFooter = doiAboveCopyright(text, target);
     const doi = doiNamed(front, target) || ownFooter;
     let found = title?.trim() ? titleEvidence(front, letters(front), title) : null;

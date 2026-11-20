@@ -71,6 +71,24 @@ class EntitlementMemoryTests(unittest.TestCase):
         self.assertEqual((result["error_type"], result["reason"]), ("no_entitlement", "user_marked_no_entitlement"))
         self.assertEqual(result["entitlement"]["key"], "issn:0270-9139")
 
+    def test_the_site_a_doi_resolves_to_decides_the_publisher_rules(self):
+        # Karger's Neuroepidemiology (10.1159/ned/…) is on Oxford Academic (2026-11-14);
+        # older Karger DOIs stay on karger.com.
+        from paper_search_school.publishers.profiles import infer_publisher_profile
+        seen = []
+        def browser(doi, output_path, config, profile, *args, **kwargs):
+            seen.append(profile.name)
+            return {"success": False, "error_type": "download_failed", "reason": "fixture"}
+        config = {"publisher_institution_federation": "carsi", "publisher_hourly_limit": 0}
+        for doi, url in (("10.1159/ned/adwag066", "https://academic.oup.com/ned/advance-article/doi/10.1159/ned/adwag066/9022322"),
+                         ("10.1159/000546561", "https://karger.com/article/doi/10.1159/000546561"),
+                         ("10.1136/ard-2024-1", "https://ard.bmj.com/content/1")):
+            with patch.object(bridge, "_resolve_doi", return_value=url), \
+                 patch.object(bridge, "_try_browser_batch_download", side_effect=browser):
+                bridge._try_builtin_institutional(doi, Path("/tmp/x.pdf"), config, infer_publisher_profile(doi))
+        # A journal listed as moved (Annals of the Rheumatic Diseases) keeps its listed platform.
+        self.assertEqual(seen, ["Oxford Academic", "Karger", "Elsevier"])
+
     def test_a_journal_whose_site_blocked_the_network_is_answered_at_once_for_a_while(self):
         # BMJ's Gut behind a Cloudflare block page (2026-11-02): its later items need no
         # browser; another journal of the same publisher is still tried. The data

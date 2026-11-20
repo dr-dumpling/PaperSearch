@@ -221,7 +221,9 @@ describe("setup command", () => {
   it("keeps an existing exact true value and probes the school backend exactly once", () => {
     const logPath = join(tempDir, "setup-school.log");
     const binDir = join(tempDir, "fake-bin");
-    const executable = join(binDir, "paper-search-school");
+    // A .cmd file on Windows, found on PATH through PATHEXT like the real one's .exe.
+    const windows = process.platform === "win32";
+    const executable = join(binDir, windows ? "paper-search-school.cmd" : "paper-search-school");
     const fixturePath = join(
       process.cwd(),
       "tests/fixtures/school/fake/fake-school-mcp.mjs",
@@ -233,7 +235,9 @@ describe("setup command", () => {
     );
     writeFileSync(
       executable,
-      `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(fixturePath)} --scenario success --log ${shellQuote(logPath)} "$@"\n`,
+      windows
+        ? `@echo off\r\n"${process.execPath}" "${fixturePath}" --scenario success --log "${logPath}" %*\r\n`
+        : `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(fixturePath)} --scenario success --log ${shellQuote(logPath)} "$@"\n`,
       { mode: 0o755 },
     );
 
@@ -286,7 +290,7 @@ describe("setup command", () => {
 
     return spawnSync(
       process.execPath,
-      [join(process.cwd(), "node_modules/.bin/tsx"), "src/cli.ts", ...args],
+      [join(process.cwd(), "node_modules/tsx/dist/cli.mjs"), "src/cli.ts", ...args],
       {
         cwd: process.cwd(),
         env,

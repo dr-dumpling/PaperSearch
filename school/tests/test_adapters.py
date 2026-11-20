@@ -73,7 +73,11 @@ class GenericPublisherTests(unittest.TestCase):
 
     def test_publishers_without_adapter_keep_generic_behaviour(self):
         d = PublisherBatchDownloader({}, profile=get_publisher_profile("aip"))
-        self.assertIs(type(d.adapter), PublisherAdapter)
+        # AIP's adapter only reads the full-text page for the Markdown (2026-11-15): every
+        # answer about the PDF and the login is still the generic one.
+        own = {name for name in vars(type(d.adapter)) if not name.startswith("__")}
+        self.assertEqual(own, {"publisher", "fulltext_shown_js", "fulltext_images_js"})
+        self.assertIs(type(d.adapter).__mro__[1], PublisherAdapter)
         self.assertIsNone(d.adapter.open_institution_entry(Mock(), None))
         self.assertFalse(d._uses_article_pdf_validation())
         jama = PublisherBatchDownloader({}, profile=get_publisher_profile("jama"))
@@ -783,11 +787,11 @@ class ScienceDirectSignedOutTests(unittest.TestCase):
         self.assertEqual(score("Hong Mu-lan University (Guangzhou)"), 2)
         self.assertEqual(score("Hong Mu-Lan University, Library"), 2)  # LibLynx (De Gruyter), 2026-11-02
         d = self.downloader()
-        d._institution_names = lambda: ("华中科技大学", "Huazhong University of Science and Technology")
-        long_name = "华中科技大学(Huazhong University of Science and Technology) (Huazhong University of Science and Technology)"
+        d._institution_names = lambda: ("红木兰理工大学", "Hong Mu-lan University of Science and Technology")
+        long_name = "红木兰理工大学(Hong Mu-lan University of Science and Technology) (Hong Mu-lan University of Science and Technology)"
         self.assertEqual(d._institution_match_score(long_name), 3)
         self.assertEqual(d._institution_match_score(
-            "Huazhong University of Science and Technology Tongji Medical College Union Hospital"), 1)
+            "Hong Mu-lan University of Science and Technology Medical College Union Hospital"), 1)
 
     def test_an_entry_that_goes_on_by_itself_gets_no_continue_click(self):
         from patchright.sync_api import TimeoutError as PlaywrightTimeout
@@ -895,6 +899,11 @@ class SchoolChooserRulesTests(unittest.TestCase):
         self.assertTrue(d._openathens_lacks_school(page("Hong Mu-lan University")))
         self.assertFalse(d._openathens_lacks_school(page("Hong Mu-lan University", found=True)))
         self.assertFalse(d._openathens_lacks_school(page("Someone typing")))  # the user's own search
+        # A name with a leading "The": the login ends only once it was searched without it too (2026-11-17).
+        d = PublisherBatchDownloader({**CARSI_SCHOOL, "school_name_en": "The Hong Mu-lan University"},
+                                     profile=get_publisher_profile("sage"), institution_query="红木兰大学")
+        self.assertFalse(d._openathens_lacks_school(page("The Hong Mu-lan University")))
+        self.assertTrue(d._openathens_lacks_school(page("Hong Mu-lan University")))
 
     def test_openathens_find_your_institution_is_a_chooser(self):
         d = self.downloader()
@@ -1143,6 +1152,9 @@ class WorldScientificChooserTests(unittest.TestCase):
         d = PublisherBatchDownloader({}, profile=get_publisher_profile("worldscientific"))
         self.assertEqual(d.adapter.chooser_block_reason(Mock(), self.CHOOSER, "find your institution"), "")
         self.assertEqual(d.adapter.chooser_block_reason(Mock(), self.CHOOSER, "loading"), "sso_redirect_stalled")
+        # The configured federation named on the page, as the federation itself tells it.
+        carsi = PublisherBatchDownloader({"publisher_institution_federation": "carsi"}, profile=get_publisher_profile("worldscientific"))
+        self.assertEqual(carsi.adapter.chooser_block_reason(Mock(), self.CHOOSER, "china cernet federation (carsi)"), "")
         self.assertIsNone(d.adapter.chooser_block_reason(
             Mock(), "https://www.worldscientific.com/doi/10.1142/s0218194026500348", "loading"))
         # Asked before the later block rules, as when the engine named the publisher.
@@ -1367,4 +1379,3 @@ class SilverchairSupplementTests(unittest.TestCase):
                                       {"href": "https://cdn.jamanetwork.com/ama/content_public/journal/x/cover.jpg", "label": "cover"}]
         links = d.adapter.supplement_links(page, "10.1001/jamanetworkopen.2026.41377")
         self.assertEqual([link.url for link in links], [s1, s1.replace("supp1", "supp2")])
-

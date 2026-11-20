@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
 from ..base import PublisherAdapter, SupplementLink, register
+from ..platforms.silverchair import SILVERCHAIR_FULLTEXT_IMAGES_JS, SILVERCHAIR_FULLTEXT_SHOWN_JS
 from ...engine.batch_common import _is_browser_error
 
 # The article's "Supplemental content" files, on JAMA's own CDN: .../<code>supp1_prod_....pdf
@@ -36,6 +37,9 @@ class JAMAAdapter(PublisherAdapter):
     # blacklist the legitimate origin.
     passes_over_redirects = True
     unquotes_supplement_urls = True
+    # --fulltext: Silverchair's article page (platforms/silverchair).
+    fulltext_shown_js = SILVERCHAIR_FULLTEXT_SHOWN_JS
+    fulltext_images_js = SILVERCHAIR_FULLTEXT_IMAGES_JS
 
     @classmethod
     def names_supplement(cls, url: str) -> bool:

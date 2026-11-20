@@ -269,7 +269,7 @@ class BatchProgressTests(unittest.TestCase):
             "failures": [{"cls": "no_access", "reason": "学校没有订阅", "title": "A  <i>paper</i>\n", "journal": "Arthritis &amp; Rheumatology",
                           "doi": "10.1000/2", "extra": "dropped"},
                          {"cls": "made_up", "reason": "下载时程序出错"}, {"cls": "no_access"}, "x"],
-            "supplement_failures": [{"cls": "user_or_external", "reason": "网站人机验证拦截", "title": "B", "doi": "10.1000/1"},
+            "supplement_failures": [{"cls": "publisher_or_network", "reason": "网站人机验证拦截", "title": "B", "doi": "10.1000/1"},
                                     {"reason": ""}],
         }
         self.new_process()
@@ -286,7 +286,7 @@ class BatchProgressTests(unittest.TestCase):
                 {"cls": "unexplained", "reason": "下载时程序出错", "title": "", "journal": "", "doi": "", "note": ""},
             ],
             "supplement_failures": [
-                {"cls": "user_or_external", "reason": "网站人机验证拦截", "title": "B", "journal": "", "doi": "10.1000/1", "note": ""},
+                {"cls": "publisher_or_network", "reason": "网站人机验证拦截", "title": "B", "journal": "", "doi": "10.1000/1", "note": ""},
             ]})
         # A next item of the same batch starts without the old summary.
         self.item(3, 3, True, done=2, succeeded=1, failed=1)
@@ -309,7 +309,7 @@ class BatchProgressTests(unittest.TestCase):
             outcome["paused"] = "到了每小时下载上限"
         self.assertEqual((self.state()["status"], self.state()["awaiting_next"]), ("running", True))
         self.new_process()
-        failure = {"cls": "user_or_external", "reason": "到了每小时下载上限", "doi": "10.1000/solo"}
+        failure = {"cls": "publisher_or_network", "reason": "到了每小时下载上限", "doi": "10.1000/solo"}
         self.assertTrue(pr.sync_batch("solo", 1, 1, 0, 1, finished=True, results={"failures": [failure]}))
         snap = pr.read_snapshot()[0]
         self.assertEqual((snap["status"], snap["done"], snap["failed"]), ("done", 1, 1))
@@ -339,7 +339,7 @@ class BatchProgressTests(unittest.TestCase):
                          ("已达每小时上限", f"{resume} 继续", f"Wiley 已达设置的每小时 100 篇，{resume} 重新计数"))
         self.assertEqual(shown["line"], "开放下载：已查 3/3 篇，找到 1 篇")
         later = progress_view.view(pr.read_snapshot()[0], until + 1)
-        self.assertEqual((later["part"], later["notice"]), ("正文", ""))
+        self.assertEqual((later["part"], later["notice"]), ("PDF", ""))
         # A longer publisher name is left out, to keep the card's line to one line.
         long_name = {**pr.read_snapshot()[0], "hourly_wait": {"publisher": "Springer Nature", "limit": 100, "until": until}}
         self.assertEqual(progress_view.view(long_name, time.time())["notice"], f"已达设置的每小时 100 篇，{resume} 重新计数")
@@ -374,7 +374,7 @@ class BatchProgressTests(unittest.TestCase):
         self.item(1, 3, False)
         self.new_process()
         self.assertTrue(pr.sync_batch("b1", 3, 3, 0, 3, finished=True,
-                                      results={"stopped": True, "failures": [{"cls": "user_or_external", "reason": "任务已终止"}]}))
+                                      results={"stopped": True, "failures": [{"cls": "user_side", "reason": "任务已终止"}]}))
         self.assertEqual(pr.read_snapshot()[0]["status"], "cancelled")
 
     def test_a_summary_never_opens_a_window_for_a_batch_it_did_not_show(self):

@@ -1,8 +1,29 @@
 import { createHash } from 'crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join, relative, resolve, sep } from 'path';
 export const SKILL_NAME = 'paper-search';
+/**
+ * Beside each installed copy: the files it was last given. A later version that no longer ships
+ * one of them moves it away on update (to the backup folder), while files the user added, never
+ * in the list, stay (user, 2026-11-18: old files were left behind after files were renamed).
+ */
+export const SKILL_MANIFEST = '.paper-search-files.json';
+/** Files earlier versions shipped before the list above was kept; a copy holding them got them from PaperSearch. */
+export const RETIRED_SKILL_FILES = ['references/institutional-setup.md', 'references/carsi-setup.md'];
+/** Raised when the way copies are kept changes, so that each copy is checked once more though the Skill did not. */
+export const SKILL_LAYOUT = 2;
+/** `${XDG_DATA_HOME:-~/.local/share}/paper-search-cli` */
+export function paperSearchDataRoot(env = process.env, home = homedir()) {
+    const base = env.XDG_DATA_HOME ? resolve(env.XDG_DATA_HOME) : join(home, '.local', 'share');
+    return join(base, 'paper-search-cli');
+}
+/** A backup folder's time stamp: 20261118-143000. */
+export function backupStamp(date) {
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-` +
+        `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
 export const SKILL_TARGETS = [
     { id: 'agents', label: 'Agents shared skills', relativeRoot: '.agents/skills' },
     { id: 'codex', label: 'Codex', relativeRoot: '.codex/skills' },
@@ -103,7 +124,8 @@ export function statusSkillTargets(targetIds, options = {}) {
             managedHashMatch: false,
             extraFiles: [],
             missingFiles: [...sourceByPath.keys()].sort(),
-            staleFiles: []
+            staleFiles: [],
+            retiredFiles: []
         };
         try {
             if (!existsSync(dest)) {
@@ -123,17 +145,19 @@ export function statusSkillTargets(targetIds, options = {}) {
                 .filter(([relPath, content]) => installedByPath.has(relPath) && !installedByPath.get(relPath)?.equals(content))
                 .map(([relPath]) => relPath)
                 .sort();
-            const extraFiles = [...installedByPath.keys()].filter(relPath => !sourceByPath.has(relPath)).sort();
-            const managedHashMatch = missingFiles.length === 0 && staleFiles.length === 0;
+            const retiredFiles = retiredSkillFiles(dest, installedByPath.keys(), sourceByPath);
+            const extraFiles = [...installedByPath.keys()].filter(relPath => !sourceByPath.has(relPath) && !retiredFiles.includes(relPath)).sort();
+            const managedHashMatch = missingFiles.length === 0 && staleFiles.length === 0 && retiredFiles.length === 0;
             const hashMatch = managedHashMatch && extraFiles.length === 0;
             item.installedFiles = installedFiles.length;
             item.installedHash = installedFiles.length > 0 ? skillDigest(installedFiles) : '';
+            item.retiredFiles = retiredFiles;
             item.missingFiles = missingFiles;
             item.staleFiles = staleFiles;
             item.extraFiles = extraFiles;
             item.managedHashMatch = managedHashMatch;
             item.hashMatch = hashMatch;
-            item.status = missingFiles.length || staleFiles.length ? 'stale' : extraFiles.length ? 'extra_files' : 'up_to_date';
+            item.status = missingFiles.length || staleFiles.length || retiredFiles.length ? 'stale' : extraFiles.length ? 'extra_files' : 'up_to_date';
         }
         catch (error) {
             item.status = 'error';
@@ -160,21 +184,35 @@ export function statusSkillTargets(targetIds, options = {}) {
 export function bundledSkillHash(sourceRoot) {
     return skillDigest(loadSkillFiles(sourceRoot));
 }
+/**
+ * Writes the bundled Skill into each target, moves the files an earlier version left there and
+ * this one no longer has into ``backupDir/<target>/`` (by default a new ``skill-backups`` folder
+ * in PaperSearch's data), and records the files it wrote; files the user added stay.
+ */
 export function installSkillTargets(targetIds, options = {}) {
     const root = resolve(options.skillsRoot || homedir());
     const files = loadSkillFiles(options.sourceRoot);
+    const bundled = new Map(files.map(([relPath, content]) => [relPath, content]));
+    const backupDir = options.backupDir ?? join(paperSearchDataRoot(), 'skill-backups', `${backupStamp(new Date())}-update`);
     const installed = [];
     const failed = [];
+    let moved = 0;
     for (const targetId of targetIds) {
         const target = getSkillTarget(targetId);
         const dest = skillDestination(target, root);
         try {
+            const before = existsSync(dest) && statSync(dest).isDirectory() ? iterFilesystemFiles(dest).map(([relPath]) => relPath) : [];
+            const retired = retiredSkillFiles(dest, before, bundled);
             for (const [relPath, content] of files) {
                 const filePath = join(dest, relPath);
                 mkdirSync(dirname(filePath), { recursive: true });
                 writeFileSync(filePath, content);
             }
-            installed.push({ target: target.id, label: target.label, path: dest, files: files.length });
+            for (const relPath of retired)
+                moveAside(join(dest, relPath), join(backupDir, target.id, relPath));
+            moved += retired.length;
+            writeFileSync(join(dest, SKILL_MANIFEST), `${JSON.stringify({ skill: SKILL_NAME, files: [...bundled.keys()].sort() }, null, 2)}\n`);
+            installed.push({ target: target.id, label: target.label, path: dest, files: files.length, retired });
         }
         catch (error) {
             failed.push({ target: target.id, label: target.label, path: dest, error: error?.message || String(error) });
@@ -186,6 +224,7 @@ export function installSkillTargets(targetIds, options = {}) {
         root,
         skill: SKILL_NAME,
         selected: targetIds,
+        ...(moved > 0 ? { backupDir } : {}),
         installed,
         failed,
         installedCount: installed.length,
@@ -221,7 +260,8 @@ export function diffSkillTargets(targetIds, options = {}) {
             })),
             extraFiles: [],
             missingFiles: [...sourceByPath.keys()].sort(),
-            staleFiles: []
+            staleFiles: [],
+            retiredFiles: []
         };
         try {
             if (!existsSync(dest)) {
@@ -264,18 +304,20 @@ export function diffSkillTargets(targetIds, options = {}) {
             });
             const missingFiles = managedFiles.filter(file => file.status === 'missing').map(file => file.file).sort();
             const staleFiles = managedFiles.filter(file => file.status === 'stale').map(file => file.file).sort();
-            const extraFiles = [...installedByPath.keys()].filter(relPath => !sourceByPath.has(relPath)).sort();
-            const managedHashMatch = missingFiles.length === 0 && staleFiles.length === 0;
+            const retiredFiles = retiredSkillFiles(dest, installedByPath.keys(), sourceByPath);
+            const extraFiles = [...installedByPath.keys()].filter(relPath => !sourceByPath.has(relPath) && !retiredFiles.includes(relPath)).sort();
+            const managedHashMatch = missingFiles.length === 0 && staleFiles.length === 0 && retiredFiles.length === 0;
             const hashMatch = managedHashMatch && extraFiles.length === 0;
             item.installedFiles = installedFiles.length;
             item.installedHash = installedFiles.length > 0 ? skillDigest(installedFiles) : '';
+            item.retiredFiles = retiredFiles;
             item.managedFiles = managedFiles.sort((a, b) => a.file.localeCompare(b.file));
             item.missingFiles = missingFiles;
             item.staleFiles = staleFiles;
             item.extraFiles = extraFiles;
             item.managedHashMatch = managedHashMatch;
             item.hashMatch = hashMatch;
-            item.status = missingFiles.length || staleFiles.length ? 'stale' : extraFiles.length ? 'extra_files' : 'up_to_date';
+            item.status = missingFiles.length || staleFiles.length || retiredFiles.length ? 'stale' : extraFiles.length ? 'extra_files' : 'up_to_date';
         }
         catch (error) {
             item.status = 'error';
@@ -342,10 +384,38 @@ function entrypointSkillCandidates() {
         resolve(entryDir, 'skills', SKILL_NAME)
     ];
 }
+/** Files this copy got from an earlier version (its list, or the known older files) that this version no longer has. */
+function retiredSkillFiles(dest, installed, bundled) {
+    let listed = [];
+    try {
+        const parsed = JSON.parse(readFileSync(join(dest, SKILL_MANIFEST), 'utf8'));
+        if (Array.isArray(parsed?.files))
+            listed = parsed.files.filter((file) => typeof file === 'string');
+    }
+    catch {
+        // No list yet (a copy from before 2026-11-18), or one that cannot be read: the known older files only.
+    }
+    const earlier = new Set([...listed, ...RETIRED_SKILL_FILES]);
+    return [...installed].filter(relPath => earlier.has(relPath) && !bundled.has(relPath)).sort();
+}
+function moveAside(from, to) {
+    mkdirSync(dirname(to), { recursive: true });
+    try {
+        renameSync(from, to);
+    }
+    catch (error) {
+        if (error?.code !== 'EXDEV')
+            throw error;
+        copyFileSync(from, to);
+        unlinkSync(from);
+    }
+}
 function iterFilesystemFiles(root) {
     const files = [];
     function visit(dir) {
         for (const name of readdirSync(dir)) {
+            if (dir === root && name === SKILL_MANIFEST)
+                continue;
             const path = join(dir, name);
             const stats = statSync(path);
             if (stats.isDirectory()) {

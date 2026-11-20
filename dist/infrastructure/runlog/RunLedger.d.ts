@@ -1,4 +1,4 @@
-import type { DownloadStageRecord, DownloadWithFallbackResult } from "../../capabilities/pdf-discovery/types.js";
+import type { DownloadStageRecord, DownloadWithFallbackResult } from "../../capabilities/download/types.js";
 /**
  * Local record of every download run, so a failure can be traced afterwards:
  * which stages ran, how long each took, what the backend's browser reached and
@@ -25,8 +25,12 @@ export interface RunLedgerStart {
     mode?: string;
     batchId?: string;
     savePath?: string;
-    /** What the batch downloads (main, supplements, both): 接着下 asks for the same. */
+    /** What the batch downloads (main, supplements, both, markdown): 接着下 asks for the same. */
     content?: string;
+    /** Each paper's Markdown too. */
+    fulltext?: boolean;
+    /** Another saved school this batch used, as the user asked: 接着下 uses it too. */
+    school?: string;
     /** The batch this run goes on with (接着下). */
     resumeOf?: string;
 }
@@ -53,11 +57,17 @@ export declare class RunLedger {
     private succeeded;
     private failed;
     private warned;
+    /** A copy of the run's files, written as they are (the batch folder's _run/<run id>, user 2026-11-17). */
+    private mirror?;
+    /** Called after each paper is recorded. */
+    onItem?: () => void;
     private constructor();
     static open(start: RunLedgerStart, env?: Record<string, string | undefined>, now?: Date): RunLedger | null;
     phase(text: string): void;
     stage(item: RunItem, record: DownloadStageRecord): void;
     item(item: RunItem, result: DownloadWithFallbackResult): void;
+    /** Keeps a copy of run.json, items.jsonl and timeline.log in ``dir`` too, from now on. */
+    mirrorTo(dir: string): void;
     /** Where the run's papers that went fine keep their backend records. */
     get records(): string;
     /**

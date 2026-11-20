@@ -18,6 +18,40 @@ _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href]')].map(a =
     href: a.href, label: (a.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 240)
 }))"""
 
+# --fulltext (PaperSearch's sites/templates/ams.ts). The article page (PubFactory) holds the
+# full text in div#contentRoot > div#articleBody: div.section sections, the back matter, the
+# appendices, the references (section.refSection). The Abstract / Full Text / PDF tabs are
+# on every page, an early-online article's too, which has no #articleBody: they prove no
+# body. A figure (div.figure) or a table (div.tableWrap, only an image) is lazy: its <img>
+# shows Blank.svg until in view, data-image-src names the medium image ("inline-…") and a
+# hidden pop-up (pf-box) the largest ("full-…"), which is taken, as the converter does.
+# MathJax 2 keeps each formula's MathML in a math/mml script beside its output, so nothing
+# is prepared (Artificial Intelligence for the Earth Systems, open access, 2026-11-15).
+FULLTEXT_SHOWN_JS = """() => {
+  const body = document.querySelector('#articleBody');
+  if (!body) return false;
+  const text = [...body.querySelectorAll('p, div.p')]
+    .filter((p) => !p.closest('.figure, .tableWrap, .refSection, .keywords') && !p.parentElement?.closest('p, div.p'))
+    .reduce((total, p) => total + (p.textContent || '').length, 0);
+  return text > 500;
+}"""
+FULLTEXT_IMAGES_JS = """() => {
+  const body = document.querySelector('#articleBody');
+  if (!body) return [];
+  const listed = (images) => images.map((img) => (img.getAttribute('data-image-src') || '').trim()).find(Boolean);
+  return [...body.querySelectorAll('div.figure, div.tableWrap')]
+    .filter((box) => !box.parentElement?.closest('div.figure, div.tableWrap'))
+    .filter((box) => !box.classList.contains('tableWrap') || !box.querySelector('table'))
+    .map((box) => {
+      const images = [...box.querySelectorAll('img')];
+      return listed(images.filter((img) => img.closest('pf-box'))) || listed(images)
+        || images.map((img) => (img.getAttribute('src') || '').trim())
+          .find((src) => src && !/\\/Blank\\.svg(?:[?#]|$)|^data:/i.test(src)) || '';
+    })
+    .filter(Boolean)
+    .map((src) => new URL(src, location.href).href);
+}"""
+
 
 def supplement_links_from_rows(rows: list[dict], doi: str) -> list[SupplementLink]:
     """Only files listed under this article's own supplemental XML directory."""
@@ -44,6 +78,8 @@ def supplement_links_from_rows(rows: list[dict], doi: str) -> list[SupplementLin
 @register
 class AMSAdapter(PublisherAdapter):
     publisher = "ams"
+    fulltext_shown_js = FULLTEXT_SHOWN_JS
+    fulltext_images_js = FULLTEXT_IMAGES_JS
 
     def prepare_institution_choice(self, page: Any, result: Any) -> bool | None:
         """No school to choose here: the article ends at once as having no login route

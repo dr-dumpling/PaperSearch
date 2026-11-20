@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from . import api_keys, download_directory, i18n, progress_view, user_settings
+from .edition import pro_features
 from .capsule_placement import Placement, Rect
 from .capsule_window import (_MacDrag, _cocoa_call, _enable_inactive_hover, _mac_button_held, _mac_pointer,
                              _prepare_nonactivating_start, _round_windows_corners, _screen_areas, _set_window_frame,
@@ -159,7 +160,8 @@ class Api:
         self._drag_pointer: tuple[float, float] | None = None
         self._mac_drag: _MacDrag | None = None  # macOS: presses tracked natively (main)
         self._native_drag = False  # this drag follows the mouse natively, not the page
-        self._papers_seen: tuple[int, str] = (0, "")  # papers.json: when read, its batch
+        # papers.json: when read, its batch, the sites not yet supported its pages came from.
+        self._papers_seen: tuple[int, str, dict[str, Any] | None] = (0, "", None)
         self._hovering = False
         self._layout: tuple[int, bool, Rect, Rect] | None = None
         self._closed = False
@@ -182,6 +184,9 @@ class Api:
             # 成功, 失败 and 剩余 open their lists once the caller has sent this batch's papers.
             if snapshot and snapshot.get("batch_id") and self._papers_batch() == snapshot["batch_id"]:
                 shown["lists"] = True
+                # The sites not yet supported its pages came from: a line while it runs (2026-11-16).
+                if shown.get("mode") in ("running", "attention") and self._papers_seen[2]:
+                    shown["sites"] = self._papers_seen[2]
         except Exception:
             shown = {"mode": "idle"}
         shown["lang"] = self._lang
@@ -318,11 +323,69 @@ class Api:
         except OSError:
             return ""
         if changed != self._papers_seen[0]:
-            self._papers_seen = (changed, str((read_papers() or {}).get("batch_id") or ""))
+            listed = read_papers() or {}
+            batch = str(listed.get("batch_id") or "")
+            self._papers_seen = (changed, batch, progress_view.unverified_sites(listed, {"batch_id": batch}))
         return self._papers_seen[1]
 
     def paper_lists(self) -> dict[str, Any]:
         return progress_view.paper_lists(read_papers(), read_state())
+
+    # --- pages from sites not yet supported (user, 2026-11-16) -------------
+    def _batch_papers(self) -> list[dict[str, Any]]:
+        listed, state = read_papers() or {}, read_state() or {}
+        if not listed.get("batch_id") or listed.get("batch_id") != state.get("batch_id"):
+            return []
+        return [p for p in (listed.get("papers") or {}).values() if isinstance(p, dict)]
+
+    def markdown_issue(self) -> str:
+        """提 issue (user, 2026-11-17: one button for both kinds of site): the report on this
+        batch's pages from sites not yet supported, saved or not, as a ZIP in the batch's
+        folder shown selected there, then GitHub's new issue page filled in with the sites,
+        whose rules, the version and the counts (no DOI or title), in the user's browser; they
+        drag the ZIP in and submit. Nothing is uploaded."""
+        import webbrowser
+
+        from .config import load_config
+        from .markdown_report import ReportError, export, issue_url, paper_search_version, site_counts
+
+        papers = self._batch_papers()
+        sites = site_counts(papers)
+        if not sites:
+            return "这批没有暂未正式支持的网站"
+        version = paper_search_version()
+        entries = [{"report": p["markdown_report"], "doi": p.get("doi"), "title": p.get("title")}
+                   for p in papers if p.get("markdown_report")]
+        folder = progress_view.batch_folder(read_papers(), read_state())
+        exported = ""
+        try:
+            if entries and folder:
+                result = export(entries, Path(folder), load_config(), version)
+                progress_view.reveal_file(result["path"])
+                exported = result["name"]
+        except ReportError:
+            exported = ""
+        except Exception as exc:
+            return f"导出报告失败：{type(exc).__name__}"
+        try:
+            opened = webbrowser.open(issue_url(sites, version))
+        except Exception as exc:
+            return f"打开 issue 页面失败：{type(exc).__name__}"
+        if not opened:
+            return "打开 issue 页面失败：没有找到默认浏览器" + (f"；报告已导出：{exported}" if exported else "")
+        return f"已导出报告 {exported} 并打开 issue 页面，把它拖进去" if exported else "已打开 issue 页面（这批没有留下可导出的网页）"
+
+    def open_markdown_support(self) -> str:
+        """已支持的网站: the list of sites with Markdown rules, in the user's browser."""
+        import webbrowser
+
+        from .markdown_report import paper_search_version, support_doc
+
+        try:
+            opened = webbrowser.open(support_doc(paper_search_version()))
+        except Exception as exc:
+            return f"打开失败：{type(exc).__name__}"
+        return "已在浏览器打开" if opened else "打开失败：没有找到默认浏览器"
 
     def show_paper(self, index: int) -> str:
         """A saved paper of the running or finished batch, shown in its folder: the file the batch
@@ -347,8 +410,11 @@ class Api:
             "fields": [{"name": f.name, "label": f.label, "unit": f.unit, "value": values[f.name],
                         "default": f.default, "page": f.page} for f in user_settings.FIELDS],
             "notify": user_settings.notify_enabled(),
+            "hourly_now": user_settings.hourly_now(),
             "download_dir": download_directory.current(),
             "language": self._lang,
+            # Whether the settings have the Markdown page (PaperSearch Pro's, edition.py).
+            "pro": pro_features(),
         }
 
     def set_language(self, lang: str) -> dict[str, Any]:
@@ -372,6 +438,16 @@ class Api:
         except (OSError, ValueError) as exc:
             return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
         return {"ok": True, "notify": enabled}
+
+    def set_hourly_now(self, enabled: bool) -> dict[str, Any]:
+        """The switch beside the hourly limit (马上生效) saves immediately, like the notification switch."""
+        if not isinstance(enabled, bool):
+            return {"ok": False, "error": "开关必须为开启或关闭"}
+        try:
+            user_settings.set_hourly_now(enabled)
+        except (OSError, ValueError) as exc:
+            return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
+        return {"ok": True, "hourly_now": enabled}
 
     # The settings' check of system notifications (user, 2026-11-10): a switch turned on,
     # or a test notification, says when the system keeps them from showing.
@@ -498,6 +574,120 @@ class Api:
 
         try:
             opened = webbrowser.open(address)
+        except Exception as exc:
+            return {"ok": False, "message": f"打开失败：{type(exc).__name__}"}
+        return {"ok": True} if opened else {"ok": False, "message": "打开失败：没有找到默认浏览器"}
+
+    # --- PaperSearch Pro: the Markdown page -------------------------------
+    def school_login_state(self) -> dict[str, Any]:
+        """The sign-in page (PaperSearch Pro, school_login.py): the current school, its saved
+        account (masked; never the password) and whether Pro fills it in."""
+        if not pro_features():
+            return {"ok": False, "error": "这个版本没有自动登录"}
+        try:
+            from . import school_login
+            from .config import load_config
+
+            config = load_config()
+            entity_id = str(config.get("idp_entity_id") or "").strip()
+            account = school_login.saved(config, entity_id) or {}
+            return {"ok": True, "school": str(config.get("school_name") or config.get("school_name_en") or ""),
+                    "entity": bool(entity_id), "saved": bool(account),
+                    "username": school_login.masked(account.get("username", "")) if account else "",
+                    "enabled": bool(account.get("enabled")), "off": str(account.get("off") or ""),
+                    "pro": school_login.module() is not None, "status": school_login.school_status(entity_id)}
+        except Exception as exc:
+            return {"ok": False, "error": f"读取失败：{type(exc).__name__}"}
+
+    def school_login_saved(self) -> dict[str, str]:
+        """The current school's saved account and password, for the sign-in page's fields: the
+        password there, hidden until its eye shows it (user, 2026-11-19: they may see it)."""
+        if not pro_features():
+            return {}
+        try:
+            from . import school_login
+            from .config import load_config
+
+            config = load_config()
+            account = school_login.saved(config, str(config.get("idp_entity_id") or "").strip()) or {}
+        except Exception:
+            return {}
+        return {"username": str(account.get("username") or ""), "password": str(account.get("password") or "")}
+
+    def save_school_login(self, username: str = "", password: str = "", enabled: bool = True) -> dict[str, Any]:
+        """Keep the current school's account; empty fields keep what was saved (the switch)."""
+        if not pro_features():
+            return {"ok": False, "error": "这个版本没有自动登录"}
+        try:
+            from . import school_login
+            from .config import load_config
+
+            entity_id = str(load_config().get("idp_entity_id") or "").strip()
+            school_login.save(entity_id, str(username or ""), str(password or ""), enabled=bool(enabled))
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
+        return self.school_login_state()
+
+    def clear_school_login(self) -> dict[str, Any]:
+        if not pro_features():
+            return {"ok": False, "error": "这个版本没有自动登录"}
+        try:
+            from . import school_login
+            from .config import load_config
+
+            school_login.clear(str(load_config().get("idp_entity_id") or "").strip())
+        except Exception as exc:
+            return {"ok": False, "error": f"清除失败：{type(exc).__name__}"}
+        return self.school_login_state()
+
+    def pro_status(self) -> dict[str, Any]:
+        from . import pro_status
+
+        try:
+            return {"ok": True, **pro_status.status()}
+        except Exception as exc:
+            return {"ok": False, "error": f"读取失败：{type(exc).__name__}"}
+
+    def install_pro(self) -> dict[str, Any]:
+        """The Markdown page's 安装: starts it, or says how it goes (pro_install_state)."""
+        return self._pro_installer().start()
+
+    def pro_install_state(self) -> dict[str, Any]:
+        return self._pro_installer().state()
+
+    def check_pro(self) -> dict[str, Any]:
+        """The Markdown page's 检查更新: starts it, or says how it goes (pro_check_state)."""
+        return self._pro_checker().start()
+
+    def pro_check_state(self) -> dict[str, Any]:
+        return self._pro_checker().state()
+
+    def _pro_checker(self):
+        from .pro_status import ProCheck
+
+        checker = getattr(self, "_pro_check", None)
+        if checker is None:
+            checker = self._pro_check = ProCheck()
+        return checker
+
+    def _pro_installer(self):
+        from .pro_status import ProInstall
+
+        installer = getattr(self, "_pro_install", None)
+        if installer is None:
+            installer = self._pro_install = ProInstall()
+        return installer
+
+    def open_issue(self) -> dict[str, Any]:
+        """GitHub's new-issue page for the Markdown, its title begun."""
+        import webbrowser
+
+        from .pro_status import ISSUE_URL
+
+        try:
+            opened = webbrowser.open(ISSUE_URL)
         except Exception as exc:
             return {"ok": False, "message": f"打开失败：{type(exc).__name__}"}
         return {"ok": True} if opened else {"ok": False, "message": "打开失败：没有找到默认浏览器"}

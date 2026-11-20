@@ -1,4 +1,4 @@
-import { createSchoolBackend, } from "../../capabilities/pdf-discovery/school/index.js";
+import { createSchoolBackend, } from "../../infrastructure/school/index.js";
 export async function resolveSchoolReadiness(enabled, createBackend = createSchoolBackend, signal) {
     if (!enabled) {
         return {

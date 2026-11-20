@@ -8,13 +8,21 @@ describe("failure classes (ADR 0012)", () => {
     expect(classifyFailureCode("entitlement_missing")).toBe("no_access");
     expect(classifyFailureCode("institution_federation_unavailable")).toBe("no_access");
     expect(classifyFailureCode("no_entitlement")).toBe("no_access");
-    expect(classifyFailureCode("user_skipped")).toBe("user_or_external");
-    expect(classifyFailureCode("profile_busy")).toBe("user_or_external");
-    expect(classifyFailureCode("idp_no_return_to_publisher")).toBe("user_or_external");
+    // The causes outside PaperSearch's rules, by whose they are (user, 2026-11-19).
+    expect(classifyFailureCode("user_skipped")).toBe("user_side");
+    expect(classifyFailureCode("profile_busy")).toBe("user_side");
+    expect(classifyFailureCode("login_credentials_rejected")).toBe("school_side");
+    expect(classifyFailureCode("idp_no_return_to_publisher")).toBe("school_side");
+    expect(classifyFailureCode("login_paused")).toBe("school_side");
+    expect(classifyFailureCode("access_blocked")).toBe("publisher_or_network");
+    expect(classifyFailureCode("network_unavailable")).toBe("publisher_or_network");
+    expect(classifyFailureCode("doi_not_resolved")).toBe("article_or_site");
     expect(classifyFailureCode("unsupported_platform")).toBe("unsupported");
-    expect(classifyFailureCode("article_not_yet_published")).toBe("user_or_external");
+    expect(classifyFailureCode("article_not_yet_published")).toBe("article_or_site");
     expect(classifyFailureCode("unsupported_publisher")).toBe("unsupported");
     expect(classifyFailureCode("generic_institution_entry_missing")).toBe("unsupported");
+    // A site offering no school login at all (an open-access one): the site's doing, not no access.
+    expect(classifyFailureCode("no_institution_entry")).toBe("article_or_site");
     for (const code of ["download_failed", "download_timeout", "login_not_reached", "login_required",
       "source_exception", "pdf_identity_unverified", "pdf_wrong_article", undefined, "toString"]) {
       expect(classifyFailureCode(code)).toBe("unexplained");
@@ -23,16 +31,22 @@ describe("failure classes (ADR 0012)", () => {
 
   it("counts a login timeout as the user's only when the record says it ended on a page for the user", () => {
     const ended = diagnostic({ events: [{ state: "login_wait_ended", detail: "school_login" }] });
-    expect(describeFailure("login_timeout", ended).failureClass).toBe("user_or_external");
+    expect(describeFailure("login_timeout", ended).failureClass).toBe("user_side");
     // Neurological Research before the fix: the wait ran out on the article; older records cannot tell.
     const old = diagnostic({ events: [{ state: "sso_entry_clicked" }, { state: "login_state", detail: "MRI markers | https://www.tandfonline.com/doi/full/x" }, { state: "user_wait_expired" }] });
     expect(describeFailure("login_timeout", old)).toEqual({ failureClass: "unexplained", stoppedAt: "user_wait_expired" });
   });
 
-  it("does not turn an unregistered authentication application into a subscription denial", () => {
+  it("counts an entry the publisher has not enabled as no access by it, never as no subscription", () => {
+    // No access by this way in, as no route for the school (user, 2026-11-19); the words say so.
     expect(describeFailure("institution_not_registered", diagnostic({
       access_evidence: ["The application you are trying to access is not registered"],
-    }))).toEqual({ failureClass: "user_or_external" });
+    }))).toEqual({ failureClass: "no_access", evidence: "这个登录入口没有开通" });
+    const optica = diagnostic({ events: [{ state: "institution_not_registered",
+      detail: "Your organization does not have access via SSO @ https://www.opticaopen.org/default.cfm" }] });
+    expect(describeFailure("institution_not_registered", optica)).toEqual({ failureClass: "no_access",
+      evidence: "这个登录入口没有开通：Your organization does not have access via SSO @ https://www.opticaopen.org/default.cfm" });
+    expect(describeFailure("institution_not_registered", optica).evidence).not.toMatch(/订阅|subscri/);
   });
 
   it("keeps the evidence for no access", () => {

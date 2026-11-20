@@ -5,6 +5,7 @@ Part of ``PublisherBatchDownloader`` (batch.py), which combines the mixins."""
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from contextlib import contextmanager
@@ -16,11 +17,34 @@ from . import access_rules
 from .login_wait import LoginWait
 from .. import federations, progress_reporter
 from .batch_common import (AWAY_WAIT_SEC, POLL_MS, DownloadResult, PublisherAccessBlocked, PublisherContentError, _is_browser_error,
-                           _is_navigation_cut, open_page, pump_until, settle)
+                           _is_navigation_cut, logger, open_page, pump_until, settle)
 
 # A site without a publisher profile (publishers/site.py) whose article page
 # offered no institution entry the shared rules know.
 GENERIC_ENTRY_MISSING = "generic_institution_entry_missing"
+# A site whose page shows no way to any school's login (no institution entry, search or
+# list, no federation chooser), or only the publisher's own account sign-in: an open-access
+# site, a site with personal accounts only. No school login is started there (user,
+# 2026-11-18: an MDPI page went on to MDPI's own account login and waited for the user).
+NO_INSTITUTION_ENTRY = "no_institution_entry"
+
+
+# PaperSearch Pro's school sign-in (school_login.py): the reminder when it leaves a step to the user.
+SIGN_IN_REFUSED = "学校没有接受保存的密码，自动登录已关闭：请在浏览器窗口完成机构登录，并在设置里更新密码"
+SIGN_IN_SECOND_STEP = "学校还要再验证一步（如微信扫码），请在浏览器窗口完成"
+SIGN_IN_FOR_THE_USER = "学校登录页要你本人操作（验证码、扫码或另一个账号），请在浏览器窗口完成"
+#: A school's login page whose certificate Chrome will not take, and not the one Pro's survey saw there.
+SIGN_IN_CERTIFICATE = "学校登录页的证书和之前记下的不一样，没有自动填写：请确认是学校的网站后，在浏览器窗口完成机构登录"
+#: The note naming the check the school's page asks for (Pro's school sign-in tells which, 2026-11-19).
+SIGN_IN_ASKS = {
+    "image_code": "学校登录页要输入图片验证码，请在浏览器窗口完成",
+    "slider": "学校登录页要拖动滑块拼图，请在浏览器窗口完成",
+    "click_select": "学校登录页要按顺序点选图中文字，请在浏览器窗口完成",
+    "sms_code": "学校登录页要短信或动态验证码，请在浏览器窗口完成",
+    "qr_scan": "学校登录页要扫码，请在浏览器窗口完成",
+    "site_check": "学校登录页要完成人机检查，请在浏览器窗口完成",
+    "second_factor": "学校还要二次验证，请在浏览器窗口完成",
+}
 
 
 class LoginMixin:
@@ -91,7 +115,11 @@ class LoginMixin:
         With the institution's session, or an open-access article, the PDF is
         taken. With nothing either way, or with only the reader's access (also
         a personal account's or ClinicalKey's, J Hepatol 2026-10-31), the PDF is
-        tried first and the school's login follows once if it fails (batch.py)."""
+        tried first and the school's login follows once if it fails (batch.py).
+
+        Open to all (a badge or licence the access rule read, or the page's own
+        metadata saying so: ``_open_access_signal``): the PDF is taken with no school
+        login after it, unless its entry asks for access (batch.py)."""
         result._open_access_current = False
         verdict, basis, evidence = self._access_decision(page, snapshot) if snapshot is not None else self._access_decision(page)
         if verdict != access_rules.UNKNOWN:
@@ -100,8 +128,19 @@ class LoginMixin:
                 self._event(result, "access_decision", detail)
         if verdict == access_rules.OUT:
             return False
-        open_to_all = basis == "reader" and access_rules.OPEN_TO_ALL.search(evidence.split("badge: ", 1)[-1])
+        open_to_all = (evidence if basis == "reader" and access_rules.OPEN_TO_ALL.search(evidence.split("badge: ", 1)[-1])
+                       else "")
+        if not open_to_all and basis != "session":
+            # Said in the page's metadata only (an open article whose page shows no badge).
+            open_to_all = self._open_access_signal(page)
+            if open_to_all and not any(e["state"] == "open_access_signal" and e.get("detail") == open_to_all
+                                       for e in result.events):
+                self._event(result, "open_access_signal", open_to_all)
         result._open_access_current = bool(open_to_all)
+        if open_to_all:
+            # Kept past navigation: batch.py's login after a gated PDF entry, and the
+            # login for a page read without its full text (_fulltext_after_login_only).
+            result._taken_as_open = open_to_all
         if (basis != "session" and not open_to_all and not getattr(result, "_pdf_first", False)
                 and not self._school_login_done()):
             result._pdf_first = True
@@ -282,6 +321,162 @@ class LoginMixin:
         return (self.adapter.is_login_landing(url)
                 and any(e.get("state") in self._SCHOOL_CHOSEN for e in result.events))
 
+    def _school_side_steps(self, page: Any, result: DownloadResult) -> bool:
+        """What the program does itself on the school's side of a login, wherever the login waits
+        (this general wait, or a publisher's own: Oxford's): the school's attribute release or terms
+        agreed to, its sign-in filled in by PaperSearch Pro. True when one was done and the page
+        goes on. One place, so a publisher with its own wait has them all (user, 2026-11-19: the
+        school's 信息释放 was agreed to everywhere but on Oxford's way, which waited for the user)."""
+        return (self._past_school_certificate_warning(page, result) or self._accept_idp_confirmation(page, result)
+                or self._school_sign_in(page, result))
+
+    def _past_school_certificate_warning(self, page: Any, result: DownloadResult) -> bool:
+        """PaperSearch Pro, for a school whose login page has a certificate Chrome will not take (expired, not
+        trusted; school_login.pro_certificates): Chrome's warning for that page passed, then the page's own
+        certificate compared with the one Pro's survey saw there (user, 2026-11-20: fill those in too). Only
+        with the school's sign-in on, once a paper for each page. True when the page went on to the school's."""
+        from .. import school_login
+
+        if not str(getattr(page, "url", "") or "").startswith(school_login.WARNING_PAGES):
+            return False
+        entity_id = str(self.config.get("idp_entity_id") or "").strip()
+        account = school_login.saved(self.config, entity_id)
+        pro = school_login.module() if account and account.get("enabled") else None
+        pins = school_login.pro_certificates(pro, entity_id) if pro is not None else {}
+        passed = getattr(result, "_warnings_passed", frozenset())
+        host = school_login.warning_for(page, tuple(h for h in pins if h not in passed))
+        if not host:
+            return False
+        result._warnings_passed = passed | {host}
+        # The certificate offered, read on the warning itself: the warning passed only for the one surveyed,
+        # and the page that then loads has to have it too.
+        error, digest = school_login.page_certificate(page)
+        if school_login.warning_certificate(host, error, digest, pins):
+            if not school_login.pass_warning(page, host):
+                self._event(result, "school_certificate", f"{host}: Chrome's warning would not let the page through")
+                return False
+            error, digest = school_login.page_certificate(page)
+            if school_login.certificate_allows(host, error, digest, pins):
+                self._event(result, "school_certificate", f"{host}: {error or 'certificate'} taken, the one surveyed")
+                return True
+        # Another certificate than the survey's: nothing typed there, the warning left to the user.
+        result._sign_in_tried = True
+        result._sign_in_note = SIGN_IN_CERTIFICATE
+        self._event(result, "school_certificate", f"{host}: {error or 'unread'}, not the certificate surveyed")
+        return False
+
+    def _school_sign_in(self, page: Any, result: DownloadResult) -> bool:
+        """PaperSearch Pro fills the school's sign-in in for the user (its tests and survey in the Pro repository):
+        on the school's own https page, for a school Pro has tested, with the account the user
+        saved, once a paper and at most school_login.PER_HOUR times an hour. True when the form
+        was sent. A wrong password turns it off for the school: the user signs in and saves the
+        account again. Never the account in an event."""
+        from .. import school_login
+
+        if os.environ.get(school_login.SURVEY_ENV) in {"1", "press"}:
+            return self._school_sign_in_survey(page, result)
+        if getattr(result, "_sign_in_tried", False):
+            return False
+        entity_id = str(self.config.get("idp_entity_id") or "").strip()
+        account = school_login.saved(self.config, entity_id)
+        pro = school_login.module() if account and account.get("enabled") else None
+        if pro is None:
+            return False  # no account to fill in, turned off, or no Pro: the user signs in as before
+
+        def skipped(why: str) -> bool:
+            # Why nothing was filled in, once a paper for each reason: what a school's test reads
+            # (a school tested, 2026-11-19: the first run filled nothing and said nothing).
+            seen = getattr(result, "_sign_in_skipped", frozenset())
+            if why not in seen:
+                result._sign_in_skipped = seen | {why}
+                self._event(result, "school_sign_in_skipped", why)
+            return False
+
+        if not school_login.fills_for(entity_id, pro):
+            return skipped(f"not tested: {school_login.school_status(entity_id, pro) or 'not listed'}")
+        url = str(getattr(page, "url", "") or "")
+        also = school_login.pro_login_hosts(pro, entity_id)  # its login page on another domain of its own
+        if not school_login.may_fill(url, self.config, also):
+            return skipped(f"not the school's page: {urlparse(url).scheme}://{urlparse(url).hostname or ''}")
+        kind = self._login_wait_page(page)
+        if kind != "school_login":
+            return skipped(f"not a sign-in page: {kind}")
+        if self._idp_confirmation(page):
+            return False  # the school's consent or terms: agreed to by _accept_idp_confirmation, no form
+        allowed = lambda address: school_login.may_fill(address, self.config, also)  # noqa: E731
+        try:
+            if not pro.ready(page, allowed, school=entity_id):
+                # A consent page, a chooser, a form already being typed in: what Pro saw.
+                describe = getattr(pro, "describe", None)
+                return skipped("no form to fill: " + (describe(page, allowed, school=entity_id) if describe else "?"))
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return skipped(f"page unreadable: {type(exc).__name__}")
+        # Never the account to a page whose certificate Chrome will not take (the user went past the warning),
+        # but for the very certificate Pro's survey saw there (_past_school_certificate_warning).
+        pins = school_login.pro_certificates(pro, entity_id)
+        error, digest = school_login.page_certificate(page)
+        if not school_login.certificate_allows(urlparse(url).hostname or "", error, digest, pins):
+            result._sign_in_tried = True
+            if digest and pins:
+                result._sign_in_note = SIGN_IN_CERTIFICATE
+            return skipped(f"certificate not taken: {error or 'unread'}")
+        result._sign_in_tried = True
+        if not school_login.take_turn(entity_id):
+            self._event(result, "school_sign_in", f"not filled: {school_login.PER_HOUR} in the last hour")
+            return False
+        secrets = (str(account["password"]), str(account["username"]))
+        attempt = school_login.Attempt(
+            username=str(account["username"]), password=str(account["password"]), allowed=allowed,
+            event=lambda state, detail="": self._event(result, state, school_login.hide(str(detail), secrets)),
+            hidden=secrets, school=entity_id)
+        try:
+            outcome = str(pro.sign_in(page, attempt) or "failed")
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                logger.warning("PaperSearch Pro's school sign-in failed: %s", type(exc).__name__)
+            outcome = "failed"
+        self._event(result, "school_sign_in", outcome if outcome in school_login.OUTCOMES else "failed")
+        if outcome == "rejected":
+            school_login.turn_off(entity_id, "rejected")
+            result._sign_in_note = SIGN_IN_REFUSED
+        elif outcome == "submitted":
+            # A step only the user can take may follow (a WeChat scan, a code: a new account, or one
+            # not used for long; user, 2026-11-19): the wait goes on, its reminder saying so.
+            result._sign_in_note = SIGN_IN_SECOND_STEP
+        elif outcome == "needs_user":
+            result._sign_in_note = SIGN_IN_ASKS.get(str(attempt.asks or ""), SIGN_IN_FOR_THE_USER)
+        return outcome == "submitted"
+
+    def _school_sign_in_survey(self, page: Any, result: DownloadResult) -> bool:
+        """A maintainer's survey of a school's sign-in page without its account (school_login.SURVEY_ENV):
+        what Pro finds on the school's page, recorded once a paper; never the user's account. "press"
+        types a made-up one and presses for real, once, to read the school's answer."""
+        from .. import school_login
+
+        pro = school_login.module()
+        if pro is None or not hasattr(pro, "survey") or getattr(result, "_sign_in_surveyed", False):
+            return False
+        url = str(getattr(page, "url", "") or "")
+        if self._login_wait_page(page) != "school_login":
+            return False
+        result._sign_in_surveyed = result._survey_finished = True
+        also = school_login.pro_login_hosts(pro, str(self.config.get("idp_entity_id") or "").strip())
+        if not school_login.may_fill(url, self.config, also):
+            self._event(result, "school_sign_in_survey", f"not the school's page: {urlparse(url).scheme}://{urlparse(url).hostname or ''}")
+            return False
+        try:
+            said = str(pro.survey(page, lambda address: school_login.may_fill(address, self.config, also),
+                                  press=os.environ.get(school_login.SURVEY_ENV) == "press",
+                                  school=str(self.config.get("idp_entity_id") or "").strip()))
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            said = f"page unreadable: {type(exc).__name__}"
+        self._event(result, "school_sign_in_survey", said)
+        return False
+
     def _complete_login_steps(self, page: Any, result: DownloadResult) -> bool:
         own = self.adapter.complete_login(page, result)
         if own is not None:
@@ -301,6 +496,8 @@ class LoginMixin:
                 return False
         self._event(result, "sso_start", page.url)
         self._dismiss_cookie_banners(page, result)
+        if self._no_entry_earlier(page, result):
+            return False
         sites_opened = sum(e["state"] == "login_page_opened" for e in result.events)
         entry_opened = self._click_sso_entry(page, result)
         if not entry_opened and self.profile.generic and self._may_offer_entry(page):
@@ -328,6 +525,7 @@ class LoginMixin:
             self._event(result, "login_entry_missing", looked_for)
             self._event(result, "login_entry_controls", controls)
             self._snapshot(page, result, "login entry missing")
+            self._remember_no_entry(page, result, GENERIC_ENTRY_MISSING)
             return False
         if (manual_selection and self.adapter.requires_institution_entry and not entry_opened
                 and not self._is_human_login_page(page)):
@@ -349,6 +547,8 @@ class LoginMixin:
         if self._click_openathens_entry(page, result):
             settle(page, 2_000)
         self._select_institution(page, result)
+        if not entry_opened and self._no_school_route(page, result, sites_opened):
+            return False
 
         deadline = self._school_login_deadline(result)
         with self._login_wait_budget(result, "_school_login_deadline", deadline, time.time) as wait:
@@ -363,8 +563,11 @@ class LoginMixin:
             away_from_publisher = False  # on an IdP, federation or chooser page since the last probe
             returned = False  # back on the publisher's site after such a page: try the PDF
             last_probe = time.time()
+            step_since = 0.0  # since when the page has been the user's step (the reminder's grace)
             while True:
                 self._check_user_decision(result, page)
+                if self._ended_on_personal_sign_in(page, result):
+                    return False
                 user_step = self._users_login_step(page)
                 wait.observe(page, user_step)
                 deadline = wait.deadline
@@ -393,11 +596,30 @@ class LoginMixin:
                 user_step = self._users_login_step(page)
                 wait.observe(page, user_step)
                 deadline = wait.deadline
+                if self._past_school_certificate_warning(page, result):
+                    continue  # the school's login page, its certificate the one surveyed: the next pass fills it
+                if user_step and self._school_sign_in(page, result):
+                    # PaperSearch Pro sent the school's form: the next pass reads where it went, the school
+                    # noted as visited as the passes below do, so a publisher landing elsewhere than the
+                    # article afterwards has it opened again (ACS's home page, a school tested, 2026-11-19).
+                    visited_idp = away_from_publisher = True
+                    result._visited_idp = True
+                    continue
+                if getattr(result, "_survey_finished", False):
+                    # A maintainer's survey (school_login.SURVEY_ENV): the school's page recorded, on to
+                    # the next school without waiting out the login (user, 2026-11-19).
+                    result.reason = "survey_done"
+                    return False
+                # The reminder once the user's step has stood LOGIN_PROMPT_GRACE_SEC: the school's
+                # consent page the program accepts itself, and a sign-in page the school's own
+                # session moves past by itself, go by without one (user, 2026-11-19).
+                step_since = (step_since or time.time()) if user_step else 0.0
                 message = ""
-                if user_step:
+                if user_step and (time.time() - step_since >= self.LOGIN_PROMPT_GRACE_SEC
+                                  or getattr(result, "_login_attention", "")):
                     kind = self._login_wait_page(page)
                     message = ("请在浏览器窗口选择学校并完成机构登录" if kind in {"school_choice", "institution_chooser"}
-                               else "请在浏览器窗口完成机构登录")
+                               else getattr(result, "_sign_in_note", "") or "请在浏览器窗口完成机构登录")
                 self._set_login_attention(result, message, deadline, page=page)
                 marker = f"{self._title(page)} | {getattr(page, 'url', '')[:160]}"
                 here = urlparse(str(getattr(page, "url", "") or ""))
@@ -440,6 +662,10 @@ class LoginMixin:
                         self._event(result, "idp_return_article", here.geturl()[:160])
                         settle(page, 3_000)
                         if not self._challenge_shell(page) and not self._looks_logged_out(page):
+                            # The login went round, if unseen: a session at the federation's
+                            # service passed the school's own server by (PNAS via OpenAthens,
+                            # 2026-11-17), and the page read before it is read again.
+                            result._login_round_trip = True
                             return True
                     except Exception as exc:
                         self._event(result, "idp_return_article_error", type(exc).__name__)
@@ -588,8 +814,14 @@ class LoginMixin:
     _IDP_PASSWORD_EXPIRED_RE = re.compile(r"your password has expired|密码已(?:经)?过期", re.I)
     # The school's IdP asks the user to agree before it goes on (login state K):
     # Shibboleth's attribute-release and terms-of-use forms, whatever the language.
+    # By their forms' fixed field names, whatever the page's language: Shibboleth's terms of use
+    # and attribute release; SimpleSAMLphp's and Apereo CAS's attribute release (schools of other
+    # sign-in software, user 2026-11-19: what a school asks after its sign-in passes by itself).
     _IDP_CONFIRMATION_JS = """() => document.querySelector('[name="_eventId_TermsRejected"]') ? 'terms-of-use'
-        : document.querySelector('[name="_shib_idp_consentOptions"], [name="_shib_idp_consentIds"]') ? 'attribute-release' : ''"""
+        : document.querySelector('[name="_shib_idp_consentOptions"], [name="_shib_idp_consentIds"]') ? 'attribute-release'
+        : document.querySelector('form input[name="StateId"]') && document.querySelector('form [name="yes"]')
+          ? 'attribute-release-simplesamlphp'
+        : document.querySelector('form [name="_eventId_confirm"]') ? 'attribute-release-cas' : ''"""
     # Shibboleth's "Message Security Error": the identity provider could not trust the
     # publisher's request (a school's IdP to Elsevier, 2026-11-12); AD FS's "An error
     # occurred. Contact your administrator" (two schools' AD FS, 2026-11-13).
@@ -641,14 +873,20 @@ class LoginMixin:
     # (2026-11-08). The release keeps the choices the school preselected; the
     # terms' own "I accept" box is ticked. A second factor (Duo) stays the user's,
     # and so does a confirmation still shown after two accepts in one article.
-    IDP_ACCEPTED_CONFIRMATIONS = ("attribute-release", "terms-of-use")
+    IDP_ACCEPTED_CONFIRMATIONS = ("attribute-release", "terms-of-use", "attribute-release-simplesamlphp",
+                                  "attribute-release-cas")
     IDP_CONFIRMATION_TRIES = 2
+    # Its "agree" control; SimpleSAMLphp's "remember" box ticked too, as Shibboleth's preselected
+    # "ask again only if it changes" (that publisher is not asked about again).
     _IDP_ACCEPT_JS = r"""(kind) => {
         const visible = el => !!el && el.getClientRects().length > 0;
-        const proceed = [...document.querySelectorAll('[name="_eventId_proceed"]')].find(visible);
+        const agree = {'attribute-release-simplesamlphp': '[name="yes"]',
+                       'attribute-release-cas': '[name="_eventId_confirm"]'}[kind] || '[name="_eventId_proceed"]';
+        const proceed = [...document.querySelectorAll(agree)].find(visible);
         if (!proceed) return false;
-        if (kind === 'terms-of-use' && proceed.form)
-            for (const box of proceed.form.querySelectorAll('input[type=checkbox][name="_shib_idp_consentIds"]'))
+        const boxes = {'terms-of-use': '_shib_idp_consentIds', 'attribute-release-simplesamlphp': 'saveconsent'}[kind];
+        if (boxes && proceed.form)
+            for (const box of proceed.form.querySelectorAll(`input[type=checkbox][name="${boxes}"]`))
                 if (!box.checked && visible(box)) box.setAttribute('data-papersearch-idp', 'tick');
         proceed.setAttribute('data-papersearch-idp', 'proceed');
         return true;
@@ -744,7 +982,13 @@ class LoginMixin:
             if not _is_browser_error(exc):
                 raise
             return False
-        return typed.lower() in {name.lower() for name in self._institution_names()}
+        queries = [q.lower() for q in self._search_queries(list(self._institution_names()))]
+        if typed.lower() not in queries:
+            return False  # the user's own search
+        # A name followed by another of the school's in Latin letters, the one OpenAthens lists
+        # by, is searched by that one first ("The University of <town>" listed as "University
+        # of <town>", 2026-11-17).
+        return not any(q.isascii() for q in queries[queries.index(typed.lower()) + 1:])
 
     # The words that made a block decision, for its record.
     _BLOCK_WORDS = re.compile(
@@ -885,20 +1129,35 @@ class LoginMixin:
     SCHOOL_SITE_STAY_SEC = 12
     # A username-first page (Okta's "identifier" field, no password box yet: a
     # school's login was taken for its portal and ended, 2026-11-12) is a login;
-    # a portal's search box is not.
-    _SCHOOL_PAGE_STATE_JS = r"""() => ({
+    # a portal's search box is not. A QR or code login shows its code (a square
+    # image or canvas, or the frame that draws it) or the box for the code: a page
+    # that only mentions them is none (a school's portal home, whose notice spoke of
+    # signing in by scanning a code, was waited on as its login page, 2026-11-18).
+    _SCHOOL_PAGE_STATE_JS = r"""() => {
+        const editable = el => el.getClientRects().length > 0 && !el.disabled && !el.readOnly;
+        const text = (document.body && document.body.innerText || '').slice(0, 4000);
+        const qrShown = () => [...document.querySelectorAll('canvas, img, iframe')].some(el => {
+            const box = el.getBoundingClientRect();
+            return el.tagName === 'IFRAME' ? box.width >= 200 && box.height >= 200
+                : box.width >= 100 && Math.abs(box.width - box.height) <= 0.1 * box.width;
+        });
+        const codeBox = () => [...document.querySelectorAll('input')].some(el => editable(el)
+            && /code|captcha|otp|验证码|校验码|动态码/i.test(`${el.name} ${el.id} ${el.placeholder || ''} ${el.autocomplete || ''}`));
+        return {
         ready: document.readyState === 'complete',
         login: !!document.querySelector('input[type="password"], input[autocomplete="one-time-code"]')
-            || [...document.querySelectorAll('input')].some(el => el.getClientRects().length > 0 && !el.disabled
-                && !el.readOnly && ['text', 'email'].includes(el.type) && (el.type === 'email'
+            || [...document.querySelectorAll('input')].some(el => editable(el) && ['text', 'email'].includes(el.type)
+                && (el.type === 'email'
                 || /username|email/i.test(el.autocomplete || '')
                 || /user|login|identifier|account|email|netid|学号|工号|账号|帐号/i.test(`${el.name} ${el.id}`)))
-            || /扫码|二维码|QR ?code|验证码|verification code/i.test((document.body && document.body.innerText || '').slice(0, 4000))
+            || (/扫码|二维码|QR ?code/i.test(text) && qrShown())
+            || (/验证码|verification code/i.test(text) && codeBox())
             // SimpleSAMLphp's page for choosing how to sign in, one box per way (its
             // "multiauth" module; the buttons hidden in the boxes, 2026-11-13).
             || !!document.querySelector('form [name^="sourceChoice["]'),
         handover: !!document.querySelector('input[name="SAMLResponse"], input[name="SAMLRequest"], input[name="RelayState"]')
-            || /^\s*(?:loading|please wait|redirecting|正在跳转|跳转中|请稍候|处理中)/i.test(document.title || '')})"""
+            || /^\s*(?:loading|please wait|redirecting|正在跳转|跳转中|请稍候|处理中)/i.test(document.title || '')};
+    }"""
 
     def _school_domain(self, result: DownloadResult | None) -> str:
         """The school's own registrable domain: its entityID's, else the IdP's this item visited."""
@@ -1323,6 +1582,273 @@ class LoginMixin:
                 f"log in / register); sign-in links (shibboleth, /wayf, ssostart, institutional-login)",
                 f"{str(getattr(page, 'url', '') or '')[:160]} | sign-in or access controls: {found}")
 
+    # ---- a school login only through a school route (user, 2026-11-18)
+    #
+    # The school's login starts only from a way to it: an institution entry, sign-in link
+    # or access menu holding one, the adapter's own entry or login page, an institution
+    # search or list, a federation, WAYF, SeamlessAccess or OpenAthens chooser, or the
+    # entry a publisher remembers ("Access through <school>"). A personal account sign-in
+    # (e-mail and password, ORCID, "Register") is none. A page without any ends the login
+    # at once (NO_INSTITUTION_ENTRY), and so do the same site's later papers in the batch.
+
+    # The page's signs of a way to some school's login, for every engine step that would
+    # follow one (``_click_sso_entry``, ``_select_institution``, the wait's own steps).
+    # Generous on purpose: a sign not followed leaves the wait as it was, a sign missed
+    # ends the login. Controls (and links, shown or not: a hidden institution sign-in is
+    # followed too) by their words or address; clickable text; institution search boxes
+    # and lists; SeamlessAccess and chooser frames. Reference and related-article lists
+    # are other works' (a title naming single sign-on is no entry).
+    # Also whether the page holds a sign-in form (``password``, ``credential``: an e-mail
+    # or user name field) or a sign-in with another account (``social``: ORCID, Google).
+    _SCHOOL_ROUTE_JS = r"""(markers) => {
+        const shown = el => { const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+            return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+        const WHERE = '(?:an?\\s+|your\\s+|my\\s+|the\\s+)?(?:institution|organi[sz]ation|university|library|school|campus|athens)';
+        const WORDS = new RegExp([
+            '\\binstitution(?:al)?\\s+(?:login|log[\\s-]?in|sign[\\s-]?in|access|users?|accounts?|credentials|subscribers?)\\b',
+            '\\borgani[sz]ation(?:al)?\\s+(?:login|log[\\s-]?in|sign[\\s-]?in|access|accounts?)\\b',
+            '\\b(?:librar(?:y|ies)|campus)\\s+(?:login|log[\\s-]?in|sign[\\s-]?in|access|card)\\b',
+            '\\b(?:log|sign)[\\s-]?in\\s+(?:via|through|with|using|at|from)\\s+' + WHERE,
+            '\\baccess\\s+(?:through|via)\\s+\\S', '\\bprovided\\s+by\\s+' + WHERE,
+            '\\b(?:find|select|choose|search(?:\\s+for)?)\\s+(?:your|my|an?)\\s+(?:institution|organi[sz]ation)',
+            'shibboleth', 'open\\s?athens', '\\bathens\\s+(?:login|log[\\s-]?in|sign[\\s-]?in|account)', 'seamless\\s?access',
+            '\\bwayf\\b', 'single\\s+sign[\\s-]?on', '\\bsso\\b', '\\bsaml\\b', 'ezproxy', '\\bremote\\s+access\\b',
+            '\\bfederated\\s+(?:login|log[\\s-]?in|sign[\\s-]?in|access|identity)',
+            '^(?:my\\s+)?institution(?:al)?(?:\\s+(?:login|access))?$',
+            '机构(?:登录|用户|访问|认证)', '(?:学校|校园|图书馆)(?:登录|账号|帐号|认证)', '校外访问', '统一身份认证',
+            '通过(?:机构|学校|图书馆)'].join('|'), 'i');
+        const PATHS = /ssostart|\/wayf|shibboleth|\/shib(?:\/|$)|openathens|\/saml|\/sso(?:\/|$)|institution(?:al)?[-_]?(?:log-?in|sign-?in|access)|\/idp(?:\/|$)|seamlessaccess/i;
+        // An identity provider asked for by its entityID (a URL or URN), not any "entityid".
+        const QUERY = /(?:^|[?&])(?:entityid|idp|providerid)=(?:https?(?::|%3a)|urn(?::|%3a))/i;
+        const ELSEWHERE = '[class*="reference" i], [id*="reference" i], #references, .references, [class*="citation" i], '
+            + '[class*="related" i], [id*="related" i], [class*="recommend" i], [id*="recommend" i]';
+        const CLICKABLE = 'a[href], button, [role="button"], [role="link"], [role="menuitem"], [onclick], label, summary';
+        const extra = (markers || []).map(m => String(m || '').toLowerCase()).filter(Boolean);
+        const text = el => (el.innerText || el.value || el.getAttribute('aria-label') || el.getAttribute('title')
+            || el.textContent || '').replace(/\s+/g, ' ').trim();
+        const signs = [];
+        const add = s => { if (signs.length < 6 && !signs.includes(s)) signs.push(s); };
+        for (const el of document.querySelectorAll('a[href], button, [role="button"], [role="link"], [role="menuitem"], '
+                + 'input[type="button"], input[type="submit"], input[type="image"], [onclick]')) {
+            if (signs.length >= 6) break;
+            if (el.closest(ELSEWHERE) || (el.tagName !== 'A' && !shown(el))) continue;
+            const label = text(el).slice(0, 160);
+            let target = '', where = '', query = '';
+            try {
+                const raw = el.tagName === 'A' ? el.getAttribute('href') : el.getAttribute('formaction');
+                if (raw && !/^\s*(?:javascript|mailto|tel):/i.test(raw)) {
+                    const u = new URL(raw, document.baseURI);
+                    target = u.href; where = u.hostname + u.pathname; query = u.search;
+                }
+            } catch (_) {}
+            const lower = `${label} ${target}`.toLowerCase();
+            if ((label.length <= 120 && WORDS.test(label)) || PATHS.test(where) || QUERY.test(query)
+                    || extra.some(m => lower.includes(m)))
+                add(`control "${label.slice(0, 60)}"${target ? ' -> ' + target.slice(0, 120) : ''}`);
+        }
+        const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
+        for (let n = 0; signs.length < 6 && n < 60000 && walker.nextNode(); n++) {
+            const t = (walker.currentNode.nodeValue || '').replace(/\s+/g, ' ').trim();
+            if (!t || t.length > 120 || !WORDS.test(t)) continue;
+            const el = walker.currentNode.parentElement;
+            if (!el || !shown(el) || el.closest(ELSEWHERE)) continue;
+            if (el.closest(CLICKABLE) || getComputedStyle(el).cursor === 'pointer'
+                    || ((el.textContent || '').length <= 200 && el.querySelector(CLICKABLE)))
+                add(`text "${t.slice(0, 60)}"`);
+        }
+        const ABOUT = /institution|organi[sz]ation|university|school|federation|\bidp\b|wayf|机构|学校|单位|联盟/i;
+        for (const el of document.querySelectorAll('input, select')) {
+            if (signs.length >= 6) break;
+            if (!shown(el) || el.disabled) continue;
+            const type = (el.getAttribute('type') || 'text').toLowerCase();
+            if (el.tagName === 'INPUT' && !['text', 'search'].includes(type)) continue;
+            const about = [el.getAttribute('placeholder'), el.getAttribute('name'), el.id, el.getAttribute('aria-label'),
+                el.getAttribute('title'), el.labels && [...el.labels].map(l => l.innerText).join(' ')].join(' ');
+            if (ABOUT.test(about)) add(`${el.tagName.toLowerCase()} "${about.replace(/\s+/g, ' ').trim().slice(0, 60)}"`);
+        }
+        if (document.querySelector('button.js-sa-federated-login, button.ra21-button')) add('SeamlessAccess button');
+        for (const frame of document.querySelectorAll('iframe[src]')) {
+            if (/seamlessaccess|wayf|openathens|shibboleth|discovery/i.test(frame.src)) add(`frame ${frame.src.slice(0, 120)}`);
+        }
+        const editable = el => shown(el) && !el.disabled && !el.readOnly;
+        const inputs = [...document.querySelectorAll('input')].filter(editable);
+        const password = inputs.some(el => el.type === 'password');
+        const credential = password || inputs.some(el => el.type === 'email' || /username|email/i.test(el.autocomplete || '')
+            || (['text', ''].includes(el.type) && /e-?mail|user ?name|login|account/i.test(`${el.name} ${el.id}`)));
+        const social = [...document.querySelectorAll('a[href], button, [role="button"]')].some(el => shown(el)
+            && (/orcid\.org\/(?:oauth|signin)/i.test(el.href || '')
+                || /^(?:(?:log|sign)\s*in|continue)\s+(?:with|via|using)\s+(?:orcid|google|apple|facebook|linkedin|microsoft|wechat|github)\b|^orcid$/i.test(text(el))));
+        return {signs, password, credential, social, ready: document.readyState === 'complete'};
+    }"""
+
+    def _route_probe(self, page: Any) -> dict | None:
+        """``_SCHOOL_ROUTE_JS`` on the page: ``signs`` (the ways to a school's login it
+        shows, the adapter's own entry controls included), ``password``, ``credential``,
+        ``social``, ``ready`` (the document has loaded). None when the page could not be
+        read: then nothing is concluded."""
+        try:
+            found = page.evaluate(self._SCHOOL_ROUTE_JS, [str(m).lower() for m in self.profile.sso_text_markers])
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return None
+        if not isinstance(found, dict) or not isinstance(found.get("signs"), list):
+            return None
+        probe = {"signs": [str(sign) for sign in found["signs"]],
+                 **{key: found.get(key) is True for key in ("password", "credential", "social", "ready")}}
+        if not probe["signs"]:
+            # The adapter's own entry controls (Playwright selectors, not the page script's).
+            for selector in self.adapter.sso_selectors:
+                try:
+                    if page.locator(selector).first.is_visible() is True:
+                        probe["signs"].append(f"adapter entry {selector}"[:120])
+                        break
+                except Exception as exc:
+                    if not _is_browser_error(exc):
+                        raise
+        return probe
+
+    # How long a page without any sign of a school route may take to draw one, after
+    # the entry lookups and the school choice found nothing (access boxes built late).
+    ROUTE_LOOK_SEC = 5
+
+    def _no_school_route(self, page: Any, result: DownloadResult, sites_opened: int) -> bool:
+        """The publisher's own page, no entry opened, nothing chosen: when it shows no sign of
+        a school route (``_SCHOOL_ROUTE_JS``) for ``ROUTE_LOOK_SEC`` more, the login ends at
+        once (``NO_INSTITUTION_ENTRY``) and the site is kept for the batch; True then. Not
+        when an adapter login page was opened, the login is the one after a failed PDF (it
+        ends such pages itself), the flow already decided (the school not listed), the page
+        is a redirect, the institution's session shows, the publisher's own chooser is open
+        or someone is typing, or the page cannot be read or has not finished loading (a
+        document still loading may yet draw its entry: the wait goes on as before)."""
+        url = str(getattr(page, "url", "") or "")
+        if (sum(e["state"] == "login_page_opened" for e in result.events) > sites_opened
+                or getattr(result, "_pdf_retry_login", False) or getattr(result, "_institution_not_listed", False)
+                or any(e["state"] in self._SCHOOL_CHOSEN for e in result.events) or self._school_login_done()
+                or self.adapter.is_redirect_page(url) or not self._may_offer_entry(page)):
+            return False
+        probe = self._route_probe(page)
+        if probe is None or probe["signs"]:
+            return False
+        if (self._has_visible_editable_input(page) or self._institution_session(page) is not None
+                or self.adapter.institution_chooser_open(page)):
+            return False
+
+        def drawn() -> bool:
+            again = self._route_probe(page)
+            return again is None or bool(again["signs"]) or not self._may_offer_entry(page)
+
+        if pump_until(page, drawn, self.ROUTE_LOOK_SEC * 1000, step_ms=1_000):
+            return False
+        last = self._route_probe(page)
+        if last is None or last["signs"] or not last["ready"]:
+            return False
+        result.reason = NO_INSTITUTION_ENTRY
+        looked_for, controls = self._entry_lookup_evidence(page)
+        self._event(result, NO_INSTITUTION_ENTRY,
+                    f"{url[:160]} | no institution entry, sign-in link, institution search or list, or chooser "
+                    f"after {self.ROUTE_LOOK_SEC} s more; {looked_for}")
+        self._event(result, "login_entry_controls", controls)
+        self._snapshot(page, result, "no school login entry")
+        self._remember_no_entry(page, result, NO_INSTITUTION_ENTRY)
+        return True
+
+    # The publisher's own account sign-in, with no school entry on it, is never the school's
+    # login: the wait ends once it has stood this long (time for an institutional option
+    # drawn late by script to show).
+    PERSONAL_SIGN_IN_SEC = 5
+
+    # How long a page must stay the user's step (a school's sign-in, a choice of school) before
+    # the window asks the user: a consent page is accepted, a kept sign-in goes on, within it.
+    LOGIN_PROMPT_GRACE_SEC = 5
+
+    def _personal_sign_in_only(self, page: Any, result: DownloadResult | None) -> str:
+        """The publisher's own account sign-in and nothing for a school (evidence, else ""): on
+        the publisher's site (its account host too, auth.<publisher>), before this paper chose
+        a school or reached the school's side; a password field, or on a sign-in address an
+        e-mail or user name field or an ORCID-style sign-in; no sign of a school route; nobody
+        typing. A form the user fills stays theirs."""
+        url = str(getattr(page, "url", "") or "")
+        parsed = urlparse(url)
+        if (parsed.scheme not in ("http", "https") or not self._on_publisher_host(url)
+                or self._is_idp_host(parsed.netloc) or self._on_school_login_page(url)
+                or self._is_federation_chooser(url) or self._school_login_done()
+                or (result is not None and any(e.get("state") in self._SCHOOL_CHOSEN for e in result.events))):
+            return ""
+        auth = self._is_auth_page(url)
+        if not auth:
+            try:
+                boxes = page.locator(self._CREDENTIAL_BOX).count()
+            except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
+                return ""
+            if not (isinstance(boxes, int) and boxes > 0):
+                return ""
+        probe = self._route_probe(page)
+        if probe is None or probe["signs"]:
+            return ""
+        if not (probe["password"] or (auth and (probe["credential"] or probe["social"]))):
+            return ""
+        if self._has_visible_editable_input(page):
+            return ""
+        what = ", ".join(key for key in ("password", "credential", "social") if probe[key])
+        return f"{url[:200]} | the publisher's own account sign-in ({what}); no school login entry on it"
+
+    def _ended_on_personal_sign_in(self, page: Any, result: DownloadResult) -> bool:
+        """One pass of the login wait: the page has been the publisher's own account sign-in
+        (``_personal_sign_in_only``) for ``PERSONAL_SIGN_IN_SEC``: the login ends at once
+        (``NO_INSTITUTION_ENTRY``); until then it is not the user's step."""
+        personal = self._personal_sign_in_only(page, result)
+        if not personal:
+            result._personal_page = None
+            return False
+        url = str(getattr(page, "url", "") or "")
+        held = getattr(result, "_personal_page", None)
+        if not held or held[0] != url:
+            result._personal_page = (url, time.time())
+            return False
+        if time.time() - held[1] < self.PERSONAL_SIGN_IN_SEC:
+            return False
+        result.reason = NO_INSTITUTION_ENTRY
+        self._event(result, NO_INSTITUTION_ENTRY, personal)
+        self._snapshot(page, result, "personal account sign-in only")
+        return True
+
+    def _no_entry_earlier(self, page: Any, result: DownloadResult) -> bool:
+        """An earlier paper of this batch found no school login entry on this site's page
+        (``login_routes.no_entry_since``) and this page shows none either: ended at once,
+        nothing looked for or clicked, with that paper's reason. The login after a failed PDF
+        ends as the first paper's did, the PDF's reason kept."""
+        from .. import login_routes, progress_reporter
+
+        host = (urlparse(str(getattr(page, "url", "") or "")).hostname or "").lower()
+        batch = progress_reporter.batch_id()
+        earlier = login_routes.no_entry_since(host, batch) if host and batch else {}
+        if not earlier or not self._may_offer_entry(page):
+            return False
+        probe = self._route_probe(page)
+        if probe is None or probe["signs"]:
+            return False
+        reason = earlier["reason"] if earlier["reason"] in (NO_INSTITUTION_ENTRY, GENERIC_ENTRY_MISSING) \
+            else NO_INSTITUTION_ENTRY
+        self._event(result, NO_INSTITUTION_ENTRY,
+                    f"{host}: no school login entry on an earlier paper of this batch ({earlier['doi']}), "
+                    f"none on this page either")
+        if not getattr(result, "_pdf_retry_login", False):
+            result.reason = reason
+        return True
+
+    def _remember_no_entry(self, page: Any, result: DownloadResult, reason: str) -> None:
+        """Keep the page's site as showing no school login entry for this batch
+        (``login_routes.remember_no_entry``); nothing for a download on its own."""
+        from .. import login_routes, progress_reporter
+
+        host = (urlparse(str(getattr(page, "url", "") or "")).hostname or "").lower()
+        batch = progress_reporter.batch_id()
+        if host and batch and login_routes.remember_no_entry(host, batch, result.doi, reason):
+            self._event(result, "no_institution_entry_remembered", f"{host}, for the rest of this batch")
+
     def _manual_institution_target_allowed(self, href: str) -> bool:
         target = urlparse(href)
         if (target.scheme != "https" or target.username or target.password
@@ -1438,8 +1964,12 @@ class LoginMixin:
         return now - outside_since >= self.page_wait_sec, outside_since
 
     def _users_login_step(self, page: Any) -> bool:
-        """Require a current credential/consent control, not just an IdP URL."""
+        """Require a current credential/consent control, not just an IdP URL. Never the
+        publisher's own account sign-in (``_ended_on_personal_sign_in``)."""
         url = str(getattr(page, "url", "") or "")
+        held = getattr(getattr(self, "_item_result", None), "_personal_page", None)
+        if held and held[0] == url:
+            return False
         if self._is_human_login_page(page):
             return True
         return (not self._is_idp_host(urlparse(url).netloc) and self._is_auth_page(url)
@@ -1538,13 +2068,16 @@ class LoginMixin:
         """A publisher account form can be on an article, login page or SSO host.
 
         An untouched form next to a separate institutional entry is not the
-        school's credentials step. Preserve a known IdP and any form the user
-        is already filling; return only field presence/activity, never values.
+        school's credentials step, nor one on the publisher's own sign-in page
+        with no school login entry at all (``_personal_sign_in_only``). Preserve a
+        known IdP and any form the user is already filling; return only field
+        presence/activity, never values.
         """
         if self._is_idp_host(urlparse(url).netloc) or self._has_visible_editable_input(page):
             return False
         return ((self._on_publisher_host(url) and self._is_success_article_url(url) and not self._is_auth_page(url))
-                or isinstance(page.evaluate(self._INSTITUTION_ENTRY_JS), dict))
+                or isinstance(page.evaluate(self._INSTITUTION_ENTRY_JS), dict)
+                or bool(self._personal_sign_in_only(page, getattr(self, "_item_result", None))))
 
     def _follow_federated_login_option(self, page: Any, result: DownloadResult) -> bool:
         """The publisher's login page offers an institutional option next to the

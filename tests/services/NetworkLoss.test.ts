@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "@jest/globals";
-import { downloadBatch } from "../../src/capabilities/pdf-discovery/batch.js";
-import type { DownloadTier, DownloadTierContext, DownloadTierResult } from "../../src/capabilities/pdf-discovery/DownloadTier.js";
-import { NETWORK_POLL_MS, networkSigns } from "../../src/capabilities/pdf-discovery/networkLoss.js";
-import type { SchoolBackend, SchoolBatchUpdate } from "../../src/capabilities/pdf-discovery/school/index.js";
+import { downloadBatch } from "../../src/capabilities/download/batch/batch.js";
+import type { DownloadTier, DownloadTierContext, DownloadTierResult } from "../../src/capabilities/download/content/pdf/DownloadTier.js";
+import { NETWORK_POLL_MS, networkSigns } from "../../src/capabilities/download/batch/networkLoss.js";
+import type { SchoolBackend, SchoolBatchUpdate } from "../../src/infrastructure/school/index.js";
 
 /**
  * A batch that loses the network waits for it and does the paper again (the Mac's Wi-Fi gone

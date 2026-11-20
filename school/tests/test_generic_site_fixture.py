@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlparse
 from paper_search_school.engine.batch import PaperRecord, PublisherBatchDownloader
 from paper_search_school.engine.batch_login import GENERIC_ENTRY_MISSING
 from paper_search_school.publishers.site import site_profile
+from fixture_network import network_is_the_fixture
 
 DOI = "10.99977/medj.2026.0042"
 TITLE = "A made-up randomised trial of morning light in shift workers"
@@ -97,6 +98,7 @@ class GenericSiteFixtureTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.enterContext(patch.dict(os.environ, SCHOOL_DATA_DIR=str(self.root / "data")))
+        network_is_the_fixture(self)
         self.context = self.browser.new_context(service_workers="block")
         self.addCleanup(self.context.close)
         self.requests, self.signed_in, self.entry, self.body = [], False, True, synthetic_pdf()

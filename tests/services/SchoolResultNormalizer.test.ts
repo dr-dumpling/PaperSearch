@@ -3,7 +3,7 @@ import {
   normalizeCacheClearResult,
   normalizeDownloadResult,
   SchoolToolResultError,
-} from "../../src/capabilities/pdf-discovery/school/SchoolResultNormalizer.js";
+} from "../../src/infrastructure/school/SchoolResultNormalizer.js";
 
 describe("SchoolResultNormalizer", () => {
   it("keeps the wait of a rate-limited article as a number, and only there", () => {
@@ -12,6 +12,10 @@ describe("SchoolResultNormalizer", () => {
       "10.1016/x",
     );
     expect(limited).toEqual(expect.objectContaining({ code: "rate_limited", retryAfterSec: 1235 }));
+    expect(limited).not.toHaveProperty("hourlyPublisher");
+    // Whose hour it is, for asking again while the batch waits (2026-11-19).
+    expect(normalizeDownloadResult(textResult({ success: false, error_type: "rate_limited", retry_after_sec: 60,
+      publisher: " Elsevier ", limit: 180 }), "10.1016/x")).toEqual(expect.objectContaining({ retryAfterSec: 60, hourlyPublisher: "Elsevier" }));
     const other = normalizeDownloadResult(
       textResult({ success: false, error_type: "login_timeout", retry_after_sec: 60 }),
       "10.1016/x",
@@ -132,6 +136,18 @@ describe("SchoolResultNormalizer", () => {
         "10.1000/example",
       ),
     ).toThrow(expect.objectContaining({ code: "invalid_download_result" }));
+  });
+
+  it("says why a visit for the page alone saved no page, not 后端结果无法使用 (2026-11-17)", () => {
+    expect(normalizeDownloadResult(textResult({ success: true, fulltext_page_not_saved: "page_not_stable" }), "10.1000/example"))
+      .toMatchObject({ kind: "attempt_error", code: "page_not_saved", message: expect.stringContaining("page_not_stable") });
+    expect(normalizeDownloadResult(textResult({ success: true, fulltext_page_not_saved: "fulltext_not_shown" }), "10.1000/example"))
+      .toMatchObject({ kind: "attempt_error", code: "page_no_fulltext" });
+    expect(normalizeDownloadResult(textResult({ success: true, fulltext_page_not_saved: "fulltext_denied" }), "10.1000/example"))
+      .toMatchObject({ kind: "attempt_error", code: "page_not_entitled" });
+    // Anything else in its place is no reason.
+    expect(() => normalizeDownloadResult(textResult({ success: true, fulltext_page_not_saved: "Page text: <b>secret</b>" }), "10.1000/example"))
+      .toThrow(expect.objectContaining({ code: "invalid_download_result" }));
   });
 
   it("does not turn a failure carrying file/source into success", () => {

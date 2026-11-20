@@ -19,6 +19,7 @@ import re
 from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urljoin, urlparse
 
+from ....engine.fulltext_page import MATHJAX_SOURCES_JS
 from ....engine.batch_common import _is_browser_error, open_page
 from ...base import PublisherAdapter, SupplementLink, register
 
@@ -30,6 +31,83 @@ _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href*="/doi/supp
 # 30 s on a page still navigating after a silent IdP return (ASCE, 2026-11-02).
 _SSOSTART_LINKS_JS = """() => [...document.querySelectorAll('a[href*="/action/ssostart"]')].map(a => ({
     href: a.href, visible: a.getClientRects().length > 0 && getComputedStyle(a).visibility !== 'hidden'}))"""
+
+
+# --fulltext on Atypon's current template: the body is section#bodymatter, a page without
+# access shows .denial-block; each figure's image is the large one under /assets/images/
+# (Science, NEJM and PNAS, pages saved after a school login, 2026-11-14). A publisher on
+# this template names these once one of its pages is verified; Atypon's older template
+# (Taylor & Francis: hlFld-Fulltext) has neither: its rules are CLASSIC_TEMPLATE_* below.
+CURRENT_TEMPLATE_FULLTEXT_SHOWN_JS = """() => (document.querySelector('section#bodymatter')?.innerText.length || 0) > 500
+  && !document.querySelector('.denial-block')"""
+CURRENT_TEMPLATE_FULLTEXT_IMAGES_JS = r"""() => [...document.querySelectorAll('figure img[data-open="viewer"], section#bodymatter figure img')]
+  .map((img) => img.currentSrc || img.src)
+  .filter((url) => /\/assets\/images\//.test(url))
+  .map((url) => url.replace(/\/assets\/images\/(?:small|medium)\//, '/assets/images/large/'))"""
+
+
+# --fulltext on Atypon's older template (Taylor & Francis, pages saved after a school login,
+# 2026-11-14): the article is .hlFld-Fulltext, sent with the page (abstracts in
+# .hlFld-Abstract; a page without access, or one whose full text is only the PDF, has
+# none). A figure is div.figureView showing a small image (500 px); its full-size one
+# (1500 px, another asset) is only in the figure viewer's data, an inline script
+# "tandf.tfviewerdata={…}" read here as text (page globals are not seen from here), by the
+# figure's data-id; the image shown when the data has none. The general sample rules
+# found no image: there is no <figure> and no .figure. Tables are in that data too, and
+# the references are in the page, so nothing is opened before saving. World Scientific
+# (2026-11-15) has the same .hlFld-Fulltext with <figure> inside, the full-size image in
+# the img's data-lg-src (the page shows a medium one); MathJax 2 keeps each formula's
+# MathML source script, which the shared script also writes onto the formula.
+CLASSIC_TEMPLATE_FULLTEXT_SHOWN_JS = """() => {
+  const body = document.querySelector('.hlFld-Fulltext');
+  if (!body) return false;
+  const abstracts = [...body.querySelectorAll('.hlFld-Abstract')].reduce((sum, node) => sum + node.innerText.length, 0);
+  return body.innerText.length - abstracts > 500;
+}"""
+CLASSIC_TEMPLATE_FULLTEXT_IMAGES_JS = r"""() => {
+  const large = new Map();
+  for (const script of document.querySelectorAll('script:not([src])')) {
+    const text = script.textContent || '';
+    const at = text.indexOf('tfviewerdata=');
+    if (at < 0) continue;
+    const start = text.indexOf('{', at);
+    let depth = 0, inString = false, end = -1;
+    for (let i = start; start >= 0 && i < text.length; i += 1) {
+      const c = text[i];
+      if (inString) {
+        if (c === '\\') i += 1;
+        else if (c === '"') inString = false;
+      } else if (c === '"') inString = true;
+      else if (c === '{') depth += 1;
+      else if (c === '}' && --depth === 0) { end = i; break; }
+    }
+    let data = null;
+    try {
+      data = end > start ? JSON.parse(text.slice(start, end + 1)) : null;
+    } catch (error) {
+      data = null;  // not the data: each figure keeps the image it shows
+    }
+    for (const figure of data?.figures || []) {
+      const img = new DOMParser().parseFromString(String(figure?.content || ''), 'text/html').querySelector('img[src]');
+      if (figure?.id && img) large.set(figure.id, new URL(img.getAttribute('src'), location.href).href);
+    }
+    break;
+  }
+  const views = [...document.querySelectorAll('.hlFld-Fulltext .figureView')].map((view) => {
+    const shown = view.querySelector('img.figure-image, img');
+    return large.get(view.querySelector('[data-id]')?.getAttribute('data-id')) || (shown ? shown.currentSrc || shown.src : '');
+  });
+  const figures = [...document.querySelectorAll('.hlFld-Abstract figure img, .hlFld-Fulltext figure img')]
+    .filter((img) => !img.closest('figcaption'))
+    .map((img) => {
+      const full = img.getAttribute('data-lg-src');
+      return full ? new URL(full, location.href).href : img.currentSrc || img.src;
+    });
+  return [...views, ...figures].filter(Boolean);
+}"""
+# MathJax 4 keeps no MathML in the page (a Taylor & Francis page rendered in a browser had
+# only mjx-container): the shared script writes each formula's source onto its element.
+CLASSIC_TEMPLATE_FULLTEXT_PREPARE_JS = MATHJAX_SOURCES_JS
 
 
 class AtyponAdapter(PublisherAdapter):
@@ -55,8 +133,11 @@ class AtyponAdapter(PublisherAdapter):
         """``/action/authenticateSharedSP``: Science's login came back here, a
         "LOG IN" page with the institution search, after the school was chosen
         with its sign-in still valid, and stayed; the article opened by itself
-        then had its full text (Windows, 2026-11-16, the first paper of two batches)."""
-        return self._on_site(url) and urlparse(url).path.lower() == "/action/authenticatesharedsp"
+        then had its full text (Windows, 2026-11-16, the first paper of two batches).
+        The site's home page too: PNAS's institution search sends the login back there
+        (its entries carry ``redirectUri=/``), the school's sign-in still valid
+        (2026-11-17)."""
+        return self._on_site(url) and urlparse(url).path.lower() in ("/action/authenticatesharedsp", "/", "")
 
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink] | None:
         """Files under ``/doi/suppl/<this DOI>/suppl_file/``; a supplement link of

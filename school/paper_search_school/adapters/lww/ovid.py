@@ -13,6 +13,34 @@ from ...engine.batch_common import _is_browser_error, goto_retrying
 HOSTS = {"ovid.com", "www.ovid.com"}
 _ARTICLE = re.compile(r"/jnls/[^/]+/(?:abstract|fulltext|pdf)/")
 
+# --fulltext (engine/fulltext_page.py; PaperSearch's sites/templates/ovid.ts). Ovid sends
+# the article rendered (Next.js, no MathJax): the body is .lww-article__body, which a
+# reader without access does not get (the page offers "Check Access"); the references and
+# the image gallery are in it, after the text. A figure shows its image 710 pixels wide and
+# offers 1200 in its srcset (/image-api/imgsrv/…/width/1200.png): the largest is taken, as
+# the converter does; the general sample rules had the 710 ones (Journal of Hypertension,
+# Critical Care Medicine, pages saved after a school login, 2026-11-14). The references
+# are all in the page (the list is only clamped on screen): nothing is opened before saving.
+FULLTEXT_SHOWN_JS = """() => {
+  const body = document.querySelector('article.lww-article .lww-article__body');
+  if (!body || document.querySelector('button.omni-article-tool__check-access')) return false;
+  const text = [...body.children]
+    .filter((part) => !part.matches('.lww-article__end-matter, .omni-article-keywords, .lww-article-sdc, #image-gallery'))
+    .reduce((total, part) => total + (part.innerText || '').length, 0);
+  return text > 500;
+}"""
+FULLTEXT_IMAGES_JS = r"""() => [...document.querySelectorAll('article.lww-article figure img, article.lww-article .lww-article__table img')]
+  .filter((img) => !img.closest('#image-gallery, figcaption')
+    && (img.closest('figure') || !img.closest('.lww-article__table').querySelector('table')))
+  .map((img) => {
+    const width = (url) => Number(/\/width\/(\d+)\.\w+(?:[?#]|$)/.exec(url)?.[1] || 0);
+    const candidates = [img.getAttribute('src') || '', ...(img.getAttribute('srcset') || '').split(',')
+      .map((part) => part.trim().split(/\s+/)[0])].filter((src) => src && !src.startsWith('data:'));
+    return candidates.reduce((best, url) => (width(url) > width(best) ? url : best), candidates[0] || '');
+  })
+  .filter(Boolean)
+  .map((src) => new URL(src, location.href).href)"""
+
 
 def is_page(url: str) -> bool:
     parsed = urlparse(url or "")

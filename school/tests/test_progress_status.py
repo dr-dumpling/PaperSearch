@@ -8,10 +8,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import selectors
+import queue
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from datetime import datetime, timedelta
@@ -45,6 +46,45 @@ def load_isolated():
 
 
 pr, status = load_isolated()
+
+
+class Watch:
+    """A ``--watch`` process whose output a thread of its own reads line by line: Windows
+    cannot select() on a pipe. ``poll`` and ``returncode`` are the process's."""
+
+    def __init__(self, process: subprocess.Popen):
+        self.process = process
+        self._lines: queue.Queue[str] = queue.Queue()
+        self._reader = threading.Thread(target=self._read, daemon=True)
+        self._reader.start()
+
+    def _read(self) -> None:
+        for line in self.process.stdout:
+            self._lines.put(line)
+        self._lines.put("")  # the end of the output
+
+    def next_line(self, timeout: float) -> str | None:
+        """The next line, "" once the output has ended, None when none came in time."""
+        try:
+            return self._lines.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+    def finish(self, timeout: float) -> tuple[str, str]:
+        """Wait for the exit: what it wrote after the lines read, and its error output."""
+        self.process.wait(timeout=timeout)
+        self._reader.join(timeout)
+        rest = []
+        while line := self.next_line(timeout=0):
+            rest.append(line)
+        return "".join(rest), self.process.stderr.read()
+
+    def poll(self):
+        return self.process.poll()
+
+    @property
+    def returncode(self):
+        return self.process.returncode
 
 
 class ProgressStatusTests(unittest.TestCase):
@@ -87,20 +127,20 @@ class ProgressStatusTests(unittest.TestCase):
         return result
 
     def watch(self, *args):
-        process = subprocess.Popen(self.command("--json", "--watch", "--timeout", "3", "--interval", "0.1", *args),
-                                   env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=ROOT)
+        watch = Watch(subprocess.Popen(self.command("--json", "--watch", "--timeout", "3", "--interval", "0.1", *args),
+                                       env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=ROOT))
         def cleanup():
-            if process.poll() is None:
-                process.kill()
-            process.communicate(timeout=3)
+            if watch.process.poll() is None:
+                watch.process.kill()
+            watch.finish(timeout=3)
+            watch.process.stdout.close()
+            watch.process.stderr.close()
         self.addCleanup(cleanup)
-        return process
+        return watch
 
-    def read_line(self, process):
-        with selectors.DefaultSelector() as selector:
-            selector.register(process.stdout, selectors.EVENT_READ)
-            self.assertTrue(selector.select(timeout=5), "watch did not flush a status in time")
-        line = process.stdout.readline()
+    def read_line(self, watch):
+        line = watch.next_line(timeout=5)
+        self.assertIsNotNone(line, "watch did not flush a status in time")
         self.assertTrue(line, "watch exited without a status")
         return json.loads(line)
 
@@ -297,14 +337,12 @@ class ProgressStatusTests(unittest.TestCase):
         process = self.watch("--run-id", self.record["run_id"], "--identifier", DOI)
         self.assertEqual(self.read_line(process)["stage"], "waiting_login")
         # Wait across polling ticks: no unchanged JSON lines should be emitted.
-        with selectors.DefaultSelector() as selector:
-            selector.register(process.stdout, selectors.EVENT_READ)
-            self.assertFalse(selector.select(timeout=0.25))
+        self.assertIsNone(process.next_line(timeout=0.25))
         self.write(stage="fetching_pdf", revision=2)
         self.assertEqual(self.read_line(process)["stage"], "fetching_pdf")
         self.write(stage="saved_pending_verification", revision=3, status="done")
         self.assertEqual(self.read_line(process)["stage"], "saved_pending_verification")
-        stdout, stderr = process.communicate(timeout=4)
+        stdout, stderr = process.finish(timeout=4)
         self.assertEqual(process.returncode, 0, stderr)
         self.assertEqual(stdout, "")
 
@@ -313,15 +351,13 @@ class ProgressStatusTests(unittest.TestCase):
         process = self.watch("--run-id", self.record["run_id"], "--identifier", DOI)
         initial = self.read_line(process)
         self.assertEqual((initial["status"], initial["stage"]), ("running", "route_failed"))
-        with selectors.DefaultSelector() as selector:
-            selector.register(process.stdout, selectors.EVENT_READ)
-            self.assertFalse(selector.select(timeout=0.25))
+        self.assertIsNone(process.next_line(timeout=0.25))
         self.assertIsNone(process.poll())
         self.write(stage="fetching_pdf", revision=2)
         self.assertEqual(self.read_line(process)["stage"], "fetching_pdf")
         self.write(stage="saved_pending_verification", status="done", revision=3)
         self.assertEqual(self.read_line(process)["stage"], "saved_pending_verification")
-        stdout, stderr = process.communicate(timeout=3)
+        stdout, stderr = process.finish(timeout=3)
         self.assertEqual(process.returncode, 0, stderr)
         self.assertEqual(stdout, "")
 
@@ -337,7 +373,7 @@ class ProgressStatusTests(unittest.TestCase):
                 self.assertEqual(output["status"], "run_changed")
                 self.assertEqual(output["expected_run_id"], old)
                 self.assertNotIn("identifier", output)
-                process.communicate(timeout=3)
+                process.finish(timeout=3)
                 self.assertEqual(process.returncode, 4)
 
     def test_watch_idle_binds_arrival_then_stops_on_failure(self):
@@ -347,7 +383,7 @@ class ProgressStatusTests(unittest.TestCase):
         self.assertEqual(self.read_line(process)["stage"], "waiting_login")
         self.write(stage="failed", revision=2, status="done")
         self.assertEqual(self.read_line(process)["stage"], "failed")
-        process.communicate(timeout=3)
+        process.finish(timeout=3)
         self.assertEqual(process.returncode, 1)
 
     def test_watch_timeout_is_bounded_and_distinct_from_task_failure(self):

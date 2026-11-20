@@ -37,6 +37,82 @@ _CONTENT_FILTERS_JS = """() => ({
         hide: li.classList.contains('hide'), has: li.classList.contains('has-content')}))})"""
 
 
+# --fulltext on Silverchair's article page (PaperSearch's sites/templates/silverchair.ts):
+# the article is in .widget-ArticleFulltext (JAMA: three of them, OUP and Karger: one),
+# its body paragraphs p.para (JAMA) or p.chapter-para (OUP) outside the abstract, floats
+# and references; a reader without access gets data-userHasAccess="False". A figure's
+# largest image is the link it sits in (JAMA: the lazy <img> has only its medium copy in
+# data-original), else the original behind its "Download slide" link
+# (/DownloadFile/DownloadImage.aspx?image=<CDN URL>&Expires=…&Signature=…, OUP and
+# Karger), else the image shown; a table given as HTML is not fetched as an image.
+# JAMA Network and Oxford Academic verified on pages saved after a school login
+# (2026-11-14); a publisher on the platform names these once one of its pages is verified
+# (Karger's one page was an accepted manuscript, PDF only). ACS, AIP and the Royal Society
+# write their body paragraphs as plain <p> in .article-section-wrapper (2026-11-15).
+SILVERCHAIR_FULLTEXT_SHOWN_JS = """() => {
+  if ([...document.querySelectorAll('[data-userhasaccess]')].some((node) => (node.getAttribute('data-userhasaccess') || '').toLowerCase() === 'false')) return false;
+  const outside = '.abstract, #AbstractSection, .fig-section, .figure-table-wrapper, .table-wrap, .ref-list, .references, .footnote';
+  return [...document.querySelectorAll('.widget-ArticleFulltext p.chapter-para, .widget-ArticleFulltext p.para, .widget-ArticleFulltext .article-section-wrapper > p')]
+    .filter((p) => !p.closest(outside)).reduce((sum, p) => sum + p.innerText.length, 0) > 500;
+}"""
+SILVERCHAIR_FULLTEXT_IMAGES_JS = r"""() => {
+  const decoded = (value) => { try { return decodeURIComponent(value); } catch (error) { return value; } };
+  const stem = (url) => decoded((url || '').split(/[?#]/)[0].split('/').pop() || '').toLowerCase().replace(/\.[^.]*$/, '').replace(/^m_/, '');
+  const absolute = (href) => { try { return new URL(href, location.href).href; } catch (error) { return href; } };
+  const unwrap = (href) => {
+    const query = href.indexOf('?');
+    if (query < 0 || !/\/downloadimage\.aspx$/i.test(href.slice(0, query))) return '';
+    let image = '';
+    const signature = new Map();
+    for (const segment of href.slice(query + 1).split('#')[0].split('&')) {
+      const equals = segment.indexOf('=');
+      if (equals < 0) continue;
+      const name = decoded(segment.slice(0, equals)).trim().toLowerCase();
+      if (name === 'image' && !image) image = segment.slice(equals + 1);
+      else if (['expires', 'signature', 'key-pair-id'].includes(name) && !signature.has(name)) signature.set(name, segment);
+    }
+    if (!image) return '';
+    let url;
+    try { url = new URL(decoded(image), location.href); } catch (error) { return ''; }
+    if (url.protocol !== 'https:') return '';
+    const own = new Set([...url.searchParams.keys()].map((key) => key.toLowerCase()));
+    const missing = [...signature].filter(([name]) => !own.has(name)).map(([, segment]) => segment);
+    return missing.length ? new URL(`${url.href}${url.search ? '&' : '?'}${missing.join('&')}`).href : url.href;
+  };
+  const urls = [];
+  const floats = document.querySelectorAll('.widget-ArticleFulltext .fig-section, .widget-ArticleFulltext .figure-table-wrapper, .widget-ArticleFulltext .table-wrap');
+  for (const float of floats) {
+    if (float.parentElement && float.parentElement.closest('.fig-section, .figure-table-wrapper, .table-wrap, .formula-wrap, .disp-formula')) continue;
+    const table = float.matches('.table-wrap') || !!float.querySelector('.table-label');
+    if (table && [...float.querySelectorAll('table')].some((node) => !node.parentElement.closest('table, .table-modal'))) continue;
+    for (const img of float.querySelectorAll('img')) {
+      const holder = img.parentElement && img.parentElement.closest('.fig-caption, .figure-caption, .fig-label, .figure-label, .inline-formula, .disp-formula');
+      if (holder && holder !== float && float.contains(holder)) continue;
+      const shown = [img.getAttribute('src'), img.getAttribute('data-original'), img.getAttribute('data-src')]
+        .map((value) => (value || '').trim()).find((value) => value && !value.startsWith('data:')) || '';
+      const stems = [stem(shown), stem(img.getAttribute('data-path-from-xml') || '')].filter(Boolean);
+      let best = '';
+      const anchor = img.parentElement && img.parentElement.closest('a');
+      if (anchor && anchor !== float && float.contains(anchor)) {
+        const href = (anchor.getAttribute('href') || '').trim();
+        // Karger's /view-large/figure/…jpg is a viewer page, not the image (2026-11-14).
+        if (/\.(png|jpe?g|gif|tiff?|webp)$/i.test(href.split(/[?#]/)[0]) && !/\/view-large\//i.test(href)
+            && stems.includes(stem(href))) best = absolute(href);
+      }
+      if (!best) {
+        for (const a of float.querySelectorAll('a')) {
+          const original = unwrap((a.getAttribute('href') || '').trim());
+          if (original && stems.includes(stem(original))) { best = original; break; }
+        }
+      }
+      if (!best && shown) best = absolute(shown);
+      if (best) urls.push(best);
+    }
+  }
+  return urls;
+}"""
+
+
 def declares_no_supplements(page: Any, doi: str) -> bool:
     """This article's own Silverchair page says it has no supplementary material:
     its "Supplementary Material" filter hidden while another kind is marked as

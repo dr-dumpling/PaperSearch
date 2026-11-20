@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from paper_search_school.browser import challenge_interaction
+from paper_search_school.browser.challenge import interaction as challenge_interaction
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 
 pytestmark = pytest.mark.skipif(os.environ.get("SCHOOL_LOCAL_BROWSER_TEST") != "1",

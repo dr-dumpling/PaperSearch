@@ -4,9 +4,10 @@
  */
 
 import { jest, beforeAll, afterAll, afterEach } from '@jest/globals';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PRO_FEATURES_ENV, proFeaturesOf } from '../src/config/edition.js';
 
 // Set test environment
 process.env.NODE_ENV = 'test';
@@ -25,6 +26,10 @@ for (const name of ['XDG_DATA_HOME', 'SCHOOL_DATA_DIR', 'PAPER_SEARCH_SCHOOL_EXE
   'CARSI_DATA_DIR', 'PAPER_SEARCH_CARSI_EXECUTABLE', 'PAPER_SEARCH_CARSI_ENABLED']) {
   delete process.env[name];
 }
+
+// PaperSearch Pro's features as this edition's package.json has them (src/config/edition.ts): off in
+// the public export. The tests of the Markdown turn them on at their top.
+process.env[PRO_FEATURES_ENV] = proFeaturesOf(JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'))) ? '1' : '0';
 
 // Increase timeout for API tests
 jest.setTimeout(30000);

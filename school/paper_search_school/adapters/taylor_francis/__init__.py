@@ -10,7 +10,12 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from ..platforms.atypon import AtyponAdapter
+from ..platforms.atypon import (
+    CLASSIC_TEMPLATE_FULLTEXT_IMAGES_JS,
+    CLASSIC_TEMPLATE_FULLTEXT_PREPARE_JS,
+    CLASSIC_TEMPLATE_FULLTEXT_SHOWN_JS,
+    AtyponAdapter,
+)
 from ..base import SupplementLink, register
 
 _HOSTS = frozenset({"tandfonline.com", "www.tandfonline.com"})
@@ -28,6 +33,11 @@ class TaylorFrancisAdapter(AtyponAdapter):
     entry_event = "tandf-institution-link"
     # A viewer's first range can start with %PDF yet contain no usable pages.
     requires_complete_pdf = True
+
+    # --fulltext: Atypon's older template (platforms/atypon).
+    fulltext_shown_js = CLASSIC_TEMPLATE_FULLTEXT_SHOWN_JS
+    fulltext_images_js = CLASSIC_TEMPLATE_FULLTEXT_IMAGES_JS
+    fulltext_prepare_js = CLASSIC_TEMPLATE_FULLTEXT_PREPARE_JS
 
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink] | None:
         """``/action/downloadSupplement?doi=<this DOI>&file=<name>`` (the Supplemental box)."""

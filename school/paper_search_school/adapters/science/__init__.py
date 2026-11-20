@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..base import register
-from ..platforms.atypon import AtyponAdapter
+from ..platforms.atypon import CURRENT_TEMPLATE_FULLTEXT_IMAGES_JS, CURRENT_TEMPLATE_FULLTEXT_SHOWN_JS, AtyponAdapter
 
 
 @register
@@ -11,3 +11,7 @@ class ScienceAdapter(AtyponAdapter):
 
     publisher = "science"
     site_hosts = frozenset({"www.science.org", "science.org"})
+
+    # --fulltext: Atypon's current template (platforms/atypon).
+    fulltext_shown_js = CURRENT_TEMPLATE_FULLTEXT_SHOWN_JS
+    fulltext_images_js = CURRENT_TEMPLATE_FULLTEXT_IMAGES_JS

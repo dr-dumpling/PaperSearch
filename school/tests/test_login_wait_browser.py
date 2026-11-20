@@ -50,11 +50,12 @@ def test_publisher_password_with_institution_route_is_not_a_school_login(site, u
             page.goto(url)
             page.locator('input').fill('local fixture only')
             assert d._users_login_step(page)
-            # With no institution option, an unfamiliar standalone login form
-            # must still be left to the user, even on the publisher's host.
+            # With no institution option, the publisher's own account form is its
+            # personal sign-in, not the school's step (2026-11-18): the login ends
+            # there (_ended_on_personal_sign_in). Elsewhere it is left to the user.
             page.goto(url)
             page.locator('a').evaluate('el => el.remove()')
-            assert d._users_login_step(page)
+            assert d._users_login_step(page) is (not d._on_publisher_host(url))
         finally:
             context.close()
             browser.close()
@@ -186,6 +187,35 @@ def test_a_username_first_page_is_the_schools_login_and_a_portal_search_box_is_n
                              '<input type="submit" name="sourceChoice[national]" style="display:none"></div></form>')
             assert state()["login"] is True
             assert d._idp_controls(page) is True
+        finally:
+            context.close()
+            browser.close()
+
+
+def test_a_portal_that_only_mentions_scanning_or_a_code_is_no_login_page():
+    # A school's portal home after its login, whose notice spoke of signing in by scanning
+    # a code or with a code, was waited on as its login page for the whole login time
+    # (2026-11-18). A QR login shows its code, a code login the box for it.
+    from patchright.sync_api import sync_playwright
+    with sync_playwright() as driver:
+        browser = driver.chromium.launch(channel="chrome", headless=True)
+        context = browser.new_context(service_workers="block")
+        page = context.new_page()
+        try:
+            d = PublisherBatchDownloader({"publisher_institution_federation": "carsi"})
+            state = lambda: page.evaluate(d._SCHOOL_PAGE_STATE_JS)
+            page.set_content('<h1>Fixture University self-service</h1>'
+                             '<p>Notice: accounts can now sign in by 扫码 in the campus app, or with a 验证码 sent by text.</p>'
+                             '<img alt="logo" style="width:40px;height:40px"><input type="text" placeholder="Search">')
+            assert state()["login"] is False
+            page.set_content('<p>微信扫码登录</p><canvas width="180" height="180"></canvas>')
+            assert state()["login"] is True
+            page.set_content('<p>Scan the QR code to sign in</p><iframe style="width:300px;height:400px"></iframe>')
+            assert state()["login"] is True
+            page.set_content('<p>请输入短信验证码</p><input type="text" name="smsCode">')
+            assert state()["login"] is True
+            page.set_content('<p>Enter the verification code</p><input type="text" placeholder="Search">')
+            assert state()["login"] is False
         finally:
             context.close()
             browser.close()

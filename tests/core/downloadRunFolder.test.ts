@@ -1,8 +1,8 @@
 import { join, resolve } from "path";
 import { describe, expect, it } from "@jest/globals";
 import { runDownloadFolder } from "../../src/config/ConfigService.js";
-import { batchSaveFolder, downloadRunFolder } from "../../src/capabilities/pdf-discovery/handler.js";
-import type { DownloadBatchOptions } from "../../src/capabilities/pdf-discovery/batch.js";
+import { batchSaveFolder, downloadRunFolder } from "../../src/capabilities/download/handler.js";
+import type { DownloadBatchOptions } from "../../src/capabilities/download/batch/batch.js";
 
 // Each download run saves into its own folder, so runs are not mixed (user, 2026-11-11).
 describe("the download folder of one run", () => {

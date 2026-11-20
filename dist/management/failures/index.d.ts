@@ -61,6 +61,9 @@ export declare function selectFailures(root: string, query?: FailureQuery, optio
     notAttempted: number;
 };
 export declare function summarizeFailures(root: string, query?: FailureQuery): FailureSummary;
+/** Run directories are named <yyyymmdd>-<hhmmss>-<id>, so names sort by start time. */
+export declare function selectRuns(root: string, query: FailureQuery): string[];
+export declare function readItems(file: string): Array<Record<string, unknown>>;
 export declare function renderFailuresText(summary: FailureSummary, options?: {
     all?: boolean;
 }): string;

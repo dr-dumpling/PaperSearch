@@ -94,6 +94,9 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .head .text { flex: 1; min-width: 0; }
 .head .title { font-weight: 600; font-size: 14px; }
 .head .sub { font-size: 12px; color: var(--dim); }
+/* The head's buttons close together (user, 2026-11-17): the pin's room comes from their gaps, not the text's. */
+.tools { display: flex; align-items: center; gap: 2px; margin-right: -3px; flex: none; }
+.tools .iconbtn { margin: 0; padding: 3px; }
 .iconbtn { background: none; border: none; padding: 4px; margin: -4px; border-radius: 6px; color: var(--dim); display: inline-flex; cursor: pointer; }
 .iconbtn:hover { background: var(--hover); color: var(--fg); }
 .paper { margin: 14px 0 12px; }
@@ -118,7 +121,35 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .held .copy { flex: 1; min-width: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .held .names { margin-top: 3px; font-size: 11px; opacity: .8; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .held .btn { color: var(--warn); border-color: var(--warn-line); white-space: nowrap; flex: none; }
+/* Pages from sites not yet supported: what that means and the report buttons (user, 2026-11-16). */
+.unverified-note { font-size: 12px; color: var(--dim); margin: 2px 0 6px; line-height: 1.5; }
+.unverified-note .btn.link { display: inline; padding: 0; margin-left: 2px; font-size: inherit; }
+.unverified-actions { margin-top: 6px; }
 .stats { display: flex; padding: 12px 0; border-top: 0.5px solid var(--line); border-bottom: 0.5px solid var(--line); }
+/* Markdown by rules not listed for its site: a dot beside 成功 and, pointed at, a card above the
+   counts (user, 2026-11-17: no yellow line for pages that were fine). */
+.stats-wrap { position: relative; }
+/* Pointing at the dot is not pointing at the count. */
+.stats .stat:has(.rules-dot:hover) span { color: var(--dim); }
+/* Up beside its label, taking no room: 成功, 失败 and 剩余 stay under their counts. */
+.stats .stat > span { position: relative; }
+.stats .rules-dot { position: absolute; left: 100%; top: -1px; margin-left: 3px; width: 6px; height: 6px; border-radius: 50%;
+  background: #8b9cf7; cursor: help; }
+/* Its text in line with 成功 below: the card reaches past the counts by its own padding. */
+.rules-pop { display: none; position: absolute; left: -11px; right: -11px; bottom: calc(100% + 6px); z-index: 5; padding: 9px 11px;
+  background: var(--bg); color: var(--fg); border-radius: 10px; font-size: 11.5px; line-height: 1.55;
+  /* Its edge drawn, not a border: a border pushed its text 1 px off 成功 (Windows, 2026-11-17). */
+  box-shadow: 0 0 0 0.5px var(--line), 0 6px 20px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08); }
+.rules-pop.show { display: block; }
+/* The way down to the dot keeps it open. */
+.rules-pop::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 8px; }
+.rules-pop .h { display: flex; align-items: center; gap: 4px; font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+/* The heading's dot hangs in the margin: every line starts in line with 成功. */
+.rules-pop .h i { width: 6px; height: 6px; border-radius: 50%; background: #8b9cf7; flex: none; margin-left: -10px; }
+.rules-pop .r { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rules-pop .r.counts { white-space: normal; }
+.rules-pop .issue { display: block; margin-top: 6px; padding: 6px 0 0; width: 100%; text-align: left; border: none;
+  border-top: 0.5px solid var(--line); background: none; font: inherit; color: var(--accent); cursor: pointer; }
 .stats div, .stats .stat { flex: 1; }
 .stats .stat { padding: 0; border: none; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .stats .stat:hover span, .stats .stat:focus-visible span { color: var(--accent); }
@@ -165,6 +196,17 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .switch::after { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; }
 .switch.on { background: var(--accent); }
 .switch.on::after { left: 16px; }
+/* The small switch beside the hourly limit (马上生效) and what it does, shown on hover or focus (user, 2026-11-19). */
+.mini-wrap { position: relative; display: inline-flex; vertical-align: middle; margin-left: 8px; }
+.switch.mini { width: 24px; height: 14px; border-radius: 7px; }
+.switch.mini::after { left: 2px; top: 2px; width: 10px; height: 10px; }
+.switch.mini.on::after { left: 12px; }
+.mini-tip { display: none; position: absolute; right: -6px; top: calc(100% + 8px); z-index: 5; padding: 7px 10px; white-space: nowrap;
+  background: var(--bg); color: var(--fg); border-radius: 8px; font-size: 12px; line-height: 1.7;
+  box-shadow: 0 0 0 0.5px var(--line), 0 6px 20px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08); }
+.mini-wrap:hover .mini-tip, .mini-wrap:focus-within .mini-tip { display: block; }
+.mini-tip b { font-weight: 600; }
+.mini-tip .k { color: var(--dim); display: inline-block; min-width: 2em; }
 .foot { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 0.5px solid var(--line); }
 /* Settings: a home list of three pages, each row with its current values; then the page itself. */
 .nav-row, .key-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 0; border: none; border-top: 0.5px solid var(--line);
@@ -177,11 +219,54 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .nav-sub { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .settings-note { font-size: 11px; color: var(--ok); margin-top: 8px; }
 .key-group { font-size: 11px; color: var(--faint); margin: 12px 0 2px; }
+.key-group.pro-group { margin-top: 16px; }
+/* The Markdown page (PaperSearch Pro): its tile and state, what it does, 安装 or its progress, where to report. */
+.pro-head { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.pro-tile { width: 34px; height: 34px; border-radius: 9px; flex: none; display: flex; align-items: center; justify-content: center;
+            background: var(--accent); color: #fff; }
+.pro-tile svg.i { width: 18px; height: 18px; }
+.pro-name { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.pro-pill { font-size: 10.5px; font-weight: 500; line-height: 1.5; color: var(--accent); background: var(--hover); border-radius: 999px; padding: 0 7px; }
+.pro-state { font-size: 12px; color: var(--dim); }
+.pro-state.ok { color: var(--ok); }
+.pro-state.bad { color: var(--bad); }
+.pro-desc { font-size: 12px; line-height: 1.55; color: var(--dim); margin-top: 10px; }
+.pro-action { margin-top: 12px; }
+.pro-action:empty { display: none; }
+.pro-action .btn.primary { width: 100%; justify-content: center; padding: 6px 10px; font-size: 13px; }
+.pro-bar { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; }
+.pro-bar span { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+.pro-hint { font-size: 11px; color: var(--faint); text-align: center; margin-top: 6px; }
+.pro-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; padding-top: 10px;
+            border-top: 0.5px solid var(--line); font-size: 12px; color: var(--dim); }
+.pro-foot .btn.link { padding-right: 0; gap: 2px; }
+.pro-foot .btn.link svg.i { width: 13px; height: 13px; }
+/* What Pro keeps, its counts, its sites and whether it is free (user, 2026-11-19). */
+/* What a Markdown keeps, the counts, the sites and the usage, as drawn on 2026-11-19: taller than the
+   other settings pages, which the user prefers to a crowded page (the window grows, as for API key). */
+.pro-check { margin-left: auto; padding-right: 0; font-size: 12px; }
+.pro-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.pro-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 9px 2px 7px; border-radius: 999px;
+            border: 0.5px solid var(--line); color: var(--dim); }
+.pro-chip svg.i { width: 13px; height: 13px; }
+.pro-stats { margin-top: 12px; }
+.pro-row.static { cursor: default; }
+.pro-sites { font-size: 12px; line-height: 1.6; color: var(--dim); padding: 0 0 8px 26px; }
 .key-row.editing { cursor: default; }
 .key-row.editing:hover .nav-title { color: inherit; }
 .key-set { font-size: 12px; color: var(--ok); white-space: nowrap; }
 .key-row .btn { pointer-events: none; }
 .key-edit { background: var(--hover); border-radius: 8px; padding: 8px 10px; margin: 0 0 6px; }
+/* The school sign-in page (PaperSearch Pro): each field under its name, room between them (user, 2026-11-19). */
+.login-form { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.login-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--dim); }
+.settings .login-field input { width: 100%; box-sizing: border-box; text-align: left; background: var(--bg); padding: 7px 9px; font-size: 13px; }
+.login-pw { display: flex; align-items: center; gap: 6px; }
+.login-pw input { flex: 1; min-width: 0; }
+.login-pw .iconbtn { margin: 0; flex: none; }
+.login-form .key-note { margin: 0; }
+.login-form .err { text-align: left; margin: 0; }
+.login-form .err:empty { display: none; }
 .settings .key-edit input { width: 100%; text-align: left; background: var(--bg); }
 .key-note { font-size: 11px; line-height: 1.5; color: var(--dim); margin-bottom: 8px; }
 .key-edit .err { text-align: left; margin: 6px 0 0; }
@@ -245,9 +330,10 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .paper-list .open-article:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
 .tag { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 5px; flex: none; }
 .tag.no_access, .tag.other { background: var(--hover); color: var(--fg); }
-.tag.user_or_external { background: var(--warn-bg); color: var(--warn); }
+.tag.user_side, .tag.school_side, .tag.publisher_or_network, .tag.article_or_site { background: var(--warn-bg); color: var(--warn); }
 .tag.unsupported { background: rgba(37, 99, 235, 0.12); color: var(--accent); }
 .tag.unexplained { background: rgba(220, 38, 38, 0.12); color: var(--bad); }
+.tag.doubt { background: var(--hover); color: var(--dim); }
 </style>
 </head>
 <body>
@@ -261,6 +347,7 @@ const EN_PATTERNS = EN ? EN.patterns.map(([source, target]) => [new RegExp(sourc
 const HAN = /[\u4e00-\u9fff]/;
 let lang = "zh";
 const BRACKETS = /^(.+?)（(.+)）$/;
+const LISTED = /^([^：]+)：(.+)$/;
 function trOne(core) {
   if (!HAN.test(core)) return core;
   let english = Object.hasOwn(EN.exact, core) ? EN.exact[core] : null;
@@ -271,9 +358,14 @@ function trOne(core) {
   const parts = english === null && BRACKETS.exec(core);
   // "开放下载 18（出版社 API 3、预印本 1）": the text and what its brackets list, each on its own.
   if (parts) english = trOne(parts[1]) + " (" + parts[2].split("、").map(trOne).join(", ") + ")";
+  // "不完整：参考文献少 1 条，少 1 张图": a known word, then what it lists, each on its own.
+  const listed = english === null && LISTED.exec(core);
+  if (listed && trOne(listed[1]) !== listed[1]) english = trOne(listed[1]) + ": " + listed[2].split("，").map(trOne).join(", ");
   return english === null ? core : english;
 }
 function tr(text) {
+  // "PDF、Markdown": the kinds' names need no table, only their separator.
+  if (lang === "en" && text && !HAN.test(text) && String(text).includes("、")) return String(text).replace(/、/g, ", ");
   if (lang !== "en" || !EN || !text || !HAN.test(text)) return text;
   return String(text).split(" · ").map((part) => {
     const core = part.trim();
@@ -302,6 +394,7 @@ const ICONS = {
   check: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9.5"/>',
   alert: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/>',
   minimize: '<path d="M6 12h12"/>',
+  pin: '<path d="M8 4h8"/><path d="M9.5 4v5.5L7 13h10l-2.5-3.5V4"/><path d="M12 13v7"/>',
   close: '<path d="M7 7l10 10M17 7L7 17"/>',
   folder: '<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>',
   skip: '<path d="M6 6l8 6-8 6z"/><path d="M18 6v12"/>',
@@ -315,6 +408,13 @@ const ICONS = {
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   key: '<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L19 4M16 7l2.5 2.5M14 9l2 2"/>',
   eye: '<path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
+  file: '<path d="M7 3.5h7l4.5 4.5V19a1.5 1.5 0 0 1-1.5 1.5H7A1.5 1.5 0 0 1 5.5 19V5A1.5 1.5 0 0 1 7 3.5z"/><path d="M14 3.5V8h4.5M8.5 12.5h7M8.5 16h5"/>',
+  photo: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 16l-5-5-8.5 8"/>',
+  table: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 10h17M3.5 14.5h17M10 10v9"/>',
+  formula: '<path d="M17 5H7l5 7-5 7h10"/>',
+  list: '<path d="M9.5 7h10.5M9.5 12h10.5M9.5 17h10.5"/><circle cx="5" cy="7" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="5" cy="17" r="1"/>',
+  gift: '<rect x="4" y="9" width="16" height="11" rx="1.5"/><path d="M3 9h18M12 9v11M12 9c-1.4-2.8-4.8-3.4-4.8-1.1 0 1.1 2.4 1.1 4.8 1.1zM12 9c1.4-2.8 4.8-3.4 4.8-1.1 0 1.1-2.4 1.1-4.8 1.1z"/>',
+  globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.5 5.4 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.4-3.5-8.5s1.1-6.1 3.5-8.5z"/>',
   external: '<path d="M14 5h5v5M19 5l-8 8"/><path d="M18 14v4a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18V7a1.5 1.5 0 0 1 1.5-1.5H10"/>',
 };
 function gearPath() {
@@ -341,12 +441,14 @@ function ring(pct, size, stroke, label) {
 const root = document.getElementById("root");
 let V = { mode: "idle" };
 let open = false;          // the card is showing
+// 钉住 (user, 2026-11-17): the card stays open when the pointer leaves; this window only, not remembered.
+let pinned = false;
 let panel = "";            // "", "report", "confirm", "settings": kept until the user leaves it
 let flash = { text: "", until: 0 };
 // 登录并继续 pressed: the held publishers then ({run, keys}); the button says so at once,
 // as the papers go on only after the paper running, or within seconds (user, 2026-11-15).
 let heldAsked = null;
-let settings = null, settingsErrors = {}, notifyOn = true;
+let settings = null, settingsErrors = {}, notifyOn = true, hourlyNow = false;
 // What is typed on this settings page and not yet saved. Any redraw shows it instead of the
 // saved value: a click on the card's background is a drag, and its end redraws the card
 // (a typed hourly limit went back to the saved one, Windows, 2026-11-13).
@@ -354,10 +456,27 @@ let settingsDraft = {};
 let notifyCheck = null;  // the notification check under the switch: {state: testing, sent, off, unseen or failed}
 // Settings pages: "home" lists download, wait and keys. settingsOnly: this window was started
 // just to show them (`paper-search-school settings`), so it closes with them unless a download runs.
-const SETTINGS_PAGES = ["home", "download", "wait", "keys"];
+const SETTINGS_PAGES = ["home", "download", "wait", "keys", "pro", "markdown", "login"];
+// PaperSearch Pro's pages (config/edition.ts): Pro itself (installing it, its version and updates), and
+// each of its features (user, 2026-11-19: the Markdown, the school's sign-in, more to come).
+const PRO_PAGES = ["pro", "markdown", "login"];
+// Installed, Pro's features are on the home page (the user's choice, 2026-11-19: 铺开); not yet, on
+// Pro's own page, under 安装.
+const proInstalled = () => !!(proStatus && proStatus.ok && proStatus.installed) && proInstall.state !== "running";
+const parentPage = (page) => ["markdown", "login"].includes(page) && !proInstalled() ? "pro" : "home";
+// The Markdown page is one of PaperSearch Pro's features: the backend says whether this edition has it (edition.py).
+const proOn = () => !settings || settings.pro !== false;
 let settingsPage = "home", settingsNote = "", settingsOnly = false, lastStrip = "";
 // Not "keys": in the pywebview window that name is taken, and declaring it stops the whole page.
 let apiKeys = null, editing = "", editValues = {}, confirmClear = "", revealed = false;
+// PaperSearch Pro on this computer, for the Markdown page: { installed, version }; and its
+// 安装 as the window runs it: { state: idle, running (done, total bytes), done or failed (message) }.
+let proStatus = null, proInstall = { state: "idle" }, proInstallTimer = 0;
+// The school sign-in page (school_login_state); its error line.
+let schoolLogin = null, loginError = "", loginValues = {}, loginShown = false;
+// What the last 保存, 清除 or switch did, said under the fields (user, 2026-11-19: 保存 said nothing).
+let loginDone = "";
+let proCheck = { state: "idle" }, proCheckTimer = 0, proSitesOpen = false;
 let lastHtml = "", hoverTimer = 0, leaveTimer = 0, pollTimer = 0, kinds = [];
 const api = () => window.pywebview.api;
 
@@ -391,14 +510,21 @@ function pill() {
   return '<div class="pillrow icon-first capsule-drag-region"><b>PaperSearch</b><span class="dim">暂无下载任务</span></div>';
 }
 
+/** The pin: pressed, the card stays open when the pointer leaves. */
+function pinButton() {
+  return '<button class="iconbtn" data-act="pin" aria-pressed="' + pinned + '" aria-label="' + (pinned ? "取消钉住" : "钉住")
+    + '" title="' + (pinned ? "已钉住，点一下取消" : "钉住：鼠标移开也不收起") + '">' + icon("pin") + "</button>";
+}
+
 function header(title, sub, closable) {
   // Only the ring and the texts drag the window; the buttons stay clickable.
   return '<div class="head"><div class="drag capsule-drag-region">'
     + (V.mode === "running" || V.mode === "attention" ? ring(V.pct, 40, 4, V.pct + "%") : "")
     + '<div class="text"><div class="title">' + esc(title) + '</div>' + (sub ? '<div class="sub">' + esc(sub) + "</div>" : "") + "</div></div>"
+    + '<div class="tools">' + pinButton()
     + '<button class="iconbtn" data-act="settings" aria-label="设置">' + icon("gear") + "</button>"
     + '<button class="iconbtn" data-act="' + (closable ? "close" : "minimize") + '" aria-label="' + (closable ? "关闭" : "最小化")
-    + '" title="' + (closable ? "关闭" : "最小化到程序坞") + '">' + icon(closable ? "close" : "minimize") + "</button></div>";
+    + '" title="' + (closable ? "关闭" : "最小化到程序坞") + '">' + icon(closable ? "close" : "minimize") + "</button></div></div>";
 }
 
 function paperBlock() {
@@ -450,8 +576,8 @@ function actionsBlock() {
 }
 
 // A count opens its list of papers once the batch has sent them (user, 2026-11-10).
-function stat(list, value, label, color) {
-  const inner = "<b" + (color ? ' style="color:' + color + '"' : "") + ">" + value + "</b><span>" + label + "</span>";
+function stat(list, value, label, color, mark) {
+  const inner = "<b" + (color ? ' style="color:' + color + '"' : "") + ">" + value + "</b><span>" + label + (mark || "") + "</span>";
   return V.lists && list ? '<button type="button" class="stat" data-act="papers" data-list="' + list + '">' + inner + "</button>"
     : "<div>" + inner + "</div>";
 }
@@ -480,6 +606,54 @@ function heldBlock() {
     + '<div class="names">' + esc(held.map((h) => h.name).join(lang === "en" ? ", " : "、")) + "</div></div>";
 }
 
+// Pages from sites not yet supported this batch: the site (or how many), how their Markdown
+// went, and 查看 for those not kept, in the place of the held publishers' line (user, 2026-11-16).
+// Pages whose Markdown came by rules not listed for their site (their publisher's, or the
+// others'), while the batch runs: a small dot beside 成功 (beside 失败 when none was saved,
+// opening their group), and pointed at, a card above the counts: the sites and whose rules,
+// how many were saved, and, when some were not, 提 issue to have the site listed (user,
+// 2026-11-17: the yellow line took a row for pages that were fine).
+const RULES_TITLE = "Markdown：借用其他网站的规则转换";
+let rulesShown = false, rulesTimer = 0;
+const rulesSites = () => (V.sites && V.sites.hosts && V.sites.hosts.length ? V.sites : null);
+function rulesDot(where) {
+  const s = rulesSites();
+  if (!s || where !== (s.saved ? "ok" : "failed")) return "";
+  const act = where === "failed" && V.lists ? ' data-act="papers" data-list="failed" data-unverified="1"' : "";
+  return '<span class="rules-dot" role="note" aria-label="' + esc(RULES_TITLE) + '"' + act + "></span>";
+}
+function rulesCard() {
+  const s = rulesSites();
+  if (!s) return "";
+  const site = s.hosts.length === 1 ? s.hosts[0] : s.hosts.length + " 个网站";
+  // Whose rules were borrowed (user, 2026-11-17: "www.jacc.org · 采用 Atypon 规则").
+  const rules = s.rules && s.rules.length ? "采用 " + s.rules.join(" / ") + " 规则" : "没有适用的规则";
+  // Whether each one's Markdown came whole: only a complete one is saved.
+  const counts = ["完整已保存 " + s.saved + " 篇", "不完整未保存 " + s.unsaved + " 篇", s.skipped ? "未再尝试 " + s.skipped + " 篇" : ""]
+    .filter(Boolean).join(" · ");
+  // Saved or not, one way to have the site listed: the report goes with the issue (user, 2026-11-17).
+  const issue = '<button type="button" class="issue" data-act="markdown_issue">提 issue 纳入已登记网站</button>';
+  return '<div class="rules-pop' + (rulesShown ? " show" : "") + '"><div class="h"><i></i>' + esc(RULES_TITLE) + "</div>"
+    + '<div class="r" title="' + esc(s.hosts.join("、")) + '">' + esc(site + " · " + rules) + '</div><div class="r counts">' + esc(counts) + "</div>" + issue + "</div>";
+}
+function showRules(on) {
+  rulesShown = on;
+  const pop = root.querySelector(".rules-pop");
+  if (pop) pop.classList.toggle("show", on);
+}
+
+// Under the group of pages from sites not yet supported: what that means, the sites with
+// rules, and a report for the maintainers (nothing is uploaded; user, 2026-11-16).
+function unverifiedNote() {
+  return '<div class="unverified-note">' + esc("这些网站尚未正式支持 Markdown，内容不完整的未保存。如需支持，欢迎提 issue 或 PR。")
+    + '<button type="button" class="btn link" data-act="markdown_support">已支持的网站</button></div>';
+}
+function unverifiedActions(withFlash) {
+  const note = withFlash && flash.text && Date.now() < flash.until ? '<div class="line">' + esc(flash.text) + "</div>" : "";
+  return '<div class="actions unverified-actions"><span class="grow"></span>'
+    + '<button class="btn" data-act="markdown_issue">提 issue</button></div>' + note;
+}
+
 function runningCard() {
   const v = V;
   // Held by the hourly limit, the time used gives way: the line stays one line (2026-11-13).
@@ -489,8 +663,9 @@ function runningCard() {
   const asked = v.held_wait && resumeAsked();
   const paper = v.held_wait ? '<div class="paper"><div class="line">' + esc(asked ? "如需登录，会打开学校登录页" : v.line) + "</div></div>" : paperBlock();
   return '<div class="card-body">' + header(asked ? "正在继续下载" : v.headline, sub, false) + paper + heldBlock()
-    + '<div class="stats">' + stat("ok", v.ok, "成功", "var(--ok)") + stat("failed", v.bad, "失败", "var(--bad)")
-    + stat("left", v.left == null ? "—" : v.left, "剩余") + "</div>"
+    + '<div class="stats-wrap">' + rulesCard() + '<div class="stats">' + stat("ok", v.ok, "成功", "var(--ok)", rulesDot("ok"))
+    + stat("failed", v.bad, "失败", "var(--bad)", rulesDot("failed"))
+    + stat("left", v.left == null ? "—" : v.left, "剩余") + "</div></div>"
     + actionsBlock() + "</div>";
 }
 
@@ -498,8 +673,9 @@ function attentionCard() {
   const a = V.attention;
   const title = a.short;
   let html = '<div class="card-body"><div class="attention-head capsule-drag-region"><b>PaperSearch</b>'
+    + '<div class="tools">' + pinButton()
     + '<button class="iconbtn" data-act="minimize" aria-label="最小化">' + icon("minimize") + '</button>'
-    + '<button class="iconbtn" data-act="close" aria-label="关闭">' + icon("close") + '</button></div>'
+    + '<button class="iconbtn" data-act="close" aria-label="关闭">' + icon("close") + '</button></div></div>'
     + '<button type="button" class="prompt attention-target" data-act="show_browser" aria-label="打开下载浏览器">' + icon(a.login ? "lock" : "alert")
     + '<div class="attention-copy"><div class="t">' + esc(title) + '</div><div class="s">点击打开浏览器，查看并继续</div></div><span class="attention-arrow" aria-hidden="true">›</span></button>';
   if (panel === "confirm") return html + actionsBlock() + "</div>";
@@ -512,10 +688,11 @@ function attentionCard() {
   return html + "</div></div>";
 }
 
-const CLASS_TAGS = { no_access: "没权限", user_or_external: "外部原因", unsupported: "暂不支持", unexplained: "原因不明", other: "其他" };
+const CLASS_TAGS = { no_access: "没权限", user_side: "你这边", school_side: "学校那边", publisher_or_network: "出版社或网络",
+  article_or_site: "文章或网站", unsupported: "暂不支持", unexplained: "原因不明", other: "其他", doubt: "待核对" };
 let openGroups = null, groupsRun = "";  // null: each reason row as the view opens it
 // Main-text rows first, then the supplementary files' rows, numbered on.
-function allGroups() { return V.summary.groups.concat(V.summary.supplement_groups || []); }
+function allGroups() { return V.summary.groups.concat(V.summary.supplement_groups || [], V.summary.markdown_groups || [], V.summary.doubt_groups || []); }
 function groupOpen(i) {
   if (groupsRun !== V.run_id) { openGroups = null; groupsRun = V.run_id; }
   return openGroups ? openGroups.has(i) : !!(allGroups()[i] || {}).open;
@@ -531,18 +708,21 @@ function toggleGroup(i) {
 
 function reasonRow(g, i, brief) {
   const opened = groupOpen(i);
+  // The open group of pages from sites not yet supported carries the note and the buttons
+  // (the first open one, when several are: Cambridge's group had none, 2026-11-17).
+  const unverified = g.unverified && allGroups().findIndex((other, j) => other.unverified && groupOpen(j)) === i;
   let html = '<div class="grp"><button type="button" class="row" data-act="group" data-group="' + i + '" aria-expanded="' + opened + '">'
     + '<span class="tag ' + esc(g.cls) + '">' + esc(CLASS_TAGS[g.cls] || "") + '</span><span class="reason">' + esc(g.reason) + "</span>"
     + '<span class="n">' + g.count + " 篇</span>" + icon(opened ? "down" : "right") + "</button>";
   if (!opened) return html + (g.where && !brief ? '<div class="m">' + esc(g.where) + "</div>" : "") + "</div>";
-  return html + '<ul class="paper-list' + (g.papers.length > 5 ? " scroll" : "") + '">'
+  return html + (unverified ? unverifiedNote() : "") + '<ul class="paper-list' + (g.papers.length > 5 ? " scroll" : "") + '">'
     + g.papers.map((p) => {
       const lines = '<div class="t">' + esc(p.title) + "</div>" + (p.where ? '<div class="w">' + esc(p.where) + "</div>" : "");
       // The article's page in the user's browser, to fetch it by hand (user, 2026-11-08).
       return "<li>" + (p.doi ? '<button type="button" class="open-article" data-act="open_article" data-doi="' + esc(p.doi)
         + '" title="在浏览器打开这篇文章">' + lines + "</button>" : lines) + "</li>";
     }).join("")
-    + (g.more ? '<li class="more">另有 ' + g.more + " 篇未列出</li>" : "") + "</ul></div>";
+    + (g.more ? '<li class="more">另有 ' + g.more + " 篇未列出</li>" : "") + "</ul>" + (unverified ? unverifiedActions(true) : "") + "</div>";
 }
 
 function doneCard() {
@@ -552,15 +732,27 @@ function doneCard() {
     // Papers the stop left undone in place of the time: their list opens from it (user, 2026-11-16).
     + (v.stopped ? stat("left", v.stopped, "已终止") : stat("", esc(v.elapsed || "—"), "用时")) + "</div>";
   if (s && s.groups.length) {
-    const apart = s.supplement_groups && s.supplement_groups.length;
-    // Each part its title alone: the small "按原因", "正文已保存" said nothing (user, 2026-11-16).
-    html += '<div class="sec"><div class="sec-h"><b>' + (apart ? "正文未下到 " : "未完成 ") + v.bad + " 篇</b></div>"
+    // Each part its title alone: the small "按原因", "PDF 已保存" said nothing (user, 2026-11-16);
+    // what they did not get, the PDF most often ("未完成" beside "Markdown 未生成", 2026-11-17).
+    html += '<div class="sec"><div class="sec-h"><b>' + (s.failed_title || "未完成") + " " + v.bad + " 篇</b></div>"
       + s.groups.map((g, i) => reasonRow(g, i)).join("") + "</div>";
   }
   // Main text and supplementary files apart, kept short: closed rows, no journal line (user, 2026-11-08).
   if (s && s.supplement_groups && s.supplement_groups.length) {
-    html += '<div class="sec"><div class="sec-h"><b>附录未下全 ' + s.supplement_missing + " 篇</b></div>"
+    html += '<div class="sec"><div class="sec-h"><b>补充材料未下全 ' + s.supplement_missing + " 篇</b></div>"
       + s.supplement_groups.map((g, i) => reasonRow(g, s.groups.length + i, true)).join("") + "</div>";
+  }
+  // Saved without the Markdown asked for, and why (user, 2026-11-15).
+  if (s && s.markdown_groups && s.markdown_groups.length) {
+    const before = s.groups.length + (s.supplement_groups || []).length;
+    html += '<div class="sec"><div class="sec-h"><b>Markdown 未生成 ' + s.markdown_missing + " 篇</b></div>"
+      + s.markdown_groups.map((g, i) => reasonRow(g, before + i, true)).join("") + "</div>";
+  }
+  // Saved with a Markdown its checks found short, from a registered site's page: to look over (user, 2026-11-17).
+  if (s && s.doubt_groups && s.doubt_groups.length) {
+    const before = s.groups.length + (s.supplement_groups || []).length + (s.markdown_groups || []).length;
+    html += '<div class="sec"><div class="sec-h"><b>Markdown 可能不全 ' + s.markdown_doubtful + " 篇</b></div>"
+      + s.doubt_groups.map((g, i) => reasonRow(g, before + i, true)).join("") + "</div>";
   }
   if (s && v.ok) {
     html += '<div class="sec"><div class="sec-h"><b>已完成 ' + v.ok + " 篇</b></div>"
@@ -582,11 +774,12 @@ async function loadPapers() {
 
 function listRow(g, i) {
   const opened = listGroupOpen(i);
+  const unverified = g.unverified && shownList().groups.findIndex((other, j) => other.unverified && listGroupOpen(j)) === i;
   let html = '<div class="grp"><button type="button" class="row" data-act="list_group" data-group="' + i + '" aria-expanded="' + opened + '">'
     + (papersKind === "failed" ? '<span class="tag ' + esc(g.cls) + '">' + esc(CLASS_TAGS[g.cls] || "") + "</span>" : "")
     + '<span class="reason">' + esc(g.label) + '</span><span class="n">' + g.count + " 篇</span>" + icon(opened ? "down" : "right") + "</button>";
   if (!opened) return html + "</div>";
-  return html + '<ul class="paper-list">'
+  return html + (unverified ? unverifiedNote() : "") + '<ul class="paper-list">'
     + g.papers.map((p) => {
       const lines = '<div class="t">' + esc(p.title) + "</div>" + (p.where ? '<div class="w">' + esc(p.where) + "</div>" : "");
       // A saved paper shows its PDF in its folder; a failed one opens its article page, to fetch it by hand,
@@ -600,7 +793,7 @@ function listRow(g, i) {
       }
       return "<li>" + lines + "</li>";
     }).join("")
-    + (g.more ? '<li class="more">另有 ' + g.more + " 篇未列出</li>" : "") + "</ul></div>";
+    + (g.more ? '<li class="more">另有 ' + g.more + " 篇未列出</li>" : "") + "</ul>" + (unverified ? unverifiedActions(false) : "") + "</div>";
 }
 
 // A long list scrolls within half the screen at most, its title staying in place above it (user, 2026-11-10).
@@ -613,9 +806,15 @@ function papersCard() {
     + '<div class="drag capsule-drag-region"><div class="text"><div class="title">' + (papersKind === "left" && V.mode === "done" ? "已终止" : LIST_TITLES[papersKind]) + " " + list.count + " 篇</div></div></div></div>";
   if (note) html += '<div class="line">' + esc(note) + "</div>";
   if (!list.groups.length) html += '<div class="line">' + (papersList ? "没有论文" : "正在读取…") + "</div>";
-  // Saved papers missing supplementary files follow the failed ones, as on the finished card (user, 2026-11-11).
-  const heading = (g, i) => g.supplement && !(list.groups[i - 1] || {}).supplement
-    ? '<div class="sec-h list-sub"><b>附录未下全 ' + (list.supplement_count || 0) + " 篇</b></div>" : "";
+  // Saved papers missing supplementary files follow the failed ones, as on the finished card (user, 2026-11-11);
+  // then those saved without the Markdown asked for (user, 2026-11-16).
+  const sub = (text) => '<div class="sec-h list-sub"><b>' + esc(text) + "</b></div>";
+  const heading = (g, i) => g.supplement && !(list.groups[i - 1] || {}).supplement ? sub("补充材料未下全 " + (list.supplement_count || 0) + " 篇")
+    : g.markdown && !(list.groups[i - 1] || {}).markdown ? sub("Markdown 未生成 " + (list.markdown_count || 0) + " 篇")
+    : g.doubt && !(list.groups[i - 1] || {}).doubt ? sub("Markdown 可能不全 " + (list.doubt_count || 0) + " 篇")
+    // The failed papers' own heading too, when other parts follow them (2026-11-17).
+    : i === 0 && list.failed_title && list.groups.some((other) => other.supplement || other.markdown || other.doubt)
+      ? sub(list.failed_title + " " + (list.count || 0) + " 篇") : "";
   return html + '<div class="sec papers-scroll" style="max-height:' + listMaxHeight() + 'px">'
     + list.groups.map((g, i) => heading(g, i) + listRow(g, i)).join("") + "</div></div>";
 }
@@ -665,10 +864,7 @@ function settingsHome() {
     ["wait", "clock", "等待和提醒", [login ? "登录页 " + login.value + " 秒" : "", "系统通知" + (notifyOn ? "开" : "关")]],
     ["keys", "key", "API key", [apiKeys && apiKeys.ok ? "已填 " + apiKeys.filled + "/" + apiKeys.total : ""]],
   ];
-  return settingsHead("设置") + rows.map(([page, glyph, title, sub]) =>
-    '<button type="button" class="nav-row" data-act="settings_page" data-page="' + page + '">' + icon(glyph)
-    + '<span class="nav-text"><span class="nav-title">' + title + '</span><span class="nav-sub">'
-    + esc(sub.filter(Boolean).join(" · ")) + "</span></span>" + icon("right") + "</button>").join("")
+  return settingsHead("设置") + rows.map(navRow).join("") + (proOn() ? proHomeRows() : "")
     // The language row reads the same in both languages.
     + '<div class="row"><span>语言</span><span class="seg">' + ["zh", "en"].map((code) => '<button type="button" data-act="language" data-lang="'
       + code + '" aria-pressed="' + (lang === code) + '"' + (lang === code ? ' class="on"' : "") + ">" + (code === "zh" ? "中文" : "English")
@@ -676,10 +872,25 @@ function settingsHome() {
     + (settingsNote ? '<div class="settings-note" role="status">' + esc(settingsNote) + "</div>" : "");
 }
 
+// A row that opens a page: its icon, its name, what it holds now.
+function navRow([page, glyph, title, sub]) {
+  return '<button type="button" class="nav-row" data-act="settings_page" data-page="' + page + '">' + icon(glyph)
+    + '<span class="nav-text"><span class="nav-title">' + esc(title) + '</span><span class="nav-sub">'
+    + esc(sub.filter(Boolean).join(" · ")) + "</span></span>" + icon("right") + "</button>";
+}
+
 function fieldRows(page) {
   return fieldsOn(page).map((f) => '<div class="row"><span>' + esc(f.label) + '</span><span><input data-field="' + esc(f.name)
-    + '" value="' + esc(f.name in settingsDraft ? settingsDraft[f.name] : f.value) + '" aria-label="' + esc(f.label) + '" inputmode="numeric"> <span class="dim">' + esc(f.unit) + "</span></span></div>"
+    + '" value="' + esc(f.name in settingsDraft ? settingsDraft[f.name] : f.value) + '" aria-label="' + esc(f.label) + '" inputmode="numeric"> <span class="dim">' + esc(f.unit) + "</span>"
+    + (f.name === "hourly" ? hourlyNowSwitch() : "") + "</span></div>"
     + (settingsErrors[f.name] ? '<div class="err">' + esc(settingsErrors[f.name]) + "</div>" : "")).join("");
+}
+
+// Whether a changed hourly limit applies at once to an article waiting for it; it saves itself.
+function hourlyNowSwitch() {
+  return '<span class="mini-wrap"><button class="switch mini' + (hourlyNow ? " on" : "") + '" data-act="hourly_now" role="switch" aria-checked="'
+    + hourlyNow + '" aria-label="马上生效"></button><span class="mini-tip" role="tooltip"><b>马上生效</b>'
+    + '<div><span class="k">开</span>立即按新上限继续下载</div><div><span class="k">关</span>这一小时过后按新上限</div></span></span>';
 }
 
 function settingsFoot() {
@@ -747,8 +958,257 @@ function settingsKeys() {
     + "</div>";
 }
 
+// The Markdown page (user, 2026-11-18): PaperSearch Pro, a beta (测试版); what it does; 安装 when it
+// is not here, with its progress, or 重试 after a failed one; and where to report a conversion.
+// Nothing of subscriptions or keys while it is free.
+function proStateLine() {
+  if (proInstall.state === "running") return ["", "正在安装…"];
+  if (proInstall.state === "failed") return ["bad", "安装没有完成：" + (proInstall.message || "安装出错")];
+  if (!proStatus || !proStatus.ok) return ["bad", (proStatus && proStatus.error) || "读取失败"];
+  if (!proStatus.installed) return ["", "未安装"];
+  const installed = "已安装" + (proStatus.version ? " · " + proStatus.version : "");
+  // 检查更新 (user, 2026-11-19): its answer after the version.
+  if (proCheck.state === "running") return ["ok", installed + " · 正在检查更新…"];
+  if (proCheck.state === "failed") return ["bad", installed + " · " + (proCheck.message || "检查更新出错")];
+  if (proCheck.state === "done") return ["ok", installed + " · " + (proCheck.update ? "有新版本 " + proCheck.latest : "已是最新")];
+  return ["ok", installed];
+}
+
+function proProgress() {
+  const done = proInstall.done || 0, total = proInstall.total || 0, mb = (bytes) => (bytes / 1048576).toFixed(1);
+  return { width: total ? Math.min(100, (done / total) * 100) : 0,
+           note: total ? "正在下载 " + mb(done) + " / " + mb(total) + " MB" : "正在下载…" };
+}
+
+function proAction() {
+  const install = (label, hint) => '<button type="button" class="btn primary" data-act="install_pro">' + esc(label) + "</button>"
+    + '<div class="pro-hint">' + esc(hint) + "</div>";
+  if (proInstall.state === "running") {
+    const progress = proProgress();
+    return '<div class="pro-bar"><span style="width:' + progress.width.toFixed(1) + '%"></span></div>'
+      + '<div class="pro-hint" id="pro-progress">' + esc(progress.note) + "</div>";
+  }
+  if (proInstall.state === "failed") return install("重试", "已下载的部分不会留下");
+  if (proStatus && proStatus.ok && proStatus.installed && proCheck.state === "done" && proCheck.update) {
+    return install("更新到 " + proCheck.latest, "核对完整后才替换原有的，转换记录保留");
+  }
+  // About the size of Pro's bundle (pro/build.mjs --release), said before the download tells it.
+  return proStatus && proStatus.ok && !proStatus.installed ? install("安装", "约 4 MB · PDF 和补充材料不需要它") : "";
+}
+
+// What a Markdown keeps, beside the description.
+const PRO_KEEPS = [["photo", "图片"], ["table", "表格"], ["formula", "公式"], ["list", "参考文献"]];
+
+// The Markdown saved on this computer, how many complete, and the publishers' platforms with rules.
+function proStats() {
+  const converted = proStatus.converted || 0, sites = (proStatus.sites || []).length;
+  const complete = converted ? Math.round((100 * (proStatus.complete || 0)) / converted) + "%" : "—";
+  return '<div class="stats pro-stats"><div><b>' + converted.toLocaleString("en-US") + "</b><span>" + esc("已转换（篇）") + "</span></div>"
+    + "<div><b>" + complete + "</b><span>" + esc("完整无缺") + "</span></div>"
+    + "<div><b>" + sites + "</b><span>" + esc("出版社平台") + "</span></div></div>";
+}
+
+function proSites() {
+  const sites = proStatus.sites || [];
+  if (!sites.length) return "";
+  return '<button type="button" class="nav-row pro-row" data-act="pro_sites" aria-expanded="' + proSitesOpen + '">' + icon("globe")
+    // A platform holds its publisher's journals (ScienceDirect, Wiley…): not 40 journals (user, 2026-11-19).
+    + '<span class="nav-text"><span class="nav-title">' + esc("支持的出版社平台") + '</span><span class="nav-sub">'
+    + esc("共 " + sites.length + " 个，平台下的期刊都适用") + "</span></span>"
+    + icon(proSitesOpen ? "down" : "right") + "</button>"
+    + (proSitesOpen ? '<div class="pro-sites">' + esc(sites.join("、")) + "</div>" : "");
+}
+
+// Whether Pro is free now and until when (the user, 2026-11-19: the page ends with it).
+function proAccessSaid() {
+  const access = (proStatus && proStatus.access) || {};
+  return access.mode === "key" ? "需要密钥" : access.until ? "测试期间免费，至 " + access.until : "测试期间免费，截止日期待定";
+}
+
+function proAccess() {
+  const said = proAccessSaid();
+  return '<div class="nav-row pro-row static">' + icon("gift") + '<span class="nav-text"><span class="nav-title">' + esc("使用状态")
+    + '</span><span class="nav-sub">' + esc(said) + "</span></span></div>";
+}
+
+// PaperSearch Pro's page (user, 2026-11-19): installing it, its version and whether it is free, then
+// its features, each a page of its own; where to report a problem at the foot.
+function proFeatures() {
+  const installed = !!(proStatus && proStatus.ok && proStatus.installed);
+  const converted = installed ? (proStatus.converted || 0) : 0, sites = installed ? (proStatus.sites || []).length : 0;
+  return [
+    ["markdown", "file", "Markdown 全文", installed ? ["已转换 " + converted.toLocaleString("en-US") + " 篇", sites + " 个平台"]
+      : ["把论文全文转成 Markdown"]],
+    ["login", "lock", "学校自动登录", !schoolLogin || !schoolLogin.ok ? [] : !schoolLogin.saved ? ["未填"]
+      : [schoolLogin.enabled ? "已打开" : "已关闭", schoolLogin.username]],
+  ];
+}
+
+// The home page's part of Pro (user, 2026-11-19: 铺开). Installed: its features under its name, then
+// its version and updates; not yet (or installing): one row to Pro's page.
+function proHomeRows() {
+  if (!proInstalled()) {
+    return navRow(["pro", "shield", "PaperSearch Pro", proInstall.state === "running" ? ["正在安装…"]
+      : [proStatus && proStatus.ok ? "未安装" : ""]]);
+  }
+  return '<div class="key-group pro-group">' + esc("PaperSearch Pro · 测试版") + "</div>"
+    + proFeatures().map(navRow).join("")
+    + navRow(["pro", "shield", "版本与更新", [proStatus.version || "", proAccessSaid()]]);
+}
+
+function settingsPro() {
+  const [tone, state] = proStateLine();
+  const installed = proInstalled();
+  return settingsHead(installed ? "版本与更新" : "PaperSearch Pro")
+    + '<div class="pro-head"><span class="pro-tile">' + icon("shield") + '</span><span class="nav-text">'
+    + '<span class="pro-name">PaperSearch Pro<span class="pro-pill">' + esc("测试版") + "</span></span>"
+    + '<span class="pro-state' + (tone ? " " + tone : "") + '" role="status">' + esc(state) + "</span></span>"
+    + (installed && proCheck.state !== "running" ? '<button type="button" class="btn link pro-check" data-act="check_pro">'
+      + esc("检查更新") + "</button>" : "") + "</div>"
+    + '<div class="pro-action">' + proAction() + "</div>"
+    // Not installed yet: what it brings, each to its page; installed, they are on the home page.
+    + (installed ? proAccess() : '<div class="key-group">' + esc("功能") + "</div>" + proFeatures().map(navRow).join(""))
+    + '<div class="pro-foot"><span>' + esc("用着有问题？") + "</span>"
+    + '<button type="button" class="btn link" data-act="pro_issue">' + esc("提交 issue") + icon("right") + "</button></div>"
+    + (settingsNote ? '<div class="settings-note" role="status">' + esc(settingsNote) + "</div>" : "");
+}
+
+// The Markdown page: what it keeps, then (Pro installed) how many converted and the platforms.
+function settingsMarkdown() {
+  const installed = proInstalled();
+  return settingsHead("Markdown 全文")
+    + '<div class="pro-desc">' + esc("把论文全文转成 Markdown，以下内容一并保留：") + "</div>"
+    + '<div class="pro-chips">' + PRO_KEEPS.map(([glyph, text]) => '<span class="pro-chip">' + icon(glyph) + esc(text) + "</span>").join("") + "</div>"
+    + (installed ? proStats() + proSites() : '<div class="pro-desc">' + esc("安装 PaperSearch Pro 后可用") + "</div>")
+    + '<div class="pro-foot"><span>' + esc("转换有缺漏或出错？") + "</span>"
+    + '<button type="button" class="btn link" data-act="pro_issue">' + esc("提交 issue") + icon("right") + "</button></div>"
+    + (settingsNote ? '<div class="settings-note" role="status">' + esc(settingsNote) + "</div>" : "");
+}
+
+// The school sign-in page (PaperSearch Pro, user 2026-11-19): the school's account, filled in on the
+// school's own login page once Pro has tested that school. Each field under its name, with room; the
+// saved password in its field, hidden until the eye shows it (the user's: they may see it).
+function loginStatus(s) {
+  if (!s.pro) return ["bad", "需要 PaperSearch Pro"];
+  if (s.status === "verified") return ["ok", "这所学校已实测，会自动登录"];
+  if (s.status === "surveyed") return ["ok", "这所学校已摸底，会自动登录"];
+  if (s.status === "trial") return ["", "这所学校正在实测，暂时只对维护者开放"];
+  return ["", "这所学校还没实测，暂时不能自动登录"];
+}
+
+async function loadLoginValues() {
+  try { loginValues = (await api().school_login_saved()) || {}; } catch (error) { loginValues = {}; }
+}
+
+function settingsLogin() {
+  const s = schoolLogin, head = settingsHead("学校自动登录");
+  if (!s || !s.ok) return head + '<div class="err" style="text-align:left">' + esc((s && s.error) || "读取失败") + "</div>";
+  if (!s.entity) return head + '<div class="settings-note">' + esc("还没有设置学校：设置好学校后再来填账号") + "</div>";
+  const [tone, line] = loginStatus(s);
+  return head
+    + '<div class="pro-head"><span class="pro-tile">' + icon("lock") + '</span><span class="nav-text">'
+    + '<span class="pro-name">' + esc(s.school || "当前学校") + "</span>"
+    + '<span class="pro-state' + (tone ? " " + tone : "") + '" role="status">' + esc(line) + "</span></span></div>"
+    + (s.off === "rejected" ? '<div class="err" style="text-align:left;margin-top:10px">'
+      + esc("学校没有接受保存的密码，自动登录已关闭；更新密码后保存，就会重新打开") + "</div>" : "")
+    + '<div class="login-form">'
+    + '<label class="login-field"><span>' + esc("账号") + '</span><input id="login-user" type="text" autocomplete="off" spellcheck="false" value="'
+      + esc(loginValues.username || "") + '" placeholder="' + esc("学号或工号") + '"></label>'
+    + '<label class="login-field"><span>' + esc("密码") + '</span><span class="login-pw"><input id="login-password" type="'
+      + (loginShown ? "text" : "password") + '" autocomplete="new-password" spellcheck="false" value="' + esc(loginValues.password || "") + '">'
+      + '<button type="button" class="iconbtn" data-act="login_reveal" aria-label="' + esc("显示密码") + '" aria-pressed="' + loginShown + '">'
+      + icon("eye") + "</button></span></label>"
+    + '<div class="key-note">' + esc("只在学校自己的登录页上填写；密码不对只试一次，然后自动关闭。账号和密码存在这台电脑的设置文件里。") + "</div>"
+    + '<div class="err' + (loginError ? "" : " ok") + '" id="login-error" role="status">' + esc(loginError || loginDone) + "</div>"
+    + '<div class="key-actions">'
+    + (s.saved ? '<button class="btn" data-act="login_switch">' + esc(s.enabled ? "关闭自动登录" : "打开自动登录") + "</button>" : "")
+    + '<span class="grow"></span>'
+    + (s.saved ? '<button class="btn danger" data-act="clear_login">' + esc(confirmClear === "login" ? "确认清除" : "清除") + "</button>" : "")
+    + '<button class="btn primary" data-act="save_login">' + esc("保存") + "</button></div></div>";
+}
+
+// While an install runs, its progress is asked for a few times a second: the bar and its line
+// change in place; the page is drawn again once it ends.
+function watchProInstall() {
+  clearInterval(proInstallTimer);
+  if (proInstall.state !== "running") return;
+  proInstallTimer = setInterval(async () => {
+    let next;
+    try { next = await api().pro_install_state(); } catch (error) { return; }
+    proInstall = next || { state: "idle" };
+    if (proInstall.state === "running") return updateProProgress();
+    clearInterval(proInstallTimer);
+    if (proInstall.state === "done") {
+      try { proStatus = await api().pro_status(); } catch (error) { proStatus = null; }
+      proInstall = { state: "idle" };
+      proCheck = { state: "idle" };  // updated: what was found is installed now
+    }
+    // Not over another settings page, where something may be being typed.
+    if (panel === "settings" && ["home", "pro", "markdown"].includes(settingsPage)) render(true);
+  }, 300);
+}
+
+// 检查更新 runs a few seconds: asked for until it is done, then the page is drawn again.
+function watchProCheck() {
+  clearInterval(proCheckTimer);
+  if (proCheck.state !== "running") return;
+  proCheckTimer = setInterval(async () => {
+    let next;
+    try { next = await api().pro_check_state(); } catch (error) { return; }
+    proCheck = next || { state: "idle" };
+    if (proCheck.state === "running") return;
+    clearInterval(proCheckTimer);
+    if (panel === "settings" && settingsPage === "pro") render(true);
+  }, 400);
+}
+
+function updateProProgress() {
+  const bar = root.querySelector(".pro-bar span"), line = root.querySelector("#pro-progress");
+  if (!bar || !line) return panel === "settings" && settingsPage === "pro" ? render(true) : undefined;
+  const progress = proProgress();
+  bar.style.width = progress.width.toFixed(1) + "%";
+  line.textContent = tr(progress.note);
+}
+
+// The settings pages are as tall as the home page at least (the shorter ones leave the space above
+// their foot), so going between them does not move the window's edge: it slid by the difference
+// and the taller page showed cut off for a moment (user, 2026-11-18, going to the Markdown page).
+// API key's list is taller and grows the window as before, and so does the Markdown page with Pro
+// installed (its counts, sites and usage; the user, 2026-11-19).
+function holdSettingsHeight() {
+  const body = root.querySelector(".card-body.settings");
+  if (!body) return;
+  body.querySelector(":scope > .settings-hold")?.remove();
+  if (settingsPage === "home" || settingsPage === "keys") return;
+  const probe = document.createElement("div");
+  probe.className = "card-body settings";
+  probe.setAttribute("aria-hidden", "true");
+  probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;box-sizing:border-box;left:0;top:0;width:"
+    + body.getBoundingClientRect().width + "px";
+  // Drawn as the home page itself: its head has no back button or 设置 line.
+  const page = settingsPage, strip = lastStrip;
+  settingsPage = "home";
+  probe.innerHTML = settingsHome();
+  settingsPage = page; lastStrip = strip;
+  localize(probe);
+  body.parentElement.appendChild(probe);
+  const home = probe.getBoundingClientRect().height;
+  probe.remove();
+  const short = home - body.getBoundingClientRect().height;
+  if (short < 1) return;
+  // A spacer before the page's foot (保存, 提交 issue), or at its end; its margins no longer
+  // collapse with the foot's, so it is measured again and trimmed.
+  const spacer = document.createElement("div");
+  spacer.className = "settings-hold";
+  spacer.style.height = short + "px";
+  body.insertBefore(spacer, body.querySelector(":scope > .foot, :scope > .pro-foot"));
+  const over = body.getBoundingClientRect().height - home;
+  if (over > 0) spacer.style.height = Math.max(0, short - over) + "px";
+}
+
 function settingsCard() {
-  const page = { download: settingsDownload, wait: settingsWait, keys: settingsKeys }[settingsPage] || settingsHome;
+  const page = { download: settingsDownload, wait: settingsWait, keys: settingsKeys,
+    ...(proOn() ? { pro: settingsPro, markdown: settingsMarkdown, login: settingsLogin } : {}) }[settingsPage] || settingsHome;
   return '<div class="card-body settings">' + page() + "</div>";
 }
 
@@ -793,6 +1253,7 @@ function updateNotifyTest() {
   root.classList.remove("animating");
   root.style.width = ""; root.style.height = "";
   root.style.removeProperty("--content-max-height");
+  holdSettingsHeight();
   fit(previous);
 }
 
@@ -810,20 +1271,29 @@ function updateStrip() {
   root.classList.remove("animating");
   root.style.width = ""; root.style.height = "";
   root.style.removeProperty("--content-max-height");
+  holdSettingsHeight();
   fit(previous);
 }
 
 async function loadSettings() {
-  settings = await api().settings(); notifyOn = settings.notify; settingsErrors = {}; settingsDraft = {}; notifyCheck = null;
+  settings = await api().settings(); notifyOn = settings.notify; hourlyNow = settings.hourly_now === true; settingsErrors = {}; settingsDraft = {}; notifyCheck = null;
   try { apiKeys = await api().api_keys(); } catch (error) { apiKeys = null; }
+  if (!proOn()) return;
+  try { proStatus = await api().pro_status(); } catch (error) { proStatus = null; }
+  try { proInstall = (await api().pro_install_state()) || { state: "idle" }; } catch (error) { proInstall = { state: "idle" }; }
+  try { schoolLogin = await api().school_login_state(); } catch (error) { schoolLogin = null; }
+  if (proInstall.state === "done") proInstall = { state: "idle" };  // pro_status has it
+  watchProInstall();
 }
 
 async function openSettings(request) {
   await loadSettings();
   panel = "settings"; open = true; settingsNote = ""; confirmClear = ""; revealed = false;
-  settingsPage = SETTINGS_PAGES.includes(request.page) ? request.page : "home";
+  settingsPage = SETTINGS_PAGES.includes(request.page) && (!PRO_PAGES.includes(request.page) || proOn()) ? request.page : "home";
   editing = settingsPage === "keys" ? request.service || "" : "";
   editValues = editing ? await savedValues(editing) : {};
+  loginShown = false;
+  if (settingsPage === "login") await loadLoginValues();
   if (request.new_window && !busy()) settingsOnly = true;
   render(true);
   const input = editing && root.querySelector(".key-edit input");
@@ -896,6 +1366,7 @@ function render(force) {
     const list = root.querySelector(".papers-scroll, .keys-scroll");
     if (list) list.scrollTop = scrolled;
     localize(root);
+    if (panel === "settings") holdSettingsHeight();
     if (attention) updateAttentionCountdown();
     renderedAttention = attention ? V : null;
   }
@@ -978,7 +1449,7 @@ async function tick() {
   if (V.open_settings) return openSettings(V.open_settings);
   // A prompt only turns the capsule amber (with a system notification); hovering opens it.
   // Once the prompt is handled an open card folds back unless the pointer is on it.
-  if (before === "attention" && V.mode !== "attention" && !hovering && !dragging && !panel) open = false;
+  if (before === "attention" && V.mode !== "attention" && !hovering && !dragging && !panel && !pinned) open = false;
   if (panel === "papers" && open) await loadPapers();  // an open list follows the download
   render(switched);
   // Also detect a real pointer departure when clamping moved the window away
@@ -992,13 +1463,29 @@ let inputActivation = Promise.resolve();
 async function act(action, target) {
   const v = V;
   switch (action) {
-    case "minimize": open = false; panel = ""; render(true); return api().minimize();  // back as a capsule when restored
-    case "close": closing = true; ++fitGeneration; clearInterval(pollTimer); clearTimeout(hoverTimer); clearTimeout(leaveTimer); return api().request_close();  // no call left waiting on a closed page
+    // Back as a capsule when restored, unless pinned: a pinned card comes back open (user, 2026-11-20:
+    // on Windows, minimized and restored, the pinned card had shrunk to the capsule).
+    case "minimize": if (!pinned) open = false; panel = ""; render(true); return api().minimize();
+    case "close": closing = true; ++fitGeneration; clearInterval(pollTimer); clearInterval(proInstallTimer); clearTimeout(hoverTimer); clearTimeout(leaveTimer); return api().request_close();  // no call left waiting on a closed page
     case "folder": return api().open_folder();
     case "expand": open = true; panel = ""; return render(true);
+    case "pin":
+      pinned = !pinned;
+      if (pinned) open = true;
+      return render(true);
     case "open_article": return say(await api().open_article(target.dataset.doi));
-    case "papers": papersKind = target.dataset.list; panel = "papers"; listOpen = null; papersList = null; render(true);
-      await loadPapers(); return render(true);
+    case "papers": {
+      papersKind = target.dataset.list; panel = "papers"; listOpen = null; papersList = null; render(true);
+      await loadPapers();
+      // From the line on sites not yet supported: their group open, in view.
+      const at = target.dataset.unverified ? shownList().groups.findIndex((g) => g.unverified) : -1;
+      if (at >= 0) listOpen = new Set([at]);
+      render(true);
+      if (at >= 0) { const shown = root.querySelector(".unverified-note"); if (shown) shown.closest(".grp").scrollIntoView({ block: "start" }); }
+      return;
+    }
+    case "markdown_issue": return say(await api().markdown_issue());
+    case "markdown_support": return say(await api().open_markdown_support());
     case "list_group": {
       const i = Number(target.dataset.group);
       listOpen = new Set(shownList().groups.map((_, j) => j).filter(listGroupOpen));
@@ -1037,11 +1524,15 @@ async function act(action, target) {
       return render(true);
     }
     case "settings_page":
-      settingsPage = target.dataset.page; settingsErrors = {}; settingsDraft = {}; settingsNote = ""; editing = ""; editValues = {}; return render(true);
+      settingsPage = target.dataset.page; settingsErrors = {}; settingsDraft = {}; settingsNote = ""; editing = ""; editValues = {};
+      loginError = ""; loginDone = ""; confirmClear = ""; loginShown = false;
+      if (settingsPage === "login") await loadLoginValues();
+      return render(true);
     case "back":
       if (panel !== "settings") { panel = ""; return render(true); }
       if (settingsPage === "home") return leaveSettings();
-      settingsPage = "home"; editing = ""; editValues = {}; settingsErrors = {}; settingsDraft = {}; return render(true);
+      settingsPage = parentPage(settingsPage); editing = ""; editValues = {}; settingsErrors = {}; settingsDraft = {};
+      loginError = ""; confirmClear = ""; return render(true);
     case "progress": case "close_settings": return leaveSettings();
     case "edit_key":
       editValues = await savedValues(target.dataset.service);
@@ -1054,6 +1545,26 @@ async function act(action, target) {
       target.setAttribute("aria-pressed", String(revealed));
       root.querySelectorAll(".key-edit input").forEach((input) => { input.type = revealed ? "text" : "password"; });
       return;
+    case "install_pro": {
+      try { proInstall = (await api().install_pro()) || { state: "idle" }; }
+      catch (error) { proInstall = { state: "failed", message: "安装出错" }; }
+      render(true);
+      return watchProInstall();
+    }
+    case "check_pro": {
+      try { proCheck = (await api().check_pro()) || { state: "idle" }; }
+      catch (error) { proCheck = { state: "failed", message: "检查更新出错" }; }
+      render(true);
+      return watchProCheck();
+    }
+    case "pro_sites":
+      proSitesOpen = !proSitesOpen;
+      return render(true);
+    case "pro_issue": {
+      const result = await api().open_issue();
+      if (!result.ok) { settingsNote = result.message; render(true); }
+      return;
+    }
     case "signup": case "guide": {
       const result = await api().open_signup(target.dataset.service, action === "guide");
       return result.ok ? undefined : keyError(result.message);
@@ -1068,6 +1579,26 @@ async function act(action, target) {
       } catch (error) {
         keyError("测试没有完成：" + ((error && error.message) || String(error)));
       } finally { target.disabled = false; }
+      return;
+    }
+    case "save_login": case "clear_login": case "login_switch": {
+      if (action === "clear_login" && confirmClear !== "login") { confirmClear = "login"; return render(true); }
+      const user = root.querySelector("#login-user"), password = root.querySelector("#login-password");
+      const result = action === "clear_login" ? await api().clear_school_login()
+        : action === "login_switch" ? await api().save_school_login("", "", !schoolLogin.enabled)
+        : await api().save_school_login(user ? user.value : "", password ? password.value : "", true);
+      confirmClear = "";
+      if (!result.ok) { loginError = result.error || "保存失败"; loginDone = ""; return render(true); }
+      schoolLogin = result; loginError = "";
+      loginDone = action === "clear_login" ? "已清除" : action === "login_switch"
+        ? (result.enabled ? "已打开自动登录" : "已关闭自动登录") : "已保存";
+      await loadLoginValues(); return render(true);
+    }
+    case "login_reveal": {
+      loginShown = !loginShown;
+      target.setAttribute("aria-pressed", String(loginShown));
+      const input = root.querySelector("#login-password");
+      if (input) input.type = loginShown ? "text" : "password";
       return;
     }
     case "save_key": case "clear_key": {
@@ -1097,6 +1628,21 @@ async function act(action, target) {
         updateNotifyTest();
       } catch (error) {
         root.querySelector('#notify-error').textContent = error.message || "通知设置保存失败";
+      } finally { target.disabled = false; }
+      return;
+    }
+    case "hourly_now": {
+      target.disabled = true;
+      try {
+        const result = await api().set_hourly_now(!hourlyNow);
+        if (!result.ok) throw new Error(result.error || "设置保存失败");
+        hourlyNow = result.hourly_now;
+        settings.hourly_now = hourlyNow;
+        target.classList.toggle("on", hourlyNow);
+        target.setAttribute("aria-checked", String(hourlyNow));
+      } catch (error) {
+        settingsErrors.hourly = error.message || "设置保存失败";
+        render(true);
       } finally { target.disabled = false; }
       return;
     }
@@ -1137,6 +1683,21 @@ async function act(action, target) {
 
 // A paper list scrolls; pressing in it must not drag the window.
 const interactive = (target) => target.closest('button, input, select, textarea, a, [contenteditable="true"], [role="button"], .paper-list, .papers-scroll, .keys-scroll');
+// The dot's card: open while the pointer is on the dot or the card, a moment's grace between
+// them. Told by where the pointer moves, not by its leaving: the card is redrawn every second
+// and a dot redrawn under the pointer never says it was left.
+const RULES_PARTS = ".rules-dot, .rules-pop";
+function rulesPointer(over) {
+  if (over) {
+    clearTimeout(rulesTimer);
+    rulesTimer = 0;
+    if (!rulesShown) showRules(true);
+  } else if (rulesShown && !rulesTimer) {
+    rulesTimer = setTimeout(() => { rulesTimer = 0; showRules(false); }, 300);
+  }
+}
+document.addEventListener("pointermove", (event) => rulesPointer(!!(event.target.closest && event.target.closest(RULES_PARTS))));
+document.documentElement.addEventListener("pointerleave", () => rulesPointer(false));
 root.addEventListener("pointerdown", (event) => {
   if (event.button === 0 && api().activate_on_input) inputActivation = api().activate_on_input();
   if (event.button === 0 && event.target.closest(".attention-target")) {
@@ -1216,7 +1777,7 @@ function setHover(inside, force = false) {
     hoverTimer = setTimeout(() => { if (!open) { open = true; render(true); } }, 100);
   } else {
     // Leave enough time to cross the edge; open menus and settings stay usable.
-    leaveTimer = setTimeout(() => { if (!panel) { open = false; render(true); } }, 280);
+    leaveTimer = setTimeout(() => { if (!panel && !pinned) { open = false; render(true); } }, 280);
   }
 }
 let hoverRequest = 0, lastNativePointer = null;

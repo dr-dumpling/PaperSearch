@@ -1,22 +1,22 @@
 import { tmpdir } from "node:os";
 import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "@jest/globals";
-import { batchStopped, downloadBatch } from "../../src/capabilities/pdf-discovery/batch.js";
+import { batchStopped, downloadBatch } from "../../src/capabilities/download/batch/batch.js";
 import type {
   DownloadTier,
   DownloadTierContext,
-} from "../../src/capabilities/pdf-discovery/DownloadTier.js";
+} from "../../src/capabilities/download/content/pdf/DownloadTier.js";
 import type {
   SchoolBackend,
   SchoolBatchRequests,
   SchoolBatchUpdate,
   SchoolDownloadRequest,
-} from "../../src/capabilities/pdf-discovery/school/types.js";
+} from "../../src/infrastructure/school/types.js";
 import {
   createSchoolDownloadArguments,
   selectSchoolBatchSupport,
-} from "../../src/capabilities/pdf-discovery/school/SchoolReadiness.js";
+} from "../../src/infrastructure/school/SchoolReadiness.js";
 
 /** Item 1 finishes through open access; items 2 and 3 reach entitled access. */
 function fakeTiers(contexts: DownloadTierContext[]): DownloadTier[] {
@@ -99,6 +99,29 @@ describe("a publisher whose school login stops working mid-batch", () => {
   ];
   const items = [1, 2, 3, 4, 5].map((n) => ({ doi: science(n) })).concat([{ doi: "10.1002/other.6" }, { doi: science(7) }]);
 
+  it("holds a publisher's journals of other DOI prefixes with it (Elsevier's 10.1053/ beside 10.1016/, 2026-11-17)", async () => {
+    const calls: string[] = [];
+    const window = windowFor("resume");
+    // 10.1016/a.1 comes through the school; 10.1053/b.2 stops at its sign-in page: the rest of both wait.
+    const tiers = (): DownloadTier[] => [
+      { id: "oa", stage: "unpaywall", run: async () => ({ status: "skipped", message: "none" }) },
+      { id: "entitled_access", stage: "entitled_access", run: async (context) => {
+        const doi = context.doi!;
+        calls.push(doi);
+        if (doi === "10.1053/b.2" && !window.pressed()) return { status: "error", code: "login_timeout",
+          message: "stopped at the school's sign-in page", trace: { publisher: "Elsevier", loginWaitPage: "school_login" } };
+        return { status: "ok", verified: true, path: `/tmp/${doi.split("/")[1]}.pdf`, message: "saved", trace: { publisher: "Elsevier" } };
+      } },
+    ];
+    const elsevier = [{ doi: "10.1016/a.1" }, { doi: "10.1053/b.2" }, { doi: "10.1016/a.3" }, { doi: "10.1053/b.4" }];
+    const result = await downloadBatch({} as never, { items: elsevier, savePath: "/tmp/out" }, window.backend,
+      () => {}, tiers, async () => {});
+    // Nothing of Elsevier's was tried while it waited: both prefixes went on after 登录并继续.
+    expect(calls).toEqual(["10.1016/a.1", "10.1053/b.2", "10.1053/b.2", "10.1016/a.3", "10.1053/b.4"]);
+    expect(window.updates.find((u) => u.phase === WAIT)?.held).toEqual([{ key: "Elsevier", name: "Elsevier", count: 3 }]);
+    expect(result.failed).toBe(0);
+  });
+
   it("holds its papers while the others go on, waits for 登录并继续, then gets them", async () => {
     const calls: string[] = [];
     const window = windowFor("resume");
@@ -109,8 +132,8 @@ describe("a publisher whose school login stops working mid-batch", () => {
     expect(calls).toEqual(["10.1126/example.1", "10.1126/example.2", "10.1126/example.3", "10.1002/other.6",
       "10.1126/example.3", "10.1126/example.4", "10.1126/example.5", "10.1126/example.7"]);
     // The window was told what waits, under the publisher's own name, then that nothing does.
-    expect(window.updates.find((u) => u.held?.length)?.held).toEqual([{ key: "10.1126/", name: "Science", count: 1 }]);
-    expect(window.updates.find((u) => u.phase === WAIT)?.held).toEqual([{ key: "10.1126/", name: "Science", count: 4 }]);
+    expect(window.updates.find((u) => u.held?.length)?.held).toEqual([{ key: "Science", name: "Science", count: 1 }]);
+    expect(window.updates.find((u) => u.phase === WAIT)?.held).toEqual([{ key: "Science", name: "Science", count: 4 }]);
     // Only the held left: the window is told so (it says so collapsed too); going on ends it.
     expect(window.updates.find((u) => u.phase === WAIT)?.heldWait).toBe(true);
     expect(window.updates.filter((u) => u.held !== undefined).at(-1)?.heldWait).toBeUndefined();
@@ -143,7 +166,7 @@ describe("a publisher whose school login stops working mid-batch", () => {
     for (const index of [2, 3, 4, 6]) {
       expect(result.items[index].attempts.at(-1)).toMatchObject({ stage: "entitled_access", code: "login_paused" });
     }
-    expect(result.failureClasses).toEqual({ user_or_external: 4 });
+    expect(result.failureClasses).toEqual({ school_side: 4 });
     // 接着下 goes no further after it.
     expect(batchStopped(result)).toBe(true);
   });
@@ -165,6 +188,37 @@ describe("a publisher whose school login stops working mid-batch", () => {
     expect(calls).not.toContain("10.1126/example.7");
     expect(result.items[6].attempts.at(-1)?.code).toBe("batch_stopped");
     expect(batchStopped(result)).toBe(true);
+  });
+
+  it("holds the publisher's open-access papers too: their files wait for 登录并继续, or end not reached", async () => {
+    for (const press of ["resume", "stop"] as const) {
+      const calls: string[] = [];
+      const window = windowFor(press);
+      const visits: string[] = [];
+      window.backend.downloadLegalDoi = async (request) => {
+        visits.push(`${request.identifier}${window.pressed() ? " after" : ""}`);
+        return { kind: "attempt_error", identifier: request.identifier, code: "supplements_only", message: "",
+          supplements: [{ status: "saved", file: `${request.outputDir}/s.pdf`, label: "S1" }] };
+      };
+      const tiers = (): DownloadTier[] => {
+        const [, school] = tiersFor(calls, window.pressed)();
+        return [{ id: "oa", stage: "unpaywall", run: async (context) => context.doi === science(8)
+          ? { status: "ok", verified: true, path: "/tmp/oa8.pdf", message: "ok" } : { status: "skipped", message: "none" } }, school];
+      };
+      const result = await downloadBatch({} as never, { items: [...items, { doi: science(8) }], savePath: "/tmp/out", content: "both" },
+        window.backend, () => {}, tiers, async () => {});
+      expect(window.updates.find((u) => u.phase === WAIT)?.held).toEqual([{ key: "Science", name: "Science", count: 5 }]);
+      if (press === "resume") {
+        expect(visits).toEqual(["10.1126/example.8 after"]);
+        expect(result.items[7].supplements?.[0]?.label).toBe("S1");
+      } else {
+        expect(visits).toEqual([]);
+        expect(result.items[7]).toMatchObject({ status: "ok", supplements: [{ status: "skipped", reason: "batch_stopped" }] });
+        expect(result.items.filter((item) => item.attempts.at(-1)?.code === "login_paused")).toHaveLength(4);
+      }
+      // 接着下 goes no further after 终止, whatever its papers show.
+      expect(result.stopped).toBe(press === "stop" ? true : undefined);
+    }
   });
 
   it("holds nothing for failures that never reached the school's own sign-in page", async () => {
@@ -301,7 +355,7 @@ describe("serial download batch", () => {
     expect(ledger.map((item) => [item.index, item.status])).toEqual([[1, "ok"], [2, "ok"], [3, "error"]]);
     expect(ledger[2].stages.length).toBeGreaterThan(0);
     expect(lines.at(-2)).toBe(
-      "[批量] 完成：成功 2，失败 1，共 3 篇。失败分类：原因不明 1；详情：paper-search failures --format text");
+      "[批量] 完成：成功 2，失败 1，共 3 篇。失败分类：原因不明 1（需要学校登录 1）；详情：paper-search failures --format text");
     // What is left goes on with one word.
     expect(lines.at(-1)).toContain("“接着下”");
   });
@@ -392,7 +446,7 @@ describe("serial download batch", () => {
       [1, 3, 0, 0],
       [3, 3, 2, 2],
     ]);
-    expect(dirname(entitled[0].savePath!)).toBe("/tmp/own");
+    expect(dirname(entitled[0].savePath!)).toBe(resolve("/tmp/own"));
     // Under five items the open-access lane is not shown; the last entitled item ends the count.
     expect(updates).toEqual([
       expect.objectContaining({ total: 3, done: 3, succeeded: 2, failed: 1, finished: true }),
@@ -473,7 +527,7 @@ describe("serial download batch", () => {
     ]);
   });
 
-  it("two_phase with supplementary files: open-access items settle only after their files", async () => {
+  it("two_phase with supplementary files: each open-access item settles after its own files, in its turn", async () => {
     const updates: SchoolBatchUpdate[] = [];
     const visits: Array<SchoolDownloadRequest["batch"]> = [];
     const backend: SchoolBackend = {
@@ -492,10 +546,16 @@ describe("serial download batch", () => {
       () => {},
       tiers,
     );
-    expect(updates.slice(0, 5).map((u) => [u.done, u.total, u.phase])).toEqual([1, 2, 3, 4, 5].map((k) =>
-      [0, 5, `开放下载：已查 ${k}/5 篇，找到 ${k} 篇`]));
+    // Each visit for its files comes when the open lane found it, not after the lane: the
+    // count before each one is the papers finished so far (user, 2026-11-15).
     expect(visits).toEqual([0, 1, 2, 3, 4].map((done) =>
       expect.objectContaining({ id: result.batchId, index: done + 1, total: 5, done })));
+    // A paper counts once its files are done: never more than the visits so far, never going back.
+    const dones = updates.filter((u) => !u.finished).map((u) => u.done);
+    expect(dones).toEqual([...dones].sort((x, y) => x - y));
+    expect(Math.max(...dones)).toBeLessThanOrEqual(visits.length);
+    expect(updates.find((u) => u.phase === "开放下载：已查 1/5 篇，找到 1 篇")?.done).toBe(0);
+    expect(result.items.every((item) => item.status === "ok")).toBe(true);
   });
 
   it("after one article waited out on the user, later ones wait on them briefly", async () => {
@@ -573,6 +633,85 @@ describe("serial download batch", () => {
     expect(pauses).toEqual([120_000]);
     expect(result).toEqual(expect.objectContaining({ status: "ok", succeeded: 3, failed: 0 }));
     expect(lines.some((line) => line.includes("继续这一篇"))).toBe(true);
+  });
+
+  it("goes on at once when the user raises the hourly limit during the wait (2026-11-19)", async () => {
+    // Windows: JAMA reached 180 at 07:37 and the batch slept until 07:58, though the user set 500 at 07:51.
+    const events: string[] = [];
+    const lines: string[] = [];
+    let limited = true;
+    let checks = 0;
+    const tiers = (): DownloadTier[] => [{
+      id: "entitled_access",
+      stage: "entitled_access",
+      run: async (context) => {
+        events.push(`run ${context.doi}`);
+        if (limited) {
+          limited = false;
+          return { status: "error", message: "limit", code: "rate_limited", retryAfterSec: 1260, hourlyPublisher: "JAMA" };
+        }
+        return { status: "ok", verified: true, path: `/tmp/${context.doi}.pdf`, message: "ok" };
+      },
+    }];
+    const backend: SchoolBackend = {
+      ...fakeBackend([]),
+      keepSession: async () => {
+        events.push("keep");
+        return true;
+      },
+      hourlyWait: async (publisher) => {
+        events.push(`check ${publisher}`);
+        checks += 1;
+        return checks < 3 ? { waitSec: 1260 - 10 * checks, limit: 180 } : { waitSec: 0, limit: 500 };
+      },
+    };
+    const result = await downloadBatch({} as never, { items: [{ doi: "10.1001/a" }], mode: "entitled_only" },
+      backend, (line) => lines.push(line), tiers, async (ms) => {
+        events.push(`pause ${ms / 1000}`);
+      });
+    expect(events).toEqual(["run 10.1001/a", "pause 10", "check JAMA", "pause 10", "check JAMA", "pause 10", "check JAMA",
+      "run 10.1001/a"]);
+    expect(lines.some((line) => line.includes("按现在的每小时上限（500 篇）可以接着下这一篇"))).toBe(true);
+    expect(result).toEqual(expect.objectContaining({ status: "ok", succeeded: 1 }));
+  });
+
+  it("asks every ten seconds and keeps the session every ten minutes while the limit still holds", async () => {
+    const pauses: number[] = [];
+    const events: string[] = [];
+    let limited = true;
+    const tiers = (): DownloadTier[] => [{
+      id: "entitled_access",
+      stage: "entitled_access",
+      run: async (context) => {
+        events.push(`run ${context.doi}`);
+        if (limited) {
+          limited = false;
+          return { status: "error", message: "limit", code: "rate_limited", retryAfterSec: 700, hourlyPublisher: "Wiley" };
+        }
+        return { status: "ok", verified: true, path: `/tmp/${context.doi}.pdf`, message: "ok" };
+      },
+    }];
+    let left = 700;
+    const backend: SchoolBackend = {
+      ...fakeBackend([]),
+      keepSession: async () => {
+        events.push("keep");
+        return true;
+      },
+      // The setting unchanged: the backend's own count of what is left; an older backend cannot say.
+      hourlyWait: async () => (left === 700 ? undefined : { waitSec: left, limit: 100 }),
+    };
+    await downloadBatch({} as never, { items: [{ doi: "10.1002/a" }], mode: "entitled_only" },
+      backend, () => {}, tiers, async (ms) => {
+        pauses.push(ms);
+        left = Math.max(0, left - ms / 1000);
+        if (left > 0 && left % 600 === 100) events.push("ten minutes");
+      });
+    expect(pauses.reduce((sum, ms) => sum + ms, 0)).toBe(700_000);
+    expect(pauses.every((ms) => ms <= 10_000)).toBe(true);
+    expect(events.filter((event) => event === "keep")).toHaveLength(1);
+    expect(events.indexOf("keep")).toBeGreaterThan(events.indexOf("ten minutes"));
+    expect(events.at(-1)).toBe("run 10.1002/a");
   });
 
   it("keeps the publisher's session alive every ten minutes of a long hourly wait", async () => {

@@ -139,7 +139,8 @@ def test_keep_session_clears_a_cloudflare_check_or_leaves_it(monkeypatch):
     keep-alive runs again until a paper saves."""
     from types import SimpleNamespace
 
-    from paper_search_school.browser import batch_session, challenge_interaction
+    from paper_search_school.browser import batch_session
+    from paper_search_school.browser.challenge import interaction as challenge_interaction
 
     clicks = []
 
@@ -193,3 +194,91 @@ def test_keep_session_waits_out_the_publishers_own_sign_in_or_leaves_it(monkeypa
     batch.page.clock = clock
     assert batch.keep_session() == {"kept": False, "reason": "signin"}
     assert batch.page.visited == [article, "about:blank"] and batch.article_url == ""
+
+
+class _IdlePage:
+    def __init__(self, closed=False, fail=False):
+        self.closed, self.fail, self.waits = closed, fail, []
+
+    def is_closed(self):
+        return self.closed
+
+    def wait_for_timeout(self, ms):
+        if self.fail:
+            raise RuntimeError(": no running event loop")
+        self.waits.append(ms)
+
+
+def test_pump_lets_the_batchs_tab_answer_between_papers(monkeypatch):
+    """Windows, 2026-11-18: with no paper running, the school's login page did not move after
+    登录; Patchright's route for the tab is heard only during a browser call."""
+    from paper_search_school.browser import batch_session
+
+    monkeypatch.setattr(batch_session.time, "sleep", lambda _: None)
+    batch = BatchBrowser()
+    batch.pump()  # no browser yet: nothing to call
+    batch.context, batch.page = object(), _IdlePage()
+    batch.pump()
+    assert batch.page.waits == [batch_session.IDLE_PASS_MS]
+    batch.page = _IdlePage(closed=True)
+    batch.pump()
+    assert batch.page.waits == []
+    batch.page = _IdlePage(fail=True)
+    batch.pump()  # a lost driver is the next paper's to report
+
+
+def test_batch_thread_runs_jobs_in_order_and_idles_between_them():
+    import threading
+    from paper_search_school.browser.batch_session import BatchThread
+
+    idled = threading.Event()
+    seen = []
+    worker = BatchThread(idled.set, name="test-batch")
+    try:
+        assert idled.wait(2)
+        futures = [worker.submit(lambda n=n: (seen.append((n, threading.current_thread().name)), n)[1])
+                   for n in range(3)]
+        assert [future.result(2) for future in futures] == [0, 1, 2]
+        assert seen == [(0, "test-batch"), (1, "test-batch"), (2, "test-batch")]
+        failing = worker.submit(lambda: 1 / 0)
+        with pytest.raises(ZeroDivisionError):
+            failing.result(2)
+
+        async def through_asyncio():
+            return await asyncio.get_running_loop().run_in_executor(worker, lambda: "ran")
+
+        assert asyncio.run(through_asyncio()) == "ran"
+    finally:
+        worker.shutdown()
+    with pytest.raises(RuntimeError):
+        worker.submit(lambda: None)
+
+
+@pytest.mark.skipif(os.environ.get("SCHOOL_LOCAL_BROWSER_TEST") != "1",
+                    reason="local browser fixture opt-in")
+def test_a_tab_with_an_init_script_moves_on_while_no_paper_runs(tmp_path):
+    """The real driver: a tab with an init script (Patchright routes its requests) follows a
+    link the page itself opens while the batch thread has no job."""
+    import time as clock
+    from paper_search_school.browser.batch_session import BatchThread
+
+    batch = BatchBrowser()
+    worker = BatchThread(batch.pump, name="test-batch-live")
+
+    def start():
+        context = launch_persistent_context(str(tmp_path / "profile"), headless=True, humanize=False)
+        context.route("**/*", lambda route: route.fulfill(
+            content_type="text/html", body=f"<title>{route.request.url.rsplit('/', 1)[-1]}</title>"))
+        page = context.new_page()
+        page.add_init_script("window.__observed = true")
+        page.goto("https://example.org/first")
+        page.evaluate("setTimeout(() => { location.href = 'https://example.org/second'; }, 300)")
+        batch.context, batch.page = context, page
+
+    try:
+        worker.submit(start).result(60)
+        clock.sleep(3)  # no job: only the idle passes let the navigation through
+        assert worker.submit(lambda: batch.page.title()).result(30) == "second"
+    finally:
+        worker.submit(batch.close).result(30)
+        worker.shutdown()

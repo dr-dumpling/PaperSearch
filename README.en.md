@@ -16,7 +16,7 @@ One sentence and your AI searches, verifies and downloads full texts and supplem
   <a href="#1-school-subscription-downloads"><img src="https://img.shields.io/badge/school%20login-eduGAIN%20%2B%20OpenAthens-7284CE?style=flat-square" alt="School subscription downloads: academic identity federations in eduGAIN, and OpenAthens"></a>
   <a href="docs/guide.en.md#agent-skill"><img src="https://img.shields.io/badge/Agent%20Skill-bundled-D97757?style=flat-square" alt="Bundled Agent Skill"></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-555555?style=flat-square" alt="Runs on macOS and Windows"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2F9E44?style=flat-square" alt="MIT license"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-2F9E44?style=flat-square" alt="AGPL-3.0 license"></a>
   <a href="https://linux.do/"><img src="https://img.shields.io/badge/LINUX%20DO-community-F1A033?style=flat-square" alt="LINUX DO community"></a>
 </p>
 
@@ -74,9 +74,6 @@ Your AI first asks whether to install the PaperSearch command-line program; once
 
 After "Start setup", your AI first asks whether to add [school subscription downloads](#1-school-subscription-downloads): full texts and supplementary files of subscription papers through your school account; it needs Chrome (installed too if missing). It installs only after you agree, then asks for your school, sets it, and opens the settings window.
 
-- Don't want it? Say so and it is skipped for good; searching and open-access downloads work as before.
-- Servers without a screen are not asked.
-
 <p align="center"><img src="assets/config.en.webp" width="840" alt="Setup demo: say Start setup; your AI asks first, then installs school subscription downloads and Chrome and sets your school; then enter keys in the settings window and test them"></p>
 
 ### 3. Add API keys when you need them
@@ -96,7 +93,7 @@ Once set up, mention the PaperSearch Skill and say what you want to search for, 
 | Search full-text snippets | `/paper-search` How did these trials define their primary endpoint? Quote a few passages |
 | Look up journal IF and quartiles | `/paper-search` Which journals were they published in, and what are their impact factors and quartiles? |
 | Look up citations and references | `/paper-search` Which studies have cited the DAPA-HF trial since it was published? |
-| Download full texts and supplementary files | `/paper-search` Download the full texts and supplementary files of these papers to ./downloads |
+| Download full texts and supplementary files | `/paper-search` Download the full texts and supplementary files of these papers to the folder you name |
 
 **Results:**
 
@@ -105,7 +102,7 @@ Once set up, mention the PaperSearch Skill and say what you want to search for, 
 <p align="center"><img src="assets/results.en.webp" width="840" alt="Results: the chat lists the 6 papers saved and how many supplementary files each has; the download folder holds one folder per paper, supplementary files in supplements/"></p>
 
 - Search results, snippets, journal metrics and citations come back in the conversation.
-- Each download gets its own `YYYYMMDD-HHmmss_PaperSearchDownload` folder inside your download folder: PDFs lie directly in it; a paper whose supplementary files were saved gets a folder of its own, its files in supplements/. You are told why any paper was not obtained.
+- Each download gets its own `YYYYMMDD-HHmmss_PaperSearchDownload` folder inside your download folder: PDFs lie directly in it; a paper whose supplementary files were saved gets a folder of its own, holding its PDF and its supplementary files (supplements/); a paper's PDF and supplementary files are done together when it is downloaded. You are told why any paper was not obtained.
 
 ## Optional setup
 
@@ -123,8 +120,6 @@ Feature comparison:
 | &emsp;Open-access papers | ✅ | — | — |
 | &emsp;Subscription papers | — | ✅ (Elsevier, Springer) | ✅ (30+ major publishers) |
 | &emsp;Supplementary files | — | — | ✅ |
-| **You need** | Node.js 22 or later | Keys from each provider | Google Chrome, a school account |
-| **How to turn it on** | Quick start step 1 | Settings window or terminal | Agree during setup |
 
 ### 1. School subscription downloads
 
@@ -133,7 +128,12 @@ Papers the open channels cannot get can come through your school's subscriptions
 1. Through the federations interconnected via [eduGAIN](https://edugain.org/), such as CARSI in China, HKAF in Hong Kong and SGAF in Singapore;
 2. Schools in no national federation that have [OpenAthens](https://www.openathens.net/) access can sign in through it as well.
 
-**Supported academic identity federations** (by continent and region)
+**Supported academic identity federations**
+
+<p align="center"><img src="assets/federation-map.en.png" width="840" alt="Where school subscription downloads work: 76 countries and regions through their national academic identity federation (eduGAIN), across Asia, Europe, the Americas, Oceania and Africa; Taiwan, Thailand, the Philippines and more through OpenAthens"></p>
+
+<details>
+<summary>Show the federations by country (by continent and region)</summary>
 
 | Continent | Region | Supported (place: federation) |
 |---|---|---|
@@ -154,8 +154,9 @@ Papers the open channels cannot get can come through your school's subscriptions
 | Africa | Western Africa | Nigeria: NgRENID; Ghana: GARNET; Burkina Faso: eduID.bf; Togo: eduID.tg |
 | Africa | Northern and Southern Africa | Morocco: eduIDM; South Africa: SAFIRE |
 
+</details>
+
 - Full names, school counts and tested schools of each federation: [federation support table](skills/paper-search/references/federation-support.md) (Chinese).
-- The African federations have not been tested yet. Central Asia, the Caribbean and some other places have no usable federation (none with school entries, or none in operation yet); schools there with OpenAthens access can sign in through it.
 - If your school cannot sign in, or you would like your school supported, [open an issue](https://github.com/dr-dumpling/PaperSearch/issues/new?template=school-login.yml) with the school sign-in template, giving the school's name and website domain, and the publisher and paper DOI where it failed.
 
 - **Your school account is enough**: no keys to apply for; publisher API keys only cover Elsevier and Springer.
@@ -247,8 +248,7 @@ Next on the list:
 
 1. **A better progress capsule**: better-timed reminders, with no early prompt when the school login page lets you through by itself; less of the browser briefly jumping to the front on Windows when it starts or changes pages; a cleaner look.
 2. **Parallel downloads**: papers from different publishers download at the same time, cutting the total time for dozens or hundreds of papers; each publisher's download limits still apply.
-3. **A Markdown full-text package**: besides the PDF, the original XML/HTML, a Markdown reading copy and the figures, with figure numbers, captions and in-text references matched, ready to hand to an AI for reading and citing.
-4. **Better paper search and full-text snippets**: learn from similar tools and improve how papers and passages are found.
+3. **Better paper search and full-text snippets**: learn from similar tools and improve how papers and passages are found.
 
 The full plan is in the [roadmap](docs/ROADMAP.zh.md) (Chinese); how it works inside is in the [architecture](docs/ARCHITECTURE.zh.md) (Chinese). Feature ideas are welcome as [issues](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) and pull requests; for failed downloads or publisher requests use the matching issue template, and to add publisher rules yourself see [school/CONTRIBUTING.md](school/CONTRIBUTING.md).
 
@@ -261,4 +261,4 @@ The full plan is in the [roadmap](docs/ROADMAP.zh.md) (Chinese); how it works in
 
 ## License
 
-MIT
+[AGPL-3.0](LICENSE), with a commercial license available.

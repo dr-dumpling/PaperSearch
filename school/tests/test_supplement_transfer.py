@@ -118,6 +118,33 @@ class StreamingTests(unittest.TestCase):
         self.assertTrue(all('other=' not in row[1] for row in seen))
         self.assertEqual(seen[1][2], 'Fixture Browser')
 
+    def test_a_session_kept_before_fetches_without_asking_the_browser(self):
+        # The page's images after a PDF step past its time: the watchdog has ended every
+        # browser call by then (IEEE, 2026-11-18).
+        seen = []
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_GET(self):
+                seen.append((self.headers.get('Cookie', ''), self.headers.get('User-Agent'), self.headers.get('Referer')))
+                self.send_response(200);self.send_header('Content-Type', 'image/png');self.send_header('Content-Length', '3')
+                self.end_headers();self.wfile.write(b'png')
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True);thread.start()
+        self.addCleanup(server.server_close);self.addCleanup(server.shutdown)
+        url = f'http://127.0.0.1:{server.server_port}'
+        page = SimpleNamespace(url=url+'/document/1', evaluate=lambda s:'Fixture Browser',
+             context=SimpleNamespace(cookies=lambda:[{'name':'session','value':'fixture','domain':'127.0.0.1','path':'/','secure':False}]))
+        kept = transfer.browser_session(page)
+        def stopped(*args):
+            raise watchdog.BrowserOperationTimeout('the browser was asked')
+        page.evaluate = stopped
+        page.context.cookies = stopped
+        with transfer.session_request(kept, {}, referer=url+'/document/1') as request:
+            response = request.get(url+'/media/fig1.png', timeout=5_000)
+            self.assertEqual(b''.join(response.chunks()), b'png')
+            response.dispose()
+        self.assertEqual(seen, [('session=fixture', 'Fixture Browser', url+'/document/1')])
+
     def test_progressing_transfer_can_exceed_old_total_budget_then_continue(self):
         now = [0]
         def chunks():
@@ -146,7 +173,7 @@ class StreamingTests(unittest.TestCase):
         failed.dispose.assert_called_once()
 
     def test_hard_budget_size_and_user_stop_keep_partial_files_out_of_results(self):
-        for reason in ('size','deadline','stop'):
+        for reason in ('deadline','stop'):
             with self.subTest(reason=reason), TemporaryDirectory() as tmp:
                 now=[0]
                 def chunks():
@@ -157,8 +184,7 @@ class StreamingTests(unittest.TestCase):
                 response=SimpleNamespace(status=200,ok=True,headers={},chunks=chunks,dispose=MagicMock())
                 request=MagicMock();request.get.return_value=response
                 try:
-                    with patch.object(supplements,'MAX_FILE_BYTES',4 if reason=='size' else 100):
-                        files=supplements.collect(request,[SupplementLink('https://fixture/1.pdf')],Path(tmp),'10.1000/stream',clock=lambda:now[0])
+                    files=supplements.collect(request,[SupplementLink('https://fixture/1.pdf')],Path(tmp),'10.1000/stream',clock=lambda:now[0])
                     self.assertNotEqual(files[0]['status'],'saved')
                     folder=supplements.supplements_dir(Path(tmp),'10.1000/stream')
                     self.assertEqual([p.name for p in folder.iterdir()],['manifest.json'])

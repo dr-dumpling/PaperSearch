@@ -45,7 +45,9 @@ from .profiles import (
     _profile_owner_pid,
     _restore_session_cookies,
     _save_session_cookies,
+    cross_site_login,
     profile_holder,
+    school_login_hosts,
     wait_for_profile_release,
 )
 
@@ -53,10 +55,12 @@ logger = logging.getLogger(__name__)
 
 BACKEND_CHROME = "chrome"
 BACKEND_EGO = "ego"
+#: A Chrome the user started: connected over its remote debugging port, not launched.
+BACKEND_ATTACH = "attach"
 # The browser and version the last launch in this process used (browser_info).
 _launched: dict[str, str] = {}
 DEFAULT_BACKEND = BACKEND_CHROME
-SUPPORTED_BACKENDS = (BACKEND_CHROME, BACKEND_EGO)
+SUPPORTED_BACKENDS = (BACKEND_CHROME, BACKEND_EGO, BACKEND_ATTACH)
 _RETIRED_BACKENDS = ("camoufox", "patchright", "cloakbrowser")
 _retired_noted: set[str] = set()
 
@@ -73,13 +77,32 @@ class EgoUnavailable(RuntimeError):
     """The running ego-lite browser cannot be reached over remote debugging."""
 
 
+class AttachUnavailable(RuntimeError):
+    """The Chrome named by ``browser_attach_url`` cannot be reached over remote debugging."""
+
+
 EGO_CONNECT_TIMEOUT_MS = 90_000  # the user may have to approve the connection in ego
 EGO_START_TIMEOUT_SEC = 45.0
+# Shorter than ego's: a Chrome started with --remote-debugging-port answers at once.
+ATTACH_CONNECT_TIMEOUT_MS = 30_000
 
 
 # ---------------------------------------------------------------------------
 # Availability / resolution
 # ---------------------------------------------------------------------------
+
+def attach_url(config: dict[str, Any] | None = None) -> str:
+    """The remote-debugging address of a Chrome the user started, or "" (config ``browser_attach_url``)."""
+    return str((config or {}).get("browser_attach_url") or "").strip()
+
+
+def attach_endpoint(config: dict[str, Any] | None = None) -> str:
+    """``attach_url`` as a CDP endpoint: a bare ``host:port`` gets ``http://``."""
+    url = attach_url(config)
+    if url and "://" not in url:
+        return "http://" + url
+    return url
+
 
 def ego_user_data_dir(config: dict[str, Any] | None = None) -> Path:
     """ego-lite's user data directory (config ``ego_user_data_dir`` overrides)."""
@@ -253,6 +276,8 @@ def is_available(name: str | None = None, config: dict[str, Any] | None = None) 
     name = name or DEFAULT_BACKEND
     if name == BACKEND_EGO:
         return ego_user_data_dir(config).exists() and bool(patchright_version())
+    if name == BACKEND_ATTACH:
+        return bool(attach_url(config)) and bool(patchright_version())
     if name == BACKEND_CHROME:
         return find_chrome(config) is not None and bool(patchright_version())
     return False
@@ -282,6 +307,10 @@ def resolve_backend(config: dict[str, Any] | None = None) -> str:
     if requested == BACKEND_EGO and not ego_user_data_dir(cfg).exists():
         logger.warning("browser_backend: ego-lite is not installed, using %s", DEFAULT_BACKEND)
         return DEFAULT_BACKEND
+    if requested == BACKEND_ATTACH and not attach_url(cfg):
+        logger.warning("browser_backend: attach needs browser_attach_url (e.g. http://127.0.0.1:9222), "
+                       "using %s", DEFAULT_BACKEND)
+        return DEFAULT_BACKEND
     return requested
 
 # What a backend offers beyond plain Playwright. Callers ask for a capability,
@@ -294,6 +323,9 @@ BACKEND_CAPABILITIES: dict[str, frozenset[str]] = {
     # The user's own running browser: one tab per paper until a batch there
     # has been tried.
     BACKEND_EGO: frozenset(),
+    # The user's own running Chrome: the tabs are the user's window, so a batch
+    # opens one per paper, as with ego.
+    BACKEND_ATTACH: frozenset(),
 }
 
 
@@ -526,6 +558,77 @@ def _launch_ego(config: dict[str, Any] | None) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# attach: a Chrome the user started, over its remote debugging port
+# ---------------------------------------------------------------------------
+
+def _connect_attach(config: dict[str, Any] | None) -> tuple[Any, Any]:
+    """(driver, browser) connected to the Chrome named by ``browser_attach_url``."""
+    from patchright.sync_api import sync_playwright
+
+    endpoint = attach_endpoint(config)
+    if not endpoint:
+        raise AttachUnavailable("browser_attach_url is empty: start Chrome with "
+                                "--remote-debugging-port=9222 and set browser_attach_url")
+    pw = sync_playwright().start()
+    try:
+        browser = pw.chromium.connect_over_cdp(endpoint, timeout=ATTACH_CONNECT_TIMEOUT_MS)
+    except Exception as exc:
+        pw.stop()
+        raise AttachUnavailable(
+            f"cannot reach the Chrome at {endpoint}: {type(exc).__name__}. Start one with "
+            f"--remote-debugging-port=9222 and a NON-default --user-data-dir (Chrome 136+ ignores "
+            f"the port on the default data directory): quit every other window of that Chrome first. "
+            f"That profile keeps its own logins and clearances between runs.") from exc
+    _launched.clear()
+    _launched.update(backend=BACKEND_ATTACH, app="Google Chrome",
+                     version=str(getattr(browser, "version", "") or ""))
+    logger.info("browser_backend: attached to the Chrome at %s", endpoint)
+    return pw, browser
+
+
+def _launch_attach(config: dict[str, Any] | None) -> Any:
+    """The user's own Chrome context, scoped to the tabs this package opened.
+
+    The browser is one the user started with remote debugging, so its profile,
+    cookies and sessions are the ones the site has already seen — that is the
+    point of attaching: Cloudflare reads a browser's history and keeps a
+    precursor clearance from session behaviour, which a fresh profile has none
+    of. (Chrome 136+ only honours the port together with a non-default
+    ``--user-data-dir``, so it is that profile's logins that carry over, not the
+    everyday Chrome's.) Closing the returned object closes only our tabs and
+    detaches; the browser and the user's own tabs keep running.
+    """
+    pw, browser = _connect_attach(config)
+    context = browser.contexts[0] if browser.contexts else browser.new_context()
+    owned = _scope_to_own_tabs(context)
+
+    def close(*_a: Any, **_kw: Any) -> None:
+        for page in list(owned):
+            try:
+                if not page.is_closed():
+                    page.close()
+            except Exception:
+                pass
+        try:
+            # The driver took over downloads for this context; give them back.
+            browser.new_browser_cdp_session().send("Browser.setDownloadBehavior", {"behavior": "default"})
+        except Exception as exc:
+            logger.info("browser_backend: attach download behaviour not reset (%s)", type(exc).__name__)
+        pw.stop()  # disconnects; the user's Chrome keeps running
+
+    context.close = close  # type: ignore[method-assign]
+
+    def new_context(*_a: Any, **_kw: Any) -> Any:
+        # One profile here, the user's: every caller gets that context. A second,
+        # empty one would carry none of the history that made attaching useful.
+        return context
+
+    browser.new_context = new_context  # type: ignore[method-assign]
+    browser.close = close  # type: ignore[method-assign]
+    return browser
+
+
+# ---------------------------------------------------------------------------
 # Chrome launchers
 # ---------------------------------------------------------------------------
 
@@ -581,9 +684,16 @@ def _chrome_options(headless: bool, proxy: Any, args: list[str] | None,
     # list of unsupported flags, shown on a warning bar; Chrome's own
     # --test-type switch skips that prompt.
     switches = list(dict.fromkeys([*switches, "--test-type"]))
+    # The pages in English whatever the computer's own language (browser_language; user, 2026-11-19: the
+    # publishers' and the schools' pages were tested in English, so every user gets those pages).
+    language = str((config or {}).get("browser_language", "en-US") or "").strip()
+    if language and not any(arg.startswith("--lang=") for arg in switches):
+        switches.append(f"--lang={language}")
     opts: dict[str, Any] = {"executable_path": str(executable), "headless": headless, "args": switches,
                             # Without it the driver adds --no-sandbox, and Chrome shows a warning bar.
                             "chromium_sandbox": True}
+    if language:
+        opts["locale"] = language  # navigator.language and the Accept-Language the sites read
     if proxy:
         opts["proxy"] = proxy
     if not headless:
@@ -602,6 +712,7 @@ def _launch_chrome(headless: bool, proxy: Any, args: list[str] | None, config: d
 
     opts = _chrome_options(headless, proxy, args, config)
     opts.pop("no_viewport", None)  # a context option, not a launch option
+    opts.pop("locale", None)  # likewise: the --lang switch stands for it
     pw = sync_playwright().start()
     try:
         browser = pw.chromium.launch(**opts)
@@ -638,7 +749,7 @@ def _chrome_persistent(user_data_dir: str, *, headless: bool, proxy: Any, args: 
     if proxy is None:
         proxy = _proxy_from_config(config)
     context = _launch_chrome_persistent(profile, headless, proxy, args, config)
-    _keep_session_cookies(context, profile)
+    _keep_session_cookies(context, profile, config)
     if not headless:
         _open_tabs_in_background(context)
     _reuse_startup_page(context)
@@ -679,9 +790,12 @@ def launch(
     humanize: bool = True,
     config: dict[str, Any] | None = None,
 ) -> Any:
-    """Launch Chrome (or attach to ego); returns a ``Browser``. ``humanize`` is kept for callers."""
-    if resolve_backend(config) == BACKEND_EGO:
+    """Launch Chrome (or attach to ego / a running Chrome); returns a ``Browser``. ``humanize`` is kept for callers."""
+    backend = resolve_backend(config)
+    if backend == BACKEND_EGO:
         return _launch_ego(config)
+    if backend == BACKEND_ATTACH:
+        return _launch_attach(config)
     if proxy is None:
         proxy = _proxy_from_config(config)
     return _launch_chrome(headless, proxy, args, config)
@@ -709,23 +823,57 @@ def launch_persistent_context(
     ``humanize`` is kept for callers.
     """
     LAST_LAUNCH.clear()
-    if resolve_backend(config) == BACKEND_EGO:
+    backend = resolve_backend(config)
+    if backend == BACKEND_EGO:
         return _launch_ego_persistent(config)
+    if backend == BACKEND_ATTACH:
+        return _launch_attach(config).new_context()
     return _chrome_persistent(user_data_dir, headless=headless, proxy=proxy, args=args, config=config)
 
 
-def _keep_session_cookies(context: Any, profile: Path) -> None:
-    """Session cookies (a school login) survive a browser that closes between runs."""
-    restored = _restore_session_cookies(context, profile)
+LOGIN_SESSION_HOURS = 720
+
+
+def _login_session_window_sec(config: dict[str, Any] | None) -> float:
+    """How long a saved school login is restored: ``browser_login_session_max_age_hours``."""
+    given = (config or {}).get("browser_login_session_max_age_hours", LOGIN_SESSION_HOURS)
+    try:
+        hours = int(given)
+    except (TypeError, ValueError):
+        hours = 0
+    if hours < 1:
+        logger.warning("browser_backend: browser_login_session_max_age_hours %r is not a number of hours; %d used",
+                       given, LOGIN_SESSION_HOURS)
+        hours = LOGIN_SESSION_HOURS
+    return hours * 3600.0
+
+
+def _keep_session_cookies(context: Any, profile: Path, config: dict[str, Any] | None = None) -> None:
+    """Session cookies (a school login) survive a browser that closes between runs: restored
+    when saved within the window, saved when the browser closes and, through
+    ``paper_search_keep_login``, after each paper (engine/batch.py): a browser closed by its
+    window, or a backend that is killed, never runs ``close`` (user, 2026-11-19). The school
+    IdP's cookies are made to go with a publisher's SAML POST too (``cross_site_login``), when
+    restored and after each paper."""
+    restored = _restore_session_cookies(context, profile, _login_session_window_sec(config))
     if restored:
         logger.info("browser_backend: restored %d session cookie(s) from the previous run", restored)
+    hosts, domains = school_login_hosts(config)
+    cross_site_login(context, hosts, domains)
     close = context.close
 
     def _close_keeping_session(*a: Any, **kw: Any) -> None:
         _save_session_cookies(context, profile)
         close(*a, **kw)
 
+    def _keep_login(reached: set[str] = frozenset()) -> None:
+        """After a paper: ``reached``, the school's hosts its sign-in went through (a shared
+        service's, its own on another domain), are the school's too."""
+        cross_site_login(context, hosts | set(reached), domains)
+        _save_session_cookies(context, profile)
+
     context.close = _close_keeping_session  # type: ignore[method-assign]
+    context.paper_search_keep_login = _keep_login
 
 
 def _reuse_startup_page(context: Any) -> None:
@@ -780,8 +928,12 @@ def browser_info(config: dict[str, Any] | None = None) -> dict[str, str]:
     """
     if _launched:
         return dict(_launched)
-    if resolve_backend(config) == BACKEND_EGO:
+    backend = resolve_backend(config)
+    if backend == BACKEND_EGO:
         return {"backend": BACKEND_EGO, "app": ego_app_version(config), "chromium": ""}
+    if backend == BACKEND_ATTACH:
+        return {"backend": BACKEND_ATTACH, "app": "Google Chrome", "version": "",
+                "driver": f"patchright {patchright_version()}"}
     found = find_chrome(config)
     return {"backend": BACKEND_CHROME, "app": found.stem if found else "", "version": chrome_version(found),
             "driver": f"patchright {patchright_version()}"}

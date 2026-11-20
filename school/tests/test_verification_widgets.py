@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from paper_search_school.browser import challenge_interaction as interaction
+from paper_search_school.browser.challenge import interaction
 
 
 def frame(url, visible=True):

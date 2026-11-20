@@ -7,7 +7,7 @@ import { dirname } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
-import { SCHOOL_BACKEND_UTF8_ENV } from "../../capabilities/pdf-discovery/school/index.js";
+import { SCHOOL_BACKEND_UTF8_ENV } from "../../infrastructure/school/index.js";
 import type { CommandResult, InstallerHost } from "./installer.js";
 
 /** The real machine: processes, downloads and the user's answers on the terminal. */

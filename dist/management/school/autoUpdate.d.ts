@@ -1,9 +1,10 @@
-import type { SchoolBackend } from "../../capabilities/pdf-discovery/school/index.js";
+import type { SchoolBackend } from "../../infrastructure/school/index.js";
 import { type InstallContext, type InstallerHost } from "./installer.js";
 export type AutoUpdateOutcome = "off" | "not_needed" | "busy" | "updated" | "failed";
 /**
  * After a PaperSearch upgrade, the extension is brought up to it before its
- * first use (`school update`), as the Skill is synced after an upgrade;
+ * first use (`school update`): a download, or the settings window it draws
+ * (``next`` names it in what is said), as the Skill is synced after an upgrade;
  * PAPER_SEARCH_SCHOOL_AUTO_UPDATE=false turns this off. Only the extension this
  * PaperSearch installed and uses: another backend (a developer's) is left alone.
  * ``lock`` takes the download lock and answers how to release it (it throws
@@ -11,7 +12,7 @@ export type AutoUpdateOutcome = "off" | "not_needed" | "busy" | "updated" | "fai
  * keeps its backend and two upgrades never install at once. Every step is said
  * on stderr; a failed update leaves the old backend for this download.
  */
-export declare function autoUpdateSchool(host: InstallerHost, context: InstallContext, lock: () => () => void): Promise<AutoUpdateOutcome>;
+export declare function autoUpdateSchool(host: InstallerHost, context: InstallContext, lock: () => () => void, next?: string): Promise<AutoUpdateOutcome>;
 /**
  * ``backend`` with ``update`` run once, before the first call that starts the
  * backend process: a probe, a download, or a batch progress or papers report (a

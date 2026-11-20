@@ -8,7 +8,7 @@ import {
   isStaleDownloadLock,
   LEGACY_SCHOOL_DATA_DIR,
   paperSearchDataHome,
-} from "../../capabilities/pdf-discovery/school/index.js";
+} from "../../infrastructure/school/index.js";
 
 /**
  * Before 0.6.1 school subscription downloads were named for CARSI, the first

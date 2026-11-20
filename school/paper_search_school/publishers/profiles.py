@@ -89,6 +89,12 @@ _JOURNAL_PLATFORMS = {
 }
 
 
+def journal_platform(doi: str) -> str:
+    """The profile key of a journal listed in ``_JOURNAL_PLATFORMS``, else ""."""
+    normalized = doi.strip().lower()
+    return next((key for prefix, key in _JOURNAL_PLATFORMS.items() if normalized.startswith(prefix)), "")
+
+
 def infer_publisher_profile(doi: str, *, profiles: Mapping[str, PublisherProfile] | None = None) -> PublisherProfile | None:
     """Infer a likely publisher profile from stable DOI prefixes."""
     normalized = doi.strip().lower()

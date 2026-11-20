@@ -33,6 +33,9 @@ class LWWAdapter(PublisherAdapter):
     validates_article_pdf = True
     keeps_pdf_out_of_downloads = True
     native_pdf_patterns = ("https://www.ovid.com/jnls/*/pdf/*", "https://ovid.com/jnls/*/pdf/*")
+    # --fulltext: the article page is Ovid's (journals.lww.com links lead there); its rules are ovid.py's.
+    fulltext_shown_js = ovid.FULLTEXT_SHOWN_JS
+    fulltext_images_js = ovid.FULLTEXT_IMAGES_JS
 
     def __init__(self, downloader: Any):
         super().__init__(downloader)

@@ -11,6 +11,5 @@
 | 429 限流                                     | 降低 `--max-results`，换平台，或提示配置可选 key                                                                                                             |
 | 0 结果                                       | 放宽关键词，换英文同义词，换平台，或用 `--sources` 扩展                                                                                                      |
 | 下载失败                                     | 用统一的 `download_with_fallback` 并报告各 attempt；涉及学校权限的失败按 `browser-download.md` 的失败分类处理                                                |
-| 用户要求完整正文                             | 先下载 PDF，再交给当前环境可用的 PDF/MinerU 解析流程                                                                                                         |
 
 Scholar 相关配置：`SCHOLAR_RATE_LIMIT_RPS`（默认 `0.5`）、`SCHOLAR_MAX_RETRIES`（默认 `2`）、`SCHOLAR_TIMEOUT_MS`（默认 `15000`）。只往更保守的方向调。Scholar 用于找个别论文、补充少量检索；成批检索用 PubMed、Crossref、OpenAlex。遇到验证页就停下，过一段时间再试。

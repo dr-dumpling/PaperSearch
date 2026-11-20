@@ -2,7 +2,7 @@ import {
   createSchoolBackend,
   type SchoolBackend,
   type SchoolReadiness,
-} from "../../capabilities/pdf-discovery/school/index.js";
+} from "../../infrastructure/school/index.js";
 
 export interface DisabledEntitledAccessReadiness {
   state: "disabled";

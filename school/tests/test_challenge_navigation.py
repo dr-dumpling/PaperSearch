@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import pytest
 from patchright._impl._errors import Error
 
-from paper_search_school.browser import challenge_interaction
+from paper_search_school.browser.challenge import interaction as challenge_interaction
 
 
 def test_a_page_that_navigated_while_read_is_not_an_image_puzzle():

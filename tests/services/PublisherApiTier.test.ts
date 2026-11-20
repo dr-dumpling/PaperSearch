@@ -9,11 +9,11 @@ import {
   it,
   jest,
 } from "@jest/globals";
-import { createElsevierAdapter } from "../../src/capabilities/pdf-discovery/publisherApi/elsevier.js";
-import { createSpringerAdapter } from "../../src/capabilities/pdf-discovery/publisherApi/springer.js";
-import { createPublisherApiTier, resetRejectedPublisherKeys } from "../../src/capabilities/pdf-discovery/tiers/publisherApi.js";
-import { createDefaultDownloadTiers } from "../../src/capabilities/pdf-discovery/OpenAccessFallbackService.js";
-import type { DownloadTierContext } from "../../src/capabilities/pdf-discovery/DownloadTier.js";
+import { createElsevierAdapter } from "../../src/capabilities/download/content/pdf/open/publisherApi/elsevier.js";
+import { createSpringerAdapter } from "../../src/capabilities/download/content/pdf/open/publisherApi/springer.js";
+import { createPublisherApiTier, resetRejectedPublisherKeys } from "../../src/capabilities/download/content/pdf/open/tiers/publisherApi.js";
+import { createDefaultDownloadTiers } from "../../src/capabilities/download/content/pdf/OpenAccessFallbackService.js";
+import type { DownloadTierContext } from "../../src/capabilities/download/content/pdf/DownloadTier.js";
 import { textPdf } from "../fixtures/textPdf.js";
 
 const ELSEVIER_DOI = "10.1016/j.test.2026.01.001";
