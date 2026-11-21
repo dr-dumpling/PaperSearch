@@ -905,6 +905,22 @@ class InstitutionMixin:
             return set()
         return {str(it.get("t") or "")[:60] for it in items if isinstance(it, dict)} if isinstance(items, list) else set()
 
+    # How long a list must stay the same before what it lacks counts. Elsevier's search
+    # showed the school's IP-only entry a second after the name was typed, its sign-in
+    # entry not yet: "not listed" was said then, kept 30 minutes for the publisher, and
+    # every later article skipped (2026-11-21; the same search found it on another try).
+    LIST_SETTLE_SEC = 6
+
+    def _list_settled(self, result: DownloadResult, items: list[Any]) -> bool:
+        """The entries listed now unchanged for ``LIST_SETTLE_SEC`` (the first sight starts the count)."""
+        listed = tuple(sorted(f"{it.get('t') or ''}\n{it.get('ids') or ''}" for it in items if isinstance(it, dict)))
+        seen = getattr(result, "_list_seen", None)
+        now = time.time()
+        if not isinstance(seen, tuple) or seen[0] != listed:
+            result._list_seen = (listed, now)
+            return False
+        return now - seen[1] >= self.LIST_SETTLE_SEC
+
     def _click_unique_institution_entry(self, page: Any, result: DownloadResult, url: str) -> bool:
         """Click the single best visible entry for the configured school.
 
@@ -934,6 +950,8 @@ class InstitutionMixin:
             if without:
                 scored = [(score, it) for score, it in scored if not any(it is w for w in without)]
                 if not any(score >= 2 for score, _ in scored):
+                    if not self._list_settled(result, items):
+                        return False  # the search may still be adding entries
                     if getattr(result, "_institution_not_listed", False) is not True:  # once, not every pass
                         self._event(result, "auto_institution_not_found",
                                     f"{self.institution_query} (listed only without a school sign-in: "

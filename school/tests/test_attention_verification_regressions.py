@@ -59,7 +59,7 @@ def test_unavailable_does_not_spend_three_clicks_and_can_recover(wait_case, monk
             'suspect_block': '403 https://journal.example/pdf', 'bytes': None, 'block_reason': None})
     assert len(tries) == 5
     inputs = [e for e in c.result.events if e['state'] == 'challenge_interaction']
-    assert len(inputs) == 1 and 'attempt 1/3' in inputs[0]['detail']
+    assert len(inputs) == 1 and 'attempt 1/2' in inputs[0]['detail']
     c.attention.assert_not_called()
 
 

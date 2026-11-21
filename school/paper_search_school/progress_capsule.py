@@ -580,28 +580,71 @@ class Api:
 
     # --- PaperSearch Pro: the Markdown page -------------------------------
     def school_login_state(self) -> dict[str, Any]:
-        """The sign-in page (PaperSearch Pro, school_login.py): the current school, its saved
-        account (masked; never the password) and whether Pro fills it in."""
+        """The sign-in page (PaperSearch Pro, school_login.py): the schools saved, each with its account
+        (masked; never the password) and whether Pro fills it in, the default one first (user,
+        2026-11-20: several schools here, one of them the default for downloads, switched here); the
+        default one's fields at the top level too, for the home page's line."""
         if not pro_features():
             return {"ok": False, "error": "这个版本没有自动登录"}
         try:
             from . import school_login
             from .config import load_config
+            from .schools import saved as saved_schools
 
             config = load_config()
-            entity_id = str(config.get("idp_entity_id") or "").strip()
-            account = school_login.saved(config, entity_id) or {}
-            return {"ok": True, "school": str(config.get("school_name") or config.get("school_name_en") or ""),
-                    "entity": bool(entity_id), "saved": bool(account),
-                    "username": school_login.masked(account.get("username", "")) if account else "",
-                    "enabled": bool(account.get("enabled")), "off": str(account.get("off") or ""),
-                    "pro": school_login.module() is not None, "status": school_login.school_status(entity_id)}
+            saved_schools.remember(config)
+            pro = school_login.module()
+            listed = []
+            for entry in saved_schools.saved(config):
+                entity_id = str(entry.get("idp_entity_id") or "").strip()
+                account = school_login.saved(config, entity_id) or {}
+                listed.append({"key": entity_id, "name": str(entry.get("school_name") or ""),
+                               "name_en": str(entry.get("school_name_en") or ""),
+                               "current": saved_schools.is_current(config, entry), "entity": bool(entity_id),
+                               "saved": bool(account), "username": school_login.masked(account.get("username", "")) if account else "",
+                               "enabled": bool(account.get("enabled")), "off": str(account.get("off") or ""),
+                               "status": school_login.school_status(entity_id, pro) if pro is not None else ""})
+            listed.sort(key=lambda school: not school["current"])
+            current = next((school for school in listed if school["current"]), {})
+            return {"ok": True, "pro": pro is not None, "schools": listed,
+                    "counts": school_login.school_counts(pro) if pro is not None else {},
+                    "school": current.get("name", ""), "entity": bool(current.get("entity")), "saved": bool(current.get("saved")),
+                    "username": current.get("username", ""), "enabled": bool(current.get("enabled")),
+                    "off": current.get("off", ""), "status": current.get("status", "")}
         except Exception as exc:
             return {"ok": False, "error": f"读取失败：{type(exc).__name__}"}
 
-    def school_login_saved(self) -> dict[str, str]:
-        """The current school's saved account and password, for the sign-in page's fields: the
-        password there, hidden until its eye shows it (user, 2026-11-19: they may see it)."""
+    def school_support_list(self) -> dict[str, Any]:
+        """The sign-in page's 支持哪些学校 (user, 2026-11-20): the schools Pro knows, by name and province,
+        each with what it does for them; an older Pro has no list."""
+        if not pro_features():
+            return {"ok": False, "error": "这个版本没有自动登录"}
+        try:
+            from . import school_login
+
+            pro = school_login.module()
+            if pro is None:
+                return {"ok": False, "error": "需要 PaperSearch Pro"}
+            schools = school_login.school_list(pro)
+        except Exception as exc:
+            return {"ok": False, "error": f"读取失败：{type(exc).__name__}"}
+        return {"ok": True, "schools": schools} if schools else {"ok": False, "error": "需要更新 PaperSearch Pro"}
+
+    @staticmethod
+    def _login_school(config: dict[str, Any], key: str) -> str:
+        """The entityID of the saved school ``key`` names; the default school's when it is empty; "" when none."""
+        from .schools import saved as saved_schools
+
+        key = str(key or "").strip()
+        if not key:
+            return str(config.get("idp_entity_id") or "").strip()
+        saved_schools.remember(config)
+        known = {str(entry.get("idp_entity_id") or "").strip() for entry in saved_schools.saved(config)}
+        return key if key in known else ""
+
+    def school_login_saved(self, key: str = "") -> dict[str, str]:
+        """A saved school's account and password, for the sign-in page's fields: the password there,
+        hidden until its eye shows it (user, 2026-11-19: they may see it). The default school's by default."""
         if not pro_features():
             return {}
         try:
@@ -609,20 +652,22 @@ class Api:
             from .config import load_config
 
             config = load_config()
-            account = school_login.saved(config, str(config.get("idp_entity_id") or "").strip()) or {}
+            account = school_login.saved(config, self._login_school(config, key)) or {}
         except Exception:
             return {}
         return {"username": str(account.get("username") or ""), "password": str(account.get("password") or "")}
 
-    def save_school_login(self, username: str = "", password: str = "", enabled: bool = True) -> dict[str, Any]:
-        """Keep the current school's account; empty fields keep what was saved (the switch)."""
+    def save_school_login(self, username: str = "", password: str = "", enabled: bool = True, key: str = "") -> dict[str, Any]:
+        """Keep a saved school's account (the default school's by default); empty fields keep what was saved (the switch)."""
         if not pro_features():
             return {"ok": False, "error": "这个版本没有自动登录"}
         try:
             from . import school_login
             from .config import load_config
 
-            entity_id = str(load_config().get("idp_entity_id") or "").strip()
+            entity_id = self._login_school(load_config(), key)
+            if key and not entity_id:
+                return {"ok": False, "error": "这所学校还没有添加"}
             school_login.save(entity_id, str(username or ""), str(password or ""), enabled=bool(enabled))
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
@@ -630,16 +675,125 @@ class Api:
             return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
         return self.school_login_state()
 
-    def clear_school_login(self) -> dict[str, Any]:
+    def clear_school_login(self, key: str = "") -> dict[str, Any]:
         if not pro_features():
             return {"ok": False, "error": "这个版本没有自动登录"}
         try:
             from . import school_login
             from .config import load_config
 
-            school_login.clear(str(load_config().get("idp_entity_id") or "").strip())
+            school_login.clear(self._login_school(load_config(), key))
         except Exception as exc:
             return {"ok": False, "error": f"清除失败：{type(exc).__name__}"}
+        return self.school_login_state()
+
+    def find_school(self, query: str = "") -> dict[str, Any]:
+        """The sign-in page's 添加学校: the school named, in any language, by its domain or entityID, from
+        the federations' own lists (schools/lookup.py, as setup finds one); each with whether Pro fills its
+        sign-in in and whether it is saved already (user, 2026-11-20: only a school found there is kept)."""
+        if not pro_features():
+            return {"ok": False, "error": "这个版本没有自动登录"}
+        query = str(query or "").strip()
+        if not query:
+            return {"ok": False, "error": "请输入学校名称"}
+        try:
+            from . import school_login
+            from .config import DATA_DIR, load_config
+            from .schools import lookup
+            from .schools import saved as saved_schools
+
+            config = load_config()
+            found = lookup.find(query, config, DATA_DIR)
+            schools = ([found.school] if found.school is not None else []) + [s for s in found.candidates if s != found.school]
+            # Kept for 添加: the school found, not looked up again (user, 2026-11-20: the page seemed stuck).
+            self._found_schools = {school.entity_id: school for school in schools if school.entity_id}
+            saved_schools.remember(config)
+            saved = {str(entry.get("idp_entity_id") or "").strip() for entry in saved_schools.saved(config)}
+            pro = school_login.module()
+            results = [{"key": school.entity_id, "name": school.name, "name_en": school.name_en,
+                        "federation": school.summary()["federation"], "added": school.entity_id in saved,
+                        "status": school_login.school_status(school.entity_id, pro) if pro is not None else ""}
+                       for school in schools if school.entity_id]
+        except Exception as exc:
+            return {"ok": False, "error": f"查找失败：{type(exc).__name__}"}
+        note = ("" if results else "这所学校所在的学术联盟还不支持" if found.unsupported
+                else "学校名单暂时读不到，请稍后再试" if found.unavailable
+                else "没有找到这所学校：换成学校的正式中文名、英文名或网址试试")
+        return {"ok": True, "results": results, "note": note}
+
+    def add_school(self, key: str = "") -> dict[str, Any]:
+        """A school found by 添加学校 kept in the saved list, the default one unchanged (none yet: it)."""
+        if not pro_features():
+            return {"ok": False, "error": "这个版本没有自动登录"}
+        try:
+            from .config import DATA_DIR, load_config, save_config
+            from .schools import lookup
+            from .schools import saved as saved_schools
+
+            key = str(key or "").strip()
+            config = load_config()
+            known = getattr(self, "_found_schools", {}).get(key)  # the school 添加学校 found
+            if known is None:
+                found = lookup.find(key, config, DATA_DIR) if key else None
+                if found is None or found.school is None or found.school.entity_id != key:
+                    return {"ok": False, "error": "这所学校没有找到，请重新查找"}
+                known = found.school
+            school: dict[str, Any] = {}
+            lookup.save(school, known)
+            if saved_schools.current(config) is None:
+                saved_schools.apply(config, school)
+            saved_schools.remember(config)
+            listed = saved_schools.saved(config)
+            if not any(saved_schools._same(entry, school) for entry in listed):
+                listed.append({name: school.get(name) for name in saved_schools.SCHOOL_FIELDS})
+            config[saved_schools.SAVED_KEY] = listed[:saved_schools.MAX_SAVED]
+            save_config(config)
+        except Exception as exc:
+            return {"ok": False, "error": f"添加失败：{type(exc).__name__}"}
+        return self.school_login_state()
+
+    def set_default_school(self, key: str = "") -> dict[str, Any]:
+        """A saved school as the default one for downloads (the current school; `paper-search-school use`)."""
+        if not pro_features():
+            return {"ok": False, "error": "这个版本没有自动登录"}
+        try:
+            from .config import load_config, save_config
+            from .schools import saved as saved_schools
+
+            config = load_config()
+            saved_schools.remember(config)
+            entry = next((entry for entry in saved_schools.saved(config)
+                          if str(entry.get("idp_entity_id") or "").strip() == str(key or "").strip()), None)
+            if entry is None:
+                return {"ok": False, "error": "这所学校还没有添加"}
+            saved_schools.apply(config, entry)
+            saved_schools.remember(config)
+            save_config(config)
+        except Exception as exc:
+            return {"ok": False, "error": f"切换失败：{type(exc).__name__}"}
+        return self.school_login_state()
+
+    def forget_school(self, key: str = "") -> dict[str, Any]:
+        """A saved school out of the list, its account with it; the default one stays."""
+        if not pro_features():
+            return {"ok": False, "error": "这个版本没有自动登录"}
+        try:
+            from . import school_login
+            from .config import load_config, save_config
+            from .schools import saved as saved_schools
+
+            config = load_config()
+            saved_schools.remember(config)
+            entry = next((entry for entry in saved_schools.saved(config)
+                          if str(entry.get("idp_entity_id") or "").strip() == str(key or "").strip()), None)
+            if entry is None:
+                return {"ok": False, "error": "这所学校还没有添加"}
+            if not saved_schools.forget(config, entry):
+                return {"ok": False, "error": "默认学校不能移除：先把别的学校设为默认"}
+            save_config(config)
+            school_login.clear(str(key).strip())
+        except Exception as exc:
+            return {"ok": False, "error": f"移除失败：{type(exc).__name__}"}
         return self.school_login_state()
 
     def pro_status(self) -> dict[str, Any]:

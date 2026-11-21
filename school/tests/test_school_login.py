@@ -151,6 +151,7 @@ class TheLoginWaitsTry(TempConfig):
                                  _idp_confirmation=Mock(return_value=""),
                                  _event=lambda result, state, detail="": self.events.append((state, detail)))
         self.d._school_sign_in_survey = lambda page, result: batch_login.LoginMixin._school_sign_in_survey(self.d, page, result)
+        self.d._fill_school_places = lambda entity_id: batch_login.LoginMixin._fill_school_places(self.d, entity_id)
         self.page = SimpleNamespace(url="https://cas.hongmulan.example/cas/login?service=x")
         self.result = SimpleNamespace(doi="10.1000/x")
 
@@ -210,6 +211,30 @@ class TheLoginWaitsTry(TempConfig):
         self.page.url = "https://www.publisher.example/login"
         self.sign_in()
         self.assertEqual(self.events[-1], ("school_sign_in_skipped", "not the school's page: https://www.publisher.example"))
+
+    def test_the_schools_domains_found_when_an_older_version_saved_none(self):
+        # A school set up with 0.6 (user, 2026-11-20): no domain saved, its CAS login page on another host "not the
+        # school's page". Its domains read from its federation's list once, kept for the next batches too.
+        from paper_search_school.schools import lookup
+        config = config_mod.load_config()
+        config["idp_domains"] = []
+        config_mod.save_config(config)
+        self.d.config = config_mod.load_config()
+        school = lookup.School(name="红木兰大学", name_en="Hongmulan University", entity_id=ENTITY, federation="carsi",
+                               domain="hongmulan.example", scopes=("hongmulan.example",))
+        with patch.object(lookup, "find", return_value=lookup.Lookup(school=school)) as finder:
+            self.assertTrue(self.sign_in())
+            self.result = SimpleNamespace(doi="10.1000/y")
+            self.sign_in()
+        self.assertEqual(finder.call_count, 1)  # once a batch
+        self.assertEqual(config_mod.load_config()["idp_domains"], ["hongmulan.example"])
+        # Another school's entry, or a list that does not name it: nothing added, the user signs in as before.
+        self.d.config["idp_domains"] = []
+        self.d._school_places_tried = False
+        with patch.object(lookup, "find", return_value=lookup.Lookup()):
+            self.result = SimpleNamespace(doi="10.1000/z")
+            self.assertFalse(self.sign_in())
+        self.assertEqual(self.events[-1], ("school_sign_in_skipped", "not the school's page: https://cas.hongmulan.example"))
 
     def test_not_filled(self):
         cases = {
@@ -349,24 +374,83 @@ class ALoginPageWithACertificateChromeWillNotTake(TempConfig):
 
 
 class TheSettingsPage(TempConfig):
-    def test_what_the_page_reads_and_saves(self):
+    def api(self):
         from paper_search_school.progress_capsule import Api
 
-        api = Api.__new__(Api)
+        return Api.__new__(Api)
+
+    def test_what_the_page_reads_and_saves(self):
+        api = self.api()
         with patch("paper_search_school.progress_capsule.pro_features", return_value=True), \
              patch.object(school_login, "module", return_value=None):
             state = api.school_login_state()
             self.assertEqual((state["ok"], state["saved"], state["school"], state["pro"]), (True, False, "红木兰大学", False))
+            self.assertEqual([(s["name"], s["current"]) for s in state["schools"]], [("红木兰大学", True)])
             state = api.save_school_login("20261234", PASSWORD, True)
             self.assertEqual((state["saved"], state["username"], state["enabled"]), (True, "2******4", True))
             self.assertNotIn(PASSWORD, repr(state))
             # The page's fields: the password there, hidden until its eye shows it (user, 2026-11-19).
             self.assertEqual(api.school_login_saved(), {"username": "20261234", "password": PASSWORD})
+            self.assertEqual(api.school_login_saved(ENTITY), {"username": "20261234", "password": PASSWORD})
             self.assertFalse(api.save_school_login("", "", True)["ok"] is False)
             self.assertFalse(api.clear_school_login()["saved"])
+            self.assertFalse(api.save_school_login("x", "y", True, "https://idp.not-added.example/idp")["ok"])
         with patch("paper_search_school.progress_capsule.pro_features", return_value=False):
             self.assertFalse(api.school_login_state()["ok"])
             self.assertEqual(api.school_login_saved(), {})
+
+    def test_several_schools_each_its_account_one_the_default(self):
+        # User, 2026-11-20: several schools on the page, found by name in any language in the federations'
+        # lists (only a school found there is kept), each with its account; one the default for downloads.
+        from paper_search_school.schools import lookup
+
+        other_entity = "https://idp.lanshan.example/idp/shibboleth"
+        other = lookup.School(name="蓝杉大学", name_en="Lanshan University", entity_id=other_entity, federation="carsi",
+                              domain="lanshan.example")
+        statuses = {ENTITY: "surveyed", other_entity: "check"}
+        pro = SimpleNamespace(school_status=lambda entity: statuses.get(entity, ""),
+                              school_counts=lambda: {"filled": 461, "check": 287},
+                              school_list=lambda: [{"name": "红木兰大学", "name_en": "Mulan University", "country": "中国",
+                                                    "province": "广东", "status": "surveyed"}, {"x": 1}])
+
+        def find(query, config, data_dir, also=()):
+            hit = query in ("Lanshan University", "蓝杉大学", other_entity)
+            return lookup.Lookup(school=other if hit else None)
+
+        api = self.api()
+        with patch("paper_search_school.progress_capsule.pro_features", return_value=True), \
+             patch.object(school_login, "module", return_value=pro), patch.object(lookup, "find", side_effect=find) as finder:
+            self.assertEqual(api.school_login_state()["counts"], {"filled": 461, "check": 287})
+            # 支持哪些学校 (user, 2026-11-20): the schools Pro knows; an entry without a name left out.
+            self.assertEqual(api.school_support_list(), {"ok": True, "schools": [
+                {"name": "红木兰大学", "name_en": "Mulan University", "country": "中国", "province": "广东", "status": "surveyed"}]})
+            self.assertIn("没有找到", api.find_school("Nowhere College")["note"])
+            self.assertFalse(api.find_school(" ")["ok"])
+            self.assertFalse(api.add_school("https://idp.unknown.example/idp")["ok"])
+            found = api.find_school("Lanshan University")
+            self.assertEqual([(r["name"], r["status"], r["added"]) for r in found["results"]], [("蓝杉大学", "check", False)])
+            # 添加 takes the school found, not looked up again (user, 2026-11-20: the page seemed stuck).
+            looked = finder.call_count
+            state = api.add_school(other_entity)
+            self.assertEqual(finder.call_count, looked)
+            self.assertEqual([(s["name"], s["current"], s["status"]) for s in state["schools"]],
+                             [("红木兰大学", True, "surveyed"), ("蓝杉大学", False, "check")])
+            self.assertTrue(api.find_school("蓝杉大学")["results"][0]["added"])
+            # Each school its own account.
+            api.save_school_login("20261234", PASSWORD, True)
+            api.save_school_login("lanshan-1", "lanshan-pw", True, other_entity)
+            self.assertEqual(api.school_login_saved(other_entity), {"username": "lanshan-1", "password": "lanshan-pw"})
+            self.assertEqual(api.school_login_saved()["username"], "20261234")
+            # The default school switched here: the download's school (the config's own fields) with it.
+            state = api.set_default_school(other_entity)
+            self.assertEqual([(s["name"], s["current"]) for s in state["schools"]], [("蓝杉大学", True), ("红木兰大学", False)])
+            self.assertEqual(config_mod.load_config()["idp_entity_id"], other_entity)
+            self.assertEqual(state["username"], school_login.masked("lanshan-1"))
+            # The default one stays; another goes, its account with it.
+            self.assertFalse(api.forget_school(other_entity)["ok"])
+            state = api.forget_school(ENTITY)
+            self.assertEqual([s["name"] for s in state["schools"]], ["蓝杉大学"])
+            self.assertIsNone(school_login.saved(config_mod.load_config(), ENTITY))
 
 
 if __name__ == "__main__":

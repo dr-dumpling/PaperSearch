@@ -448,6 +448,15 @@ class IdpConfirmationTests(unittest.TestCase):
         page.evaluate.return_value = ""
         d._body_text = lambda page, limit=2000: "Authentication with Duo is required for the requested service."
         self.assertEqual(d._idp_confirmation(page), "duo")
+        page.url = "https://cas.example.edu.cn/login/mfaLogin.html?appId=1"
+        d._body_text = lambda page, limit=2000: ("IAM 访问【联邦身份认证】需要二次验证 请选择一种方式进行身份验证 "
+                                                 "企微扫码 手机验证码 企微验证码 切换认证方式")
+        self.assertEqual(d._idp_confirmation(page), "second_factor")
+        d._body_text = lambda page, limit=2000: "Approve sign in request. Open your Authenticator app."
+        self.assertEqual(d._idp_confirmation(page), "second_factor")
+        # A first login page offering a scan or a code as another way in names no second step.
+        d._body_text = lambda page, limit=2000: "统一身份认证 账号登录 扫码登录 手机验证码登录 忘记密码"
+        self.assertEqual(d._idp_confirmation(page), "")
         page.url = "https://www.example.org/article"
         page.evaluate.return_value = "attribute-release"
         self.assertEqual(d._idp_confirmation(page), "")

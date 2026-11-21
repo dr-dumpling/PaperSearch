@@ -558,12 +558,18 @@ class SchoolSignInRoutesTests(unittest.TestCase):
         page.evaluate.return_value = [self.entry("Harbour University", "null"), self.entry("Harbour University", "null")]
         result = Mock(events=[])
         d._event = lambda result, state, detail: result.events.append({"state": state, "detail": detail})
-        self.assertFalse(d._click_unique_institution_entry(page, result, page.url))
-        self.assertTrue(result._institution_not_listed)
-        self.assertEqual([e["state"] for e in result.events], ["auto_institution_not_found"])
-        # Recorded once, however often the page is looked at before the login ends.
-        self.assertFalse(d._click_unique_institution_entry(page, result, page.url))
-        self.assertEqual(len(result.events), 1)
+        clock = [1000.0]
+        with patch("paper_search_school.engine.batch_institution.time.time", lambda: clock[0]):
+            # The first sight of the list says nothing yet: the search may still be adding entries.
+            self.assertFalse(d._click_unique_institution_entry(page, result, page.url))
+            self.assertEqual(result.events, [])
+            clock[0] += d.LIST_SETTLE_SEC
+            self.assertFalse(d._click_unique_institution_entry(page, result, page.url))
+            self.assertTrue(result._institution_not_listed)
+            self.assertEqual([e["state"] for e in result.events], ["auto_institution_not_found"])
+            # Recorded once, however often the page is looked at before the login ends.
+            self.assertFalse(d._click_unique_institution_entry(page, result, page.url))
+            self.assertEqual(len(result.events), 1)
 
     def test_the_entry_with_the_schools_sign_in_is_still_chosen(self):
         d = self.downloader()

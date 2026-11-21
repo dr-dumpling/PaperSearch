@@ -365,6 +365,42 @@ class LoginMixin:
         self._event(result, "school_certificate", f"{host}: {error or 'unread'}, not the certificate surveyed")
         return False
 
+    def _fill_school_places(self, entity_id: str) -> bool:
+        """The saved school's domains and login pages when the version that saved it kept none (a school set
+        up with 0.6: only its entityID's host counted, its CAS login page on another host "not the school's page",
+        2026-11-20): read once a batch from its federation's list by its entityID, only the missing ones added,
+        written back to the config for the next batches too. Whether any was added."""
+        if getattr(self, "_school_places_tried", False) or not entity_id or self.config.get("idp_domains"):
+            return False
+        self._school_places_tried = True
+        from ..config import DATA_DIR, load_config, save_config
+        from ..schools import lookup
+        try:
+            found = lookup.find(entity_id, self.config, DATA_DIR)
+        except Exception:
+            return False  # its list not read now: the user signs in as before
+        if found.school is None or found.school.entity_id != entity_id:
+            return False
+        places: dict[str, Any] = {}
+        lookup.save(places, found.school)
+        added = {key: places[key] for key in ("idp_domains", "idp_login_hosts", "idp_login_pages")
+                 if places.get(key) and not self.config.get(key)}
+        if not added:
+            return False
+        self.config.update(added)
+        try:
+            config = load_config()
+            entries = [config] if str(config.get("idp_entity_id") or "").strip() == entity_id else []
+            entries += [entry for entry in config.get("saved_schools") or []
+                        if isinstance(entry, dict) and str(entry.get("idp_entity_id") or "").strip() == entity_id]
+            for entry in entries:
+                entry.update({key: value for key, value in added.items() if not entry.get(key)})
+            if entries:
+                save_config(config)
+        except Exception:
+            pass  # added for this batch all the same
+        return True
+
     def _school_sign_in(self, page: Any, result: DownloadResult) -> bool:
         """PaperSearch Pro fills the school's sign-in in for the user (its tests and survey in the Pro repository):
         on the school's own https page, for a school Pro has tested, with the account the user
@@ -396,7 +432,8 @@ class LoginMixin:
             return skipped(f"not tested: {school_login.school_status(entity_id, pro) or 'not listed'}")
         url = str(getattr(page, "url", "") or "")
         also = school_login.pro_login_hosts(pro, entity_id)  # its login page on another domain of its own
-        if not school_login.may_fill(url, self.config, also):
+        if not school_login.may_fill(url, self.config, also) and not (
+                self._fill_school_places(entity_id) and school_login.may_fill(url, self.config, also)):
             return skipped(f"not the school's page: {urlparse(url).scheme}://{urlparse(url).hostname or ''}")
         kind = self._login_wait_page(page)
         if kind != "school_login":
@@ -932,7 +969,20 @@ class LoginMixin:
             return ""
         if kind:
             return str(kind)
-        return "duo" if "authentication with duo is required" in self._body_text(page, 2_000).lower() else ""
+        text = self._body_text(page, 2_000)
+        if "authentication with duo is required" in text.lower():
+            return "duo"
+        return "second_factor" if self._SECOND_FACTOR_RE.search(text) else ""
+
+    # The school's page asking for a second factor before it lets the login go on: a
+    # choice of ways (WeCom scan, a code) with no field or code shown yet was taken for a
+    # page the login had ended on, the item ended in 13 s and the user was never told
+    # (a school's CAS, "访问【联邦身份认证】需要二次验证", 2026-11-21). By the words naming
+    # the second step; a first login page offering to sign in by a scan or a code names none.
+    _SECOND_FACTOR_RE = re.compile(
+        r"二次(?:验证|认证)|双因素|双因子|多因素|两步验证|双重(?:验证|认证)"
+        r"|two[- ]step verification|2-step verification|two[- ]factor|multi[- ]?factor|second factor"
+        r"|approve (?:the )?sign[- ]?in request|verify your identity", re.I)
 
     def _federation_list_lacks_ours(self, page: Any) -> str:
         """A federation list without the school's federation: no route for the school, so waiting

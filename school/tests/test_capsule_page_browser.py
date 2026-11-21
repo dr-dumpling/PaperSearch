@@ -1396,6 +1396,11 @@ class CapsulePageTests(unittest.TestCase):
                     sites.click()
                     page.wait_for_selector('.pro-sites')
                     self.assertIn('BMJ', page.locator('.pro-sites').inner_text())
+                    # In groups, each site once, the multidisciplinary platforms first (user, 2026-11-20).
+                    groups = page.locator('.site-group').all_inner_texts()
+                    self.assertEqual(groups, ['Multi-subject platforms · 2', 'General journals · 2', 'Medicine · 3']
+                                     if english else ['多学科出版平台 · 2', '综合期刊 · 2', '医学 · 3'])
+                    self.assertEqual(page.locator('.site-chip').count(), 7)
                     # Back on the home page; 版本与更新 says whether Pro is free and until when (user, 2026-11-19).
                     page.locator('[data-act=back]').click()
                     page.wait_for_selector('.pro-group')
@@ -1610,7 +1615,7 @@ class CapsulePageTests(unittest.TestCase):
                 row.click()
                 page.wait_for_selector('.pro-stats')
                 text = page.locator('.settings').inner_text()
-                for said in ('以下内容一并保留', '图片', '表格', '公式', '参考文献', '已转换（篇）', '完整无缺', '转换有缺漏或出错？'):
+                for said in ('以下内容一并保留', '图片', '表格', '公式', '参考文献', '已转换（篇）', '完整无缺', '转换有缺漏、出错，或想加出版社？'):
                     self.assertIn(said, text)
                 page.locator('[data-act=pro_issue]').click()
                 page.wait_for_function('issues === 1')
@@ -1675,8 +1680,10 @@ class CapsulePageTests(unittest.TestCase):
             try:
                 page.evaluate("""() => {
                     window.saved = null;
-                    const state = () => ({ok: true, school: '红木兰大学', entity: true, saved: !!saved, username: saved ? '2******4' : '',
-                                          enabled: true, off: '', pro: true, status: 'trial'});
+                    const one = () => ({key: 'https://idp.hongmulan.example/idp', name: '红木兰大学', name_en: '', current: true, entity: true,
+                                        saved: !!saved, username: saved ? '2******4' : '', enabled: true, off: '', status: 'trial'});
+                    const state = () => ({ok: true, pro: true, schools: [one()], counts: {filled: 461, check: 287}, ...one(),
+                                          school: '红木兰大学'});
                     Object.assign(pywebview.api, {
                         settings: async () => ({notify: true, download_dir: '/papers', language: 'zh', fields: []}),
                         api_keys: async () => ({ok:true, filled:0, total:0, groups:[]}),
@@ -1684,23 +1691,132 @@ class CapsulePageTests(unittest.TestCase):
                         pro_install_state: async () => ({state: 'idle'}),
                         school_login_state: async () => state(),
                         school_login_saved: async () => (saved || {}),
-                        save_school_login: async (username, password) => { saved = {username, password}; return state(); }});
+                        save_school_login: async (username, password, enabled, key) => { saved = {username, password, key}; return state(); }});
                 }""")
                 page.evaluate("async () => { testState = {mode: 'idle'}; await tick(); await act('settings'); }")
                 page.locator('[data-page=login]').click()
-                page.wait_for_selector('#login-user')
+                page.wait_for_selector('#login-user')  # the default school open first
                 self.assertEqual(page.locator('#login-error').inner_text(), '')
+                self.assertEqual(page.locator('.key-note').count(), 0)  # no line of numbers (user, 2026-11-20)
+                self.assertEqual(page.locator('[data-page=login_schools]').inner_text(), '支持哪些学校')
                 page.fill('#login-user', '20261234')
                 page.fill('#login-password', 'Mulan-pw-2026')
+                # A click elsewhere draws the page again: what was typed stays (user, 2026-11-20).
+                page.evaluate("() => render(true)")
+                self.assertEqual(page.input_value('#login-user'), '20261234')
+                self.assertEqual(page.input_value('#login-password'), 'Mulan-pw-2026')
                 page.locator('[data-act=save_login]').click()
-                page.wait_for_function("document.querySelector('#login-error')?.textContent === '已保存'")
-                self.assertIn('ok', page.locator('#login-error').get_attribute('class'))
+                # Saved, said on the button itself a moment, no line below (user, 2026-11-20).
+                page.wait_for_function("document.querySelector('[data-act=save_login]')?.textContent === '已保存'")
+                self.assertEqual(page.locator('#login-error').inner_text(), '')
+                page.wait_for_function("document.querySelector('[data-act=save_login]')?.textContent === '保存'", timeout=4000)
                 # Saved: both in their fields, the password hidden until the eye shows it.
                 self.assertEqual(page.input_value('#login-user'), '20261234')
                 self.assertEqual(page.get_attribute('#login-password', 'type'), 'password')
                 self.assertEqual(page.input_value('#login-password'), 'Mulan-pw-2026')
                 page.locator('[data-act=login_reveal]').click()
                 self.assertEqual(page.get_attribute('#login-password', 'type'), 'text')
+                self.assertEqual(page.evaluate('saved.key'), 'https://idp.hongmulan.example/idp')
+            finally:
+                browser.close()
+
+    def test_the_sign_in_page_holds_several_schools_one_the_default(self):
+        # User, 2026-11-20: several schools, each with its account; one the default for downloads, switched
+        # here; another added once found in the federations' lists, its status said before it is added.
+        from patchright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'darwin')
+            try:
+                page.evaluate("""() => {
+                    window.schools = [{key: 'A', name: '红木兰大学', name_en: 'Hongmulan University', current: true, entity: true,
+                                       saved: true, username: '2******4', enabled: true, off: '', status: 'surveyed'}];
+                    window.accounts = {A: {username: '20261234', password: 'pw-a'}};
+                    window.asked = [];
+                    const state = () => ({ok: true, pro: true, schools: [...schools].sort((x, y) => y.current - x.current),
+                                          counts: {filled: 461, check: 287}, ...schools.find((s) => s.current)});
+                    Object.assign(pywebview.api, {
+                        settings: async () => ({notify: true, download_dir: '/papers', language: 'zh', fields: []}),
+                        api_keys: async () => ({ok:true, filled:0, total:0, groups:[]}),
+                        pro_status: async () => ({ok: true, installed: true, version: '0.2.0'}),
+                        pro_install_state: async () => ({state: 'idle'}),
+                        school_login_state: async () => state(),
+                        school_login_saved: async (key) => accounts[key] || {},
+                        find_school: async (query) => { asked.push(query); return {ok: true, note: '', results: [
+                            {key: 'B', name: '蓝杉大学', name_en: 'Lanshan University', federation: 'CARSI', status: 'check', added: false}]}; },
+                        add_school: async (key) => { schools.push({key, name: '蓝杉大学', name_en: 'Lanshan University', current: false,
+                            entity: true, saved: false, username: '', enabled: false, off: '', status: 'check'}); return state(); },
+                        set_default_school: async (key) => { schools.forEach((s) => { s.current = s.key === key; }); return state(); },
+                        forget_school: async (key) => { schools = schools.filter((s) => s.key !== key); return state(); },
+                        save_school_login: async (username, password, enabled, key) => {
+                            accounts[key] = {username, password}; const s = schools.find((x) => x.key === key);
+                            Object.assign(s, {saved: true, username: username[0] + '***', enabled: true}); return state(); }});
+                }""")
+                page.evaluate("async () => { testState = {mode: 'idle'}; await tick(); await act('settings'); }")
+                page.locator('[data-page=login]').click()
+                page.wait_for_selector('#login-user')
+                self.assertEqual(page.input_value('#login-user'), '20261234')
+                rows = page.locator('.login-row[data-act=login_open]')
+                self.assertEqual(rows.count(), 1)
+                self.assertIn('默认', rows.first.inner_text())
+                self.assertIn('自动填写', rows.first.inner_text())
+                # 添加学校: a row like the schools', opened to its search (user, 2026-11-20); found by name, its
+                # status said, added; what was typed there kept on a redraw.
+                self.assertEqual(page.locator('#school-query').count(), 0)
+                page.locator('[data-act=login_add]').click()
+                page.wait_for_selector('#school-query')
+                page.fill('#school-query', 'Lanshan University')
+                page.evaluate("() => render(true)")
+                self.assertEqual(page.input_value('#school-query'), 'Lanshan University')
+                page.press('#school-query', 'Enter')
+                page.wait_for_selector('.login-found')
+                self.assertEqual(page.evaluate('asked'), ['Lanshan University'])
+                self.assertIn('需自己登录', page.locator('.login-found').inner_text())
+                page.locator('[data-act=add_school]').click()
+                page.wait_for_function("document.querySelectorAll('.login-row[data-act=login_open]').length === 2")
+                self.assertEqual(page.locator('#login-error').inner_text(), '已添加，请填账号和密码')
+                self.assertEqual(page.input_value('#login-user'), '')  # the new school's own fields
+                page.fill('#login-user', 'lanshan-1')
+                page.fill('#login-password', 'pw-b')
+                page.locator('[data-act=save_login]').click()
+                page.wait_for_function("accounts.B && accounts.B.username === 'lanshan-1'")
+                self.assertEqual(page.evaluate('accounts.A.username'), '20261234')  # the other school's untouched
+                # The default switched here; the default one cannot be removed, another can.
+                page.locator('[data-act=set_default]').click()
+                page.wait_for_function("schools.find((s) => s.key === 'B').current")
+                self.assertIn('蓝杉大学', page.locator('.login-row[data-act=login_open]').first.inner_text())
+                self.assertEqual(page.locator('[data-act=forget_school]').count(), 0)
+                page.locator('.login-row[data-act=login_open]').nth(1).click()
+                page.wait_for_selector('[data-act=forget_school]')
+                # Every school's buttons alike, the rarer actions as links under them (user, 2026-11-20).
+                self.assertEqual(page.locator('.key-actions .btn').all_inner_texts(), ['关闭自动登录', '保存'])
+                self.assertEqual(page.locator('.login-links .link-btn').all_inner_texts(), ['设为默认', '清除账号密码', '移除这所学校'])
+                page.locator('[data-act=forget_school]').click()
+                self.assertEqual(page.locator('[data-act=forget_school]').inner_text(), '确认移除')
+                page.locator('[data-act=forget_school]').click()
+                page.wait_for_function("document.querySelectorAll('.login-row[data-act=login_open]').length === 1")
+                # 支持哪些学校: a page of its own, how many of each kind, a mainland school by its province, any other by
+                # its country (user, 2026-11-20), narrowed by what is typed.
+                page.evaluate('''() => Object.assign(pywebview.api, {school_support_list: async () => ({ok: true, schools: [
+                    {name: '红木兰大学', country: '中国', province: '广东', status: 'surveyed'},
+                    {name: '蓝杉大学', country: '中国', province: '广东', status: 'check'},
+                    {name: '白桦大学', country: '中国', province: '吉林', status: 'surveyed'},
+                    {name: '木兰大学', name_en: 'Mulan University', country: '日本', province: '', status: 'surveyed'}]})})''')
+                page.locator('[data-page=login_schools]').click()
+                page.wait_for_selector('#support-list')
+                self.assertEqual(page.locator('.stats b').all_inner_texts(), ['3', '1'])
+                self.assertIn('自动填写：打开学校登录页时', page.locator('body').inner_text())
+                # In English (user, 2026-11-20): a school's English name (its country's and province's: test_i18n).
+                self.assertIn('Mulan University', page.evaluate("""() => { const kept = [lang, supportOpen]; lang = 'en';
+                    supportOpen = '日本'; const html = supportListHtml(); [lang, supportOpen] = kept; return html; }"""))
+                self.assertEqual(page.locator('.grp .reason').all_inner_texts(), ['广东', '吉林', '日本'])  # the most schools first
+                page.locator('[data-act=support_group]').first.click()
+                page.wait_for_function("document.querySelectorAll('#support-list .login-found').length === 2")
+                self.assertIn('需自己登录', page.locator('#support-list').inner_text())
+                page.fill('#support-filter', '白桦')
+                self.assertEqual(page.locator('#support-list .ls-name').all_inner_texts(), ['白桦大学'])
+                self.assertEqual(page.evaluate('document.activeElement.id'), 'support-filter')  # still typing there
+                page.locator('[data-act=back]').click()
+                page.wait_for_selector('[data-act=login_add]')
             finally:
                 browser.close()
 
@@ -1819,8 +1935,10 @@ class CapsulePageTests(unittest.TestCase):
                         {name: 'hourly', label: '每家出版社每小时最多', unit: '篇', value: 100, default: 100, page: 'download'}]}),
                     api_keys: async () => listing, api_key_values: async () => ({ok: true, values: {}}),
                     pro_status: async () => ({ok: true, installed: true, version: '0.1.0'}),
-                    school_login_state: async () => ({ok: true, school: 'Hongmulan University', entity: true, saved: true,
-                        username: '2******4', enabled: true, off: 'rejected', pro: true, status: 'trial'}),
+                    school_login_state: async () => ({ok: true, pro: true, counts: {filled: 461, check: 287}, schools: [
+                        {key: 'A', name: 'Hongmulan University', name_en: 'Hongmulan University', current: true, entity: true, saved: true,
+                         username: '2******4', enabled: true, off: 'rejected', status: 'trial'}],
+                        school: 'Hongmulan University', entity: true, saved: true, username: '2******4', enabled: true, off: 'rejected', status: 'trial'}),
                     school_login_saved: async () => ({username: '20261234', password: 'x'}),
                     test_api_key: async () => ({status: 'invalid', message: '被拒绝：key 不对，或已失效（HTTP 401）'})})""", listing)
                 page.evaluate("async () => { testState = {mode: 'idle', lang: 'en'}; await tick(); await act('settings'); }")

@@ -66,7 +66,7 @@ export const SCHOOL_BACKEND_UTF8_ENV: Readonly<Record<string, string>> = { PYTHO
 
 const SCHOOL_BACKEND_SOURCE = "school";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.7.0";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.7.1";
 
 interface ActiveSession {
   client: Client;

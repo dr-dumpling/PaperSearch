@@ -666,6 +666,12 @@ def chrome_profile_dir(user_data_dir: str | Path) -> Path:
     return path.with_name(path.name + CHROME_PROFILE_SUFFIX)
 
 
+def accept_languages(language: str) -> str:
+    """The language list a browser set to ``language`` sends: ``en-US`` -> ``en-US,en``."""
+    base = language.split("-")[0]
+    return language if base == language else f"{language},{base}"
+
+
 def _chrome_options(headless: bool, proxy: Any, args: list[str] | None,
                     config: dict[str, Any] | None) -> dict[str, Any]:
     """Launch options for the installed Chrome: its public switches only.
@@ -684,16 +690,21 @@ def _chrome_options(headless: bool, proxy: Any, args: list[str] | None,
     # list of unsupported flags, shown on a warning bar; Chrome's own
     # --test-type switch skips that prompt.
     switches = list(dict.fromkeys([*switches, "--test-type"]))
-    # The pages in English whatever the computer's own language (browser_language; user, 2026-11-19: the
-    # publishers' and the schools' pages were tested in English, so every user gets those pages).
+    # Choose Chrome's language through its own switch. A context locale override
+    # also replaces its native language list and request headers; the 2026-11-21
+    # publisher comparison failed with that override and passed without it.
+    # --lang alone does not reach the pages on a Mac (they follow the system's
+    # language there) nor in a profile that already saved its languages: Chrome's
+    # own --accept-lang sets the languages the pages read, as the language setting
+    # in Chrome's settings does (2026-11-21, Chinese system: zh-CN without it).
     language = str((config or {}).get("browser_language", "en-US") or "").strip()
     if language and not any(arg.startswith("--lang=") for arg in switches):
         switches.append(f"--lang={language}")
+    if language and not any(arg.startswith("--accept-lang=") for arg in switches):
+        switches.append(f"--accept-lang={accept_languages(language)}")
     opts: dict[str, Any] = {"executable_path": str(executable), "headless": headless, "args": switches,
                             # Without it the driver adds --no-sandbox, and Chrome shows a warning bar.
                             "chromium_sandbox": True}
-    if language:
-        opts["locale"] = language  # navigator.language and the Accept-Language the sites read
     if proxy:
         opts["proxy"] = proxy
     if not headless:
@@ -712,7 +723,6 @@ def _launch_chrome(headless: bool, proxy: Any, args: list[str] | None, config: d
 
     opts = _chrome_options(headless, proxy, args, config)
     opts.pop("no_viewport", None)  # a context option, not a launch option
-    opts.pop("locale", None)  # likewise: the --lang switch stands for it
     pw = sync_playwright().start()
     try:
         browser = pw.chromium.launch(**opts)

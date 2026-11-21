@@ -433,7 +433,7 @@ class UserWaitMixin:
             if self._press_confirm_control(page, result, attempt, deadline):
                 return True
             return False
-        if ((attempt["attempts"] >= 3 and now >= attempt["retry_at"])
+        if ((attempt["attempts"] >= 2 and now >= attempt["retry_at"])
                 or (attempt.get("unavailable") and now >= attempt["handoff_at"])):
             return False
         if now >= automatic_end:
@@ -441,7 +441,15 @@ class UserWaitMixin:
             return True
         if self._recover_stuck_widget(page, result, attempt):
             return True
-        if now >= attempt["retry_at"] and attempt["attempts"] < 3:
+        if now >= attempt["retry_at"] and attempt["attempts"] < 2:
+            if attempt.get("managed"):
+                if challenge_interaction.verification_widget(page):
+                    # The widget appeared after all (a frame that drew late):
+                    # back to pressing it, with the budget that is left.
+                    attempt["managed"] = False
+                else:
+                    attempt["retry_at"] = now + 3
+                    return True
             reasons = []
             outcome = challenge_interaction.click_checkbox(
                 page, timeout_ms=min(2500, max(1, int((automatic_end - now) * 1000))),
@@ -450,6 +458,15 @@ class UserWaitMixin:
                 attempt=attempt["attempts"],
             )
             reason = ", ".join(dict.fromkeys(reasons)) or outcome
+            if outcome == "absent" and not challenge_interaction.verification_widget(page):
+                # Nothing was pressed and the page holds no widget: Cloudflare's
+                # managed challenge (or an iframe still loading). A managed one
+                # clears on its own; waiting is the only move, and the wait must
+                # not be spent on presses that cannot happen.
+                attempt["managed"] = True
+                self._event(result, "challenge_managed",
+                            "no widget on the page: waiting for the challenge to clear")
+                return True
             if reason != attempt.get("last_observation"):
                 self._event(result, "challenge_observation", reason)
                 attempt["last_observation"] = reason
@@ -462,7 +479,7 @@ class UserWaitMixin:
                 if activity is not None:
                     activity.progress(page)
                 self._event(result, "challenge_interaction",
-                            f"checkbox clicked; attempt {attempt['attempts']}/3; awaiting verification")
+                            f"checkbox clicked; attempt {attempt['attempts']}/2; awaiting verification")
                 names = [str(item.get("event"))
                          for item in challenge_interaction.interaction_events(page)]
                 if names:

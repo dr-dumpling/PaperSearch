@@ -103,6 +103,11 @@ class EnglishTableTests(unittest.TestCase):
         long = [(zh, en) for zh, en in i18n.table()["exact"].items() if len(en) > max(24, 2.6 * len(zh))]
         self.assertEqual(long, [])
 
+    def test_the_schools_places_in_english(self):
+        # 支持哪些学校 in English (user, 2026-11-20): the provinces and the countries the lists name.
+        exact = i18n.table()["exact"]
+        self.assertEqual((exact["广东"], exact["日本"], exact["英国"]), ("Guangdong", "Japan", "United Kingdom"))
+
     def test_the_page_carries_the_table(self):
         page = page_html()
         self.assertNotIn("/*CAPSULE_EN*/null", page)

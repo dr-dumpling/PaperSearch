@@ -239,7 +239,7 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .pro-hint { font-size: 11px; color: var(--faint); text-align: center; margin-top: 6px; }
 .pro-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; padding-top: 10px;
             border-top: 0.5px solid var(--line); font-size: 12px; color: var(--dim); }
-.pro-foot .btn.link { padding-right: 0; gap: 2px; }
+.pro-foot .btn.link { padding-right: 0; gap: 2px; white-space: nowrap; flex: none; }
 .pro-foot .btn.link svg.i { width: 13px; height: 13px; }
 /* What Pro keeps, its counts, its sites and whether it is free (user, 2026-11-19). */
 /* What a Markdown keeps, the counts, the sites and the usage, as drawn on 2026-11-19: taller than the
@@ -251,22 +251,63 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .pro-chip svg.i { width: 13px; height: 13px; }
 .pro-stats { margin-top: 12px; }
 .pro-row.static { cursor: default; }
-.pro-sites { font-size: 12px; line-height: 1.6; color: var(--dim); padding: 0 0 8px 26px; }
+.pro-sites { padding: 0 0 8px 26px; }
+/* The platforms by kind, each site once (user, 2026-11-20: a list in groups, the multidisciplinary ones first). */
+.site-group { font-size: 11px; color: var(--faint); margin: 6px 0 3px; }
+.site-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.site-chip { font-size: 11.5px; line-height: 1.6; padding: 0 7px; border-radius: 5px; border: 0.5px solid var(--line); color: var(--fg); }
 .key-row.editing { cursor: default; }
 .key-row.editing:hover .nav-title { color: inherit; }
 .key-set { font-size: 12px; color: var(--ok); white-space: nowrap; }
 .key-row .btn { pointer-events: none; }
 .key-edit { background: var(--hover); border-radius: 8px; padding: 8px 10px; margin: 0 0 6px; }
-/* The school sign-in page (PaperSearch Pro): each field under its name, room between them (user, 2026-11-19). */
-.login-form { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
-.login-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--dim); }
-.settings .login-field input { width: 100%; box-sizing: border-box; text-align: left; background: var(--bg); padding: 7px 9px; font-size: 13px; }
-.login-pw { display: flex; align-items: center; gap: 6px; }
+/* The school sign-in page (PaperSearch Pro): the schools saved, one the default for downloads, each with its
+   account; the fields beside their names, close together (user, 2026-11-20). */
+.login-school { border-bottom: 0.5px solid var(--line); }
+.login-row { display: flex; align-items: center; gap: 6px; width: 100%; padding: 8px 0; text-align: left; font-size: 13px;
+             border: none; background: none; color: inherit; font-family: inherit; cursor: pointer; }
+.login-row:hover .ls-name { color: var(--accent); }
+.login-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
+.login-row .ls-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.login-row .ls-acct { margin-left: auto; font-size: 11.5px; color: var(--dim); white-space: nowrap; }
+.login-row svg.i { width: 13px; height: 13px; flex: none; color: var(--faint); }
+.tag.fill { background: rgba(22, 163, 74, 0.12); color: var(--ok); }
+.tag.trial { background: var(--hover); color: var(--accent); }
+.tag.default { background: var(--accent); color: #fff; }
+.tag.check { background: var(--warn-bg); color: var(--warn); }
+.tag.none { background: var(--hover); color: var(--dim); }
+.login-form { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; padding: 0 0 8px; font-size: 12px; color: var(--dim); }
+.settings .login-form input { width: 100%; box-sizing: border-box; text-align: left; background: var(--bg); padding: 5px 8px; font-size: 13px; }
+.login-pw { display: flex; align-items: center; gap: 4px; }
 .login-pw input { flex: 1; min-width: 0; }
 .login-pw .iconbtn { margin: 0; flex: none; }
-.login-form .key-note { margin: 0; }
+.login-form .err, .login-form .key-actions { grid-column: 1 / -1; }
 .login-form .err { text-align: left; margin: 0; }
 .login-form .err:empty { display: none; }
+.login-form .key-actions { margin-top: 2px; }
+.login-form .key-actions .btn { white-space: nowrap; }
+/* The less used ones under the buttons, the same for every school (user, 2026-11-20: rows of buttons that differed
+   from school to school, and wrapped). */
+.login-links { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12px; }
+.login-links .link-btn { border: none; background: none; padding: 0; font: inherit; color: var(--dim); cursor: pointer; }
+.login-links .link-btn:hover, .login-links .link-btn:focus-visible { color: var(--accent); }
+.login-links .link-btn.danger:hover, .login-links .link-btn.danger:focus-visible, .login-links .link-btn.confirm { color: var(--bad); }
+.login-links .sep { color: var(--dim); }
+.login-add { padding: 0 0 10px; }
+.login-add-row .ls-name { font-weight: 500; }
+.login-add-row svg.i:first-child { color: var(--accent); }
+.login-find { display: flex; gap: 6px; }
+.settings .login-find input { flex: 1; min-width: 0; text-align: left; background: var(--bg); padding: 5px 8px; font-size: 13px; }
+.login-found { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 5px 0; border-bottom: 0.5px solid var(--line); }
+.login-found .ls-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.login-found .ls-fed { font-size: 11px; color: var(--faint); }
+.login-found .btn { margin-left: auto; }
+.login-add .login-found:last-child { border-bottom: none; }
+.login-more { display: flex; justify-content: flex-end; margin-top: 8px; font-size: 12px; }
+.login-more .btn.link { padding-right: 0; gap: 2px; }
+.login-more .btn.link svg.i { width: 13px; height: 13px; }
+.login-add .err { text-align: left; margin: 6px 0 0; }
+.login-add .err:empty { display: none; }
 .settings .key-edit input { width: 100%; text-align: left; background: var(--bg); }
 .key-note { font-size: 11px; line-height: 1.5; color: var(--dim); margin-bottom: 8px; }
 .key-edit .err { text-align: left; margin: 6px 0 0; }
@@ -414,6 +455,7 @@ const ICONS = {
   formula: '<path d="M17 5H7l5 7-5 7h10"/>',
   list: '<path d="M9.5 7h10.5M9.5 12h10.5M9.5 17h10.5"/><circle cx="5" cy="7" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="5" cy="17" r="1"/>',
   gift: '<rect x="4" y="9" width="16" height="11" rx="1.5"/><path d="M3 9h18M12 9v11M12 9c-1.4-2.8-4.8-3.4-4.8-1.1 0 1.1 2.4 1.1 4.8 1.1zM12 9c1.4-2.8 4.8-3.4 4.8-1.1 0 1.1-2.4 1.1-4.8 1.1z"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
   globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.5 5.4 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.4-3.5-8.5s1.1-6.1 3.5-8.5z"/>',
   external: '<path d="M14 5h5v5M19 5l-8 8"/><path d="M18 14v4a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18V7a1.5 1.5 0 0 1 1.5-1.5H10"/>',
 };
@@ -463,7 +505,7 @@ const PRO_PAGES = ["pro", "markdown", "login"];
 // Installed, Pro's features are on the home page (the user's choice, 2026-11-19: 铺开); not yet, on
 // Pro's own page, under 安装.
 const proInstalled = () => !!(proStatus && proStatus.ok && proStatus.installed) && proInstall.state !== "running";
-const parentPage = (page) => ["markdown", "login"].includes(page) && !proInstalled() ? "pro" : "home";
+const parentPage = (page) => page === "login_schools" ? "login" : ["markdown", "login"].includes(page) && !proInstalled() ? "pro" : "home";
 // The Markdown page is one of PaperSearch Pro's features: the backend says whether this edition has it (edition.py).
 const proOn = () => !settings || settings.pro !== false;
 let settingsPage = "home", settingsNote = "", settingsOnly = false, lastStrip = "";
@@ -474,8 +516,14 @@ let apiKeys = null, editing = "", editValues = {}, confirmClear = "", revealed =
 let proStatus = null, proInstall = { state: "idle" }, proInstallTimer = 0;
 // The school sign-in page (school_login_state); its error line.
 let schoolLogin = null, loginError = "", loginValues = {}, loginShown = false;
+// The school whose account is open on the page (its entityID), and 添加学校: what was typed, what was found.
+let loginOpen = "", schoolQuery = "", schoolFound = null, schoolFinding = false, confirmForget = "", loginAdding = false;
+// 支持哪些学校: the list Pro gives, what is typed to narrow it, the province open.
+let supportList = null, supportFilter = "", supportOpen = "";
 // What the last 保存, 清除 or switch did, said under the fields (user, 2026-11-19: 保存 said nothing).
 let loginDone = "";
+// The Save button saying "已保存" a moment once pressed (user, 2026-11-20: not a line below).
+let loginSaved = false, loginSavedTimer = 0;
 let proCheck = { state: "idle" }, proCheckTimer = 0, proSitesOpen = false;
 let lastHtml = "", hoverTimer = 0, leaveTimer = 0, pollTimer = 0, kinds = [];
 const api = () => window.pywebview.api;
@@ -1016,7 +1064,28 @@ function proSites() {
     + '<span class="nav-text"><span class="nav-title">' + esc("支持的出版社平台") + '</span><span class="nav-sub">'
     + esc("共 " + sites.length + " 个，平台下的期刊都适用") + "</span></span>"
     + icon(proSitesOpen ? "down" : "right") + "</button>"
-    + (proSitesOpen ? '<div class="pro-sites">' + esc(sites.join("、")) + "</div>" : "");
+    + (proSitesOpen ? '<div class="pro-sites">' + siteGroups(sites).map(([group, names]) =>
+      '<div class="site-group">' + esc(group) + " · " + names.length + '</div><div class="site-chips">'
+      + names.map((name) => '<span class="site-chip">' + esc(name) + "</span>").join("") + "</div>").join("") + "</div>" : "");
+}
+
+// The platforms by kind, each site once, the multidisciplinary platforms first (user, 2026-11-20): the big
+// publishers' platforms hold every subject; the others are a journal's, a society's or a field's own sites.
+// A site Pro adds later and not listed here goes under 其他.
+const SITE_GROUPS = [
+  ["多学科出版平台", ["ScienceDirect", "SpringerLink", "Wiley", "Taylor & Francis", "Sage", "Oxford Academic"]],
+  ["综合期刊", ["Science", "Nature", "PNAS", "Cell Press", "Annual Reviews", "Royal Society"]],
+  ["医学", ["NEJM", "The Lancet", "JAMA Network", "BMJ", "AHA journals", "JACC journals", "Neurology", "ASH Publications",
+          "LWW (Ovid)", "Karger", "Thieme", "Dove Medical Press"]],
+  ["理工", ["ACS Publications", "RSC Publishing", "AIP Publishing", "APS Physics", "IOPscience", "Optica Publishing Group",
+          "IEEE Xplore", "ACM Digital Library", "ASCE Library", "AMS journals", "World Scientific", "Copernicus"]],
+  ["开放获取", ["PLOS", "MDPI", "Frontiers", "BMC"]],
+];
+function siteGroups(sites) {
+  const listed = new Set(SITE_GROUPS.flatMap(([, names]) => names));
+  const groups = SITE_GROUPS.map(([group, names]) => [group, names.filter((name) => sites.includes(name))]);
+  groups.push(["其他", sites.filter((name) => !listed.has(name)).sort()]);
+  return groups.filter(([, names]) => names.length);
 }
 
 // Whether Pro is free now and until when (the user, 2026-11-19: the page ends with it).
@@ -1080,51 +1149,141 @@ function settingsMarkdown() {
     + '<div class="pro-desc">' + esc("把论文全文转成 Markdown，以下内容一并保留：") + "</div>"
     + '<div class="pro-chips">' + PRO_KEEPS.map(([glyph, text]) => '<span class="pro-chip">' + icon(glyph) + esc(text) + "</span>").join("") + "</div>"
     + (installed ? proStats() + proSites() : '<div class="pro-desc">' + esc("安装 PaperSearch Pro 后可用") + "</div>")
-    + '<div class="pro-foot"><span>' + esc("转换有缺漏或出错？") + "</span>"
+    + '<div class="pro-foot"><span>' + esc("转换有缺漏、出错，或想加出版社？") + "</span>"
     + '<button type="button" class="btn link" data-act="pro_issue">' + esc("提交 issue") + icon("right") + "</button></div>"
     + (settingsNote ? '<div class="settings-note" role="status">' + esc(settingsNote) + "</div>" : "");
 }
 
-// The school sign-in page (PaperSearch Pro, user 2026-11-19): the school's account, filled in on the
-// school's own login page once Pro has tested that school. Each field under its name, with room; the
-// saved password in its field, hidden until the eye shows it (the user's: they may see it).
-function loginStatus(s) {
-  if (!s.pro) return ["bad", "需要 PaperSearch Pro"];
-  if (s.status === "verified") return ["ok", "这所学校已实测，会自动登录"];
-  if (s.status === "surveyed") return ["ok", "这所学校已摸底，会自动登录"];
-  if (s.status === "trial") return ["", "这所学校正在实测，暂时只对维护者开放"];
-  return ["", "这所学校还没实测，暂时不能自动登录"];
+// The school sign-in page (PaperSearch Pro): the schools saved, each with its account, filled in on the
+// school's own login page once Pro has tested that school; one of them the default for downloads, switched
+// here; another added by finding it in the federations' lists, in any language (user, 2026-11-20). The saved
+// password in its field, hidden until the eye shows it (the user's: they may see it).
+function schoolTag(status) {
+  if (status === "verified" || status === "surveyed") return ["fill", "自动填写"];
+  if (status === "trial") return ["trial", "实测中"];
+  if (status === "check") return ["check", "需自己登录"];
+  return ["none", "暂不支持"];
 }
+function tagHtml(status) {
+  const [cls, text] = schoolTag(status);
+  return '<span class="tag ' + cls + '">' + esc(text) + "</span>";
+}
+const schoolName = (s) => (lang === "en" && s.name_en ? s.name_en : s.name) || s.key;
 
 async function loadLoginValues() {
-  try { loginValues = (await api().school_login_saved()) || {}; } catch (error) { loginValues = {}; }
+  try { loginValues = (await api().school_login_saved(loginOpen)) || {}; } catch (error) { loginValues = {}; }
+}
+
+function loginSchool(s) {
+  const shown = loginOpen === s.key;
+  const row = '<button type="button" class="login-row" data-act="login_open" data-key="' + esc(s.key) + '" aria-expanded="' + shown + '">'
+    + '<span class="ls-name">' + esc(schoolName(s)) + "</span>"
+    + (s.current ? '<span class="tag default">' + esc("默认") + "</span>" : "") + tagHtml(s.status)
+    + '<span class="ls-acct">' + esc(s.saved ? (s.enabled ? s.username : "已关闭") : "未填账号") + "</span>"
+    + icon(shown ? "down" : "right") + "</button>";
+  if (!shown) return '<div class="login-school">' + row + "</div>";
+  return '<div class="login-school">' + row
+    + (s.off === "rejected" ? '<div class="err" style="text-align:left;margin:0 0 8px">'
+      + esc("学校没有接受保存的密码，自动登录已关闭；更新密码后保存，就会重新打开") + "</div>" : "")
+    + '<div class="login-form">'
+    + "<span>" + esc("账号") + '</span><input id="login-user" type="text" autocomplete="off" spellcheck="false" value="'
+      + esc(loginValues.username || "") + '" placeholder="' + esc("学号或工号") + '" aria-label="' + esc("账号") + '">'
+    + "<span>" + esc("密码") + '</span><span class="login-pw"><input id="login-password" type="'
+      + (loginShown ? "text" : "password") + '" autocomplete="new-password" spellcheck="false" value="' + esc(loginValues.password || "")
+      + '" aria-label="' + esc("密码") + '">'
+      + '<button type="button" class="iconbtn" data-act="login_reveal" aria-label="' + esc("显示密码") + '" aria-pressed="' + loginShown + '">'
+      + icon("eye") + "</button></span>"
+    // A line for an error, or the next step once a school is added; "saved" said on the button itself (user, 2026-11-20).
+    + '<div class="err' + (loginError ? "" : " ok") + '" id="login-error" role="status">' + esc(loginError || loginDone) + "</div>"
+    + '<div class="key-actions">'
+    + (s.saved ? '<button class="btn" data-act="login_switch">' + esc(s.enabled ? "关闭自动登录" : "打开自动登录") + "</button>" : "")
+    + '<span class="grow"></span>'
+    + '<button class="btn primary" data-act="save_login">' + (loginSaved ? icon("check") + esc("已保存") : esc("保存")) + "</button></div>"
+    + loginLinks(s) + "</div></div>";
+}
+
+// Under the buttons, the same for every school: set it as the default (not the default already), clear its account
+// and password (saved ones), remove it (not the default: another is made the default first); the last two asked twice.
+function loginLinks(s) {
+  const links = [];
+  if (!s.current) links.push('<button type="button" class="link-btn" data-act="set_default" data-key="' + esc(s.key) + '">' + esc("设为默认") + "</button>");
+  if (s.saved) links.push('<button type="button" class="link-btn danger' + (confirmClear === "login" ? " confirm" : "") + '" data-act="clear_login">'
+    + esc(confirmClear === "login" ? "确认清除账号密码" : "清除账号密码") + "</button>");
+  if (!s.current) links.push('<button type="button" class="link-btn danger' + (confirmForget === s.key ? " confirm" : "") + '" data-act="forget_school" data-key="'
+    + esc(s.key) + '">' + esc(confirmForget === s.key ? "确认移除" : "移除这所学校") + "</button>");
+  return links.length ? '<div class="login-links">' + links.join('<span class="sep">·</span>') + "</div>" : "";
+}
+
+function loginFound() {
+  if (schoolFinding) return '<div class="err ok" role="status">' + esc("查找中…") + "</div>";
+  if (!schoolFound) return "";
+  if (!schoolFound.ok) return '<div class="err" role="status">' + esc(schoolFound.error || "查找失败") + "</div>";
+  return (schoolFound.results || []).map((s) => '<div class="login-found"><span class="ls-name">' + esc(schoolName(s)) + "</span>"
+    + (s.federation ? '<span class="ls-fed">' + esc(s.federation) + "</span>" : "") + tagHtml(s.status)
+    + (s.added ? '<span class="ls-fed" style="margin-left:auto">' + esc("已添加") + "</span>"
+      : '<button class="btn" data-act="add_school" data-key="' + esc(s.key) + '">' + esc("添加") + "</button>") + "</div>").join("")
+    + (schoolFound.note ? '<div class="err" role="status">' + esc(schoolFound.note) + "</div>" : "");
 }
 
 function settingsLogin() {
   const s = schoolLogin, head = settingsHead("学校自动登录");
   if (!s || !s.ok) return head + '<div class="err" style="text-align:left">' + esc((s && s.error) || "读取失败") + "</div>";
-  if (!s.entity) return head + '<div class="settings-note">' + esc("还没有设置学校：设置好学校后再来填账号") + "</div>";
-  const [tone, line] = loginStatus(s);
-  return head
-    + '<div class="pro-head"><span class="pro-tile">' + icon("lock") + '</span><span class="nav-text">'
-    + '<span class="pro-name">' + esc(s.school || "当前学校") + "</span>"
-    + '<span class="pro-state' + (tone ? " " + tone : "") + '" role="status">' + esc(line) + "</span></span></div>"
-    + (s.off === "rejected" ? '<div class="err" style="text-align:left;margin-top:10px">'
-      + esc("学校没有接受保存的密码，自动登录已关闭；更新密码后保存，就会重新打开") + "</div>" : "")
-    + '<div class="login-form">'
-    + '<label class="login-field"><span>' + esc("账号") + '</span><input id="login-user" type="text" autocomplete="off" spellcheck="false" value="'
-      + esc(loginValues.username || "") + '" placeholder="' + esc("学号或工号") + '"></label>'
-    + '<label class="login-field"><span>' + esc("密码") + '</span><span class="login-pw"><input id="login-password" type="'
-      + (loginShown ? "text" : "password") + '" autocomplete="new-password" spellcheck="false" value="' + esc(loginValues.password || "") + '">'
-      + '<button type="button" class="iconbtn" data-act="login_reveal" aria-label="' + esc("显示密码") + '" aria-pressed="' + loginShown + '">'
-      + icon("eye") + "</button></span></label>"
-    + '<div class="key-note">' + esc("只在学校自己的登录页上填写；密码不对只试一次，然后自动关闭。账号和密码存在这台电脑的设置文件里。") + "</div>"
-    + '<div class="err' + (loginError ? "" : " ok") + '" id="login-error" role="status">' + esc(loginError || loginDone) + "</div>"
-    + '<div class="key-actions">'
-    + (s.saved ? '<button class="btn" data-act="login_switch">' + esc(s.enabled ? "关闭自动登录" : "打开自动登录") + "</button>" : "")
-    + '<span class="grow"></span>'
-    + (s.saved ? '<button class="btn danger" data-act="clear_login">' + esc(confirmClear === "login" ? "确认清除" : "清除") + "</button>" : "")
-    + '<button class="btn primary" data-act="save_login">' + esc("保存") + "</button></div></div>";
+  if (!s.pro) return head + '<div class="settings-note" style="color:var(--bad)">' + esc("需要 PaperSearch Pro") + "</div>";
+  // 添加学校 a row like the schools', opened to its search (user, 2026-11-20: a box alone said nothing).
+  return head + '<div style="margin-top:8px">' + (s.schools || []).map(loginSchool).join("")
+    + '<div class="login-school"><button type="button" class="login-row login-add-row" data-act="login_add" aria-expanded="' + loginAdding + '">'
+    + icon("plus") + '<span class="ls-name">' + esc("添加学校") + "</span>" + icon(loginAdding ? "down" : "right") + "</button>"
+    + (loginAdding ? '<div class="login-add"><div class="login-find"><input id="school-query" type="text" autocomplete="off" spellcheck="false" value="'
+      + esc(schoolQuery) + '" placeholder="' + esc("中文名、英文名或学校网址") + '" aria-label="' + esc("学校名称") + '">'
+      + '<button class="btn" data-act="find_school">' + esc("查找") + "</button></div>" + loginFound() + "</div>" : "")
+    + "</div></div>"
+    // How many schools and which, on a page of their own (user, 2026-11-20: a link, not a line of numbers).
+    + '<div class="login-more"><button type="button" class="btn link" data-act="settings_page" data-page="login_schools">'
+    + esc("支持哪些学校") + icon("right") + "</button></div>";
+}
+
+// 支持哪些学校: the schools Pro knows, how many of each kind, in groups (the most schools first): a mainland school by
+// its province, any other by its country or region (user, 2026-11-20); narrowed by what is typed; each school with
+// what Pro does for it.
+function supportGroup(s) {
+  return (s.country && s.country !== "中国" ? s.country : s.province) || "其他";
+}
+function supportRows(list) {
+  // In English, a school's English name (user, 2026-11-20); its own federation's name otherwise.
+  return list.map((s) => '<div class="login-found"><span class="ls-name">' + esc(lang === "en" && s.name_en ? s.name_en : s.name)
+    + "</span>" + tagHtml(s.status) + "</div>").join("");
+}
+function supportListHtml() {
+  const all = (supportList && supportList.schools) || [];
+  const wanted = supportFilter.trim().toLowerCase();
+  if (wanted) {
+    const said = (s) => [s.name, s.name_en, s.province, s.country, tr(s.province || ""), tr(s.country || "")].join(" ").toLowerCase();
+    const found = all.filter((s) => said(s).includes(wanted));
+    return found.length ? supportRows(found.slice(0, 80)) : '<div class="key-note">' + esc("没有符合的学校") + "</div>";
+  }
+  const provinces = new Map();
+  for (const s of all) provinces.set(supportGroup(s), [...(provinces.get(supportGroup(s)) || []), s]);
+  return [...provinces.entries()].sort((a, b) => b[1].length - a[1].length).map(([province, list]) => {
+    const shown = supportOpen === province;
+    return '<div class="grp"><button type="button" class="row" data-act="support_group" data-province="' + esc(province) + '" aria-expanded="' + shown + '">'
+      + '<span class="reason">' + esc(province) + '</span><span class="n">' + list.length + "</span>" + icon(shown ? "down" : "right") + "</button>"
+      + (shown ? '<div style="margin-top:4px">' + supportRows(list) + "</div>" : "") + "</div>";
+  }).join("");
+}
+function settingsLoginSchools() {
+  const head = settingsHead("支持的学校");
+  if (!supportList) return head + '<div class="key-note">' + esc("读取中…") + "</div>";
+  if (!supportList.ok) return head + '<div class="err" style="text-align:left">' + esc(supportList.error || "读取失败") + "</div>";
+  const all = supportList.schools || [];
+  const filled = all.filter((s) => s.status === "surveyed" || s.status === "verified").length;
+  const check = all.filter((s) => s.status === "check").length;
+  // What each number means, in a line (user, 2026-11-20: the page was not clear).
+  return head + '<div class="stats" style="margin-top:10px"><div><b>' + filled + "</b><span>" + esc("所学校自动填写账号密码") + "</span></div>"
+    + "<div><b>" + check + "</b><span>" + esc("所学校需自己登录") + "</span></div></div>"
+    + '<div class="key-note" style="margin-top:8px">' + esc("自动填写：打开学校登录页时，替你填好账号密码并提交。需自己登录：学校登录页有验证码、短信或扫码，要你自己完成。") + "</div>"
+    + '<div class="login-find" style="margin:6px 0 6px"><input id="support-filter" type="text" autocomplete="off" spellcheck="false" value="'
+    + esc(supportFilter) + '" placeholder="' + esc("筛选学校、省份或国家") + '" aria-label="' + esc("筛选学校、省份或国家") + '"></div>'
+    + '<div id="support-list">' + supportListHtml() + "</div>";
 }
 
 // While an install runs, its progress is asked for a few times a second: the bar and its line
@@ -1208,7 +1367,7 @@ function holdSettingsHeight() {
 
 function settingsCard() {
   const page = { download: settingsDownload, wait: settingsWait, keys: settingsKeys,
-    ...(proOn() ? { pro: settingsPro, markdown: settingsMarkdown, login: settingsLogin } : {}) }[settingsPage] || settingsHome;
+    ...(proOn() ? { pro: settingsPro, markdown: settingsMarkdown, login: settingsLogin, login_schools: settingsLoginSchools } : {}) }[settingsPage] || settingsHome;
   return '<div class="card-body settings">' + page() + "</div>";
 }
 
@@ -1526,7 +1685,16 @@ async function act(action, target) {
     case "settings_page":
       settingsPage = target.dataset.page; settingsErrors = {}; settingsDraft = {}; settingsNote = ""; editing = ""; editValues = {};
       loginError = ""; loginDone = ""; confirmClear = ""; loginShown = false;
-      if (settingsPage === "login") await loadLoginValues();
+      if (settingsPage === "login") {
+        // The default school open first; 添加学校 starts empty.
+        loginOpen = ((schoolLogin && schoolLogin.schools) || []).find((s) => s.current)?.key || "";
+        schoolQuery = ""; schoolFound = null; confirmForget = ""; await loadLoginValues();
+        loginAdding = !loginOpen;  // no school yet: straight to finding one
+      }
+      if (settingsPage === "login_schools") {
+        supportFilter = ""; supportOpen = ""; supportList = null; render(true);
+        try { supportList = await api().school_support_list(); } catch (error) { supportList = { ok: false, error: "读取失败" }; }
+      }
       return render(true);
     case "back":
       if (panel !== "settings") { panel = ""; return render(true); }
@@ -1583,16 +1751,59 @@ async function act(action, target) {
     }
     case "save_login": case "clear_login": case "login_switch": {
       if (action === "clear_login" && confirmClear !== "login") { confirmClear = "login"; return render(true); }
-      const user = root.querySelector("#login-user"), password = root.querySelector("#login-password");
-      const result = action === "clear_login" ? await api().clear_school_login()
-        : action === "login_switch" ? await api().save_school_login("", "", !schoolLogin.enabled)
-        : await api().save_school_login(user ? user.value : "", password ? password.value : "", true);
+      const school = ((schoolLogin && schoolLogin.schools) || []).find((s) => s.key === loginOpen) || {};
+      const result = action === "clear_login" ? await api().clear_school_login(loginOpen)
+        : action === "login_switch" ? await api().save_school_login("", "", !school.enabled, loginOpen)
+        : await api().save_school_login(loginValues.username || "", loginValues.password || "", true, loginOpen);
       confirmClear = "";
       if (!result.ok) { loginError = result.error || "保存失败"; loginDone = ""; return render(true); }
-      schoolLogin = result; loginError = "";
-      loginDone = action === "clear_login" ? "已清除" : action === "login_switch"
-        ? (result.enabled ? "已打开自动登录" : "已关闭自动登录") : "已保存";
+      schoolLogin = result; loginError = ""; loginDone = "";
+      if (action === "save_login") {
+        loginSaved = true;
+        clearTimeout(loginSavedTimer);
+        // Back to "保存" in place: drawing the page again would move the cursor of someone typing.
+        loginSavedTimer = setTimeout(() => {
+          loginSaved = false;
+          const button = root.querySelector('[data-act="save_login"]');
+          if (button) button.textContent = tr("保存");
+        }, 2000);
+      }
       await loadLoginValues(); return render(true);
+    }
+    case "support_group":
+      supportOpen = supportOpen === target.dataset.province ? "" : target.dataset.province;
+      return render(true);
+    case "login_add": {
+      loginAdding = !loginAdding; schoolFound = null; loginError = "";
+      render(true);
+      if (loginAdding) root.querySelector("#school-query")?.focus();
+      return;
+    }
+    case "login_open": {
+      loginOpen = loginOpen === target.dataset.key ? "" : target.dataset.key;
+      loginError = ""; loginDone = ""; confirmClear = ""; confirmForget = ""; loginShown = false; loginSaved = false;
+      await loadLoginValues(); return render(true);
+    }
+    case "set_default": case "forget_school": case "add_school": {
+      const key = target.dataset.key;
+      if (action === "forget_school" && confirmForget !== key) { confirmForget = key; return render(true); }
+      // Said at once, the school found kept for it (user, 2026-11-20: the page seemed stuck once 添加 was pressed).
+      if (action === "add_school") { target.disabled = true; target.textContent = tr("添加中…"); }
+      const result = action === "set_default" ? await api().set_default_school(key)
+        : action === "forget_school" ? await api().forget_school(key) : await api().add_school(key);
+      confirmForget = "";
+      if (!result.ok) { loginError = result.error || "没有完成"; loginDone = ""; return render(true); }
+      schoolLogin = result; loginError = "";
+      if (action === "add_school") { loginOpen = key; schoolQuery = ""; schoolFound = null; loginAdding = false; loginDone = "已添加，请填账号和密码"; }
+      else if (action === "forget_school") { loginOpen = ""; loginDone = ""; }
+      else loginDone = "";  // its 默认 tag says so
+      await loadLoginValues(); return render(true);
+    }
+    case "find_school": {
+      if (!schoolQuery.trim()) { schoolFound = { ok: false, error: "请输入学校名称" }; return render(true); }
+      schoolFinding = true; schoolFound = null; render(true);
+      try { schoolFound = await api().find_school(schoolQuery); } catch (error) { schoolFound = { ok: false, error: "查找失败" }; }
+      schoolFinding = false; return render(true);
     }
     case "login_reveal": {
       loginShown = !loginShown;
@@ -1762,6 +1973,15 @@ root.addEventListener("input", (event) => {
   if (input.dataset.field) settingsDraft[input.dataset.field] = input.value;
   else if (input.id === "download-dir") settingsDraft.download_dir = input.value;
   else if (input.dataset.key && editing) editValues[input.dataset.key] = input.value;
+  // The sign-in page's fields and 添加学校 (user, 2026-11-20: a click elsewhere had emptied them).
+  else if (input.id === "login-user") loginValues.username = input.value;
+  else if (input.id === "login-password") loginValues.password = input.value;
+  else if (input.id === "school-query") schoolQuery = input.value;
+  else if (input.id === "support-filter") {
+    supportFilter = input.value;
+    const box = root.querySelector("#support-list");
+    if (box) { box.innerHTML = supportListHtml(); localize(box); }
+  }
 });
 root.addEventListener("click", (event) => {
   const target = event.target.closest("[data-act]");
@@ -1823,6 +2043,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && panel === "settings" && event.target.tagName === "INPUT") {
     if (settingsPage === "keys" && editing) act("save_key", { dataset: { service: editing }, textContent: "" });
     else if (settingsPage === "download" || settingsPage === "wait") act("save");
+    else if (settingsPage === "login") act(event.target.id === "school-query" ? "find_school" : "save_login", { dataset: {} });
   }
 });
 

@@ -49,16 +49,24 @@ def test_launch_options_are_public_chrome_switches(chrome):
                                       ["--disable-features=CrossOriginOpenerPolicy",
                                        "--proxy-server=http://proxy.test:1"], {})
     assert options == {"executable_path": str(chrome), "headless": False,
-                       "args": ["--disable-features=CrossOriginOpenerPolicy", "--test-type", "--lang=en-US"],
-                       "chromium_sandbox": True, "locale": "en-US",
+                       "args": ["--disable-features=CrossOriginOpenerPolicy", "--test-type", "--lang=en-US",
+                                "--accept-lang=en-US,en"],
+                       "chromium_sandbox": True,
                        "proxy": {"server": "http://proxy.test:1"}, "no_viewport": True}
 
 
 def test_the_browser_is_in_english_unless_set_otherwise(chrome):
     # User, 2026-11-19: the pages as tested, in English, on every computer; browser_language "" follows the system.
-    assert backend._chrome_options(True, None, [], {"browser_language": "zh-CN"})["args"][-1] == "--lang=zh-CN"
+    configured = backend._chrome_options(True, None, [], {"browser_language": "zh-CN"})
+    # --lang does not reach the pages on a Mac or in a profile that saved its languages; --accept-lang does.
+    assert configured["args"][-2:] == ["--lang=zh-CN", "--accept-lang=zh-CN,zh"]
+    assert "locale" not in configured  # keep Chrome's native language list and request headers
+    assert backend.accept_languages("en") == "en"
+    given = backend._chrome_options(True, None, ["--accept-lang=fr-FR,fr"], {})["args"]
+    assert [a for a in given if a.startswith("--accept-lang=")] == ["--accept-lang=fr-FR,fr"]
     following = backend._chrome_options(True, None, [], {"browser_language": ""})
-    assert "locale" not in following and not any(a.startswith("--lang=") for a in following["args"])
+    assert "locale" not in following
+    assert not any(a.startswith(("--lang=", "--accept-lang=")) for a in following["args"])
 
 
 def test_new_tabs_open_in_the_background():

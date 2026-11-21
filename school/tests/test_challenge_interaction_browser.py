@@ -138,7 +138,7 @@ class InteractionFixture:
                             [(e["state"], e["detail"]) for e in result.events])
         clicks = [e for e in result.events if e["state"] == "challenge_interaction"]
         self.assertEqual(len(clicks), 1)
-        self.assertIn("checkbox clicked; attempt 1/3", clicks[0]["detail"])
+        self.assertIn("checkbox clicked; attempt 1/2", clicks[0]["detail"])
         self.assertEqual(self.page.title(), "Article")
         attention.assert_not_called()
 
@@ -194,8 +194,8 @@ class InteractionFixture:
         self.assertEqual(click(), "clicked")
         self.page.wait_for_function("document.title === 'Article'", timeout=2000)
 
-    def test_third_click_finds_widget_after_layout_and_viewport_changes(self):
-        self.frame_body = checkbox_html(closed=True, pass_on_click=3, retry_ms=400)
+    def test_second_click_finds_widget_after_layout_and_viewport_changes(self):
+        self.frame_body = checkbox_html(closed=True, pass_on_click=2, retry_ms=400)
         self.body = check_page(outer_closed=True)
         self.open_widget()
         positions, times = [], []
@@ -206,7 +206,7 @@ class InteractionFixture:
             if outcome == "clicked":
                 positions.append((box["x"], box["y"]))
                 times.append(time.monotonic())
-                if len(times) < 3:
+                if len(times) < 2:
                     page.set_viewport_size({"width": 900 + len(times) * 100, "height": 700})
                     page.evaluate("n => { document.body.style.paddingLeft=(n*120)+'px';"
                                   "document.body.style.paddingTop=(n*70)+'px'; }", len(times))
@@ -216,8 +216,8 @@ class InteractionFixture:
         with patch("paper_search_school.browser.challenge.interaction.click_checkbox", side_effect=tracked_click), \
                 patch("paper_search_school.progress_reporter.set_attention") as attention:
             self.assertTrue(d._wait_for_challenge(self.page, result))
-        self.assertEqual(len(times), 3)
-        self.assertEqual(len(set(positions)), 3)
+        self.assertEqual(len(times), 2)
+        self.assertEqual(len(set(positions)), 2)
         self.assertTrue(all(b - a >= 3 for a, b in zip(times, times[1:])))
         self.assertEqual(self.page.title(), "Article")
         attention.assert_not_called()

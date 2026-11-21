@@ -1,6 +1,6 @@
 import base64
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_school.publishers.profiles import ELSEVIER_PROFILE
@@ -17,6 +17,37 @@ def article_pdf():
 
 
 class ChromiumPDFCaptureTests(unittest.TestCase):
+    def test_stream_preserves_utf8_text_and_base64_binary_chunks(self):
+        # Real Chrome IO.read returns UTF-8 text when base64Encoded is false.
+        # A non-Latin PDF comment used to raise before the remaining bytes arrived.
+        from paper_search_school.browser import watchdog
+
+        plain = "%PDF-1.7\n% 测试 π €\n"
+        binary = b"\x00\xff\x80\n%%EOF\n"
+        chunks = iter([
+            {"data": plain, "base64Encoded": False, "eof": False},
+            {"data": base64.b64encode(binary).decode(), "base64Encoded": True, "eof": False},
+            {"data": "", "eof": True},
+        ])
+        session = Mock()
+
+        def send(method, params=None):
+            if method == "Fetch.takeResponseBodyAsStream":
+                return {"stream": "utf8-stream"}
+            if method == "IO.read":
+                return next(chunks)
+            return {}
+
+        session.send.side_effect = send
+        downloader = PublisherBatchDownloader(config={}, profile=ELSEVIER_PROFILE)
+        result = DownloadResult(doi="10.0000/example", status="failed")
+        captured = {}
+        with patch.object(watchdog, "extend_operation"):
+            body = downloader._read_paused_pdf(session, "request", result, captured)
+        self.assertEqual(body, plain.encode("utf-8") + binary)
+        self.assertFalse(captured["receiving"])
+        session.send.assert_any_call("IO.close", {"handle": "utf8-stream"})
+
     def capture(self, status=200, content_type="application/pdf", body=None, body_error=False, title=None,
                 disposition=None, length="its own", another_copy=False):
         pdf_bytes = body if body is not None else article_pdf()

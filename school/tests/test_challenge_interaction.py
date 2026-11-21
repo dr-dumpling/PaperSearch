@@ -236,9 +236,12 @@ def test_click_is_not_success_and_manual_handoff_keeps_the_original_deadline(wai
         captured = {"suspect_block": "403 https://journal.example/pdf", "bytes": None, "block_reason": None}
         assert not c.d._resolve_suspect_block(c.page, c.result, captured)
         assert captured["block_reason"] == "challenge_or_viewer_timeout"
-    assert clicked.call_count == 3  # dispatched at 2, 5, 8 s; observing never extends the bound
-    c.attention.assert_not_called()
-    assert c.clock[0] == 1010
+    assert clicked.call_count == 2  # dispatched at 2 and 5 s; a third press risks a lockout
+    # With two presses the handoff is announced before the page wait ends, on the
+    # same deadline it always had.
+    c.attention.assert_called_once()
+    assert c.attention.call_args.kwargs["deadline"] == 1010
+    assert c.clock[0] <= 1010
     assert not any(event["state"] == "challenge_resolved" for event in c.result.events)
 
 
@@ -255,7 +258,7 @@ def test_click_that_clears_challenge_continues_without_manual_handoff(wait_case,
 
 
 @pytest.mark.parametrize("entry", ["article", "pdf"])
-def test_three_attempt_limit_leaves_observation_time_after_each_action(wait_case, monkeypatch, entry):
+def test_two_attempt_limit_leaves_observation_time_after_each_action(wait_case, monkeypatch, entry):
     c = wait_case
     c.d.config["browser_page_wait_timeout"] = 30
     starts, ends = [], []
@@ -270,17 +273,16 @@ def test_three_attempt_limit_leaves_observation_time_after_each_action(wait_case
     else:
         assert not c.d._resolve_suspect_block(c.page, c.result, {
             "suspect_block": "403 https://journal.example/pdf", "bytes": None, "block_reason": None})
-    assert len(starts) == 3
+    assert len(starts) == 2
     assert starts[0] >= 1002
     assert all(start - end >= 3 for start, end in zip(starts[1:], ends))
-    assert c.clock[0] == 1030
+    assert c.clock[0] <= 1030  # the handoff comes at or before the page wait ends
     c.attention.assert_called_once()
-    assert c.attention.call_args.kwargs["deadline"] == 1030
     assert not any(event["state"] == "challenge_resolved" for event in c.result.events)
 
 
 @pytest.mark.parametrize("entry", ["article", "pdf"])
-@pytest.mark.parametrize("pass_on", [2, 3])
+@pytest.mark.parametrize("pass_on", [1, 2])
 def test_retry_that_clears_verification_stops_clicking(wait_case, monkeypatch, entry, pass_on):
     c = wait_case
     captured = {"suspect_block": "403 https://journal.example/pdf", "bytes": None, "block_reason": None}
@@ -314,6 +316,11 @@ def test_late_widget_is_handled_within_the_existing_wait(wait_case, monkeypatch,
         captured["bytes"] = b"%PDF-fixture"
         return "clicked"
     monkeypatch.setattr(interaction, "click_checkbox", Mock(side_effect=click))
+    # A widget frame that pushes nothing until it is ready: present, so the
+    # press is attempted; the page clears once the frame starts answering.
+    monkeypatch.setattr(interaction, "verification_widget",
+                        lambda page, manual_only=False, **kw: "" if manual_only else "turnstile")
+    monkeypatch.setattr(interaction, "needs_manual_verification", lambda page: False)
     if entry == "article":
         assert c.d._wait_for_challenge(c.page, c.result)
     else:
@@ -359,6 +366,9 @@ def test_native_mouse_motion_gets_time_but_cannot_extend_the_page_deadline(wait_
     attempt = {"started": 998.0, "attempts": 0, "retry_at": 1000.0}
     click = Mock(return_value="absent")
     monkeypatch.setattr(interaction, "click_checkbox", click)
+    monkeypatch.setattr(interaction, "verification_widget",
+                        lambda page, manual_only=False, **kw: "" if manual_only else "turnstile")
+    monkeypatch.setattr(interaction, "needs_manual_verification", lambda page: False)
     assert c.d._automatic_challenge_step(c.page, c.result, attempt, deadline=1010)
     assert click.call_args.kwargs["timeout_ms"] == 2500
     c.clock[0] += 1
@@ -377,3 +387,35 @@ def test_cancellation_during_automatic_interaction_reaches_caller(wait_case, mon
             c.d._resolve_suspect_block(c.page, c.result, {
                 "suspect_block": "403 https://journal.example/pdf", "bytes": None, "block_reason": None})
     c.attention.assert_not_called()
+
+@pytest.mark.parametrize("reported_event", ["fail", "tokenExpired"])
+@pytest.mark.parametrize("entry", ["article", "pdf"])
+def test_a_failed_widget_gets_one_reload_and_no_second(wait_case, monkeypatch, reported_event, entry):
+    """A widget that said fail/tokenExpired is dead: one fresh page with its own two presses, never a second reload."""
+    case = wait_case
+    case.d.config["browser_page_wait_timeout"] = 30
+    clicked = Mock(return_value="clicked")
+    monkeypatch.setattr(interaction, "click_checkbox", clicked)
+    monkeypatch.setattr(interaction, "interaction_events", lambda page: [{"event": reported_event}])
+    monkeypatch.setattr(interaction, "needs_manual_verification", lambda page: False)
+    if entry == "article":
+        assert not case.d._wait_for_challenge(case.page, case.result)
+    else:
+        assert not case.d._resolve_suspect_block(case.page, case.result, {
+            "suspect_block": "403 https://journal.example/pdf", "bytes": None, "block_reason": None})
+    case.page.reload.assert_called_once()
+    assert clicked.call_count == 3  # one before the reload, two on the fresh page
+    assert len([event for event in case.result.events if event["state"] == "challenge_interaction"]) == 3
+    assert not any(event["state"] == "challenge_resolved" for event in case.result.events)
+
+
+def test_a_managed_challenge_is_waited_for_without_repeated_presses(wait_case, monkeypatch):
+    """No widget on the page: Cloudflare's managed challenge clears on its own."""
+    c = wait_case
+    c.d.config["browser_page_wait_timeout"] = 30
+    clicked = Mock(return_value="absent")
+    monkeypatch.setattr(interaction, "click_checkbox", clicked)
+    assert not c.d._wait_for_challenge(c.page, c.result)
+    assert clicked.call_count == 1  # one look, then the page is simply waited for
+    assert any(event["state"] == "challenge_managed" for event in c.result.events)
+    assert not any(event["state"] == "challenge_interaction" for event in c.result.events)

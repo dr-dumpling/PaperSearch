@@ -29,7 +29,7 @@ export const SCHOOL_CLEANUP_TIMEOUT_MS = 5_000;
 export const SCHOOL_BACKEND_UTF8_ENV = { PYTHONIOENCODING: "utf-8" };
 const SCHOOL_BACKEND_SOURCE = "school";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.7.0";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.7.1";
 const NO_BATCH_SUPPORT = {
     downloadFields: false,
     supplementsField: false,

@@ -580,7 +580,8 @@ class CaptureMixin:
                     piece = cdp_session.send("IO.read", {"handle": handle, "size": STREAM_PIECE_BYTES})
                     data = piece.get("data") or ""
                     if data:
-                        pieces.append(base64.b64decode(data) if piece.get("base64Encoded") else data.encode("latin-1"))
+                        # CDP's plain stream chunks are UTF-8 text, not Latin-1 bytes.
+                        pieces.append(base64.b64decode(data) if piece.get("base64Encoded") else data.encode("utf-8"))
                     if piece.get("eof"):
                         break
             body = b"".join(pieces)

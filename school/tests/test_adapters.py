@@ -793,6 +793,31 @@ class ScienceDirectSignedOutTests(unittest.TestCase):
         self.assertEqual(d._institution_match_score(
             "Hong Mu-lan University of Science and Technology Medical College Union Hospital"), 1)
 
+    def test_a_list_still_filling_in_is_not_taken_for_one_without_the_school(self):
+        """2026-11-21: a second after the name was typed only the school's IP entry was listed."""
+        d = self.downloader()
+        d._event, d._click_optional_continue = Mock(), Mock()
+        ip_only = [{"i": 0, "t": "Hong Mu-lan University", "ids": '{"entityId":null,"derivedFlowType":"EIA"}'}]
+        both = ip_only + [{"i": 1, "t": self.HMLU, "ids": '{"entityId":"https://idp.hmlu.edu.cn/idp/shibboleth"}'}]
+        result = SimpleNamespace(events=[])
+        page = Mock(url=self.CHOOSER)
+        clock = [1000.0]
+        with patch("paper_search_school.engine.batch_institution.time.time", lambda: clock[0]):
+            page.evaluate.side_effect = [ip_only]
+            self.assertFalse(d._click_unique_institution_entry(page, result, self.CHOOSER))
+            self.assertFalse(getattr(result, "_institution_not_listed", False))  # too soon to say
+            clock[0] += 2
+            page.evaluate.side_effect = [both, True]
+            self.assertTrue(d._click_unique_institution_entry(page, result, self.CHOOSER))  # its sign-in came
+            self.assertEqual(page.evaluate.call_args.args[1][1], 1)
+            # The same IP-only list unchanged for the settle time: the publisher has no sign-in for it.
+            result = SimpleNamespace(events=[])
+            page.evaluate.side_effect = [ip_only, ip_only]
+            self.assertFalse(d._click_unique_institution_entry(page, result, self.CHOOSER))
+            clock[0] += d.LIST_SETTLE_SEC
+            self.assertFalse(d._click_unique_institution_entry(page, result, self.CHOOSER))
+            self.assertTrue(result._institution_not_listed)
+
     def test_an_entry_that_goes_on_by_itself_gets_no_continue_click(self):
         from patchright.sync_api import TimeoutError as PlaywrightTimeout
         d = self.downloader()

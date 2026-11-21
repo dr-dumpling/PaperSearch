@@ -77,7 +77,8 @@ def module() -> Any | None:
 
 def school_status(entity_id: str, pro: Any | None = None) -> str:
     """``verified`` (signed in for real), ``surveyed`` (its form filled in and pressed, the school's
-    "wrong password" read: user, 2026-11-19, enough), ``trial`` (being tested), or "" (not tested)."""
+    "wrong password" read: user, 2026-11-19, enough), ``trial`` (being tested), ``check`` (its sign-in
+    asks the user for a check: never filled in), or "" (not tested)."""
     pro = pro if pro is not None else module()
     if pro is None or not entity_id:
         return ""
@@ -85,7 +86,29 @@ def school_status(entity_id: str, pro: Any | None = None) -> str:
         status = str(pro.school_status(entity_id) or "")
     except Exception:
         return ""
-    return status if status in {"verified", "surveyed", "trial"} else ""
+    return status if status in {"verified", "surveyed", "trial", "check"} else ""
+
+
+def school_list(pro: Any | None = None) -> list[dict[str, str]]:
+    """The schools Pro knows, each with its name, English name, country, province (a mainland school's) and status,
+    for the settings page; [] from an older Pro (one without the English name or the country: "" there)."""
+    pro = pro if pro is not None else module()
+    try:
+        listed = pro.school_list() if pro is not None and hasattr(pro, "school_list") else []
+        return [{key: str(school.get(key) or "") for key in ("name", "name_en", "country", "province", "status")}
+                for school in listed if isinstance(school, dict) and school.get("name")]
+    except Exception:
+        return []
+
+
+def school_counts(pro: Any | None = None) -> dict[str, int]:
+    """How many schools Pro fills in for everyone and how many ask for a check; {} from an older Pro."""
+    pro = pro if pro is not None else module()
+    try:
+        counts = pro.school_counts() if pro is not None and hasattr(pro, "school_counts") else {}
+        return {key: int(counts.get(key) or 0) for key in ("filled", "check")} if isinstance(counts, dict) else {}
+    except Exception:
+        return {}
 
 
 def fills_for(entity_id: str, pro: Any | None = None) -> bool:
