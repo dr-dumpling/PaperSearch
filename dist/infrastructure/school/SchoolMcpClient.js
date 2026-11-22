@@ -29,7 +29,7 @@ export const SCHOOL_CLEANUP_TIMEOUT_MS = 5_000;
 export const SCHOOL_BACKEND_UTF8_ENV = { PYTHONIOENCODING: "utf-8" };
 const SCHOOL_BACKEND_SOURCE = "school";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.7.2";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.7.3";
 const NO_BATCH_SUPPORT = {
     downloadFields: false,
     supplementsField: false,
@@ -426,7 +426,10 @@ export class SchoolMcpClient {
             return undefined;
         }
     }
-    /** Whether the batch takes one journal's papers one after another (school_switch_state), on its backend. */
+    /**
+     * The schools a batch's papers without access are tried with at its end, and whether it takes one journal's papers
+     * one after another (school_switch_state), on its backend.
+     */
     async schoolSwitch(signal) {
         const session = this.retainedSession;
         if (!session || session.readiness.state !== "available" || !session.batchSupport.switchStateTool)
@@ -439,7 +442,15 @@ export class SchoolMcpClient {
             const block = Array.isArray(content) && content.length === 1 ? content[0] : undefined;
             if (result?.isError === true || block?.type !== "text" || typeof block.text !== "string")
                 return undefined;
-            return { group: JSON.parse(block.text).group === true };
+            const state = JSON.parse(block.text);
+            const listed = state.schools;
+            // Names to show and entityIDs to name them by; anything else is left out.
+            const schools = (Array.isArray(listed) ? listed : []).flatMap((entry) => {
+                const { name, entity_id: entityId } = (entry ?? {});
+                return typeof name === "string" && name.trim() && name.length <= 200 && typeof entityId === "string" && /^https?:\/\/\S{1,500}$/.test(entityId)
+                    ? [{ name: name.trim(), entityId }] : [];
+            });
+            return { schools, group: state.group === true };
         }
         catch {
             return undefined;

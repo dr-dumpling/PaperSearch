@@ -26,7 +26,12 @@ export function selectFailures(root, query = {}, options = {}) {
                 notAttempted += 1;
                 continue;
             }
-            const code = String((part ? incomplete?.reason : stage.code) || "download_failed");
+            const trace = (stage.trace ?? {});
+            const recorded = String((part ? incomplete?.reason : stage.code) || "download_failed");
+            // Before 2026-11-22 a publisher's article page without the login entry its rules look for was
+            // reported as download_failed; the backend's state kept what it was.
+            const code = !part && recorded === "download_failed" && trace.state === "publisher_institution_entry_missing"
+                ? trace.state : recorded;
             const backend = stage.backend;
             const current = describeFailure(code, backend, stage.trace);
             // An unregistered entry's evidence as said now: records before 2026-11-19 may carry an old
@@ -39,7 +44,6 @@ export function selectFailures(root, query = {}, options = {}) {
                     ...(typeof stage.stoppedAt === "string" ? { stoppedAt: stage.stoppedAt } : {}) }
                 : current;
             const detail = (backend?.diagnostic ?? backend?.record ?? {});
-            const trace = (stage.trace ?? {});
             const diagnostic = backend?.diagnostic?.file ?? trace.diagnostic;
             const record = backend?.record?.file ?? trace.record;
             const paper = { doi, runId, ...description,
@@ -47,6 +51,8 @@ export function selectFailures(root, query = {}, options = {}) {
                 site: hostOf(detail.final_url) || hostOf(detail.article_url) || "-", code,
                 ...(part ? { part } : {}),
                 ...(typeof diagnostic === "string" && diagnostic ? { diagnostic } : {}),
+                // Local paths for the text summary; an export takes the pictures from the diagnostic itself.
+                ...(!options.forExport && screenshotsOf(backend).length ? { screenshots: screenshotsOf(backend) } : {}),
                 ...(typeof record === "string" && record ? { record } : {}),
                 detail: options.forExport ? detail : {},
                 outcome: options.forExport ? { status: item.status, supplements,
@@ -79,6 +85,7 @@ export function summarizeFailures(root, query = {}) {
             ...(paper.evidence ? { evidence: paper.evidence } : {}),
             ...(paper.stoppedAt ? { stoppedAt: paper.stoppedAt } : {}),
             ...(paper.diagnostic ? { diagnostic: paper.diagnostic } : {}),
+            ...(paper.screenshots ? { screenshots: paper.screenshots } : {}),
             ...(paper.part ? { part: paper.part } : {}),
         });
         groups.set(key, group);
@@ -86,6 +93,12 @@ export function summarizeFailures(root, query = {}) {
     const order = (c) => FAILURE_CLASSES.indexOf(c);
     return { root, runs, failed: papers.length, notAttempted, classes,
         groups: [...groups.values()].sort((a, b) => order(a.failureClass) - order(b.failureClass) || b.count - a.count) };
+}
+/** The diagnostic's screenshots: the page when it failed, then the pages kept on the way. */
+function screenshotsOf(backend) {
+    const diagnostic = backend?.diagnostic;
+    const listed = Array.isArray(diagnostic?.screenshots) ? diagnostic.screenshots : [];
+    return [...new Set(listed.filter((file) => typeof file === "string" && file !== ""))];
 }
 /** Run directories are named <yyyymmdd>-<hhmmss>-<id>, so names sort by start time. */
 export function selectRuns(root, query) {
@@ -144,16 +157,20 @@ export function renderFailuresText(summary, options = {}) {
             lines.push(`  ${group.publisher} · ${group.site} · ${group.code}  ${group.count}`);
             if (failureClass === "no_access" && group.evidence)
                 lines.push(`    依据：${group.evidence}`);
-            if (failureClass !== "unexplained")
+            if (failureClass !== "unexplained" && failureClass !== "unsupported")
                 continue;
             for (const item of group.items.slice(0, shown)) {
                 lines.push(`    ${item.doi}` +
                     (item.stoppedAt ? `  停在 ${item.stoppedAt}` : "") +
-                    (item.diagnostic ? `\n      ${item.diagnostic}` : ""));
+                    (item.diagnostic ? `\n      ${item.diagnostic}` : "") +
+                    (item.screenshots ?? []).map((file) => `\n      截图：${file}`).join(""));
             }
             if (group.items.length > shown)
                 lines.push(`    …另 ${group.items.length - shown} 篇（--all 全部列出）`);
         }
+    }
+    if (summary.classes.unsupported || summary.classes.unexplained) {
+        lines.push("", "要我们排查：paper-search failures --export <文件.zip> 导出记录（发出前先看一遍），发给我们。");
     }
     return lines.join("\n");
 }

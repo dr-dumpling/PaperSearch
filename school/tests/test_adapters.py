@@ -129,7 +129,8 @@ class GenericPublisherTests(unittest.TestCase):
         macs = replace(get_publisher_profile("nejm"), name="MACS Press")  # "acs" in the name is not ACS
         self.assertEqual(PublisherBatchDownloader({}, profile=macs)._get_login_url(), "https://nejm.org/")
         # Without one in the rules: the publisher's own site, from its article address or first domain.
-        for key, url in (("sage", "https://sagepub.com/"), ("thieme", "https://www.thieme-connect.de/"),
+        # (Sage's from its article address since 2026-11-22: journals.sagepub.com, where its sign-in is.)
+        for key, url in (("sage", "https://journals.sagepub.com/"), ("thieme", "https://www.thieme-connect.de/"),
                          ("bmj", "https://bmj.com/")):
             self.assertEqual(PublisherBatchDownloader({}, profile=get_publisher_profile(key))._get_login_url(), url)
 
@@ -834,6 +835,80 @@ class ScienceDirectSignedOutTests(unittest.TestCase):
         d._click_optional_continue.assert_called_once()
 
 
+class AnotherSignInOnTheListTests(unittest.TestCase):
+    """Windows 2026-11-22: Sage listed the school only with its library's OpenAthens sign-in (idp=.../entity, its
+    login page asking for a picture code), and its "Recent institution" (what SeamlessAccess kept of that sign-in,
+    chosen once) carried nothing; JAMA's search names the sign-in in an entry's onclick. Neither is clicked; listed
+    only so, the school has no route there (没权限: another saved school at a batch's end)."""
+    SAVED = "https://idp.hmlu.edu.cn/idp/shibboleth"
+    OTHER = "https://idp.hmlu.edu.cn/entity"
+    CHOOSER = "https://journals.sagepub.com/action/ssostart?redirectUri=https://journals.sagepub.com/doi/10.1177/x"
+
+    def downloader(self):
+        d = PublisherBatchDownloader({**CARSI_SCHOOL, "idp_entity_id": self.SAVED},
+                                     profile=get_publisher_profile("sage"), institution_query="Hong Mu-lan University")
+        d._event, d._click_optional_continue = Mock(side_effect=lambda r, s, x="": r.events.append({"state": s, "detail": x})), Mock()
+        return d
+
+    def searched(self):
+        return SimpleNamespace(events=[{"state": "auto_institution_search", "detail": f"Hong Mu-lan University @ {self.CHOOSER}"}])
+
+    def test_the_recent_entry_waits_for_the_search_and_then_is_not_taken_for_the_school(self):
+        d = self.downloader()
+        recent = [{"i": 0, "t": "Hong Mu-lan University", "h": "", "ids": ""}]
+        found = recent + [{"i": 5, "t": "Hong Mu-lan University", "h": self.CHOOSER + "#",
+                           "ids": f"{self.CHOOSER}# /action/ssostart?idp={self.OTHER}&redirectUri=/doi/10.1177/x"}]
+        page, result, clock = Mock(url=self.CHOOSER), self.searched(), [1000.0]
+        with patch("paper_search_school.engine.batch_institution.time.time", lambda: clock[0]):
+            page.evaluate.side_effect = [recent]
+            self.assertFalse(d._click_unique_institution_entry(page, result, self.CHOOSER))  # the search not in yet
+            clock[0] += 1
+            page.evaluate.side_effect = [found]
+            self.assertFalse(d._click_unique_institution_entry(page, result, self.CHOOSER))
+            clock[0] += 1
+            page.evaluate.side_effect = [recent]  # its list closed: the recent entry alone again
+            self.assertFalse(d._click_unique_institution_entry(page, result, self.CHOOSER))
+            clock[0] += d.LIST_SETTLE_SEC
+            page.evaluate.side_effect = [recent]
+            self.assertFalse(d._click_unique_institution_entry(page, result, self.CHOOSER))
+        self.assertTrue(result._institution_not_listed)
+        self.assertIn("listed only with another of its sign-ins", result.events[-1]["detail"])
+        self.assertEqual(page.evaluate.call_count, 4)  # read only: nothing marked or clicked
+
+    def test_a_recent_entry_alone_is_taken_once_the_list_has_settled(self):
+        d = self.downloader()
+        recent = [{"i": 0, "t": "Hong Mu-lan University", "h": "", "ids": ""}]
+        page, result, clock = Mock(url=self.CHOOSER), self.searched(), [1000.0]
+        with patch("paper_search_school.engine.batch_institution.time.time", lambda: clock[0]):
+            page.evaluate.side_effect = [recent]
+            self.assertFalse(d._click_unique_institution_entry(page, result, self.CHOOSER))
+            clock[0] += d.LIST_SETTLE_SEC
+            page.evaluate.side_effect = [recent, True]
+            self.assertTrue(d._click_unique_institution_entry(page, result, self.CHOOSER))
+        # Where nothing was searched it is taken at once, as before.
+        page.evaluate.side_effect = [recent, True]
+        self.assertTrue(d._click_unique_institution_entry(page, SimpleNamespace(events=[]), self.CHOOSER))
+
+    def test_the_saved_sign_in_listed_beside_it_is_taken(self):
+        d = self.downloader()
+        listed = [{"i": 0, "t": "Hong Mu-lan University", "h": "", "ids": ""},
+                  {"i": 3, "t": "Hong Mu-lan University", "ids": f"/action/ssostart?idp={self.OTHER}"},
+                  {"i": 4, "t": "Hong Mu-lan University", "ids": f"/action/ssostart?idp={self.SAVED}"}]
+        page = Mock(url=self.CHOOSER)
+        page.evaluate.side_effect = [listed, True]
+        self.assertTrue(d._click_unique_institution_entry(page, self.searched(), self.CHOOSER))
+        self.assertEqual(page.evaluate.call_args.args[1][1], 4)
+
+    def test_a_sign_in_named_in_the_entrys_onclick(self):
+        d = self.downloader()
+        onclick = "App.SeamlessAccess.saveInstitution(this, '{}')"
+        self.assertEqual(d._institution_entry_score({"t": "Hong Mu-lan University", "ids": onclick.format(self.OTHER)},
+                                                    self.SAVED), 1)
+        self.assertEqual(d._institution_entry_score({"t": "Hong Mu-lan University", "ids": onclick.format(self.SAVED)},
+                                                    self.SAVED), 4)
+        self.assertIn("el.getAttribute('onclick')", d._ENTRIES_JS)
+
+
 class JournalSiteOwnLoginTests(unittest.TestCase):
     """2026-10-31, after a cold start: ScienceDirect showed the school's session but ARD
     and Cell Metabolism stayed at the abstract; their own institution login opens them."""
@@ -896,8 +971,22 @@ class SchoolChooserRulesTests(unittest.TestCase):
         page.evaluate.side_effect = [[{"i": 0, "t": "Hong Mu-lan University", "h": link},
                                       {"i": 7, "t": "Hong Mu-lan University", "h": link}], True]
         self.assertTrue(d._click_unique_institution_entry(page, SimpleNamespace(events=[]), page.url))
-        page.evaluate.side_effect = [[{"i": 0, "t": "Hong Mu-lan University", "h": link},
-                                      {"i": 7, "t": "Hong Mu-lan University", "h": link + "&other"}]]
+        # Two entries by the name with links of their own: the first, then the next on the next turn (user,
+        # 2026-11-22: "同名学校的话，那就直接选一个……如果这个不行的话，再向下一个"); none left, nothing chosen.
+        two = [{"i": 0, "t": "Hong Mu-lan University", "h": link}, {"i": 7, "t": "Hong Mu-lan University", "h": link + "&other"}]
+        for turn, index in ((0, 0), (1, 7)):
+            with self.subTest(turn=turn):
+                d.config["institution_entry_turn"] = turn
+                page.evaluate.reset_mock()
+                page.evaluate.side_effect = [two, True]
+                result = SimpleNamespace(events=[])
+                self.assertTrue(d._click_unique_institution_entry(page, result, page.url))
+                self.assertEqual(page.evaluate.call_args_list[1].args[1][1], index)
+                self.assertEqual(result._same_name_entries, 2)
+                self.assertTrue(any(c.args[1] == "institution_same_name_choice" and f"{turn + 1}/2: Hong Mu-lan" in c.args[2]
+                                    for c in d._event.call_args_list))
+        d.config["institution_entry_turn"] = 2
+        page.evaluate.side_effect = [two]
         self.assertFalse(d._click_unique_institution_entry(page, SimpleNamespace(events=[]), page.url))
 
     def test_a_remembered_school_page_that_moves_on_by_itself_is_no_error(self):

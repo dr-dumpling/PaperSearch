@@ -3,7 +3,9 @@
   "profile": {
     "name": "Thieme",
     "doi_prefixes": [
-      "10.1055"
+      "10.1055",
+      "10.1160",
+      "10.3414"
     ],
     "base_domains": [
       "thieme-connect.com",

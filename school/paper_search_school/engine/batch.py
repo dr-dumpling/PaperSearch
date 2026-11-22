@@ -589,6 +589,8 @@ class PublisherBatchDownloader(
                         result.state = "article_loaded_after_sso"
                         pdf_bytes, pdf_url, cap_block = self._capture_pdf(page, record.doi, result)
                         ip_block = ip_block or cap_block
+                    else:
+                        self._note_wait_end(page, result)
                     result._pdf_retry_login = False
                     if (not pdf_bytes and not ip_block and result.reason != "institution_pdf_entitlement_missing"
                             and not self._pdf_sent_to_article_after_login(page, result, attempts_from)
@@ -860,12 +862,18 @@ class PublisherBatchDownloader(
         step; elsewhere the program did not reach the login, ADR 0012)."""
         result.reason = self._login_block_reason(page) or result.reason or "sso_required"
         result.state = result.reason
-        if result.reason == "login_timeout" or (
-                result.reason == "sso_required" and getattr(result, "_user_wait_expired", False)):
-            result.login_wait_page = self._login_wait_page(page)
-            self._event(result, "login_wait_ended", result.login_wait_page)
+        if result.reason in ("login_timeout", "sso_required"):
+            self._note_wait_end(page, result)
         self._write_diagnostic(page, result, run_dir)
         return result
+
+    def _note_wait_end(self, page: Any, result: DownloadResult) -> None:
+        """A wait on the user that ran out: where it ended (``login_wait_page``). Also after the login a failed PDF
+        asked for (Thieme's wait ended on its school list page, JAMA's on the school's login page, and neither said
+        where: both counted as the user's, Windows 2026-11-22)."""
+        if result.reason == "login_timeout" or getattr(result, "_user_wait_expired", False):
+            result.login_wait_page = self._login_wait_page(page)
+            self._event(result, "login_wait_ended", result.login_wait_page)
 
     def _save_captured_pdf(self, page: Any, record: PaperRecord, result: DownloadResult, run_dir: Path,
                            pdf_bytes: bytes, pdf_url: str) -> DownloadResult:

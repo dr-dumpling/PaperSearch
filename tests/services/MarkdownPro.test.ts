@@ -57,7 +57,7 @@ describe("the Markdown without PaperSearch Pro", () => {
     expect(visits).toEqual([]);
     expect(asked.filter((url) => /ncbi|europepmc|elsevier/i.test(url))).toEqual([]);
     expect(readdirSync(dir).filter((name) => !name.startsWith("."))).toEqual([]);
-    expect(markdownMissing(result.markdown)).toEqual({ cls: "user_side", reason: "需要 PaperSearch Pro" });
+    expect(markdownMissing(result.markdown)).toEqual({ cls: "user_side", reason: "需要 Pro" });
   });
 
   it("says why when Pro cannot be used now, in Pro's own words", async () => {
@@ -65,7 +65,7 @@ describe("the Markdown without PaperSearch Pro", () => {
     const result = await markdownOnly();
     expect(result).toMatchObject({ markdown: { code: "markdown_pro_key_required", message: "Pro needs a key." } });
     expect(visits).toEqual([]);
-    expect(markdownMissing(result.markdown)).toEqual({ cls: "user_side", reason: "PaperSearch Pro 暂不可用" });
+    expect(markdownMissing(result.markdown)).toEqual({ cls: "user_side", reason: "Pro 暂不可用" });
   });
 
   it("asks Pro when it can be used, and only then", async () => {

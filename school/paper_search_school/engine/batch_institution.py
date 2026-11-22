@@ -98,9 +98,11 @@ class InstitutionMixin:
             here = str(getattr(page, "url", "") or "")
             if self._school_choices_here(result, here) >= self.SCHOOL_CHOICE_REPEATS:
                 return self._after_repeated_school_choice(page, result, here)
-            # The OpenAthens wayfinder goes straight to the school's entity on the
-            # route that signs in there.
-            if federation.openathens_entries and self._select_openathens_wayfinder(page, result):
+            # The OpenAthens wayfinder goes straight to the school's entity, also for a federation's school the
+            # publisher sends there (LWW's Ovid, Windows 2026-11-22): its search took 40 s, and a school the wayfinder
+            # remembered ("Access through <another school>") left the login waiting a minute. The entityID was what
+            # its search came to anyway, its CARSI sign-in beside its library's OpenAthens account.
+            if self._select_openathens_wayfinder(page, result):
                 return True
             # Everything except human verification and the user's credentials is
             # automated once an institution is configured: a remembered
@@ -299,8 +301,18 @@ class InstitutionMixin:
                 return select, hits[0][0], hits[0][1]
         return None
 
-    @staticmethod
-    def _filled_lists(lists: Any, federation: dict) -> dict:
+    # A list of societies to sign in through ("Select your society"; BMJ's #society-login-select, Windows 2026-11-22):
+    # not a list of schools, whatever its names ("... College of Sport and Exercise Physicians") or values (addresses).
+    _SOCIETY_LIST = re.compile(r"societ", re.I)
+
+    @classmethod
+    def _society_list(cls, select: dict) -> bool:
+        options = [o for o in select.get("options") or () if isinstance(o, (list, tuple)) and len(o) == 2]
+        return bool(cls._SOCIETY_LIST.search(str(select.get("name") or ""))
+                    or (options and cls._SOCIETY_LIST.search(str(options[0][1]))))
+
+    @classmethod
+    def _filled_lists(cls, lists: Any, federation: dict) -> dict:
         """Filled school lists, not the header's journal/language/search lists.
 
         Only positive institution evidence can establish that a school is
@@ -309,7 +321,7 @@ class InstitutionMixin:
         """
         school = re.compile(r"institut|school|universit|\buniv\b|college|organi[sz]ation|\bidp\b|大学|学院|研究院", re.I)
         return {str(s.get("name")): list(s.get("options") or ()) for s in lists or ()
-                if s.get("i") != federation.get("i") and len(s.get("options") or ()) > 1
+                if s.get("i") != federation.get("i") and len(s.get("options") or ()) > 1 and not cls._society_list(s)
                 and (school.search(str(s.get("name") or "")) or any(
                     school.search(str(o[1])) for o in s.get("options") or ()
                     if isinstance(o, (list, tuple)) and len(o) == 2))}
@@ -446,8 +458,9 @@ class InstitutionMixin:
 
     def _entity_lists(self, lists: Any) -> dict:
         return {str(s.get("name")): list(s.get("options") or ()) for s in lists or ()
-                if sum(1 for o in s.get("options") or () if isinstance(o, (list, tuple)) and len(o) == 2
-                       and self._ENTITY_VALUE.match(str(o[0]))) >= self.ENTITY_LIST_MIN}
+                if not self._society_list(s)
+                and sum(1 for o in s.get("options") or () if isinstance(o, (list, tuple)) and len(o) == 2
+                        and self._ENTITY_VALUE.match(str(o[0]))) >= self.ENTITY_LIST_MIN}
 
     def _check_entity_list(self, page: Any, result: DownloadResult, lists: list[dict], url: str) -> None:
         """A filled list of schools by entityID without the configured school, the same a
@@ -637,16 +650,17 @@ class InstitutionMixin:
 
     _ENTRY_SELECTOR = "li, a, button, [role=option], [role=button]"
 
-    # An entry's own identifiers: its link and data attributes, and the hidden
-    # fields and data attributes of the elements around it that hold no other
-    # entry (Elsevier keeps each result's entityID in a hidden field, 2026-10-31).
+    # An entry's own identifiers: its link, its onclick (JAMA's search entries name their entityID
+    # only there, 2026-11-17) and data attributes, and the hidden fields and data attributes of the
+    # elements around it that hold no other entry (Elsevier keeps each result's entityID in a hidden
+    # field, 2026-10-31).
     _ENTRIES_JS = """(sel) => {
                 const all = [...document.querySelectorAll(sel)];
                 const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
                 const cands = all.filter(visible);
                 const inner = cands.filter(el => !cands.some(o => o !== el && el.contains(o)));
                 const ids = el => {
-                    const out = [el.href || el.getAttribute('href') || ''];
+                    const out = [el.href || el.getAttribute('href') || '', el.getAttribute('onclick') || ''];
                     for (let row = el, up = 0; row && up < 4; up++) {
                         for (const a of row.attributes || []) if (a.name.startsWith('data-')) out.push(a.value);
                         for (const h of row.querySelectorAll('input[type=hidden]')) out.push(h.value || '');
@@ -661,10 +675,47 @@ class InstitutionMixin:
                     .filter(it => it.t && it.t.length <= 160);
             }"""
 
+    def _users_own_search(self, page: Any) -> bool:
+        """A shown institution search box holding text the program did not type: the user is choosing."""
+        queries = {" ".join(q.split()).lower() for q in self._search_queries(list(self._institution_names()))}
+        for selector in self._INSTITUTION_INPUTS:  # the institution boxes only, the page not read for them
+            try:
+                boxes = page.locator(selector).all()
+                if not isinstance(boxes, list):
+                    continue
+                for box in boxes[:4]:
+                    if box.is_visible(timeout=300) is not True:
+                        continue
+                    value = " ".join(str(box.input_value(timeout=800) or "").split()).lower()
+                    if value and value not in queries:
+                        return True
+            except Exception as exc:
+                if not _is_browser_error(exc):
+                    raise
+        return False
+
     def _institution_entry_score(self, entry: dict, entity_id: str) -> int:
-        if self._carries_entity_id(str(entry.get("ids") or ""), entity_id):
+        ids = str(entry.get("ids") or "")
+        if self._carries_entity_id(ids, entity_id):
             return 4
-        return self._institution_match_score(entry.get("t", ""))
+        score = self._institution_match_score(entry.get("t", ""))
+        if score >= 2 and self._names_another_sign_in(ids, entity_id):
+            return 1  # the school's name, another sign-in than the saved one: not clicked
+        return score
+
+    # The sign-in an entry names: Atypon's /action/ssostart?idp=<entityID>, SeamlessAccess's
+    # saveInstitution(this, '<entityID>') in its onclick (JAMA's search, 2026-11-17).
+    _ENTRY_IDP = re.compile(r"[?&]idp=([^&#\s\"']+)|saveInstitution\(\s*[^,()]*,\s*['\"]([^'\"]+)['\"]", re.I)
+
+    def _names_another_sign_in(self, text: str, entity_id: str) -> bool:
+        """An entry's link names an identity provider, and not the school's saved one (Sage listed a test school with
+        idp=<its library's OpenAthens entityID>, which sent the login straight back to the article, while its saved
+        Shibboleth entityID signs in elsewhere; Windows 2026-11-22)."""
+        if not entity_id or not text:
+            return False
+        named = {unquote(unquote(link or saved)).strip().lower() for link, saved in self._ENTRY_IDP.findall(text)}
+        named = {value for value in named if value.startswith(("https://", "http://", "urn:"))}
+        return bool(named) and entity_id.strip().lower() not in named
 
     def _name_residue(self, text: str) -> str | None:
         """What is left of ``text`` (lower case) once the school's names are taken
@@ -777,6 +828,11 @@ class InstitutionMixin:
         it once the school was typed (2026-11-14)."""
         recorded, url = unquote(str(recorded or "")), unquote(str(url or ""))
         return len(recorded) > 10 and url.startswith(recorded)
+
+    def _searched_here(self, result: DownloadResult, url: str) -> bool:
+        """The school's name was typed into a search on the page at ``url``."""
+        return any(e.get("state") == "auto_institution_search"
+                   and self._same_address(str(e.get("detail", "")).split(" @ ", 1)[-1], url) for e in result.events)
 
     def _search_queries(self, names: list[str]) -> list[str]:
         """The school's names to search by (straight apostrophes): its English name
@@ -965,11 +1021,12 @@ class InstitutionMixin:
 
         An entry carrying the school's entityID wins (several such entries are
         the same school); otherwise the entry naming it. Only innermost
-        candidates count (a list item and its link are one entry). Two entries
-        with the same best name score, or only partial matches, are left to the
-        user; the same text with the same link (an actual link, not two
-        buttons) is one school (SAMS Sigma's "Recently Chosen" above its full
-        list, 2026-11-01).
+        candidates count (a list item and its link are one entry). Several entries
+        with the same best name score are taken one after another, the orchestrator's
+        ``institution_entry_turn`` saying which (user, 2026-11-22); only partial
+        matches are left to the user; the same text with the same link (an actual
+        link, not two buttons) is one school (SAMS Sigma's "Recently Chosen" above
+        its full list, 2026-11-01).
         """
         try:
             items = self._listed_entries(page)
@@ -980,6 +1037,17 @@ class InstitutionMixin:
         entity_id = self._entity_id()
 
         scored = [(self._institution_entry_score(it, entity_id), it) for it in items if isinstance(it, dict)]
+        # The school's name with another of its sign-ins than the saved one (its library's OpenAthens account beside
+        # its CARSI sign-in: all Sage and JAMA list of a test school, its login page asking for a picture code; Windows
+        # 2026-11-22). On such a page an entry by the school's name carrying nothing to tell its sign-in by may be that
+        # one too (Sage's "Recent institution": what SeamlessAccess kept of an earlier choice of it): not clicked either.
+        another = [it for score, it in scored if score == 1 and self._names_another_sign_in(str(it.get("ids") or ""), entity_id)
+                   and self._institution_match_score(str(it.get("t") or "")) >= 2]
+        if another:
+            result._another_sign_in_at = url
+        another_here = bool(another) or self._same_address(str(getattr(result, "_another_sign_in_at", "") or ""), url)
+        if another_here and not any(score == 4 for score, _ in scored):
+            scored = [(1 if score >= 2 and not str(it.get("ids") or "").strip() else score, it) for score, it in scored]
         if self.federation is not None:
             # An entry its publisher marks as signing in no school (Elsevier's
             # entries carry their route: IP, VPN or a work email, no entityID) is
@@ -988,15 +1056,18 @@ class InstitutionMixin:
                        and self.adapter.institution_entry_signs_in(unquote(str(it.get("ids") or ""))) is False]
             if without:
                 scored = [(score, it) for score, it in scored if not any(it is w for w in without)]
-                if not any(score >= 2 for score, _ in scored):
-                    if not self._list_settled(result, items):
-                        return False  # the search may still be adding entries
-                    if getattr(result, "_institution_not_listed", False) is not True:  # once, not every pass
-                        self._event(result, "auto_institution_not_found",
-                                    f"{self.institution_query} (listed only without a school sign-in: "
-                                    f"{len(without)} entr{'y' if len(without) == 1 else 'ies'}) @ {url}")
-                    result._institution_not_listed = True
-                    return False
+            # Listed only so, the school has no route here: 没权限, another saved school tried at a batch's end.
+            if (without or another_here) and not any(score >= 2 for score, _ in scored):
+                if not self._list_settled(result, items):
+                    return False  # the search may still be adding entries
+                if getattr(result, "_institution_not_listed", False) is not True:  # once, not every pass
+                    count = len(without) or max(len(another), 1)
+                    kind = "without a school sign-in" if without else "with another of its sign-ins"
+                    self._event(result, "auto_institution_not_found",
+                                f"{self.institution_query} (listed only {kind}: "
+                                f"{count} entr{'y' if count == 1 else 'ies'}) @ {url}")
+                result._institution_not_listed = True
+                return False
         top = max([score for score, _ in scored] or [0])
         best = [it for score, it in scored if score == top]
         if top < 2 and self.federation is not None and self._search_lists_no_school(page, result, url, scored):
@@ -1018,8 +1089,27 @@ class InstitutionMixin:
             # configured sign-in, by its entityID, the one this browser keeps the session of.
             if top >= 2 and len(best) > 1 and self._select_openathens_wayfinder(page, result):
                 return True
+            if top < 2 or len(best) < 2 or self._users_own_search(page):
+                return False  # the user typing a search of their own chooses (typed input is never replaced)
+            # Several entries by the school's name, nothing else to tell them apart by (JAMA's search: a test school's name
+            # two or three times, its CARSI sign-in and its library's proxy, Windows 2026-11-22): one after another in
+            # the page's order, the next when the one before did not do (user, 2026-11-18 and 2026-11-22; the turn is
+            # the orchestrator's, ``institution_entry_turn``).
+            turn = int(self.config.get("institution_entry_turn") or 0)
+            result._same_name_entries = len(best)
+            if turn >= len(best):
+                return False
+            target = best[turn]
+            self._event(result, "institution_same_name_choice",
+                        f"{turn + 1}/{len(best)}: {str(target.get('t') or '')[:60]} @ {url[:200]}")
+        else:
+            target = best[0]
+        if (top in (2, 3) and entity_id and not str(target.get("ids") or "").strip()
+                and self._searched_here(result, url) and not self._list_settled(result, items)):
+            # An entry by the school's name carrying nothing to tell its sign-in by, where its name was searched: taken
+            # once the list has settled, the search's own entries (each with its sign-in) shown by then (Sage's "Recent
+            # institution" was clicked a second before its search showed that entry's other sign-in, Windows 2026-11-22).
             return False
-        target = best[0]
         before = str(getattr(page, "url", "") or "")
         try:
             marked = page.evaluate("""([sel, idx]) => {
@@ -1233,6 +1323,17 @@ class InstitutionMixin:
                         label = re.sub(r"^\s*access through\s*", "", candidate["text"], flags=re.I)
                         entries.append((self._institution_match_score(label), label,
                                         page.locator(f'[data-paper-search-remembered="{candidate["i"]}"]')))
+            # A remembered entry whose link names another sign-in than the school's saved one: not clicked (Sage's
+            # "Access through <the school>", idp=.../entity, sent the login straight back, Windows 2026-11-22).
+            def link_of(entry: Any) -> str:
+                try:
+                    return str(entry.get_attribute("href", timeout=1_000) or "")
+                except Exception as exc:
+                    if not _is_browser_error(exc):
+                        raise
+                    return ""
+            entries = [(1 if score >= 2 and self._names_another_sign_in(link_of(entry), self._entity_id()) else score,
+                        label, entry) for score, label, entry in entries]
             top = max((score for score, _, _ in entries), default=0)
             best = [(label, entry) for score, label, entry in entries if score == top]
             if top >= 2 and len(best) == 1:

@@ -60,7 +60,7 @@ DOI 跳转到表外的网站时，程序按通用规则尝试：找机构登录�
 | 机构列表里没有 CARSI | AACR（aacrjournals.org） |
 | 找不到机构登录入口（`generic_institution_entry_missing`） | Emerald（emerald.com） |
 
-`generic_institution_entry_missing` 归“暂不支持的网站”：告诉用户这类网站还没有规则，可以把这篇报告给维护者补规则，或在校园网下下载。
+`generic_institution_entry_missing` 归“暂不支持”（说法“网站暂未适配”）：告诉用户这类网站还没有规则，可以把这篇报告给维护者补规则，或在校园网下下载。
 
 ## 不支持的平台
 
@@ -70,7 +70,7 @@ DOI 跳转到表外的网站时，程序按通用规则尝试：找机构登录�
 
 这些结果说明的是“用户学校在这家出版社的情况”，不是程序故障：
 
-- `institution_federation_unavailable`：出版社的机构列表里找不到用户学校所属的联盟或这所学校，即这家出版社没有这所学校的登录路线。AMS（journals.ametsoc.org）只有会员登录、机构靠学校网络地址访问，也按这条结束。程序立即结束；建议在校园网或学校 VPN 下下载。
+- `institution_federation_unavailable`：出版社的机构列表里找不到用户学校所属的联盟或这所学校，即这家出版社没开通本校路线。AMS（journals.ametsoc.org）只有会员登录、机构靠学校网络地址访问，也按这条结束。程序立即结束；建议在校园网或学校 VPN 下下载。
 - `institution_not_registered`：学校的这个登录入口和这家出版社之间没有开通（出版社或学校的登录系统这样说），经这个入口没有权限，归入“没权限”；学校的其他入口、校园网或 VPN 可能仍可访问，不把它当作学校没有论文订阅。
 - `idp_no_return_to_publisher`：学校登录后停在学校自己的网站，没回到出版社，通常也是学校没开通。
 - `entitlement_missing`：出版社认出了学校，判定本篇不在订阅内。只说本篇、当前学校没有权限，不推断整个出版社。

@@ -70,6 +70,14 @@ class EntitlementMemoryTests(unittest.TestCase):
         browser.assert_not_called()
         self.assertEqual((result["error_type"], result["reason"]), ("no_entitlement", "user_marked_no_entitlement"))
         self.assertEqual(result["entitlement"]["key"], "issn:0270-9139")
+        # Another saved school's visit (没权限时换下一所学校): the mark was made with the default school (user, 2026-11-22).
+        from paper_search_school import school_switch
+        with patch.object(bridge, "_resolve_doi", return_value="https://journals.lww.com/hep/x"), \
+             patch.object(bridge, "_try_browser_batch_download",
+                          return_value={"success": False, "error_type": "download_failed", "reason": "fixture"}) as browser:
+            bridge._try_builtin_institutional("10.1097/hep.2", Path("/tmp/x.pdf"), {
+                "publisher_institution_federation": "carsi", "publisher_hourly_limit": 0, school_switch.MARKS_OFF: True}, profile)
+        browser.assert_called_once()
 
     def test_the_site_a_doi_resolves_to_decides_the_publisher_rules(self):
         # Karger's Neuroepidemiology (10.1159/ned/…) is on Oxford Academic (2026-11-14);

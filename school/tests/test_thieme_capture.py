@@ -34,6 +34,17 @@ class ThiemeCaptureTests(unittest.TestCase):
             self.assertFalse(self.downloader._article_pdf_url_matches(url,DOI+'-other'))
         self.assertTrue(is_thieme_article_pdf_url(PDF+'   ',DOI))
 
+    def test_a_journal_thieme_took_over_keeps_its_own_doi(self):
+        # Thrombosis and Haemostasis (Schattauer, 10.1160), 2026-11-22: its article page and PDF are Thieme's.
+        doi = '10.1160/TH12-05-0346'
+        article = 'https://www.thieme-connect.de/products/ejournals/abstract/10.1160/th12-05-0346'
+        pdf = 'https://www.thieme-connect.de/products/ejournals/pdf/10.1160/th12-05-0346.pdf'
+        self.assertTrue(self.downloader._is_success_article_url(article))
+        self.assertTrue(is_thieme_article_pdf_url(pdf, doi))
+        self.assertTrue(self.downloader._article_pdf_url_matches(pdf, doi))
+        self.assertFalse(is_thieme_article_pdf_url(pdf, '10.1160/TH12-05-0347'))
+        self.assertFalse(self.downloader._is_success_article_url(article.replace('/10.1160/', '/1160/')))
+
     def test_login_reset_and_forged_hosts_with_pdf_return_urls_are_rejected(self):
         for url in (
             'https://profile.thieme.de/HTML/sso/THIEME/thieme_forgotten_access_data.htm?hook_url='+PDF,

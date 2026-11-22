@@ -15,17 +15,17 @@ import { schoolShortReason } from "../../../../infrastructure/school/index.js";
 export function markdownMissing(markdown) {
     const code = markdown.code ?? "";
     if (code === "school_update_needed")
-        return { cls: "user_side", reason: "学校订阅下载扩展需要更新" };
+        return { cls: "user_side", reason: "扩展需要更新" };
     // PaperSearch Pro (pro.ts): not installed, or not usable now (it says why in the message).
     if (code === "markdown_pro_required")
-        return { cls: classifyFailureCode(code), reason: "需要 PaperSearch Pro" };
+        return { cls: classifyFailureCode(code), reason: "需要 Pro" };
     if (code.startsWith("markdown_pro_"))
-        return { cls: classifyFailureCode(code), reason: "PaperSearch Pro 暂不可用" };
+        return { cls: classifyFailureCode(code), reason: "Pro 暂不可用" };
     const school = schoolShortReason(code, "");
     if (school)
         return { cls: classifyFailureCode(code), reason: school };
     if (code === "institutional_not_run")
-        return { cls: classifyFailureCode(code), reason: "没有进行机构下载" };
+        return { cls: classifyFailureCode(code), reason: "没进行学校订阅下载" };
     // The page, opened through the school's login, showed no access: as a PDF the school has no subscription to.
     if (code === "page_not_entitled")
         return { cls: classifyFailureCode("entitlement_missing"), reason: schoolShortReason("entitlement_missing") };
@@ -42,7 +42,7 @@ export function markdownMissing(markdown) {
     if (code === "unverified_incomplete")
         return { cls: "unsupported", reason: "内容不完整" };
     if (code === "pmc_failed")
-        return { cls: classifyFailureCode(code), reason: "PubMed Central 没响应" };
+        return { cls: classifyFailureCode(code), reason: "PMC 没响应" };
     if (markdown.status === "abstract_only" || code === "abstract_only")
         return { cls: "unsupported", reason: "网页只有摘要" };
     if (code === "no_doi")

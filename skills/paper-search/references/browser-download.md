@@ -86,17 +86,15 @@ SCHOOL_DATA_DIR="<数据目录>" paper-search-school preview --run-id "<本次 r
 paper-search failures --format text
 ```
 
-（默认最近一批；`--since YYYY-MM-DD`、`--runs N`、`--all`）。它把失败分成七类；向用户说明时按类别说：
+（默认最近一批；`--since YYYY-MM-DD`、`--runs N`、`--all`）。它把失败分成五类，每种原因有固定的说法（进度窗口、批量最后一行和汇总里都一样）；向用户说明时用这些类名和说法，不另起说法：
 
-| 类别 | 常见 code | 怎么说、怎么做 |
+| 类别 | 说法（常见 code） | 怎么说、怎么做 |
 | --- | --- | --- |
-| 没权限（有依据） | `entitlement_missing`、`institution_federation_unavailable`、`institution_not_registered`（学校的这个登录入口和这家出版社之间没有开通）、`no_entitlement` | 附上汇总里的依据（页面原话或决定性的一步）。只说本篇、当前学校没有权限，不推断整个平台。出版社没有学校所在联盟的登录路线、或学校的这个入口和出版社之间没有开通时，不说成学校没有订阅，建议在校园网或学校 VPN 下下载。 |
-| 你这边 | `login_timeout`（停在学校登录页，没在等待时间内登录完）、`login_page_closed`、`browser_closed`、`user_skipped`、`cancelled`、`batch_stopped`、`profile_busy`（另一个下载任务正占着下载浏览器） | 说明需要用户做什么（登录、等另一个任务结束），原调用结束、资源释放后再决定是否重试；不连续重新提交登录。 |
-| 学校那边 | `login_credentials_rejected`、`idp_login_error`、`idp_account_locked`、`idp_password_expired`、`idp_no_return_to_publisher`（学校登录后停在学校自己的网站，没回到出版社）、`login_paused`（这家出版社的学校登录在本批中途失效，这篇暂停、没试；不代表没有权限） | 说明是学校登录这一步的问题；账号锁定、密码过期请用户联系学校；中途失效的请用户重新登录后说“接着下”。 |
-| 出版社或网络 | `access_blocked`、`cloudflare_blocked`、`captcha_required`、`publisher_content_error`、`publisher_unreachable`、`network_unavailable`（网络中断：doi.org 和 PubMed 都连不上，不是 DOI 不存在；批量下载会等网络恢复后重下，单篇联网后再试）、`rate_limited` | 说明是出版社网站或网络的问题；建议稍后再试、换网络，或在校园网或学校 VPN 下下载。 |
-| 文章或网站本身 | `article_not_yet_published`（论文已录用，出版社还没上线全文）、`doi_not_resolved`（doi.org 还查不到这个 DOI，常见于刚上线几天的文章；过几天再下）、`doi_not_registered`（文章已发表一个多月，DOI 从没在 doi.org 登记，PubMed 也没有出版社的其他链接；重下也查不到，请用户在出版社网站按标题找到后自己下载）、`no_institution_entry`（网站没有学校登录入口：只有网站自己的个人账户登录，或是开放获取的网站；程序没有去登录。开放获取的文章到网站上直接下载，订阅内容在校园网或学校 VPN 下下载） | 说明是文章或网站本身的情况，不说成没有权限，也不说成程序出错。 |
-| 暂不支持的网站 | `unsupported_platform`（如只在 ClinicalKey 上的内容）、`unsupported_publisher`（DOI 没有指向能登录的出版社网站，没有打开浏览器）、`generic_institution_entry_missing`（这家出版社还没有专门的规则，按通用规则没找到机构登录入口） | 说明这类网站还不支持，不说成没有权限；后者可以建议用户把这篇报告给维护者补规则，或在校园网下下载。 |
-| 原因不明（需排查） | `download_failed`、`download_timeout`、`login_not_reached`（程序没进入学校登录页）、`login_required`、`source_exception`、`browser_unresponsive`、`browser_connection_lost`（浏览器连接断了，批量已换新浏览器）、`pdf_identity_unverified`、`pdf_identity_mismatch`、`pdf_wrong_article` 等 | 不说成没有权限；说明原因待查，给出汇总里的“停在哪一步”和诊断文件位置。 |
+| 没权限 | 学校没有订阅（`entitlement_missing`）；出版社没开通本校（`institution_federation_unavailable`、`institution_not_registered`）；你标记过没权限（`no_entitlement`）；换过学校的写“N 所学校都没有权限” | 附上汇总里的依据（页面原话或决定性的一步）。只说本篇、这几所学校用不了，不推断整个平台；出版社没开通本校时不说成学校没有订阅，建议在校园网或学校 VPN 下下载。批量已在最后换过保存的其他学校。 |
+| 要你处理 | 等你登录超时；你跳过或终止了；浏览器被关闭；浏览器被占用；密码被学校拒绝；账号被锁或密码过期 | 说明需要用户做什么（登录、等另一个任务结束、在设置里更新密码、按学校说明解锁），处理后说“接着下”；不连续重新提交登录。 |
+| 外部原因 | 被网站拦截；出版社网站出错；学校登录系统出错；学校登录中途失效；网络中断；达到每小时下载上限；全文还没上线；DOI 查不到；网站没有学校登录 | 说明是对方的问题，不说成没有权限，也不说成程序出错；建议过会儿说“接着下”，或换网络、在校园网或学校 VPN 下下载。全文还没上线的等正式发表；DOI 查不到的过几天再试，一直查不到的请用户在出版社网站按标题自己下载；网站没有学校登录的，开放获取的文章到网站上直接下载。 |
+| 暂不支持 | 只在其他平台提供；网站暂未适配；附录暂未适配 | 说明这个网站 PaperSearch 还没适配，不说成没有权限；给出汇总里的诊断文件和截图位置，建议用 `paper-search failures --export <文件.zip>` 导出记录发给维护者，急用可在校园网下自己下载。 |
+| 原因不明 | 没取到 PDF；拿错 PDF；没法确认 PDF；页面或浏览器卡住；没进入学校登录页；文章页没存下来 | 不说成没有权限；批量已在最后用同一所学校再试过一次。说明原因待查，给出汇总里的“停在哪一步”和诊断文件位置。 |
 
 `pdf_identity_unverified` / `pdf_identity_mismatch`：不能报成功，`review.path` 只是待核查的文件。
 

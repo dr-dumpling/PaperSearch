@@ -89,6 +89,29 @@ class PdfFirstTests(unittest.TestCase):
         states = [e["state"] for e in result.events]
         self.assertLess(states.index("access_unknown_pdf_first"), states.index("access_unknown_pdf_failed"))
 
+    def test_a_login_after_the_pdf_that_ran_out_says_where_it_ended(self):
+        # Thieme, Windows 2026-11-22: the wait ended on its school list page and did not say where, so it
+        # counted as the user's (等学校登录超时); JAMA's ended on the school's own login page.
+        for where in ("institution_chooser", "school_login"):
+            with self.subTest(where=where):
+                d = self.downloader()
+                d._access_decision = Mock(return_value=("unknown", "", ""))
+                d._article_access_available = Mock(return_value=False)
+                d._login_wait_page = Mock(return_value=where)
+
+                def ran_out(page, result):
+                    result._user_wait_expired = True
+                    return False
+
+                d._ensure_login = Mock(return_value=True)
+                d._capture_pdf = Mock(side_effect=[(None, "", None)])
+                d._complete_login_from_current_page = Mock(side_effect=ran_out)
+                d._reopen_article_page = Mock()
+                with tempfile.TemporaryDirectory() as directory, patch.object(batch.time, "sleep"):
+                    result = d.fetch_one(self.page(), PaperRecord(doi=DOI), Path(directory))
+                self.assertEqual(result.login_wait_page, where)
+                self.assertEqual([e["detail"] for e in result.events if e["state"] == "login_wait_ended"][:1], [where])
+
     def test_an_open_page_whose_pdf_entry_asks_for_access_signs_in_once(self):
         """PNAS 2026-11-17: a Creative Commons line in the copyright notes, "GET ACCESS" by the
         title, the PDF addresses 403 without the school's login."""
@@ -406,6 +429,19 @@ class PdfSentToArticleAfterLoginTests(unittest.TestCase):
                 found, result = self.judged(attempts, signed_in)
                 self.assertFalse(found)
                 self.assertNotEqual(result.reason, "institution_pdf_entitlement_missing")
+
+    def test_a_pdf_address_that_shows_the_article_without_access_is_sent_back(self):
+        # Taylor & Francis (Scand J Rheumatol 2013, Windows 2026-11-22): signed in, its PDF address answered with the
+        # article's page, "Purchase options" on it. Only where the publisher's rules say its PDF address does so.
+        at_its_address = [self.attempt("html page", final=self.PDF_URL)]
+        with patch.object(type(self.downloader().adapter), "pdf_address_shows_article_page", True):
+            found, result = self.judged(at_its_address, body="Purchase options *")
+            self.assertTrue(found)
+            self.assertEqual(result.reason, "institution_pdf_entitlement_missing")
+            found, _ = self.judged(at_its_address, body="Abstract\nReferences")  # nothing denied or offered
+            self.assertFalse(found)
+        from paper_search_school.adapters.taylor_francis import TaylorFrancisAdapter
+        self.assertTrue(TaylorFrancisAdapter.pdf_address_shows_article_page)
 
     def test_only_the_attempts_after_the_login_count(self):
         found, _ = self.judged([self.attempt("html page"), self.attempt("no pdf")], since=1)

@@ -406,3 +406,23 @@ class OUPAdapter(PublisherAdapter):
             result.reason = "login_timeout"
             d._event(result, "login_stopped", result.reason)
             return False
+
+
+@register
+class OUPKeptDoiAdapter(OUPAdapter):
+    """Journals Oxford Academic took over with their DOIs kept, which name no journal (Wiley's 10.1002/jbmr.4720 and
+    10.1002/bjs.11621, Taylor & Francis's 10.1080/14397595.2020.1868688; Windows, 2026-11-22: no PDF tried, the rules
+    above building and accepting only ``<prefix>/<journal>/<id>``). Their PDF names neither the DOI nor its suffix
+    (``/mr/article-pdf/31/6/1215/40675914/mr1215.pdf``): the article page's own citation PDF (``citation_doi`` exactly
+    this DOI) is the only candidate and the only PDF accepted, as on Silverchair's other sites
+    (``binds_pdf_to_citation``); its CDN copy is told by its file name along the redirect (``binds_response_url``)."""
+
+    doi_pattern = r"10\.\d{4,9}/[^/]+"
+    binds_pdf_to_citation = True
+    binds_response_url = True
+    pdf_cdn_redirects = False
+
+    def is_article_pdf_url(self, url: str, doi: str = "") -> bool | None:
+        # With the DOI: the bound citation PDF alone (the engine's rule). Without: any article PDF of the site, so that
+        # another article's is told apart from this one's.
+        return None if doi else super().is_article_pdf_url(url)

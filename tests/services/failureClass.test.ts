@@ -8,21 +8,27 @@ describe("failure classes (ADR 0012)", () => {
     expect(classifyFailureCode("entitlement_missing")).toBe("no_access");
     expect(classifyFailureCode("institution_federation_unavailable")).toBe("no_access");
     expect(classifyFailureCode("no_entitlement")).toBe("no_access");
-    // The causes outside PaperSearch's rules, by whose they are (user, 2026-11-19).
+    // Five classes since 2026-11-22 (user: the eight and their 58 phrasings were too many to follow).
     expect(classifyFailureCode("user_skipped")).toBe("user_side");
     expect(classifyFailureCode("profile_busy")).toBe("user_side");
-    expect(classifyFailureCode("login_credentials_rejected")).toBe("school_side");
-    expect(classifyFailureCode("idp_no_return_to_publisher")).toBe("school_side");
-    expect(classifyFailureCode("login_paused")).toBe("school_side");
-    expect(classifyFailureCode("access_blocked")).toBe("publisher_or_network");
-    expect(classifyFailureCode("network_unavailable")).toBe("publisher_or_network");
-    expect(classifyFailureCode("doi_not_resolved")).toBe("article_or_site");
+    // The school account's: the user updates the password.
+    expect(classifyFailureCode("login_credentials_rejected")).toBe("user_side");
+    expect(classifyFailureCode("idp_password_expired")).toBe("user_side");
+    // The school's login system's errors go with the site's and the network's (user, 2026-11-22).
+    expect(classifyFailureCode("idp_login_error")).toBe("external");
+    expect(classifyFailureCode("idp_no_return_to_publisher")).toBe("external");
+    expect(classifyFailureCode("login_paused")).toBe("external");
+    expect(classifyFailureCode("access_blocked")).toBe("external");
+    expect(classifyFailureCode("network_unavailable")).toBe("external");
+    expect(classifyFailureCode("doi_not_resolved")).toBe("external");
+    expect(classifyFailureCode("article_not_yet_published")).toBe("external");
+    // A site offering no school login at all (an open-access one): the site's doing, not no access.
+    expect(classifyFailureCode("no_institution_entry")).toBe("external");
+    // PaperSearch's to fix: no rules for the site, or its rules missed the journal's page.
+    expect(classifyFailureCode("publisher_institution_entry_missing")).toBe("unsupported");
     expect(classifyFailureCode("unsupported_platform")).toBe("unsupported");
-    expect(classifyFailureCode("article_not_yet_published")).toBe("article_or_site");
     expect(classifyFailureCode("unsupported_publisher")).toBe("unsupported");
     expect(classifyFailureCode("generic_institution_entry_missing")).toBe("unsupported");
-    // A site offering no school login at all (an open-access one): the site's doing, not no access.
-    expect(classifyFailureCode("no_institution_entry")).toBe("article_or_site");
     for (const code of ["download_failed", "download_timeout", "login_not_reached", "login_required",
       "source_exception", "pdf_identity_unverified", "pdf_wrong_article", undefined, "toString"]) {
       expect(classifyFailureCode(code)).toBe("unexplained");
@@ -59,8 +65,13 @@ describe("failure classes (ADR 0012)", () => {
       { state: "auto_institution_not_found", detail: "Hong Mu-lan @ https://login.openathens.net/auth?t=x" },
       { state: "institution_federation_unavailable" },
     ] });
-    expect(describeFailure("institution_federation_unavailable", sage).evidence).toBe("机构列表里找不到 Hong Mu-lan（login.openathens.net）");
-    expect(describeFailure("no_entitlement").evidence).toBe("你标记过该期刊或出版社无权限");
+    expect(describeFailure("institution_federation_unavailable", sage).evidence).toBe("出版社的机构列表里没有 Hong Mu-lan（login.openathens.net）");
+    // The backend's note in words (Sage and JAMA listed the school only by its library's other sign-in, 2026-11-22).
+    const other = diagnostic({ events: [{ state: "auto_institution_not_found",
+      detail: "西沼大学 (listed only with another of its sign-ins: 1 entry) @ https://journals.sagepub.com/action/ssostart?x" }] });
+    expect(describeFailure("institution_federation_unavailable", other).evidence)
+      .toBe("出版社只列了西沼大学的另一套登录，自动登录用不了（journals.sagepub.com）");
+    expect(describeFailure("no_entitlement").evidence).toBe("你标记过该期刊或出版社没权限");
     // ScienceDirect's own check decided; the backend keeps the page's words as an event.
     const sciencedirect = diagnostic({ access_evidence: ["Brought to you by:Hong Mu-Lan University"], events: [
       { state: "entitlement_denied", detail: "Hong Mu-lan University does not subscribe to this content on ScienceDirect." }] });

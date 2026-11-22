@@ -1,4 +1,4 @@
-import type { SchoolBatchPapers, SchoolBatchUpdate, SchoolBatchRequests, SchoolDownloadRequest, SchoolBackend, SchoolInvocationOutcome, SchoolMcpClientOptions, SchoolReadiness } from "./types.js";
+import type { SchoolBatchPapers, SchoolBatchUpdate, SchoolBatchRequests, SchoolDownloadRequest, SchoolBackend, SchoolInvocationOutcome, SchoolMcpClientOptions, SchoolReadiness, SchoolTurn } from "./types.js";
 export declare const SCHOOL_STARTUP_TIMEOUT_MS = 15000;
 export declare const SCHOOL_TOOL_TIMEOUT_MS = 15000;
 export declare const SCHOOL_DOWNLOAD_TIMEOUT_MS = 1200000;
@@ -61,8 +61,12 @@ export declare class SchoolMcpClient implements SchoolBackend {
         waitSec: number;
         limit: number;
     } | undefined>;
-    /** Whether the batch takes one journal's papers one after another (school_switch_state), on its backend. */
+    /**
+     * The schools a batch's papers without access are tried with at its end, and whether it takes one journal's papers
+     * one after another (school_switch_state), on its backend.
+     */
     schoolSwitch(signal?: AbortSignal): Promise<{
+        schools: SchoolTurn[];
         group: boolean;
     } | undefined>;
     /** The batch's papers for the window's lists, on the backend the batch already has. */

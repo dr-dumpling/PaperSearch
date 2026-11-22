@@ -44,6 +44,7 @@ import type {
   SchoolMcpClientOptions,
   SchoolReadiness,
   SchoolToolDefinition,
+  SchoolTurn,
 } from "./types.js";
 import { SCHOOL_UPDATE_NEEDED, SCHOOL_UPDATE_NEEDED_MESSAGE } from "./types.js";
 
@@ -66,7 +67,7 @@ export const SCHOOL_BACKEND_UTF8_ENV: Readonly<Record<string, string>> = { PYTHO
 
 const SCHOOL_BACKEND_SOURCE = "school";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.7.2";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.7.3";
 
 interface ActiveSession {
   client: Client;
@@ -537,8 +538,11 @@ export class SchoolMcpClient implements SchoolBackend {
     }
   }
 
-  /** Whether the batch takes one journal's papers one after another (school_switch_state), on its backend. */
-  async schoolSwitch(signal?: AbortSignal): Promise<{ group: boolean } | undefined> {
+  /**
+   * The schools a batch's papers without access are tried with at its end, and whether it takes one journal's papers
+   * one after another (school_switch_state), on its backend.
+   */
+  async schoolSwitch(signal?: AbortSignal): Promise<{ schools: SchoolTurn[]; group: boolean } | undefined> {
     const session = this.retainedSession;
     if (!session || session.readiness.state !== "available" || !session.batchSupport.switchStateTool) return undefined;
     try {
@@ -549,7 +553,15 @@ export class SchoolMcpClient implements SchoolBackend {
       const content = (result as { content?: unknown })?.content;
       const block = Array.isArray(content) && content.length === 1 ? content[0] as { type?: unknown; text?: unknown } : undefined;
       if ((result as { isError?: unknown })?.isError === true || block?.type !== "text" || typeof block.text !== "string") return undefined;
-      return { group: (JSON.parse(block.text) as { group?: unknown }).group === true };
+      const state = JSON.parse(block.text) as { schools?: unknown; group?: unknown };
+      const listed = state.schools;
+      // Names to show and entityIDs to name them by; anything else is left out.
+      const schools = (Array.isArray(listed) ? listed : []).flatMap((entry) => {
+        const { name, entity_id: entityId } = (entry ?? {}) as { name?: unknown; entity_id?: unknown };
+        return typeof name === "string" && name.trim() && name.length <= 200 && typeof entityId === "string" && /^https?:\/\/\S{1,500}$/.test(entityId)
+          ? [{ name: name.trim(), entityId }] : [];
+      });
+      return { schools, group: state.group === true };
     } catch {
       return undefined;
     }

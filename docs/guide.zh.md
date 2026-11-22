@@ -65,7 +65,7 @@ paper-search failures --format text
 
 两种方式用同一个下载命令：先试开放下载，拿不到时，装了机构下载才继续用学校权限。
 
-- 几十到几百篇用一次 `download_batch`：每篇先试开放渠道，没拿到正文的随即用机构下载，两者同时进行，学校登录在开始后几秒就会提示。结束后 `paper-search failures` 把没下到的篇目分成四类：没权限（附页面原话等依据）、需要你处理（登录、验证、等待）、暂不支持的网站、原因不明。
+- 几十到几百篇用一次 `download_batch`：每篇先试开放渠道，没拿到正文的随即用机构下载，两者同时进行，学校登录在开始后几秒就会提示。结束后 `paper-search failures` 把没下到的篇目分类：没权限（附页面原话等依据）、你这边、学校那边、出版社或网络、文章或网站本身、暂不支持的网站、网站适配问题（PaperSearch 待修，附截图位置）、原因不明。
 - arXiv 论文先找正式发表版，都没拿到才下载预印本；结果里写 `version: "preprint"`，已知时附正式版 DOI。
 - 不想用 Sci-Hub 时，在 `download_with_fallback` / `download_batch` 里设 `"useSciHub": false`。
 - 每个 PDF 都核对首页的 DOI 和题名；对不上的不算成功，单独留待核查。
@@ -132,6 +132,7 @@ paper-search skills update
 | `paper-search run <工具>` | 精确调用某个工具，参数用 `--arg` 或 `--json-args` |
 | `paper-search failures` | 汇总下载失败的原因 |
 | `paper-search update check` | 检查是否有新版本 |
+| `paper-search update install` | 更新到新版本（也可以在设置窗口“关于”页点“更新到”，一次更新全部组件） |
 | `paper-search school` | 学校订阅下载的安装、状态、更新、卸载 |
 | `paper-search setup` / `config` | 配置 key、Skill 和扩展 |
 | `paper-search settings` | 打开设置窗口：下载文件夹、等待和提醒、API key（需装学校订阅下载、有图形界面） |

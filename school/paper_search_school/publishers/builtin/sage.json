@@ -3,12 +3,14 @@
   "profile": {
     "name": "SAGE",
     "doi_prefixes": [
-      "10.1177"
+      "10.1177",
+      "10.1191",
+      "10.1258"
     ],
     "base_domains": [
       "sagepub.com"
     ],
-    "article_url_template": "https://doi.org/{doi}",
+    "article_url_template": "https://journals.sagepub.com/doi/{doi}",
     "pdf_url_templates": [
       "https://journals.sagepub.com/doi/pdf/{doi}"
     ],

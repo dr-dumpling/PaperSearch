@@ -53,7 +53,7 @@ function backend(calls: string[]): SchoolBackend {
     },
     schoolSwitch: async () => {
       calls.push("schoolSwitch");
-      return { group: true };
+      return { schools: [{ name: "甲大学", entityId: "https://idp.a.example/idp" }], group: true };
     },
   };
 }

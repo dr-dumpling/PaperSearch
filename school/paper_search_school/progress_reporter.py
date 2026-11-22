@@ -430,7 +430,17 @@ def _short_line(value: Any, limit: int = 80) -> str:
     return " ".join(value.split())[:limit]
 
 
-FAILURE_CLASSES = ("no_access", "user_side", "school_side", "publisher_or_network", "article_or_site", "unsupported", "unexplained")
+# The five failure classes (PaperSearch's failureClass.ts; docs/contracts/failure-reasons.zh.md), and the eight before
+# 2026-11-22 as they map to them (a PaperSearch older than this backend may still send those).
+FAILURE_CLASSES = ("no_access", "user_side", "external", "unsupported", "unexplained")
+_OLD_CLASSES = {"school_side": "external", "publisher_or_network": "external", "article_or_site": "external",
+                "adaptation": "unsupported"}
+
+
+def _failure_class(value: Any) -> str:
+    value = _OLD_CLASSES.get(value, value) if isinstance(value, str) else value
+    return value if value in FAILURE_CLASSES else "unexplained"
+
 _RESULT_CONTENTS = ("main", "supplements", "both", "markdown")
 # A bound against malformed input only: a batch has no limit since 7a38a068 (user, 2026-11-17). Left at its old 1000,
 # a batch's papers after the 1000th were left out of the lists (user, 2026-11-21: 失败 1 on the card, the list empty,
@@ -496,7 +506,7 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
             if not isinstance(item, dict) or not text(item.get("reason")):
                 continue
             summary[key].append({
-                "cls": item.get("cls") if item.get("cls") in FAILURE_CLASSES else "unexplained",
+                "cls": _failure_class(item.get("cls")),
                 **{field: text(item.get(field)) for field in ("reason", "title", "journal", "doi", "note")},
                 # A site not yet supported (its note says where it fell short).
                 **({"unverified": True} if item.get("unverified") is True else {}),
@@ -544,18 +554,17 @@ def _paper(raw: Any) -> dict[str, Any] | None:
         if isinstance(files, int) and not isinstance(files, bool) and 0 <= files <= 100_000:
             paper["supplements_saved"] = files
         if raw.get("supplement_reason"):  # saved, but not every supplementary file
-            paper.update(supplement_cls=raw.get("supplement_cls") if raw.get("supplement_cls") in FAILURE_CLASSES
-                         else "unexplained", supplement_reason=_display_text(raw.get("supplement_reason")))
+            paper.update(supplement_cls=_failure_class(raw.get("supplement_cls")),
+                         supplement_reason=_display_text(raw.get("supplement_reason")))
         if raw.get("markdown_reason"):  # saved, without the Markdown asked for
-            paper.update(markdown_cls=raw.get("markdown_cls") if raw.get("markdown_cls") in FAILURE_CLASSES
-                         else "unexplained", markdown_reason=_display_text(raw.get("markdown_reason")))
+            paper.update(markdown_cls=_failure_class(raw.get("markdown_cls")),
+                         markdown_reason=_display_text(raw.get("markdown_reason")))
         # Saved with a Markdown its checks found short, from a registered site's page (user, 2026-11-17).
         if _display_text(raw.get("markdown_doubt_reason")):
             paper.update(markdown_doubt_reason=_display_text(raw.get("markdown_doubt_reason")),
                          markdown_doubt_note=_display_text(raw.get("markdown_doubt_note")))
     elif paper["state"] == "failed":
-        paper.update(cls=raw.get("cls") if raw.get("cls") in FAILURE_CLASSES else "unexplained",
-                     reason=_display_text(raw.get("reason")))
+        paper.update(cls=_failure_class(raw.get("cls")), reason=_display_text(raw.get("reason")))
     # Its page from a site not yet supported (user, 2026-11-16): the site, whether its Markdown
     # was kept or the batch gave the site up, a note on what it lacked, the kept report.
     host = raw.get("markdown_host")

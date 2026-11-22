@@ -176,7 +176,7 @@ class PaperListsTests(unittest.TestCase):
                            paper(2, "ok", supplement_cls="unsupported", supplement_reason="附录在外部网站"),
                            paper(3, "ok", markdown_cls="unsupported", markdown_reason="内容不完整",
                                  markdown_host="ard.eular.org", markdown_note=note),
-                           paper(4, "ok", markdown_cls="publisher_or_network", markdown_reason="图片没下载成功"),
+                           paper(4, "ok", markdown_cls="external", markdown_reason="图片没下载成功"),
                            paper(5, "ok", markdown_host="ard.eular.org", markdown_saved=True))
         failed = lists["failed"]
         self.assertEqual((failed["count"], failed["supplement_count"], failed["markdown_count"]), (1, 1, 2))
@@ -198,7 +198,7 @@ class PaperListsTests(unittest.TestCase):
     def test_saved_markdown_its_checks_found_short_is_listed_last_to_look_over(self):
         # A registered site's page whose checks against it found something short (user, 2026-11-17).
         lists = self.lists(paper(1, "failed", cls="no_access", reason="本校没有订阅"),
-                           paper(2, "ok", markdown_cls="publisher_or_network", markdown_reason="图片没下载成功"),
+                           paper(2, "ok", markdown_cls="external", markdown_reason="图片没下载成功"),
                            paper(3, "ok", markdown_doubt_reason="参考文献可能不全", markdown_doubt_note="可能缺：参考文献少 2 条"),
                            paper(4, "ok", markdown_doubt_reason="参考文献可能不全", markdown_doubt_note="可能缺：参考文献少 1 条，正文缺约 12%"),
                            paper(5, "ok"))
@@ -219,7 +219,7 @@ class PaperListsTests(unittest.TestCase):
         note = "journals.example.org · 没有规则能读出正文"
         lists = self.lists(paper(1, "failed", cls="unsupported", reason="网站暂不支持转换", markdown_host="journals.example.org",
                                  markdown_note=note),
-                           paper(2, "failed", cls="publisher_or_network", reason="图片没下载成功"),
+                           paper(2, "failed", cls="external", reason="图片没下载成功"),
                            state={**self.state, "content": "markdown"})
         groups = lists["failed"]["groups"]
         self.assertEqual([(g["label"], bool(g.get("unverified"))) for g in groups],

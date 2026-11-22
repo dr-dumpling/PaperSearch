@@ -115,14 +115,19 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
                    login_only: bool = False, login_wait: int | None = None,
                    fulltext: str | None = None, school: str | None = None, fresh: bool = False) -> dict[str, Any]:
     config = load_config()
-    if school:
-        # Another saved school for this download alone, as the user asked; the config's own
-        # school is not changed (user, 2026-11-17).
-        from .schools.saved import use_for_download
+    from . import school_switch
+    from .schools import saved as saved_schools
 
-        problem = use_for_download(config, school)
+    # Another saved school for this download alone (the user asked, or a batch's 没权限 tried with it at its end); the
+    # config's own school is not changed (user, 2026-11-17).
+    other_school = ""
+    if school:
+        problem = saved_schools.use_for_download(config, school)
         if problem:
             return fail(doi, problem, error_type=problem, action="review_school")
+        if not saved_schools.is_current(load_config(), saved_schools.current(config) or {}):
+            other_school = school_switch.name(saved_schools.current(config) or {})
+            config[school_switch.MARKS_OFF] = True
     if fulltext:
         # The article's full-text page is saved while on it (engine/fulltext_page.py).
         # A main text already cached is not fetched again, so neither is its page.
@@ -169,19 +174,31 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
     log.info(f"paper-search-school - {doi}")
     # Another school than the one the browser last signed in with: that sign-in forgotten first; a test
     # (``fresh``) always starts signed out, so that the account is what it tries (user, 2026-11-21).
-    from .cold_start import before_sign_in
-    from . import school_switch
-    from .schools import saved as saved_schools
+    from .cold_start import before_sign_in, signed_in_school
+    from .progress_reporter import batch_id
 
-    # 没权限时换下一所学校 (school_switch.py): the schools to try in turn, its journal's school of this task first.
-    # One alone: the switch off, a school named for this download, the test of one, a sign-in only.
-    turns = (school_switch.order_for(config, doi) if school_switch.enabled(config) and not school and not fresh
-             and not login_only else [])
-    if turns and not saved_schools.is_current(config, turns[0]):
-        saved_schools.apply(config, turns[0])
+    # 没权限时换下一所学校 (school_switch.py): the schools to try in turn, the default one first. One alone: the switch
+    # off, a school named for this download, the test of one, a sign-in only, a paper of a batch (it switches once, at
+    # its end, for all its papers without access: user, 2026-11-22).
+    turns = (school_switch.schools(config) if school_switch.enabled(config) and not school and not fresh
+             and not login_only and not batch_id() else [])
     turn = 0
+    entry_turn = 0
     while True:
+        entity = str(config.get("idp_entity_id") or "").strip()
+        if not fresh and entity and signed_in_school() not in ("", entity):
+            # The batch's own browser, open from the article before, holds the profile: the default school's article
+            # after one another school got kept that school's sign-in beside its own, each article waiting 10 s for the
+            # profile in vain (Windows, 2026-11-22: Bone signed in with the default school, the other school's Wiley sign-in still
+            # there). Closed first, as for a switch.
+            from .browser.batch_session import active_batch
+
+            batch = active_batch.get()
+            if batch is not None:
+                batch.close()
         signed = before_sign_in(config, always=fresh)
+        if signed == "busy" and not fresh:
+            log.info("   [Institutional] the download browser is open: the last school's sign-in kept")
         if signed == "cleared":
             log.info("   [Institutional] the browser's sign-in with another school forgotten")
         elif signed == "busy" and fresh:
@@ -192,6 +209,15 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
         except Exception as exc:
             log.info(f"   [Institutional] route exception: {type(exc).__name__}")
             return fail(doi, "institutional route raised", error_type="source_exception", action="review_logs")
+        # The school's entries by one name: the next one, with this school, when the one chosen did not do.
+        if school_switch.entry_did_not_do(result) and entry_turn + 1 < int(result.get("same_name_entries") or 0):
+            entry_turn += 1
+            config["institution_entry_turn"] = entry_turn
+            log.info(f"   [Institutional] the school's entry {entry_turn} of {result['same_name_entries']} did not do; "
+                     f"the next one")
+            continue
+        entry_turn = 0
+        config.pop("institution_entry_turn", None)
         if turn + 1 >= len(turns) or not school_switch.no_access(result):
             break
         # Signed in, no access: the next school, its sign-in after this one's is forgotten (the batch's browser closed
@@ -207,14 +233,14 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
         if batch is not None:
             batch.close()
         saved_schools.apply(config, following)
+        config[school_switch.MARKS_OFF] = True
         if before_sign_in(config) == "busy":
             log.info("   [Institutional] the browser kept the last school's sign-in; no other school tried")
             turn -= 1
             break
-    if len(turns) > 1 and result and result.get("success"):
-        school_switch.remember(doi, str(config.get("idp_entity_id") or "").strip())
-        if turn or not saved_schools.is_current(load_config(), turns[turn]):
-            result["school"] = school_switch.name(turns[turn])  # not the default school's: the results say whose
+    if result and result.get("success") and (turn or other_school):
+        # Not the default school's: the results say whose.
+        result["school"] = school_switch.name(turns[turn]) if turn else other_school
     elif turns and turn and school_switch.no_access(result):
         result["schools_tried"] = turn + 1  # the lists say "N 所学校都没有权限"
     # An article that re-checked a blocked journal's site: open again unless blocked again.

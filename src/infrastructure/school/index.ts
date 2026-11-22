@@ -35,6 +35,7 @@ export type {
   SchoolBatchUpdate,
   SchoolBatchRequests,
   SchoolHeldPublisher,
+  SchoolTurn,
   SchoolDownloadRequest,
   SchoolInvocationOutcome,
   SchoolProgress,

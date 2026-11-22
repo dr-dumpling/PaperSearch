@@ -254,9 +254,10 @@ def reader_access(lines: list[str], text: str, probe: dict) -> str:
 # Short controls and labels, a whole line or a control's whole text (links in a
 # row share a line: BMJ's "Buy this article ($64)", Thieme's "Buy Article"):
 # "Buy article PDF 39,95 €", "Purchase PDF", "Rent this article", "Get Access",
-# "Check Access" (journals.lww.com, Ovid).
+# "Check Access" (journals.lww.com, Ovid); Taylor & Francis's "Purchase options *" heading over its
+# "Issue Purchase" box, the school signed in (Scand J Rheumatol 2013, Windows 2026-11-22).
 OFFER_LABEL = (r"(?:buy|purchase|rent)\s+(?:this\s+)?(?:article|pdf|chapter|e-?book|issue|instant access|access)\b.{0,40}"
-               r"|(?:get|check)\s+access")
+               r"|(?:get|check)\s+access|purchase options\W{0,3}|issue purchase")
 _OFFER_LINE = re.compile(OFFER_LABEL, re.I)
 # Sentences only a reader without access is shown, anywhere in a line.
 _OFFER_PHRASE = re.compile(

@@ -161,6 +161,25 @@ class InstitutionListRuleTests(unittest.TestCase):
         self.assertEqual(self.d._set_select.call_count, 2)
         self.assertEqual([e["state"] for e in self.result.events].count("institution_federation_selected"), 2)
 
+    def test_a_list_of_societies_is_not_a_list_of_schools(self):
+        # BMJ, Windows 2026-11-22: its "Log in via your Society" list (addresses for values, a "College" among its names)
+        # was read as the school list while its Location and Institution lists still loaded: "no route for the school".
+        self.page.url = "https://bjsm.bmj.com/login/shibboleth?subcode=bmjjournals"
+        self.d._on_publisher_host = Mock(return_value=True)
+        societies = [["", "Select your society"]] + [[f"https://society{n}.example/login", f"Westmarsh College {n}"] for n in range(22)]
+        loading = [school_list(societies, "#society-login-select--2", 0), school_list([], "#shib-fed-select", 1),
+                   school_list([], "#shib-idp-select", 2)]
+        self.d._page_selects = Mock(return_value=loading)
+        self.assertFalse(self.d._select_from_institution_lists(self.page, self.result))
+        self.assertFalse(getattr(self.result, "_institution_not_listed", False))
+        self.assertNotIn("auto_institution_not_found", [e["state"] for e in self.result.events])
+        # Its federation and schools once loaded: chosen as on any page.
+        federation = school_list(self.FEDERATION, "#shib-fed-select", 1)
+        filled = [loading[0], federation, school_list(self.SCHOOLS, "#shib-idp-select", 2)]
+        self.d._page_selects = Mock(side_effect=[[loading[0], federation, school_list([], "#shib-idp-select", 2)]] + [filled] * 5)
+        self.assertTrue(self.d._select_from_institution_lists(self.page, self.result))
+        self.assertEqual(self.d._set_select.call_args_list[-1].args[2], self.ENTITY)
+
     def test_pages_without_a_school_or_school_list_are_left_alone(self):
         self.d._page_selects = Mock(return_value=[school_list([["", "Country"], ["cn", "China"]], "#country", 0)])
         self.assertFalse(self.d._select_from_institution_lists(self.page, self.result))

@@ -13,7 +13,7 @@ import {
   downloadWithFallback,
 } from "../content/pdf/OpenAccessFallbackService.js";
 import { schoolAttemptDetails, schoolShortReason } from "../../../infrastructure/school/index.js";
-import type { SchoolBackend, SchoolHeldPublisher } from "../../../infrastructure/school/index.js";
+import type { SchoolBackend, SchoolHeldPublisher, SchoolTurn } from "../../../infrastructure/school/index.js";
 import { journalOfDoi, takeNext } from "./journalKey.js";
 import { downloadSupplementsOnly, filesPastNetworkLoss } from "../content/supplements/fetch.js";
 import { supplementShortfall } from "../content/supplements/shortfall.js";
@@ -331,6 +331,63 @@ const STOP_NOTICE = "[批量] 已在进度窗口终止任务，剩下的篇目�
 /** The user pressed 终止 in the batch's window (papers not reached, or still paused, show it). */
 export function batchStopped(result: DownloadBatchResult): boolean {
   return !!result.stopped || result.items.some((item) => stoppedByUser(item) || item.attempts.some((attempt) => attempt.code === "login_paused"));
+}
+
+/**
+ * 没权限 (FailureClass no_access) at the school's stage: the publisher refused the signed-in school, the school's
+ * sign-in is not enabled for the publisher, the publisher has no route for it, or the user marked the journal as
+ * without access. Another saved school may have it (没权限时换下一所学校, user 2026-11-22: every paper under 没权限).
+ */
+function withoutAccess(result: DownloadWithFallbackResult | undefined): boolean {
+  if (!result || result.status === "ok") return false;
+  const school = [...result.attempts].reverse().find((attempt) => attempt.stage === "entitled_access");
+  return school?.status === "error" && classifyFailureCode(school.code) === "no_access";
+}
+
+/**
+ * 原因不明 (FailureClass unexplained) at the school's stage: tried once more at the batch's end, with the school it had,
+ * before any other school (user, 2026-11-22: "原因不明的也最后再试一次"); not a paper the user stopped.
+ */
+function unexplainedFailure(result: DownloadWithFallbackResult | undefined): boolean {
+  if (!result || result.status === "ok" || stoppedByUser(result)) return false;
+  const school = [...result.attempts].reverse().find((attempt) => attempt.stage === "entitled_access");
+  return school?.status === "error" && classifyFailureCode(school.code) === "unexplained";
+}
+
+/** The other saved schools a batch's papers without access go to at its end: none for a batch given its school. */
+async function schoolsAfterDefault(backend: SchoolBackend | undefined, options: DownloadBatchOptions): Promise<SchoolTurn[]> {
+  if (options.school?.trim() || !backend?.schoolSwitch) return [];
+  return (await backend.schoolSwitch().catch(() => undefined))?.schools.slice(1) ?? [];
+}
+
+/**
+ * 没权限时换下一所学校 at a batch's end (PaperSearch Pro; user, 2026-11-22): the papers still without access go to each
+ * other saved school in turn, all of them with one before the next, so that the school's login is switched once, not at
+ * every paper (switching to and fro had a school's login ask for a picture code, Windows 2026-11-22). ``visit`` tries
+ * one paper with a school.
+ */
+async function laterSchools(
+  schools: SchoolTurn[],
+  waiting: () => number[],
+  announce: (school: SchoolTurn, count: number) => Promise<void>,
+  visit: (offset: number, school: SchoolTurn) => Promise<void>,
+  stopped: () => boolean,
+): Promise<void> {
+  for (const school of schools) {
+    const offsets = waiting();
+    if (!offsets.length || stopped()) return;
+    await announce(school, offsets.length);
+    for (const offset of offsets) {
+      if (stopped()) return;
+      await visit(offset, school);
+    }
+  }
+}
+
+/** A paper without access with each of ``count`` schools: its last school stage says so (N 所学校都没有权限). */
+function triedSchools(result: DownloadWithFallbackResult, count: number): void {
+  const school = [...result.attempts].reverse().find((attempt) => attempt.stage === "entitled_access");
+  if (school && count > 1) school.schools = count;
 }
 
 /** The attempt recorded for an item the batch did not reach because the user stopped it. */
@@ -665,12 +722,22 @@ async function downloadPerItem(
   let succeeded = 0;
   let failed = 0;
   let away = false;
+  // 没权限时换下一所学校 (PaperSearch Pro): papers without access wait for the other saved schools, tried at the end, one
+  // school at a time (``laterSchools``, user 2026-11-22).
+  let turns: Promise<SchoolTurn[]> | undefined;
+  const otherSchools = () => (turns ??= schoolsAfterDefault(backend, options));
+  const waiting = new Map<number, RunItem>();
+  const schoolsTried = new Map<number, number>();
+  /** Papers failed for a reason not known, waiting for their one more try at the end (user, 2026-11-22). */
+  const unexplainedYet = new Map<number, RunItem>();
+  let stopped = false;
   for (const [offset, item] of options.items.entries()) {
     const index = offset + 1;
     const request = itemOptions(item, options);
     const entry = runItem(index, request);
     log(`[批量] 第 ${index}/${total} 篇：${request.doi || request.paperId}`);
-    const batch = { id: batchId, index, total, done: offset, succeeded, failed };
+    // Papers waiting for the end (without access, 原因不明) are not done yet: the counts are of those finished.
+    const batch = { id: batchId, index, total, done: succeeded + failed, succeeded, failed };
     const result = await pastNetworkLoss(() => pastHourlyLimit(
       () =>
         downloadWithFallback(
@@ -682,8 +749,6 @@ async function downloadPerItem(
       pause,
       backend,
     ), watch);
-    if (result.status === "ok") succeeded += 1;
-    else failed += 1;
     if (!away && waitedOutOnUser(result)) {
       away = true;
       log(AWAY_NOTICE);
@@ -694,12 +759,30 @@ async function downloadPerItem(
       await markdownPastNetworkLoss(finished, recorded({ ...request, batch }, ledger, entry), searchers,
         pageVisit(backend, { ...request, batch }, log, pause), watch);
     }
-    await reportBatchItem({ ...request, batch }, finished, backend);
-    ledger?.item(entry, finished);
     items.push(finished);
+    if (withoutAccess(finished) && !stoppedByUser(finished) && (await otherSchools()).length) {
+      // Not finished: it waits for the other schools at the end.
+      waiting.set(offset, entry);
+      papers.set(offset, batchPaper(request, finished, "school", content));
+      await papers.send();
+      continue;
+    }
+    if (unexplainedFailure(finished)) {
+      // Not finished: once more at the end, with this school.
+      unexplainedYet.set(offset, entry);
+      papers.set(offset, batchPaper(request, finished, "school", content));
+      await papers.send();
+      continue;
+    }
+    if (result.status === "ok") succeeded += 1;
+    else failed += 1;
+    // The window's end when the last paper is finished, not the last in the list (some wait for the end).
+    await reportBatchItem({ ...request, batch: { ...batch, index: batch.done + 1 } }, finished, backend);
+    ledger?.item(entry, finished);
     papers.set(offset, batchPaper(request, finished, undefined, content));
     if (publisherBlocked(result)) log(blockedNotice(request.doi || request.paperId));
     if (stoppedByUser(finished)) {
+      stopped = true;
       for (const [rest, restItem] of options.items.entries()) {
         if (rest <= offset) continue;
         const restRequest = itemOptions(restItem, options);
@@ -713,6 +796,76 @@ async function downloadPerItem(
     }
     await papers.send();
   }
+  /** A paper's school stage once more (another saved school when given), its files and Markdown when it comes. */
+  const again = async (offset: number, entry: RunItem, school?: SchoolTurn) => {
+    const request = { ...itemOptions(options.items[offset], options), ...(school ? { school: school.entityId } : {}) };
+    const batch = { id: batchId, index: offset + 1, total, done: succeeded + failed, succeeded, failed };
+    log(school ? `[批量] 换${school.name}：${request.doi || request.paperId}` : `[批量] 再试一次：${request.doi || request.paperId}`);
+    const result = await pastNetworkLoss(() => pastHourlyLimit(
+      () => downloadWithFallback(searchers, recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entry),
+        createTiers(backend).filter((tier) => tier.stage === "entitled_access")),
+      log,
+      pause,
+      backend,
+    ), watch);
+    const before = items[offset];
+    const finished = itemResult({ ...result, attempts: [...before.attempts, ...result.attempts],
+      ...(before.markdown ? { markdown: before.markdown } : {}) }, offset + 1, request);
+    items[offset] = finished;
+    if (result.status === "ok") {
+      await filesPastNetworkLoss(finished, recorded({ ...request, batch }, ledger, entry), backend, searchers, watch);
+      if (finished.markdown?.status !== "ok") {
+        await markdownPastNetworkLoss(finished, recorded({ ...request, batch }, ledger, entry), searchers,
+          pageVisit(backend, { ...request, batch }, log, pause), watch);
+      }
+    }
+    if (stoppedByUser(result)) stopped = true;
+    return finished;
+  };
+  /** A paper finished at the end: counted, recorded, shown. */
+  const finish = async (offset: number, entry: RunItem) => {
+    const request = itemOptions(options.items[offset], options);
+    const done = succeeded + failed;
+    const batch = { id: batchId, index: done + 1, total, done, succeeded, failed };
+    if (items[offset].status === "ok") succeeded += 1;
+    else failed += 1;
+    await reportBatchItem({ ...request, batch }, items[offset], backend);
+    ledger?.item(entry, items[offset]);
+    papers.set(offset, batchPaper(request, items[offset], undefined, content));
+    await papers.send();
+  };
+  // 原因不明 once more, with this school, before any other school (user, 2026-11-22).
+  if (unexplainedYet.size && !stopped) {
+    log(`[批量] 原因不明的 ${unexplainedYet.size} 篇再试一次`);
+    ledger?.phase(`原因不明的 ${unexplainedYet.size} 篇再试一次`);
+    for (const [offset, entry] of [...unexplainedYet]) {
+      if (stopped) break;
+      const finished = await again(offset, entry);
+      unexplainedYet.delete(offset);
+      if (!stopped && withoutAccess(finished) && (await otherSchools()).length) waiting.set(offset, entry);
+      else await finish(offset, entry);
+    }
+  }
+  for (const [offset, entry] of unexplainedYet) await finish(offset, entry);
+  // The papers without access go to the other saved schools, one school at a time.
+  if (waiting.size && !stopped) {
+    await laterSchools(await otherSchools(), () => [...waiting.keys()], async (school, count) => {
+      log(`[批量] 没权限的 ${count} 篇换${school.name}再试`);
+      ledger?.phase(`没权限的 ${count} 篇换${school.name}再试`);
+    }, async (offset, school) => {
+      const entry = waiting.get(offset)!;
+      const finished = await again(offset, entry, school);
+      schoolsTried.set(offset, (schoolsTried.get(offset) ?? 1) + 1);
+      if (!stopped && withoutAccess(finished)) {
+        triedSchools(finished, schoolsTried.get(offset)!);
+        return;
+      }
+      waiting.delete(offset);
+      await finish(offset, entry);
+    }, () => stopped);
+  }
+  // Without access with every school (or the batch stopped first): failed.
+  for (const [offset, entry] of waiting) await finish(offset, entry);
   await papers.send(true);
   ledger?.close();
   return summary("per_item", batchId, items, {
@@ -1053,9 +1206,19 @@ async function downloadTwoPhase(
     } };
   };
 
-  // One journal's papers one after another when the backend says so (PaperSearch Pro's 没权限时换下一所学校, user
-  // 2026-11-21): a school switched to for a journal is not switched away from and back. Asked until the backend has
-  // run a paper and can say.
+  // 没权限时换下一所学校 (PaperSearch Pro): the other saved schools, asked once a paper has gone without access (the
+  // backend the batch has by then can say). Such papers wait, not finished, and go to them at the end, all of them with
+  // one school before the next (``laterSchools``, user 2026-11-22).
+  let turns: Promise<SchoolTurn[]> | undefined;
+  const otherSchools = () => (turns ??= schoolsAfterDefault(backend, options));
+  /** Papers without access with the schools tried so far, waiting for the next one. */
+  const withoutAccessYet = new Set<number>();
+  /** Papers failed for a reason not known, waiting for their one more try at the end. */
+  const unexplainedYet = new Set<number>();
+  /** Each waiting paper's schools tried, the default one counted. */
+  const schoolsTried = new Map<number, number>();
+  // One journal's papers one after another when the backend says so (more than one school taking part, user
+  // 2026-11-21; kept with the switch at the end, user 2026-11-22). Asked until the backend has run a paper and can say.
   let groupJournals: boolean | undefined;
   let lastJournal = "";
   const entitledLane = async () => {
@@ -1080,21 +1243,26 @@ async function downloadTwoPhase(
         continue;
       }
       const request = requests[offset];
-      const step = succeeded + failed + 1;
+      // Papers waiting for the end (without access, 原因不明) counted too: the log goes 1/7, 2/7 … as the window does
+      // (Windows 2026-11-22: every line said 1/7 while the papers waited).
+      const step = succeeded + failed + withoutAccessYet.size + unexplainedYet.size + 1;
       log(openRunning
         ? `[批量] 机构下载第 ${step} 篇（开放来源还在查）：${id(offset)}`
         : `[批量] 机构下载 ${step}/${missed.length}：${id(offset)}`);
       const done = settledOk() + failed;
-      const batch = { id: batchId, index: done + 1, total, done, succeeded: settledOk(), failed };
+      // Its place among the papers gone through, those waiting for the end counted (the window's "k / N" goes on);
+      // the counts are of those finished.
+      const batch = { id: batchId, index: done + withoutAccessYet.size + unexplainedYet.size + 1, total, done,
+        succeeded: settledOk(), failed };
       let result: DownloadWithFallbackResult;
       try {
+        // Reported to the window once it is known whether the paper waits for the end (``reportBatchItem`` below).
         result = await pastNetworkLoss(() => pastHourlyLimit(
           () =>
-            downloadBatchItem(
+            downloadWithFallback(
               searchers,
               watchingSchool(recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entries[offset]), offset),
               createTiers(backend).filter((tier) => tier.stage === "entitled_access" || mode !== "entitled_only" && tier.stage === "preprint"),
-              backend,
             ),
           log,
           pause,
@@ -1135,10 +1303,20 @@ async function downloadTwoPhase(
         if (school?.status === "ok") cameThrough(offset);
       } else if (holding) {
         hold(offset);
+      } else if (withoutAccess(result) && !stoppedByUser(result) && (await otherSchools()).length) {
+        withoutAccessYet.add(offset);
+        settle(offset, "school");
+      } else if (unexplainedFailure(result)) {
+        unexplainedYet.add(offset);
+        settle(offset, "school");
       } else {
         failed += 1;
         record(offset);
         settle(offset);
+      }
+      // The window's line, not for a paper that waits for the end (it would close the batch early when last).
+      if (!withoutAccessYet.has(offset) && !unexplainedYet.has(offset)) {
+        await reportBatchItem({ ...request, batch: { ...batch, index: batch.done + 1 } }, result, backend);
       }
       if (publisherBlocked(result)) log(blockedNotice(id(offset)));
       if (stoppedByUser(result)) {
@@ -1181,6 +1359,116 @@ async function downloadTwoPhase(
       await entitledLane();
     }
   }
+
+  /** A paper's school stage once more, with another saved school when given; merged into its result. */
+  const visitAgain = async (offset: number, school?: SchoolTurn) => {
+    const request = { ...requests[offset], ...(school ? { school: school.entityId } : {}) };
+    const done = settledOk() + failed;
+    const batch = { id: batchId, index: done + 1, total, done, succeeded: settledOk(), failed };
+    log(school ? `[批量] 换${school.name}：${id(offset)}` : `[批量] 再试一次：${id(offset)}`);
+    let result: DownloadWithFallbackResult;
+    try {
+      result = await pastNetworkLoss(() => pastHourlyLimit(
+        () => downloadWithFallback(
+          searchers,
+          watchingSchool(recorded({ ...request, batch, ...(away ? { shortUserWait: true } : {}) }, ledger, entries[offset]), offset),
+          createTiers(backend).filter((tier) => tier.stage === "entitled_access"),
+        ),
+        log,
+        pause,
+        backend,
+      ), watch);
+    } catch (error) {
+      result = laneError("entitled_access", error);
+      log(`[批量] 机构下载出错（${id(offset)}）：${result.attempts[0].message}`);
+    }
+    const before = results[offset]!;
+    const markdown = result.markdown ?? before.markdown;
+    results[offset] = itemResult({
+      ...result,
+      attempts: [...before.attempts, ...result.attempts],
+      ...(result.review ?? before.review ? { review: result.review ?? before.review } : {}),
+      ...(markdown ? { markdown } : {}),
+    }, offset + 1, requests[offset]);
+    const item = results[offset]!;
+    // Its Markdown from the page this visit saved, unless the open sources gave it already.
+    if (wantsMarkdown && result.status === "ok" && item.markdown?.status !== "ok") {
+      await markdownPastNetworkLoss(item, recorded({ ...request, batch }, ledger, entries[offset]), searchers,
+        pageVisit(backend, { ...request, batch, ...(away ? { shortUserWait: true } : {}) }, log, pause), watch);
+    }
+    if (stoppedByUser(result)) stopped = true;
+    if (publisherBlocked(result)) log(blockedNotice(id(offset)));
+    return item;
+  };
+
+  /** The window's line for a paper finished at the end (the counts before it, as ``reportBatchItem`` takes them). */
+  const reportSettled = async (offset: number) => {
+    const done = settledOk() + failed;
+    await reportBatchItem({ ...requests[offset], batch: { id: batchId, index: done + 1, total, done, succeeded: settledOk(), failed } },
+      results[offset]!, backend);
+  };
+
+  // 原因不明 once more, the default school still signed in, before any other school (user, 2026-11-22).
+  if (unexplainedYet.size && !stopped) {
+    log(`[批量] 原因不明的 ${unexplainedYet.size} 篇再试一次`);
+    ledger?.phase(`原因不明的 ${unexplainedYet.size} 篇再试一次`);
+    for (const offset of [...unexplainedYet]) {
+      if (stopped) break;
+      const item = await visitAgain(offset);
+      unexplainedYet.delete(offset);
+      if (!stopped && item.status !== "ok" && withoutAccess(item) && (await otherSchools()).length) {
+        withoutAccessYet.add(offset);
+      } else {
+        await reportSettled(offset);
+        if (item.status === "ok") succeeded += 1;
+        else failed += 1;
+        record(offset);
+        settle(offset);
+      }
+      await sendPapers();
+    }
+  }
+  for (const offset of unexplainedYet) {
+    await reportSettled(offset);
+    failed += 1;
+    record(offset);
+  }
+  unexplainedYet.clear();
+
+  // The papers without access go to the other saved schools, one school at a time.
+  const withSchool = async (offset: number, school: SchoolTurn) => {
+    const item = await visitAgain(offset, school);
+    schoolsTried.set(offset, (schoolsTried.get(offset) ?? 1) + 1);
+    if (!stopped && withoutAccess(item)) {
+      triedSchools(item, schoolsTried.get(offset)!);
+    } else {
+      withoutAccessYet.delete(offset);
+      await reportSettled(offset);
+      if (item.status === "ok") succeeded += 1;
+      else failed += 1;
+      record(offset);
+      settle(offset);
+    }
+    await sendPapers();
+  };
+  if (withoutAccessYet.size && !stopped) {
+    await laterSchools(await otherSchools(), () => [...withoutAccessYet], async (school, count) => {
+      log(`[批量] 没权限的 ${count} 篇换${school.name}再试`);
+      ledger?.phase(`没权限的 ${count} 篇换${school.name}再试`);
+      if (!backend?.reportBatchProgress) return;
+      const update = { id: batchId, total, done: settledOk() + failed, succeeded: settledOk(), failed, current: "",
+        finished: false, phase: `没权限，换${school.name}` };
+      reports = reports.then(() => backend.reportBatchProgress!(update)).catch(() => false);
+      await reports;
+    }, withSchool, () => stopped);
+  }
+  // Without access with every school (or the batch stopped first): failed.
+  for (const offset of withoutAccessYet) {
+    await reportSettled(offset);
+    failed += 1;
+    record(offset);
+  }
+  withoutAccessYet.clear();
   await reports;
 
   // Stopped in the window: the items neither lane reached end as not downloaded, the held as paused.

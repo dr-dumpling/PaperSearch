@@ -9,6 +9,7 @@
      through the card (user, 2026-11-10). */
   --bg: #ffffff; --fg: #111827; --dim: #6b7280; --faint: #9ca3af;
   --line: rgba(17, 24, 39, 0.10); --track: rgba(17, 24, 39, 0.10); --hover: rgba(17, 24, 39, 0.06);
+  --fill: rgba(17, 24, 39, 0.045); --edge: rgba(17, 24, 39, 0.12);
   --accent: #2563eb; --ok: #16a34a; --bad: #dc2626;
   --warn: #92400e; --warn-bg: #fef3c7; --warn-line: #f3d27a; --warn-dot: #d97706;
   /* Inside the window's 10 px margin (body.mac): a shadow running past it was cut off
@@ -19,6 +20,7 @@
   :root {
     --bg: #202124; --fg: #f3f4f6; --dim: #a1a1aa; --faint: #71717a;
     --line: rgba(255, 255, 255, 0.12); --track: rgba(255, 255, 255, 0.14); --hover: rgba(255, 255, 255, 0.08);
+    --fill: rgba(255, 255, 255, 0.05); --edge: rgba(255, 255, 255, 0.16);
     --accent: #60a5fa; --ok: #4ade80; --bad: #f87171;
     --warn: #fbbf24; --warn-bg: #3a2d10; --warn-line: #6b5216; --warn-dot: #fbbf24;
     --shadow: 0 3px 7px rgba(0, 0, 0, 0.42), 0 1px 2px rgba(0, 0, 0, 0.32);
@@ -243,6 +245,10 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .about-name .pro-pill { margin-left: 6px; vertical-align: 2px; }
 .about-version { font-size: 12px; color: var(--dim); margin-top: 3px; }
 .about-version.new, .about-version.bad { color: var(--bad); }
+/* 有新版本 X, a link to what is new (user, 2026-11-22: 乙, in the line, not under the button). */
+.about-version .ver-notes { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.about-version .ver-notes svg.i { width: 11px; height: 11px; margin-left: 2px; vertical-align: -1px; stroke-width: 2.2; }
 .about-action { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 14px; }
 .about-action .btn.primary { width: 100%; justify-content: center; padding: 6px 10px; font-size: 13px; }
 .about-action .btn.link { padding: 0; font-size: 12px; }
@@ -264,6 +270,7 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .version-link .pl-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .version-link:hover .pl-text { text-decoration: underline; }
 .version-link svg.i { width: 14px; height: 14px; flex: none; }
+.version-link .pro-pill { margin-left: 2px; flex: none; }
 .reopen-line { display: flex; align-items: center; gap: 8px; width: 100%; margin: 8px 0 0; padding: 7px 10px; border: none; border-radius: 8px;
                background: rgba(22, 163, 74, 0.10); color: var(--ok); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
 .reopen-line svg.i { width: 14px; height: 14px; flex: none; }
@@ -342,8 +349,30 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .key-edit { background: var(--hover); border-radius: 8px; padding: 8px 10px; margin: 0 0 6px; }
 /* The school sign-in page (PaperSearch Pro): the schools saved, one the default for downloads, each with its
    account; the fields beside their names, close together (user, 2026-11-20). */
-.login-school { border-bottom: 0.5px solid var(--line); }
-.login-row { display: flex; align-items: center; gap: 6px; width: 100%; padding: 8px 0; text-align: left; font-size: 13px;
+/* A card per school (user, 2026-11-22: 甲, the schools hard to tell apart in one list): the closed ones filled, the open
+   one white with an edge, 添加学校 a dashed one; its rarer actions in ⋯, a confirmation in place of its last line. */
+.login-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.login-school { position: relative; border-radius: 10px; background: var(--fill); padding: 0 10px; }
+.login-school.open { background: var(--bg); box-shadow: 0 0 0 1px var(--edge), 0 2px 8px rgba(17, 24, 39, 0.06); padding-bottom: 10px; }
+.login-school.add { background: none; border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent); }
+/* The open card's head: no masked account (its field is under it), room kept for ⋯ before the chevron. */
+.login-row .ls-end { flex: none; width: 0; margin-left: auto; }
+.login-row .ls-end.with-menu { width: 24px; }
+.ls-dots { position: absolute; right: 29px; top: 7px; width: 24px; height: 24px; margin: 0; border-radius: 6px; background: var(--hover); }
+.ls-dots svg.i { width: 15px; height: 15px; }
+.ls-menu { position: absolute; right: 29px; top: 34px; z-index: 6; min-width: 120px; padding: 4px 0; border-radius: 8px; background: var(--bg);
+  box-shadow: 0 0 0 0.5px var(--line), 0 6px 20px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08); }
+.ls-menu button { display: block; width: 100%; padding: 6px 14px; border: none; background: none; font: inherit; font-size: 12.5px;
+  color: var(--fg); text-align: left; white-space: nowrap; cursor: pointer; }
+.ls-menu button:hover, .ls-menu button:focus-visible { background: var(--hover); outline: none; }
+.ls-menu button.danger { color: var(--bad); }
+.login-foot { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; height: 30px; margin-top: 2px; font-size: 12px; color: var(--dim); }
+.login-foot .grow { flex: 1; }
+.login-foot .switch, .login-foot .btn { flex: none; white-space: nowrap; }
+.login-foot.asking { padding: 0 4px 0 10px; border-radius: 8px; background: color-mix(in srgb, var(--bad) 9%, transparent); color: var(--bad); }
+.login-foot.asking .q { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.login-foot .btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+.login-row { display: flex; align-items: center; gap: 6px; width: 100%; padding: 10px 0; text-align: left; font-size: 13px;
              border: none; background: none; color: inherit; font-family: inherit; cursor: pointer; }
 .login-row:hover .ls-name { color: var(--accent); }
 .login-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
@@ -372,16 +401,14 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .login-form .key-actions .btn { white-space: nowrap; }
 /* The less used ones under the buttons, the same for every school (user, 2026-11-20: rows of buttons that differed
    from school to school, and wrapped). */
-.login-links { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12px; }
-.login-links .link-btn { border: none; background: none; padding: 0; font: inherit; color: var(--dim); cursor: pointer; }
-.login-links .link-btn:hover, .login-links .link-btn:focus-visible { color: var(--accent); }
-.login-links .link-btn.danger:hover, .login-links .link-btn.danger:focus-visible, .login-links .link-btn.confirm { color: var(--bad); }
-.login-links .sep { color: var(--dim); }
 /* 测试登录 (user, 2026-11-21, as drawn): the article, then how the test went; while it runs, its steps in rows of their
    own height and one line for what the download says, so that the page does not move as it goes. */
 .login-form .test-result { grid-column: 1 / -1; }
 .login-form .test-err { grid-column: 2; }
 .test-article { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.login-form .test-article { grid-column: 1 / -1; }
+.test-article .lbl { flex: none; color: var(--dim); font-size: 12px; }
+.test-article .link-btn.edit svg.i { width: 13px; height: 13px; }
 .test-article .what { flex: 1; min-width: 0; color: var(--fg); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .test-article .what.empty { color: var(--dim); font-size: 11.5px; }  /* none filled in: what to do */
 .test-article .test-btn { padding: 3px 10px; flex: none; white-space: nowrap; }
@@ -506,7 +533,7 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .paper-list .open-article:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
 .tag { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 5px; flex: none; }
 .tag.no_access, .tag.other { background: var(--hover); color: var(--fg); }
-.tag.user_side, .tag.school_side, .tag.publisher_or_network, .tag.article_or_site { background: var(--warn-bg); color: var(--warn); }
+.tag.user_side, .tag.external { background: var(--warn-bg); color: var(--warn); }
 .tag.unsupported { background: rgba(37, 99, 235, 0.12); color: var(--accent); }
 .tag.unexplained { background: rgba(220, 38, 38, 0.12); color: var(--bad); }
 .tag.doubt { background: var(--hover); color: var(--dim); }
@@ -598,6 +625,8 @@ const ICONS = {
   pause: '<path d="M9 6.5v11M15 6.5v11"/>',
   dots: '<circle cx="6" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="18" cy="12" r="1"/>',
   left: '<path d="M15 6l-6 6 6 6"/>',
+  external: '<path d="M7 17L17 7M9 7h8v8"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
   right: '<path d="M9 6l6 6-6 6"/>',
   down: '<path d="M6 9l6 6 6-6"/>',
   up: '<path d="M6 15l6-6 6 6"/>',
@@ -703,6 +732,7 @@ let proStatus = null, proInstall = { state: "idle" }, proInstallTimer = 0;
 // The school sign-in page (school_login_state); its error line.
 let schoolLogin = null, loginError = "", loginValues = {}, loginShown = false;
 // The school whose account is open on the page (its entityID), and 添加学校: what was typed, what was found.
+let loginMenu = "";  // the open school's ⋯ menu, open (its key)
 let loginOpen = "", schoolQuery = "", schoolFound = null, schoolFinding = false, confirmForget = "", loginAdding = false;
 // 测试登录 (school_test.py): the test as the window runs it ({state: idle, running (key, step, phase), done (key, ok,
 // title, detail, seconds)}); the article it opens for the school open ({doi}: "" while none is set), and its box: open
@@ -1006,8 +1036,9 @@ function attentionCard() {
   return html + "</div></div>";
 }
 
-const CLASS_TAGS = { no_access: "没权限", user_side: "你这边", school_side: "学校那边", publisher_or_network: "出版社或网络",
-  article_or_site: "文章或网站", unsupported: "暂不支持", unexplained: "原因不明", other: "其他", doubt: "待核对" };
+// The five failure classes by the names PaperSearch gives them everywhere (failureClass.ts, 2026-11-22).
+const CLASS_TAGS = { no_access: "没权限", user_side: "要你处理", external: "外部原因", unsupported: "暂不支持",
+  unexplained: "原因不明", other: "其他", doubt: "待核对" };
 let openGroups = null, groupsRun = "";  // null: each reason row as the view opens it
 // Main-text rows first, then the supplementary files' rows, numbered on.
 function allGroups() { return V.summary.groups.concat(V.summary.supplement_groups || [], V.summary.markdown_groups || [], V.summary.doubt_groups || []); }
@@ -1456,8 +1487,11 @@ function versionLink() {
   const update = newerVersion();
   const said = update ? (versionCheck.update ? "有新版本 " + versionCheck.latest + "，点此更新" : "有新版本，点此更新")
     : "PaperSearch" + (versionInfo.running ? " " + versionInfo.running : "");
+  // Pro installed: its pill after the version, as on its features' rows (user, 2026-11-22); a newer version's red line alone.
+  const pro = !update && proOn() && !!(proStatus && proStatus.ok && proStatus.installed);
   return '<button type="button" class="version-link' + (update ? " new" : "") + '" data-act="settings_page" data-page="about">'
-    + (update ? icon("upcircle") : "") + '<span class="pl-text">' + esc(said) + "</span></button>";
+    + (update ? icon("upcircle") : "") + '<span class="pl-text">' + esc(said) + "</span>"
+    + (pro ? '<span class="pro-pill">Pro</span>' : "") + "</button>";
 }
 
 
@@ -1505,7 +1539,6 @@ function aboutAction() {
     return '<div class="about-action">' + (busy()
       ? '<button type="button" class="btn primary" disabled>' + esc("下载结束后更新") + "</button>"
       : '<button type="button" class="btn primary" data-act="update_all">' + esc(label) + "</button>")
-      + (versionCheck.update && versionCheck.notes ? '<button type="button" class="btn link" data-act="release_notes">' + esc("这次更新了什么") + "</button>" : "")
       + "</div>";
   }
   return versionCheck.state === "running" ? "" : '<div class="about-action"><button type="button" class="btn link" data-act="check_versions">'
@@ -1517,9 +1550,14 @@ const aboutComing = () => '<div class="about-sub">' + esc("即将推出") + "</d
 function settingsAbout() {
   const installed = proOn() && !!(proStatus && proStatus.ok && proStatus.installed);
   const [tone, line] = versionLine();
+  // A newer PaperSearch with its notes: 有新版本 X is the link to them, ↗ after it (user, 2026-11-22: 乙).
+  const said = "有新版本 " + versionCheck.latest;
+  const notes = tone === "new" && versionCheck.update && versionCheck.notes && line.endsWith(said);
+  const version = notes ? esc(line.slice(0, -said.length)) + '<button type="button" class="ver-notes" data-act="release_notes">'
+    + esc(said) + icon("external") + "</button>" : esc(line);
   const hero = '<div class="about-hero">' + appIcon(56, installed) + '<div class="about-name' + (installed ? " with-pill" : "") + '">PaperSearch'
     + (installed ? '<span class="pro-pill">Pro</span>' : "") + '</div><div class="about-version' + (tone ? " " + tone : "") + '" role="status">'
-    + esc(line) + "</div></div>" + aboutAction();
+    + version + "</div></div>" + aboutAction();
   let pro = "";
   if (proOn() && installed) {
     pro = '<div class="about-gap"></div>' + (proAction() ? '<div class="pro-action">' + proAction() + "</div>" : "") + proUsage(false) + aboutComing()
@@ -1624,7 +1662,7 @@ function loginTesting(t) {
 // tests). 文章 beside 账号 and 密码, two characters each; its line ends where their boxes end.
 function loginTest(s) {
   if (!testArticle) return "";
-  const label = "<span>" + esc("文章") + "</span>";
+  const label = testArticle.doi || testEditing ? '<span class="lbl">' + esc("测试文章") + "</span>" : "";
   const t = schoolTest.state === "done" && schoolTest.key === s.key ? schoolTest : null;
   const result = t ? '<div class="test-result ' + (t.ok ? "ok" : "bad") + '" role="status">' + icon(t.ok ? "check" : "alert")
     + '<div><div class="t">' + esc(t.title) + "</div>" + (t.detail ? '<div class="d">' + esc(t.detail) + "</div>" : "")
@@ -1632,7 +1670,7 @@ function loginTest(s) {
   // Also for a school whose account is not saved yet: 测试 saves what is typed first.
   const test = '<button class="btn test-btn" data-act="school_test">' + esc("测试") + "</button>";
   if (testEditing) {
-    return result + label + '<div class="test-article"><span class="test-edit">'
+    return result + '<div class="test-article">' + label + '<span class="test-edit">'
       + '<input id="test-article" type="text" autocomplete="off" spellcheck="false" value="' + esc(testArticleText)
       + '" placeholder="' + esc("DOI 或文章网址") + '" aria-label="' + esc("测试文章") + '">'
       + '<button type="button" class="link-btn" data-act="test_article_save"' + (testArticleSaving ? " disabled" : "") + ">"
@@ -1640,23 +1678,27 @@ function loginTest(s) {
       + (testArticleError ? '<div class="err test-err" role="status">' + esc(testArticleError) + "</div>" : "");
   }
   const doi = testArticle.doi;
-  return result + label + '<div class="test-article"><span class="what' + (doi ? "" : " empty") + '"' + (doi ? ' title="' + esc(doi) + '"' : "")
+  return result + '<div class="test-article">' + label + '<span class="what' + (doi ? "" : " empty") + '"' + (doi ? ' title="' + esc(doi) + '"' : "")
     + ">" + esc(doi || "填入学校订阅文章 DOI 或网址") + "</span>"
-    + '<button type="button" class="link-btn" data-act="test_article_edit">' + esc(doi ? "修改" : "填写") + "</button>" + test + "</div>";
+    + (doi ? '<button type="button" class="link-btn edit" data-act="test_article_edit" aria-label="' + esc("修改") + '">' + icon("edit") + "</button>"
+      : '<button type="button" class="link-btn" data-act="test_article_edit">' + esc("填写") + "</button>") + test + "</div>";
 }
 
 function loginSchool(s, index) {
-  const shown = loginOpen === s.key;
+  const shown = loginOpen === s.key, items = loginMenuItems(s);
   // Their order, where there is more than one (user, 2026-11-21: 没权限时换下一所学校 goes down it; 1 the default).
   const many = ((schoolLogin && schoolLogin.schools) || []).length > 1;
   const row = '<button type="button" class="login-row" data-act="login_open" data-key="' + esc(s.key) + '" aria-expanded="' + shown + '">'
     + (many ? '<span class="ls-n">' + (index + 1) + "</span>" : "") + '<span class="ls-name">' + esc(schoolName(s)) + "</span>"
     + (s.current ? '<span class="tag default">' + esc("默认") + "</span>" : "") + tagHtml(s.status)
-    + '<span class="ls-acct">' + esc(s.saved ? (s.enabled ? s.username : "已关闭") : "未填账号") + "</span>"
+    + (shown ? '<span class="ls-end' + (items.length ? " with-menu" : "") + '"></span>'
+      : '<span class="ls-acct">' + esc(s.saved ? (s.enabled ? s.username : "已关闭") : "未填账号") + "</span>")
     + icon(shown ? "down" : "right") + "</button>";
   if (!shown) return '<div class="login-school">' + row + "</div>";
-  if (schoolTest.state === "running" && schoolTest.key === s.key) return '<div class="login-school">' + row + loginTesting(schoolTest) + "</div>";
-  return '<div class="login-school">' + row
+  if (schoolTest.state === "running" && schoolTest.key === s.key) return '<div class="login-school open">' + row + loginTesting(schoolTest) + "</div>";
+  const menu = !items.length ? "" : '<button type="button" class="iconbtn ls-dots" data-act="login_menu" aria-label="' + esc("更多操作") + '" aria-expanded="'
+    + (loginMenu === s.key) + '">' + icon("dots") + "</button>" + (loginMenu === s.key ? '<div class="ls-menu" role="menu">' + items.join("") + "</div>" : "");
+  return '<div class="login-school open">' + row + menu
     + (s.off === "rejected" ? '<div class="err" style="text-align:left;margin:0 0 8px">'
       + esc("学校没有接受保存的密码，自动登录已关闭；更新密码后保存，就会重新打开") + "</div>" : "")
     + '<div class="login-form">'
@@ -1669,24 +1711,34 @@ function loginSchool(s, index) {
       + icon("eye") + "</button></span>"
     // A line for an error, or the next step once a school is added; "saved" said on the button itself (user, 2026-11-20).
     + '<div class="err' + (loginError ? "" : " ok") + '" id="login-error" role="status">' + esc(loginError || loginDone) + "</div>"
-    + loginTest(s)
-    + '<div class="key-actions">'
-    + (s.saved ? '<button class="btn" data-act="login_switch">' + esc(s.enabled ? "关闭自动登录" : "打开自动登录") + "</button>" : "")
-    + '<span class="grow"></span>'
-    + '<button class="btn primary" data-act="save_login">' + (loginSaved ? icon("check") + esc("已保存") : esc("保存")) + "</button></div>"
-    + loginLinks(s) + "</div></div>";
+    + loginTest(s) + loginFoot(s) + "</div></div>";
 }
 
-// Under the buttons, the same for every school: set it as the default (not the default already), clear its account
-// and password (saved ones), remove it (not the default: another is made the default first); the last two asked twice.
-function loginLinks(s) {
-  const links = [];
-  if (!s.current) links.push('<button type="button" class="link-btn" data-act="set_default" data-key="' + esc(s.key) + '">' + esc("设为默认") + "</button>");
-  if (s.saved) links.push('<button type="button" class="link-btn danger' + (confirmClear === "login" ? " confirm" : "") + '" data-act="clear_login">'
-    + esc(confirmClear === "login" ? "确认清除账号密码" : "清除账号密码") + "</button>");
-  if (!s.current) links.push('<button type="button" class="link-btn danger' + (confirmForget === s.key ? " confirm" : "") + '" data-act="forget_school" data-key="'
-    + esc(s.key) + '">' + esc(confirmForget === s.key ? "确认移除" : "移除这所学校") + "</button>");
-  return links.length ? '<div class="login-links">' + links.join('<span class="sep">·</span>') + "</div>" : "";
+// ⋯, the same for every school: set it as the default (not the default already), clear its account and password (saved
+// ones), remove it (not the default: another is made the default first); the last two asked again in place (loginFoot).
+function loginMenuItems(s) {
+  const items = [];
+  if (!s.current) items.push('<button type="button" role="menuitem" data-act="set_default" data-key="' + esc(s.key) + '">' + esc("设为默认") + "</button>");
+  if (s.saved) items.push('<button type="button" role="menuitem" class="danger" data-act="clear_login">' + esc("清除账号密码") + "</button>");
+  if (!s.current) items.push('<button type="button" role="menuitem" class="danger" data-act="forget_school" data-key="' + esc(s.key) + '">'
+    + esc("移除这所学校") + "</button>");
+  return items;
+}
+
+// The card's last line: 自动登录's switch (a saved account) and 保存; while a clearing or a removal is asked, that question
+// in its place, the same height (user, 2026-11-22: the old confirmation moved the page down).
+function loginFoot(s) {
+  const forget = confirmForget === s.key;
+  if (forget || confirmClear === "login") {
+    return '<div class="login-foot asking" role="alert"><span class="q">' + esc(forget ? "移除这所学校？" : "清除账号和密码？") + '</span><span class="grow"></span>'
+      + '<button type="button" class="btn" data-act="cancel_confirm">' + esc("取消") + "</button>"
+      + (forget ? '<button type="button" class="btn danger" data-act="forget_school" data-key="' + esc(s.key) + '">' + esc("移除") + "</button>"
+        : '<button type="button" class="btn danger" data-act="clear_login">' + esc("清除") + "</button>") + "</div>";
+  }
+  return '<div class="login-foot">' + (s.saved ? "<span>" + esc("自动登录") + '</span><button type="button" class="switch' + (s.enabled ? " on" : "")
+      + '" data-act="login_switch" role="switch" aria-checked="' + !!s.enabled + '" aria-label="' + esc("自动登录") + '"></button>' : "")
+    + '<span class="grow"></span><button type="button" class="btn primary" data-act="save_login">'
+    + (loginSaved ? icon("check") + esc("已保存") : esc("保存")) + "</button></div>";
 }
 
 function loginFound() {
@@ -1705,8 +1757,8 @@ function settingsLogin() {
   if (!s || !s.ok) return head + '<div class="err" style="text-align:left">' + esc((s && s.error) || "读取失败") + "</div>";
   if (!s.pro) return head + '<div class="pro-desc">' + esc("学校登录页自动填写账号和密码，批量下载不用守着。") + "</div>" + proNeeded();
   // 添加学校 a row like the schools', opened to its search (user, 2026-11-20: a box alone said nothing).
-  return head + '<div style="margin-top:8px">' + (s.schools || []).map(loginSchool).join("")
-    + '<div class="login-school"><button type="button" class="login-row login-add-row" data-act="login_add" aria-expanded="' + loginAdding + '">'
+  return head + '<div class="login-list">' + (s.schools || []).map(loginSchool).join("")
+    + '<div class="login-school add"><button type="button" class="login-row login-add-row" data-act="login_add" aria-expanded="' + loginAdding + '">'
     + icon("plus") + '<span class="ls-name">' + esc("添加学校") + "</span>" + icon(loginAdding ? "down" : "right") + "</button>"
     + (loginAdding ? '<div class="login-add"><div class="login-find"><input id="school-query" type="text" autocomplete="off" spellcheck="false" value="'
       + esc(schoolQuery) + '" placeholder="' + esc("中文名、英文名或学校网址") + '" aria-label="' + esc("学校名称") + '">'
@@ -2124,6 +2176,15 @@ function keepSupportPlace(last) {
   if (last) keepScroll = null;
 }
 
+// The card's own border, as drawn: 0.5px a side is one device pixel on a Retina screen but a whole pixel (1px a side)
+// on a 1x screen (user, 2026-11-22: an external 1080p screen). The surface is as wide as what the border leaves, so it
+// lies in the same place whichever edge it is anchored to while the window lays itself out.
+function rootBorder() {
+  const style = getComputedStyle(root);
+  return [parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth),
+          parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth)].map((n) => n || 0);
+}
+
 let fitGeneration = 0, layoutQueue = Promise.resolve();
 let settledGeneration = 0, settledSize = null, settledExpanded = null;
 function fit(previous) {
@@ -2133,11 +2194,11 @@ function fit(previous) {
   const to = [Math.ceil(target.width), Math.ceil(target.height)];
   const from = previous.width && previous.height ? [previous.width, previous.height] : to;
   const expanded = root.classList.contains("card");
-  const border = document.body.classList.contains("mac") ? 1 : 0;
+  const border = rootBorder();
   // Fix the content width before awaiting the native bridge. Otherwise an
   // absolutely positioned surface shrink-wraps for a frame on every tick.
-  root.firstElementChild.style.width = Math.max(0, to[0] - border) + "px";
-  root.style.setProperty("--content-max-height", Math.max(0, to[1] - border) + "px");
+  root.firstElementChild.style.width = Math.max(0, to[0] - border[0]) + "px";
+  root.style.setProperty("--content-max-height", Math.max(0, to[1] - border[1]) + "px");
   if (settledGeneration === generation - 1 && settledExpanded === expanded && settledSize
       && to.every((size, i) => size === settledSize[i] && Math.abs(size - from[i]) < 1)) {
     // Elapsed time/countdowns update the text, not the window geometry.
@@ -2156,13 +2217,17 @@ async function animateFit(generation, expanded, from, to, pad) {
   if (generation !== fitGeneration || dragging || closing) return;
   const layout = await api().begin_layout(expanded, to[0] + pad, to[1] + pad, generation);
   if (generation !== fitGeneration || dragging || closing || !layout.vertical) return;
-  document.body.classList.remove("grow-up", "grow-down", "grow-left", "grow-right");
-  document.body.classList.add("grow-" + layout.vertical, "grow-" + layout.horizontal);
   from = [layout.from_width - pad, layout.from_height - pad];
   to = [layout.width - pad, layout.height - pad];
-  const border = document.body.classList.contains("mac") ? 1 : 0;
-  root.style.setProperty("--content-max-height", Math.max(0, to[1] - border) + "px");
-  root.firstElementChild.style.width = Math.max(0, to[0] - border) + "px";
+  // Anchored to the edge that moves only along a side whose size changes: a layout that changes nothing (a size read
+  // back a fraction of a pixel off on a 1x screen or at 125%/150% scaling) leaves the page where it lies, never a pixel
+  // to one side for the length of the animation (user, 2026-11-22: it shook left and right there).
+  document.body.classList.remove("grow-up", "grow-down", "grow-left", "grow-right");
+  document.body.classList.add("grow-" + (Math.abs(to[1] - from[1]) >= 1 ? layout.vertical : "down"),
+                              "grow-" + (Math.abs(to[0] - from[0]) >= 1 ? layout.horizontal : "right"));
+  const border = rootBorder();
+  root.style.setProperty("--content-max-height", Math.max(0, to[1] - border[1]) + "px");
+  root.firstElementChild.style.width = Math.max(0, to[0] - border[0]) + "px";
   keepSupportPlace(false);
   const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 240;
   const started = performance.now();
@@ -2212,6 +2277,7 @@ function say(text) { flash = { text: text, until: Date.now() + 6000 }; render(tr
 
 let inputActivation = Promise.resolve();
 async function act(action, target) {
+  if (action !== "login_menu") loginMenu = "";
   const v = V;
   switch (action) {
     // Back as a capsule when restored, unless pinned: a pinned card comes back open (user, 2026-11-20:
@@ -2472,6 +2538,11 @@ async function act(action, target) {
       if (loginAdding) root.querySelector("#school-query")?.focus();
       return;
     }
+    case "login_menu":
+      loginMenu = loginMenu === loginOpen ? "" : loginOpen; confirmClear = ""; confirmForget = "";
+      return render(true);
+    case "cancel_confirm":
+      confirmClear = ""; confirmForget = ""; return render(true);
     case "login_open": {
       loginOpen = loginOpen === target.dataset.key ? "" : target.dataset.key;
       loginError = ""; loginDone = ""; confirmClear = ""; confirmForget = ""; loginShown = false; loginSaved = false;
@@ -2695,6 +2766,11 @@ root.addEventListener("click", (event) => {
 // the window's drag, while which the page is not drawn again.
 document.addEventListener("pointerdown", (event) => {
   if (languageOpen && !event.target.closest(".lang-wrap")) closeLanguageMenu();
+  if (loginMenu && !event.target.closest(".ls-menu, .ls-dots")) {
+    loginMenu = "";
+    root.querySelector(".ls-menu")?.remove();
+    root.querySelector(".ls-dots")?.setAttribute("aria-expanded", "false");
+  }
 }, true);
 function closeLanguageMenu() {
   languageOpen = false;

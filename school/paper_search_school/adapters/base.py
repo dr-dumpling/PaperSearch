@@ -63,6 +63,10 @@ class PublisherAdapter:
     # The article's PDF endpoint redirects to a CDN copy (``is_pdf_cdn_url``); the
     # redirect is remembered as its provenance (Oxford Academic -> Silverchair).
     pdf_cdn_redirects = False
+    # Without access the PDF address answers with the article's own page at that address, not a redirect to it
+    # (Taylor & Francis's /doi/pdf/<DOI>?needAccess=true): after the school's login it counts as sent back to the
+    # article (``_pdf_sent_to_article_after_login``), whose denial or offer still has to show.
+    pdf_address_shows_article_page = False
     # Only the article's own PDF URLs are tried as candidates.
     article_pdf_candidates_only = False
     # Failures keep a full-page screenshot in the diagnostic packet.

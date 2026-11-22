@@ -1,30 +1,26 @@
-export const FAILURE_CLASSES = [
-    "no_access",
-    "user_side",
-    "school_side",
-    "publisher_or_network",
-    "article_or_site",
-    "unsupported",
-    "unexplained",
-];
-/** Short names, for one-line counts and the progress window's tags. */
+export const FAILURE_CLASSES = ["no_access", "user_side", "external", "unsupported", "unexplained"];
+/** Names, the same in counts, the progress window's tags and the failures list. */
 export const FAILURE_CLASS_NAMES = {
     no_access: "没权限",
-    user_side: "你这边",
-    school_side: "学校那边",
-    publisher_or_network: "出版社或网络",
-    article_or_site: "文章或网站本身",
-    unsupported: "暂不支持的网站",
+    user_side: "要你处理",
+    external: "外部原因",
+    unsupported: "暂不支持",
     unexplained: "原因不明",
 };
+/** The name with what it means, for the failures list's headings. */
 export const FAILURE_CLASS_LABELS = {
-    no_access: "没权限（有依据）",
-    user_side: "你这边（操作或设置）",
-    school_side: "学校那边（学校登录）",
-    publisher_or_network: "出版社或网络",
-    article_or_site: "文章或网站本身",
-    unsupported: "暂不支持的网站",
-    unexplained: "原因不明（需排查）",
+    no_access: "没权限（学校用不了这篇，批量最后换下一所学校再试）",
+    user_side: "要你处理（你的操作、设置或学校账号）",
+    external: "外部原因（网站、学校或网络的问题，过会儿再试）",
+    unsupported: "暂不支持（PaperSearch 要补规则）",
+    unexplained: "原因不明（批量最后再试一次，留诊断记录）",
+};
+/** The classes before 2026-11-22, as old run records keep them. */
+export const OLD_FAILURE_CLASSES = {
+    school_side: "external",
+    publisher_or_network: "external",
+    article_or_site: "external",
+    adaptation: "unsupported",
 };
 const CLASS_OF_CODE = {
     // The publisher denied the recognised school; the publisher has no route for
@@ -56,16 +52,17 @@ const CLASS_OF_CODE = {
     // The Markdown is PaperSearch Pro's: not installed, or its key needed (2026-11-18).
     markdown_pro_required: "user_side",
     markdown_pro_key_required: "user_side",
-    // The school's: its login refused the credentials, failed, locked the account or
-    // found the password expired; it ended on its own site, the school not having
-    // enabled the publisher; it stopped working mid-batch at a publisher it had worked
-    // at, the paper waiting, not tried (user, 2026-11-15).
-    login_credentials_rejected: "school_side",
-    idp_login_error: "school_side",
-    idp_account_locked: "school_side",
-    idp_password_expired: "school_side",
-    idp_no_return_to_publisher: "school_side",
-    login_paused: "school_side",
+    // The school account's: its login refused the saved password, locked the account or found
+    // the password expired (the user updates it).
+    login_credentials_rejected: "user_side",
+    idp_account_locked: "user_side",
+    idp_password_expired: "user_side",
+    // The school's login system's errors: it failed, it ended on its own site (the school not
+    // having enabled the publisher, or this once), it stopped working mid-batch at a publisher
+    // it had worked at, the paper waiting, not tried (user, 2026-11-15).
+    idp_login_error: "external",
+    idp_no_return_to_publisher: "external",
+    login_paused: "external",
     // The publisher's or the network's: the site blocked the network or asked for a human
     // verification that did not pass (a firewall's page answered instead of a file:
     // Figshare, 2026-11-08), answered with its error page or not at all; the network was
@@ -73,27 +70,27 @@ const CLASS_OF_CODE = {
     // the school; PubMed Central did not answer the Markdown's lookup (Windows,
     // 2026-11-16); a figure or a table of the page not fetched (BMJ, 2026-11-16);
     // PaperSearch Pro's server not reached for its weekly check.
-    access_blocked: "publisher_or_network",
-    cloudflare_blocked: "publisher_or_network",
-    captcha_required: "publisher_or_network",
-    verification_page: "publisher_or_network",
-    publisher_content_error: "publisher_or_network",
-    publisher_unreachable: "publisher_or_network",
-    network_unavailable: "publisher_or_network",
-    rate_limited: "publisher_or_network",
-    pmc_failed: "publisher_or_network",
-    figures_missing: "publisher_or_network",
-    tables_missing: "publisher_or_network",
-    markdown_pro_offline: "publisher_or_network",
+    access_blocked: "external",
+    cloudflare_blocked: "external",
+    captcha_required: "external",
+    verification_page: "external",
+    publisher_content_error: "external",
+    publisher_unreachable: "external",
+    network_unavailable: "external",
+    rate_limited: "external",
+    pmc_failed: "external",
+    figures_missing: "external",
+    tables_missing: "external",
+    markdown_pro_offline: "external",
     // The article's or the site's own: accepted, its full text not online yet (Optica,
     // 2026-11-08); doi.org not knowing the DOI yet (2026-11-15) or never (a paper published
     // long ago, PubMed listing no other link, 2026-11-16); the site offers no school login
     // at all, only its own accounts or none (an open-access site): its design, not evidence
     // that the school has no access, nor a site our rules do not know (user, 2026-11-18).
-    article_not_yet_published: "article_or_site",
-    doi_not_resolved: "article_or_site",
-    doi_not_registered: "article_or_site",
-    no_institution_entry: "article_or_site",
+    article_not_yet_published: "external",
+    doi_not_resolved: "external",
+    doi_not_registered: "external",
+    no_institution_entry: "external",
     // Content only on another platform (ClinicalKey); a DOI leading to no site to
     // sign in on; a site without a profile where the shared rules found no
     // institution entry: no rules for that site yet.
@@ -102,6 +99,11 @@ const CLASS_OF_CODE = {
     generic_institution_entry_missing: "unsupported",
     // Supplementary files: no rule for the site's files yet.
     supplements_not_supported: "unsupported",
+    // A publisher with rules of its own whose article page showed no login entry the rules found:
+    // its rules did not fit this journal's page (Thieme's Thrombosis and Haemostasis, whose DOI
+    // prefix the rule did not know, 2026-11-22). PaperSearch's to fix, not a lack of access (user);
+    // its own class until 2026-11-22, now with the sites not supported yet.
+    publisher_institution_entry_missing: "unsupported",
 };
 export function classifyFailureCode(code) {
     return code && Object.hasOwn(CLASS_OF_CODE, code) ? CLASS_OF_CODE[code] : "unexplained";
@@ -127,7 +129,7 @@ export function describeFailure(code, backend, trace) {
         const evidence = noAccessEvidence(code, detail, events);
         return evidence ? { failureClass, evidence } : { failureClass };
     }
-    if (failureClass === "unexplained") {
+    if (failureClass === "unexplained" || code === "publisher_institution_entry_missing") {
         const exception = typeof trace?.exception === "string" ? `程序异常：${trace.exception.slice(0, 160)}` : "";
         const stoppedAt = lastStep(events) || exception;
         return stoppedAt ? { failureClass, stoppedAt } : { failureClass };
@@ -136,7 +138,7 @@ export function describeFailure(code, backend, trace) {
 }
 function noAccessEvidence(code, detail, events) {
     if (code === "no_entitlement")
-        return "你标记过该期刊或出版社无权限";
+        return "你标记过该期刊或出版社没权限";
     if (code === "institution_not_registered") {
         // The page's own words, as the backend kept them on its block event: the publisher's, or the
         // school's login system's; not said whose, the words name the site (user, 2026-11-19).
@@ -145,10 +147,18 @@ function noAccessEvidence(code, detail, events) {
     }
     if (code === "institution_federation_unavailable") {
         const notFound = [...events].reverse().find((event) => event.state === "auto_institution_not_found");
-        const [school, where] = String(notFound?.detail ?? "").split(" @ ");
-        return school && where
-            ? `机构列表里找不到 ${school.trim()}（${hostOf(where) || where.slice(0, 60)}）`
-            : "出版社没有学校所在联盟的登录路线";
+        const [said, where] = String(notFound?.detail ?? "").split(" @ ");
+        // The backend's note after the school's name ("(search: …)", "(listed only …)") in words.
+        const name = said?.replace(/\s*\(.*$/, "").trim();
+        const site = where ? `（${hostOf(where) || where.slice(0, 60)}）` : "";
+        if (!name)
+            return "出版社没开通本校";
+        const school = /^[\x21-\x7e]/.test(name) ? ` ${name} ` : name; // a space beside a name in Latin letters
+        if (said.includes("listed only with another of its sign-ins"))
+            return `出版社只列了${school}的另一套登录，自动登录用不了${site}`;
+        if (said.includes("listed only without a school sign-in"))
+            return `出版社列出的${school}入口都不经学校登录${site}`;
+        return `出版社的机构列表里没有${school.trimEnd()}${site}`;
     }
     const denied = [...events].reverse().find((event) => event.state === "entitlement_denied");
     if (denied?.detail)

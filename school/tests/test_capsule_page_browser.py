@@ -100,6 +100,44 @@ class CapsulePageTests(unittest.TestCase):
             finally:
                 browser.close()
 
+    def test_the_page_stays_put_when_the_window_lays_out_without_changing_size(self):
+        """User, 2026-11-22: on an external 1080p screen beside a Retina one (and at times on Windows) the window's
+        page moved a pixel left and back. Sizes read back a fraction of a pixel off between the page and the screen made
+        a layout that changed nothing run its animation, anchored to the window's moving edge (it stood on the right of
+        the screen); and the page was a pixel wider than what the card's border leaves (0.5px a side is a whole pixel on
+        a 1x screen), so anchored to the right it lay a pixel to the left. A routine check, as the card's height is."""
+        from patchright.sync_api import sync_playwright
+        for platform, scale in (('darwin', 1), ('darwin', 2), ('win32', 1.25), ('win32', 1.5)):
+            with self.subTest(platform=platform, scale=scale), sync_playwright() as p:
+                browser, page = self.drag_page(p, platform, scale=scale)
+                try:
+                    page.evaluate("""() => { Object.assign(pywebview.api, {
+                        settings: async () => ({notify: true, download_dir: '/papers', language: 'zh', fields: []}),
+                        api_keys: async () => ({ok: true, filled: 0, total: 0, groups: []}),
+                        // On the screen's right and low: the window grows to the left and up.
+                        begin_layout: async (expanded, w, h) => { const pad = document.body.classList.contains('mac') ? 20 : 0;
+                          const now = root.getBoundingClientRect();
+                          return {vertical: 'up', horizontal: 'left', width: w, height: h,
+                                  from_width: now.width + pad, from_height: now.height + pad}; }});
+                        testState = {...testState, mode: 'idle'}; }""")
+                    page.evaluate("async () => { await tick(); await act('settings'); }")
+                    page.wait_for_selector('.nav-row')
+                    page.wait_for_function("!root.classList.contains('animating')")
+                    seen = page.evaluate("""async () => {
+                        const at = () => { const r = root.querySelector('.nav-row').getBoundingClientRect();
+                          return Math.round(r.left * devicePixelRatio) + ',' + Math.round(r.top * devicePixelRatio); };
+                        const places = new Set([at()]); let laidOut = 0, looking = true;
+                        (function look() { places.add(at()); laidOut += root.classList.contains('animating');
+                          if (looking) requestAnimationFrame(look); })();
+                        settledSize = null; render(true);  // a layout that changes nothing
+                        await new Promise((done) => setTimeout(done, 600));
+                        looking = false;
+                        return {places: [...places], laidOut}; }""")
+                    self.assertGreater(seen['laidOut'], 0)  # the layout did run
+                    self.assertEqual(len(seen['places']), 1, seen)
+                finally:
+                    browser.close()
+
     def test_the_running_card_keeps_its_height_whatever_the_paper(self):
         """The running card is one height whatever the paper (user, 2026-11-21: it shook up and down as papers went by,
         many times; each change of height resizes the window, whose edge moves): titles long and short, with symbols or
@@ -885,8 +923,8 @@ class CapsulePageTests(unittest.TestCase):
         state = view(dict(status='done', run_id='r-apart', total=12, done=12, success=7, failed=5, output_dir='/tmp',
                           results={'content': 'both', 'main': 7, 'supplements': 4, 'sources': [['机构订阅', 7]],
                                    'failures': [item('学校没有订阅', 'no_access', 'No access')],
-                                   'supplement_failures': [item('网站人机验证拦截', 'publisher_or_network', 'Blocked file'),
-                                                           item('网站暂不支持自动下载附录', 'unsupported', 'No rule')],
+                                   'supplement_failures': [item('被网站拦截', 'external', 'Blocked file'),
+                                                           item('附录暂未适配', 'unsupported', 'No rule')],
                                    'markdown_failures': [item('网页只有摘要', 'unsupported', 'Abstract only'),
                                                          item('网页只有摘要', 'unsupported', 'Abstract too'),
                                                          item('网站暂不支持转换', 'unsupported', 'No page rule')]}), now)
@@ -896,7 +934,7 @@ class CapsulePageTests(unittest.TestCase):
                 page.evaluate("async state => { testState = state; open = true; await tick(); }", state)
                 page.wait_for_function("!root.classList.contains('animating')")
                 text = page.locator('#root').inner_text()
-                for expected in ('PDF 未下到 5 篇', '补充材料未下全 2 篇', '网站人机验证拦截', '网站暂不支持自动下载附录',
+                for expected in ('PDF 未下到 5 篇', '补充材料未下全 2 篇', '被网站拦截', '附录暂未适配',
                                  'Markdown 未生成 3 篇', '网页只有摘要', '网站暂不支持转换'):
                     self.assertIn(expected, text)
                 self.assertNotIn('未完成', text)
@@ -922,7 +960,7 @@ class CapsulePageTests(unittest.TestCase):
         now = time.time()
         failures = [{'cls': 'no_access', 'reason': '学校没有订阅', 'title': f'Paper {i}', 'journal': 'Spine',
                      'doi': '', 'note': ''} for i in range(12)]
-        failures.append({'cls': 'user_side', 'reason': '等学校登录超时', 'title': 'Late', 'journal': 'Thieme',
+        failures.append({'cls': 'user_side', 'reason': '等你登录超时', 'title': 'Late', 'journal': 'Thieme',
                          'doi': '10.1055/a-2979-4843', 'note': ''})
         state = view(dict(status='done', run_id='r-done', total=200, done=200, success=187, failed=13,
                           started_at=datetime.fromtimestamp(now - 6730).isoformat(timespec='seconds'),
@@ -990,7 +1028,7 @@ class CapsulePageTests(unittest.TestCase):
             paper(2, 'ok', markdown_host='www.jacc.org', markdown_saved=True, markdown_rules='Atypon'),
             paper(3, 'ok', markdown_cls='unsupported', markdown_reason='内容不完整', markdown_host='www.jacc.org',
                   markdown_note=note, markdown_rules='Atypon'),
-            paper(4, 'ok', supplement_cls='publisher_or_network', supplement_reason='网站人机验证拦截'),
+            paper(4, 'ok', supplement_cls='external', supplement_reason='被网站拦截'),
             paper(5, 'school'), paper(6, 'open'))}}
         lists = paper_lists(listed, raw)
         state = {**view(raw, time.time()), 'lists': True, 'sites': unverified_sites(listed, raw)}
@@ -1158,7 +1196,7 @@ class CapsulePageTests(unittest.TestCase):
                     'state': state, **fields}
         listed = {'batch_id': 'b-lists', 'folder': '/papers', 'papers': {str(p['index']): p for p in (
             paper(1, 'ok', via='开放下载'), paper(2, 'ok', via='开放下载', detail='出版社 API'), paper(3, 'ok', via='机构下载'),
-            paper(4, 'failed', cls='user_side', reason='等学校登录超时'),
+            paper(4, 'failed', cls='user_side', reason='等你登录超时'),
             paper(5, 'school', journal='Digestion'), paper(6, 'school'), paper(7, 'open'), paper(8, 'open'))}}
         lists = paper_lists(listed, raw)
         state = {**view(raw, time.time()), 'lists': True}
@@ -1220,7 +1258,7 @@ class CapsulePageTests(unittest.TestCase):
                     page.locator('[data-act=papers][data-list=failed]').click()
                     page.wait_for_function("panel === 'papers' && papersList && !root.classList.contains('animating')")
                     self.assertEqual(page.locator('.head .title').inner_text(), '失败 1 篇')
-                    self.assertEqual(page.locator('.grp .row').inner_text().split('\n')[:2], ['你这边', '等学校登录超时'])
+                    self.assertEqual(page.locator('.grp .row').inner_text().split('\n')[:2], ['要你处理', '等你登录超时'])
                     page.locator('.paper-list [data-act=open_article]').click()
                     page.wait_for_function("openedArticles.length === 1")
                     self.assertEqual(page.evaluate('openedArticles'), ['10.1000/4'])
@@ -1258,9 +1296,9 @@ class CapsulePageTests(unittest.TestCase):
             return {'index': index, 'doi': f'10.1000/{index}', 'title': f'Paper {index}', 'journal': 'Nature',
                     'state': state, **fields}
         listed = {'batch_id': 'b-supp', 'folder': '/papers', 'papers': {str(p['index']): p for p in (
-            paper(1, 'failed', cls='publisher_or_network', reason='出版社页面出错'),
-            paper(2, 'ok', via='机构下载', supplement_cls='publisher_or_network', supplement_reason='网站人机验证拦截'),
-            paper(3, 'ok', via='机构下载', supplement_cls='publisher_or_network', supplement_reason='网站人机验证拦截'),
+            paper(1, 'failed', cls='external', reason='出版社网站出错'),
+            paper(2, 'ok', via='机构下载', supplement_cls='external', supplement_reason='被网站拦截'),
+            paper(3, 'ok', via='机构下载', supplement_cls='external', supplement_reason='被网站拦截'),
             paper(4, 'ok', via='机构下载'), paper(5, 'school'))}}
         lists = paper_lists(listed, raw)
         state = {**view(raw, time.time()), 'lists': True}
@@ -1286,7 +1324,7 @@ class CapsulePageTests(unittest.TestCase):
                     # ("未完成" beside "Markdown 未生成" did not say it was the PDF, 2026-11-17).
                     order = page.evaluate("""() => [...root.querySelectorAll('.papers-scroll > *')].map(e =>
                         e.classList.contains('list-sub') ? 'heading' : e.querySelector('.reason').textContent)""")
-                    self.assertEqual(order, ['heading', '出版社页面出错', 'heading', '网站人机验证拦截'])
+                    self.assertEqual(order, ['heading', '出版社网站出错', 'heading', '被网站拦截'])
                     self.assertEqual(page.locator('.list-sub').all_inner_texts(), ['PDF 未下到 1 篇', '补充材料未下全 2 篇'])
                     page.locator('[data-act=list_group][data-group="1"]').click()
                     page.wait_for_function("!root.classList.contains('animating')")
@@ -1547,11 +1585,14 @@ class CapsulePageTests(unittest.TestCase):
                         lang = english ? 'en' : 'zh'; testState = {...testState, mode: 'idle', lang: lang}; }""", english)
                     page.evaluate("async () => { await tick(); await act('settings'); await checkVersions(); }")
                     page.wait_for_selector('.version-link')
-                    self.assertEqual(page.locator('.version-link').inner_text(), 'PaperSearch 0.7.2')
+                    self.assertEqual(page.locator('.version-link .pl-text').inner_text(), 'PaperSearch 0.7.2')
+                    # Pro installed: its pill after the version, as on its features' rows (user, 2026-11-22).
+                    self.assertEqual(page.locator('.version-link .pro-pill').inner_text(), 'Pro')
                     # A newer one: the foot's whole line in red.
                     page.evaluate("() => { check = {state: 'done', current: '0.7.2', latest: '0.7.3', update: true, notes: 'https://x', pro_update: true, pro_latest: '0.3.4'}; }")
                     page.wait_for_selector('.version-link.new')
                     self.assertEqual(page.locator('.version-link').inner_text(), 'New version 0.7.3: update' if english else '有新版本 0.7.3，点此更新')
+                    self.assertEqual(page.locator('.version-link .pro-pill').count(), 0)  # the red line alone
                     self.assertNotEqual(page.evaluate("getComputedStyle(document.querySelector('.version-link')).color"),
                                         page.evaluate("getComputedStyle(document.querySelector('.lang-btn')).color"))  # red, not the grey beside it
                     # The card: its settings button with a red dot.
@@ -1571,6 +1612,11 @@ class CapsulePageTests(unittest.TestCase):
                     self.assertEqual(page.locator('.about-version').inner_text(), '0.7.2 · New version 0.7.3' if english else '0.7.2 · 有新版本 0.7.3')
                     self.assertIn('new', page.locator('.about-version').get_attribute('class'))
                     self.assertEqual(page.locator('[data-act=update_all]').inner_text(), 'Update to 0.7.3' if english else '更新到 0.7.3')
+                    # What is new: 有新版本 X in the line is its link, ↗ after it, nothing under the button (user, 2026-11-22: 乙).
+                    self.assertEqual(page.locator('.about-version [data-act=release_notes]').inner_text(),
+                                     'New version 0.7.3' if english else '有新版本 0.7.3')
+                    self.assertEqual(page.locator('.about-version [data-act=release_notes] svg.i').count(), 1)
+                    self.assertEqual(page.locator('.about-action [data-act=release_notes]').count(), 0)
                     page.locator('[data-act=release_notes]').click()
                     page.wait_for_function('notes === 1')
                     # 更新: its steps as they go, the window opening again once PaperSearch itself is updated.
@@ -1632,7 +1678,7 @@ class CapsulePageTests(unittest.TestCase):
                     page.wait_for_function("lang === '%s' && !root.classList.contains('animating')" % ('en' if english else 'zh'))
                     page.wait_for_selector('.lang-btn')
                     own, other = ('English', '简体中文') if english else ('简体中文', 'English')
-                    self.assertEqual(page.locator('.version-link').inner_text(), 'PaperSearch')
+                    self.assertEqual(page.locator('.version-link .pl-text').inner_text(), 'PaperSearch')
                     self.assertEqual(page.locator('.lang-btn').inner_text(), own)
                     self.assertEqual(page.locator('.lang-btn').get_attribute('aria-expanded'), 'false')
                     self.assertEqual(page.locator('.lang-menu').count(), 0)
@@ -2083,6 +2129,76 @@ class CapsulePageTests(unittest.TestCase):
             finally:
                 browser.close()
 
+    def test_the_sign_in_page_is_a_card_per_school_its_rarer_actions_in_a_menu(self):
+        """User, 2026-11-22 (甲): the schools hard to tell apart in one list, each one's inside too busy, and the
+        confirmation of 清除账号密码 moving the page down. A card per school, a gap between them, the open one marked; its
+        last line 自动登录's switch and 保存; 设为默认, 清除账号密码 and 移除这所学校 in ⋯; a clearing asked again in that
+        line's place, nothing below it moving; a press elsewhere closes the menu."""
+        from patchright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'darwin')
+            try:
+                page.evaluate("""() => {
+                    window.schools = [
+                      {key: 'A', name: '红木兰大学', name_en: 'Hongmulan University', current: true, entity: true, saved: true,
+                       username: '2******4', enabled: true, off: '', status: 'surveyed'},
+                      {key: 'B', name: '蓝杉大学', name_en: 'Lanshan University', current: false, entity: true, saved: true,
+                       username: 'l******n', enabled: true, off: '', status: 'surveyed'}];
+                    window.cleared = [];
+                    const state = () => ({ok: true, pro: true, switch: true, schools: [...schools], counts: {filled: 461, check: 287}, ...schools[0]});
+                    Object.assign(pywebview.api, {
+                        settings: async () => ({notify: true, download_dir: '/papers', language: 'zh', fields: []}),
+                        api_keys: async () => ({ok: true, filled: 0, total: 0, groups: []}),
+                        pro_status: async () => ({ok: true, installed: true, version: '0.3.4'}),
+                        pro_install_state: async () => ({state: 'idle'}),
+                        school_login_state: async () => state(),
+                        school_login_saved: async (key) => ({username: key === 'A' ? '20261234' : 'lanshan-1', password: 'pw'}),
+                        clear_school_login: async (key) => { cleared.push(key); const s = schools.find((x) => x.key === key);
+                          Object.assign(s, {saved: false, username: '', enabled: false}); return state(); }});
+                }""")
+                page.evaluate("async () => { testState = {mode: 'idle'}; await tick(); await act('settings'); }")
+                page.locator('[data-page=login]').click()
+                page.wait_for_selector('#login-user')
+                page.locator('.login-row[data-act=login_open]').nth(1).click()
+                page.wait_for_function("document.querySelectorAll('.login-school.open').length === 1 && !root.classList.contains('animating')")
+                cards = page.evaluate("""() => [...document.querySelectorAll('.login-list > .login-school')].map((c) => {
+                    const r = c.getBoundingClientRect(), style = getComputedStyle(c);
+                    return {top: r.top, bottom: r.bottom, open: c.classList.contains('open'), add: c.classList.contains('add'),
+                            fill: style.backgroundColor, edge: style.boxShadow !== 'none' || style.borderStyle !== 'none'}; })""")
+                self.assertEqual([(c['open'], c['add']) for c in cards], [(False, False), (True, False), (False, True)])
+                for upper, lower in zip(cards, cards[1:]):
+                    self.assertGreaterEqual(lower['top'] - upper['bottom'], 6)  # apart
+                self.assertNotEqual(cards[0]['fill'], 'rgba(0, 0, 0, 0)')  # a closed school filled
+                self.assertTrue(cards[1]['edge'] and cards[2]['edge'])     # the open one edged, 添加学校 dashed
+                # Its last line: 自动登录 and 保存; nothing of the rarer actions until ⋯.
+                self.assertEqual(page.locator('.login-school.open .login-foot').inner_text().split('\n')[0], '自动登录')
+                self.assertEqual(page.get_attribute('.login-foot [data-act=login_switch]', 'aria-label'), '自动登录')
+                self.assertEqual(page.locator('.ls-dots').count(), 1)
+                self.assertEqual(page.locator('[data-act=clear_login]').count(), 0)
+                page.locator('.ls-dots').click()
+                self.assertEqual(page.locator('.ls-menu button').all_inner_texts(), ['设为默认', '清除账号密码', '移除这所学校'])
+                page.mouse.click(30, 30)  # elsewhere: the menu closes
+                page.wait_for_function("!document.querySelector('.ls-menu')")
+                # The clearing asked again in its last line's place: the card and what follows it stay where they were.
+                before = page.evaluate("[...document.querySelectorAll('.login-list > .login-school')].map((c) => [c.getBoundingClientRect().top, c.getBoundingClientRect().height])")
+                page.locator('.ls-dots').click()
+                page.locator('.ls-menu [data-act=clear_login]').click()
+                page.wait_for_selector('.login-foot.asking')
+                self.assertEqual(page.locator('.login-foot.asking .q').inner_text(), '清除账号和密码？')
+                self.assertEqual(page.locator('.login-foot.asking .btn').all_inner_texts(), ['取消', '清除'])
+                after = page.evaluate("[...document.querySelectorAll('.login-list > .login-school')].map((c) => [c.getBoundingClientRect().top, c.getBoundingClientRect().height])")
+                self.assertEqual(after, before)
+                page.locator('[data-act=cancel_confirm]').click()
+                page.wait_for_selector('.login-foot [data-act=login_switch]')
+                self.assertEqual(page.evaluate('cleared'), [])
+                page.locator('.ls-dots').click()
+                page.locator('.ls-menu [data-act=clear_login]').click()
+                page.locator('.login-foot.asking [data-act=clear_login]').click()
+                page.wait_for_function("cleared.length === 1")
+                self.assertEqual(page.evaluate('cleared'), ['B'])
+            finally:
+                browser.close()
+
     def test_the_sign_in_page_holds_several_schools_one_the_default(self):
         # User, 2026-11-20: several schools, each with its account; one the default for downloads, switched
         # here; another added once found in the federations' lists, its status said before it is added.
@@ -2143,19 +2259,22 @@ class CapsulePageTests(unittest.TestCase):
                 page.locator('[data-act=save_login]').click()
                 page.wait_for_function("accounts.B && accounts.B.username === 'lanshan-1'")
                 self.assertEqual(page.evaluate('accounts.A.username'), '20261234')  # the other school's untouched
-                # The default switched here; the default one cannot be removed, another can.
-                page.locator('[data-act=set_default]').click()
+                # The default switched here, from ⋯ (user, 2026-11-22: 甲); the default one cannot be removed, another can.
+                page.locator('.ls-dots').click()
+                page.locator('.ls-menu [data-act=set_default]').click()
                 page.wait_for_function("schools.find((s) => s.key === 'B').current")
                 self.assertIn('蓝杉大学', page.locator('.login-row[data-act=login_open]').first.inner_text())
                 self.assertEqual(page.locator('[data-act=forget_school]').count(), 0)
                 page.locator('.login-row[data-act=login_open]').nth(1).click()
-                page.wait_for_selector('[data-act=forget_school]')
-                # Every school's buttons alike, the rarer actions as links under them (user, 2026-11-20).
-                self.assertEqual(page.locator('.key-actions .btn').all_inner_texts(), ['关闭自动登录', '保存'])
-                self.assertEqual(page.locator('.login-links .link-btn').all_inner_texts(), ['设为默认', '清除账号密码', '移除这所学校'])
-                page.locator('[data-act=forget_school]').click()
-                self.assertEqual(page.locator('[data-act=forget_school]').inner_text(), '确认移除')
-                page.locator('[data-act=forget_school]').click()
+                page.wait_for_selector('.ls-dots')
+                # Every school alike: 自动登录's switch and 保存 on its last line, the rarer actions in ⋯ (user, 2026-11-22: 甲).
+                self.assertEqual(page.get_attribute('.login-foot [data-act=login_switch]', 'aria-label'), '自动登录')
+                self.assertEqual(page.locator('.login-foot [data-act=save_login]').inner_text(), '保存')
+                page.locator('.ls-dots').click()
+                self.assertEqual(page.locator('.ls-menu button').all_inner_texts(), ['设为默认', '清除账号密码', '移除这所学校'])
+                page.locator('.ls-menu [data-act=forget_school]').click()
+                self.assertEqual(page.locator('.login-foot.asking .q').inner_text(), '移除这所学校？')
+                page.locator('.login-foot.asking [data-act=forget_school]').click()
                 page.wait_for_function("document.querySelectorAll('.login-row[data-act=login_open]').length === 1")
                 # 支持哪些学校: a page of its own, how many of each kind, in two pages: the world's regions, each opening in
                 # place to its countries (Asia first, China first in it), and a country's schools all together on a page of
@@ -2427,7 +2546,8 @@ class CapsulePageTests(unittest.TestCase):
                 self.assertEqual(page.evaluate("document.querySelector('.test-article .what').scrollWidth <= document.querySelector('.test-article .what').clientWidth"), True)  # one line, whole
                 self.assertEqual(page.locator('[data-act=test_article_edit]').inner_text(), '填写')
                 self.assertEqual(page.locator('.test-article [data-act=school_test]').inner_text(), '测试')
-                self.assertEqual(page.locator('.login-form .key-actions .btn').all_inner_texts(), ['关闭自动登录', '保存'])
+                self.assertEqual(page.locator('.login-foot [data-act=save_login]').inner_text(), '保存')
+                self.assertEqual(page.get_attribute('.login-foot [data-act=login_switch]', 'aria-checked'), 'true')
                 edges = "['#login-user', '#login-password', '[data-act=school_test]'].map((q) => Math.round(document.querySelector(q).getBoundingClientRect().right))"
                 self.assertEqual(len(set(page.evaluate(edges))), 1)
                 page.locator('[data-act=school_test]').click()
@@ -2460,7 +2580,7 @@ class CapsulePageTests(unittest.TestCase):
                 page.locator('[data-act=test_article_save]').click()
                 page.wait_for_function("!document.querySelector('#test-article')")
                 self.assertEqual(page.locator('.test-article .what').inner_text(), '10.1111/dom.15869')
-                self.assertEqual(page.locator('[data-act=test_article_edit]').inner_text(), '修改')
+                self.assertEqual(page.get_attribute('[data-act=test_article_edit]', 'aria-label'), '修改')  # a pencil (user, 2026-11-22)
                 page.locator('[data-act=test_article_edit]').click()
                 self.assertEqual(page.input_value('#test-article'), '10.1111/dom.15869')
                 page.press('#test-article', 'Escape')
@@ -2691,7 +2811,7 @@ class CapsulePageTests(unittest.TestCase):
             'done': view({**running, 'status': 'done', 'done': 3, 'failed': 1, 'results': {
                 'content': 'both', 'main': 2, 'supplements': 1, 'sources': [['机构订阅', 2]],
                 'failures': [{'cls': 'no_access', 'reason': '学校没有订阅', 'journal': 'Spine', 'title': 'Other', 'doi': '10.1000/y'}],
-                'supplement_failures': [{'cls': 'unsupported', 'reason': '网站暂不支持自动下载附录', 'title': 'Third', 'doi': '10.1000/z'}]}}, now),
+                'supplement_failures': [{'cls': 'unsupported', 'reason': '附录暂未适配', 'title': 'Third', 'doi': '10.1000/z'}]}}, now),
         }
         listing = {'ok': True, 'filled': 0, 'total': 12, 'groups': [
             {'title': g['title'], 'services': [{**s, 'guide': s.get('guide', ''), 'guide_label': s.get('guide_label', ''), 'set': False,
@@ -2760,7 +2880,7 @@ class CapsulePageTests(unittest.TestCase):
                 browser.close()
 
     @staticmethod
-    def drag_page(playwright, platform='darwin', english=False):
+    def drag_page(playwright, platform='darwin', english=False, scale=1):
         from pathlib import Path
         import time
         import webview
@@ -2768,7 +2888,7 @@ class CapsulePageTests(unittest.TestCase):
         state = view(dict(status='running', current='10.1000/drag', title='Drag test article', publisher='Test',
                           total=3, done=0, success=0, failed=0, stage='fetching_pdf', started_at=time.time()), time.time())
         browser = playwright.chromium.launch(channel='chrome', headless=True)
-        page = page_world(browser.new_page(viewport={'width': 800, 'height': 800}))
+        page = page_world(browser.new_page(viewport={'width': 800, 'height': 800}, device_scale_factor=scale))
         from paper_search_school.progress_capsule import page_html
         page.set_content(page_html() if english else PAGE.read_text(encoding='utf-8'))
         page.evaluate("""({state, platform}) => {

@@ -106,6 +106,54 @@ class OxfordGuardTests(unittest.TestCase):
 
 
 @unittest.skipUnless(os.environ.get('SCHOOL_LOCAL_BROWSER_TEST') == '1', 'local Chrome fixture opt-in')
+class OxfordKeptDoiTests(unittest.TestCase):
+    """Journals Oxford Academic took over, their DOIs kept (Windows, 2026-11-22: JBMR and BJS, from Wiley, and Modern
+    Rheumatology, from Taylor & Francis, had no PDF tried): the article page's citation PDF is their PDF."""
+    KEPT = '10.1080/14397595.2020.1868688'
+    PAGE = 'https://academic.oup.com/mr/article/31/6/1215/6398418'
+    OWN = 'https://academic.oup.com/mr/article-pdf/31/6/1215/40675914/mr1215.pdf'
+    COPY = 'https://watermark02.silverchair.com/mr1215.pdf?fixture-signature=local'
+
+    def setUp(self):
+        import test_wiley_capture as fixtures
+        harness = fixtures.WileyCaptureTests(methodName='runTest')
+        self.addCleanup(harness.doCleanups)
+        harness.setUp()
+        self.batch = harness.batch
+        self.d = self.batch.PublisherBatchDownloader({}, profile=harness.profiles.OXFORD_ACADEMIC_PROFILE)
+        self.meta = {'dois': [self.KEPT], 'pdfs': [self.OWN], 'links': []}
+        self.page = Mock(url=self.PAGE)
+        self.page.evaluate.side_effect = lambda *args: self.meta
+        self.d._track_article_for_adapter(self.page, self.KEPT)
+        self.d._capture_doi = self.KEPT
+
+    def test_a_kept_doi_takes_the_rules_for_it_and_oxfords_own_keep_theirs(self):
+        from paper_search_school.adapters import adapter_class
+        from paper_search_school.adapters.oup import OUPAdapter, OUPKeptDoiAdapter
+        for doi in ('10.1002/jbmr.4720', '10.1002/bjs.11621', self.KEPT):
+            with self.subTest(doi=doi):
+                self.assertIs(adapter_class('oxford academic', doi=doi), OUPKeptDoiAdapter)
+        for doi in (DOI, '10.1093/rheumatology/keae522', '10.1159/ned/adwag066'):
+            with self.subTest(doi=doi):
+                self.assertIs(adapter_class('oxford academic', doi=doi), OUPAdapter)
+        self.assertEqual(type(self.d.adapter).__name__, 'OUPKeptDoiAdapter')  # the fixture's own copy of the package
+
+    def test_the_citation_pdf_is_the_candidate_and_its_copy_on_the_cdn_is_accepted(self):
+        self.assertEqual(self.d._pdf_candidates(self.page, self.KEPT), [self.OWN])
+        self.meta = {'dois': ['10.1080/14397595.2020.1999999'], 'pdfs': [self.OWN], 'links': []}  # another article's page
+        self.assertEqual(self.d._pdf_candidates(self.page, self.KEPT), [])
+        bound = frozenset({self.OWN})
+        response = SimpleNamespace(url=self.OWN, status=200, headers={}, history=[])
+        self.assertTrue(self.d._response_matches_article(response, self.KEPT, article_pdf_urls=bound))
+        copy = SimpleNamespace(url=self.COPY, status=200, headers={}, history=[SimpleNamespace(url=self.OWN, headers={})])
+        self.assertTrue(self.d._response_matches_article(copy, self.KEPT, article_pdf_urls=bound))
+        other = self.OWN.replace('40675914/mr1215', '40675999/mr1299')
+        for url, history in ((other, []), (self.COPY.replace('mr1215', 'mr1299'), [SimpleNamespace(url=other, headers={})])):
+            with self.subTest(url=url):
+                self.assertFalse(self.d._response_matches_article(
+                    SimpleNamespace(url=url, status=200, headers={}, history=history), self.KEPT, article_pdf_urls=bound))
+
+
 class OxfordNativeTests(OxfordGuardTests):
     @classmethod
     def setUpClass(cls):

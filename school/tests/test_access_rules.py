@@ -112,6 +112,7 @@ class VerdictTests(unittest.TestCase):
 
     def test_offers_denials_gates_and_password_fields_are_out(self):
         for kwargs in ({"body": "Buy article PDF 39,95 €"}, {"body": "Purchase PDF"}, {"body": "Check Access"},
+                       {"body": "Purchase options *\nPDF download + Online access\nUSD 68.00"}, {"body": "Issue Purchase"},
                        {"body": "This is a preview of subscription content, log in via an institution."},
                        {"body": "You do not currently have access to this content."},
                        {"offers": ["Buy this article ($64)"]}, {"gate": "Access through Hong Mu-lan University"},

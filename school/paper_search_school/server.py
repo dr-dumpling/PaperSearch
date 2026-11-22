@@ -244,15 +244,18 @@ async def school_keep_session() -> str:
 
 @mcp_app.tool()
 def school_switch_state() -> str:
-    """Whether a batch takes one journal's papers one after another (没权限时换下一所学校, school_switch.py): the switch
-    on and more than one school taking part, so that a school switched to for a journal is not switched away from and
-    back. Opens no browser. Answers {"on": bool, "schools": n, "group": bool}."""
+    """The schools a batch's papers without access (没权限) are tried with at its end, one after another
+    (没权限时换下一所学校, school_switch.py): the default one first, each named as ``school_download``'s ``school``
+    takes it (its entityID); none while the switch is off; and whether the batch takes one journal's papers one after
+    another (``group``: on and more than one school). Opens no browser. Answers
+    {"on": bool, "schools": [{"name": ..., "entity_id": ...}, ...], "group": bool}."""
     from . import school_switch
 
     config = load_config()
-    count = len(school_switch.schools(config))
     on = school_switch.enabled(config)
-    return json.dumps({"on": on, "schools": count, "group": on and count > 1})
+    schools = [{"name": school_switch.name(entry), "entity_id": str(entry.get("idp_entity_id") or "").strip()}
+               for entry in school_switch.schools(config)] if on else []
+    return json.dumps({"on": on, "schools": schools, "group": on and len(schools) > 1}, ensure_ascii=False)
 
 
 @mcp_app.tool()
@@ -334,9 +337,8 @@ def school_batch_papers(batch_id: str, folder: str, papers: list[dict[str, Any]]
     doi, title, journal, state ("open": open access not checked yet, "school": waiting
     for or in the institutional download, "ok", "failed"); a saved one adds via
     (开放下载 or 机构下载), detail (出版社 API, Sci-Hub, 预印本) and path (the PDF,
-    absolute); a failed one cls (no_access, user_side, school_side, publisher_or_network,
-    article_or_site, unsupported, unexplained)
-    and reason}]. folder: the batch's download folder (absolute); the window opens
+    absolute); a failed one cls (no_access, user_side, external, unsupported, unexplained; the
+    classes before 2026-11-22 are taken as these) and reason}]. folder: the batch's download folder (absolute); the window opens
     a PDF only from inside it. Never touches the running download's progress.
     """
     from . import progress_reporter

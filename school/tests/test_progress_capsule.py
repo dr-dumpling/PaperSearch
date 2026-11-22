@@ -176,9 +176,9 @@ class ViewTests(unittest.TestCase):
         def fail(cls, reason, journal="", n=1, **extra):
             return [{"cls": cls, "reason": reason, "title": f"{reason} {i}", "journal": journal, "doi": "", "note": "",
                      **extra} for i in range(n)]
-        failures = (fail("user_side", "等学校登录超时", "Thieme", 3)
+        failures = (fail("user_side", "等你登录超时", "Thieme", 3)
                     + fail("no_access", "学校没有订阅", "Spine", 4) + fail("no_access", "学校没有订阅", "JBJS", 8)
-                    + fail("unsupported", "找不到机构登录入口", "Emerald", 2)
+                    + fail("unsupported", "网站暂未适配", "Emerald", 2)
                     + fail("unexplained", "下载时程序出错") + fail("unexplained", "页面处理超时"))
         results = {"content": "both", "main": 182, "supplements": 350, "no_supplements": 0,
                    "sources": [["机构订阅", 140], ["开放获取", 42]], "failures": failures}
@@ -186,7 +186,7 @@ class ViewTests(unittest.TestCase):
         groups = v["summary"]["groups"]
         # Most papers first; past five rows the rest share one row, each paper keeping its reason.
         self.assertEqual([(g["reason"], g["count"]) for g in groups],
-                         [("学校没有订阅", 12), ("等学校登录超时", 3), ("找不到机构登录入口", 2),
+                         [("学校没有订阅", 12), ("等你登录超时", 3), ("网站暂未适配", 2),
                           ("下载时程序出错", 1), ("页面处理超时", 1)])
         self.assertEqual(groups[0]["where"], "JBJS 8 · Spine 4")
         self.assertEqual(len(groups[0]["papers"]), 12)
@@ -235,12 +235,12 @@ class ViewTests(unittest.TestCase):
             return {"cls": cls, "reason": reason, "title": "T", "journal": journal, "doi": "", "note": ""}
         results = {"content": "both", "main": 7, "supplements": 4, "no_supplements": 0, "sources": [],
                    "failures": [item("学校没有订阅", "no_access", "Spine")],
-                   "supplement_failures": [item("网站人机验证拦截", "publisher_or_network", "APL")] * 2
-                                          + [item("网站暂不支持自动下载附录", "unsupported", "SIAM J")]}
+                   "supplement_failures": [item("被网站拦截", "external", "APL")] * 2
+                                          + [item("附录暂未适配", "unsupported", "SIAM J")]}
         summary = pv.view(running(status="done", results=results), NOW)["summary"]
         self.assertTrue(summary["groups"][0]["open"])  # one main-text failure: open as before
         self.assertEqual([(g["reason"], g["count"], g["open"]) for g in summary["supplement_groups"]],
-                         [("网站人机验证拦截", 2, False), ("网站暂不支持自动下载附录", 1, False)])
+                         [("被网站拦截", 2, False), ("附录暂未适配", 1, False)])
         self.assertEqual(summary["supplement_missing"], 3)
         main_only = results | {"content": "main", "supplement_failures": []}
         summary = pv.view(running(status="done", results=main_only), NOW)["summary"]

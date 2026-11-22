@@ -286,6 +286,11 @@ export type SchoolInvocationOutcome = {
     kind: "backend_unavailable";
     readiness: SchoolReadiness;
 };
+/** A saved school a batch's papers without access are tried with: its name to show, its entityID to name it by. */
+export interface SchoolTurn {
+    name: string;
+    entityId: string;
+}
 /** Stable PaperSearch-owned port. Callers must not depend on MCP tool names or payload shapes. */
 export interface SchoolBackend {
     probe(signal?: AbortSignal): Promise<SchoolReadiness>;
@@ -330,11 +335,13 @@ export interface SchoolBackend {
         limit: number;
     } | undefined>;
     /**
-     * Optional: whether a batch takes one journal's papers one after another (PaperSearch Pro's 没权限时换下一所学校: the
-     * switch on and more than one school taking part, user 2026-11-21). Only on a backend the batch already has;
-     * undefined when there is none or it cannot say. Never throws.
+     * Optional: PaperSearch Pro's 没权限时换下一所学校 (user, 2026-11-21 and 2026-11-22): the schools a batch's papers
+     * without access (没权限) are tried with at its end, one after another, the default one first (none while the switch
+     * is off), and whether the batch takes one journal's papers one after another (``group``: more than one school
+     * taking part). Only on a backend the batch already has; undefined when there is none or it cannot say. Never throws.
      */
     schoolSwitch?(signal?: AbortSignal): Promise<{
+        schools: SchoolTurn[];
         group: boolean;
     } | undefined>;
 }

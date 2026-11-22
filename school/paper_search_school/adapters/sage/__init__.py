@@ -1,5 +1,8 @@
 """Sage Journals: every journal on journals.sagepub.com, DOI paths.
 
+Article pages are ``/doi/[abs|full|pdf|epdf/]<DOI>`` for any DOI: Sage's own ``10.1177/`` and the
+prefixes of the journals it took over, kept as they were (Crossref, 2026-11-22: ``10.1191/`` of the
+Hodder Arnold journals, ``10.1258/`` of the Royal Society of Medicine Press journals).
 One site type so far. The institution login is the "Institution" link in the
 article's access panel (``/action/ssostart`` with the article as redirectUri).
 The panel's "Access via <school> is not available as they do not subscribe to
@@ -17,7 +20,7 @@ from ...engine.batch_common import _is_browser_error, open_page
 from ..base import PublisherAdapter, SupplementLink, register
 from ..platforms.atypon import CURRENT_TEMPLATE_FULLTEXT_IMAGES_JS, CURRENT_TEMPLATE_FULLTEXT_SHOWN_JS
 
-_ARTICLE = re.compile(r"/doi/(?:(?:abs|full|pdf|epdf)/)?10\.1177/")
+_ARTICLE = re.compile(r"/doi/(?:(?:abs|full|pdf|epdf)/)?10\.\d{4,9}/")
 _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href*="/suppl_file/"]')]
     .map(a => ({href: a.href, label: (a.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 200)}))"""
 _PANEL_TEXT_JS = """() => { const panel = document.querySelector('#core-collateral-purchase-access');

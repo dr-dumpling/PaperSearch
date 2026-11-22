@@ -132,7 +132,7 @@ class CaptureMixin:
 
         attempts = result.pdf_attempts[since:]
         sent_back = [a for a in attempts if a.get("outcome") in self._WEB_PAGE_OUTCOMES
-                     and plain(a.get("final_url")) != plain(a.get("url"))
+                     and (plain(a.get("final_url")) != plain(a.get("url")) or self.adapter.pdf_address_shows_article_page)
                      and self._is_success_article_url(str(a.get("final_url") or ""))]
         url = str(getattr(page, "url", "") or "")
         if (not sent_back or not self._school_login_done()

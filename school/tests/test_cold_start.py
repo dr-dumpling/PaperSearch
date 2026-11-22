@@ -78,7 +78,7 @@ class ColdStartTests(unittest.TestCase):
         self.assertEqual(hosts["publisher"], {"sciencedirect.com"})
         self.assertEqual(hosts["other_site"], {"www.cell.com"})
         self.assertEqual({c: plan["keep"][c]["cookies"] for c in cold_start.KEEP},
-                         {"verification": 1, "personal_account": 1, "consent": 1})
+                         {"verification": 1, "personal_account": 1, "consent": 1, "own_school": 0})
         self.assertNotIn('"v"', json.dumps(plan))  # no cookie value ever appears
         self.assertEqual(sorted(plan["site_data"]["delete"]),
                          ["https_service.seamlessaccess.org_0.indexeddb.leveldb",
@@ -123,6 +123,22 @@ class ColdStartTests(unittest.TestCase):
             left = set(db.execute("SELECT host_key, name FROM cookies"))
         self.assertEqual(left, {(".sciencedirect.com", "cf_clearance"), ("www.sciencedirect.com", "OptanonConsent")})
         self.assertNotIn("ELS_SESSION", (self.cache / "publisher_cookies.json").read_text())
+
+    def test_before_another_school_the_school_signing_in_keeps_its_own_sign_in(self):
+        # Windows, 2026-11-22: forgetting one test school's sign-in took the other's too, whose login then asked for a
+        # picture code. The school about to sign in keeps its own (not a federation service other schools share).
+        own = {**CONFIG, "idp_login_hosts": ["cas.school.edu.cn", "login.openathens.net"], "idp_domains": ["school.edu.cn"]}
+        classify = cold_start.Classifier(own, accounts=True, keep_own=True)
+        self.assertEqual([classify(h, "JSESSIONID") for h in ("idp.school.edu.cn", "cas.school.edu.cn", "webvpn.school.edu.cn",
+                                                             "idp.other.edu.cn", "ds.carsi.edu.cn", "login.openathens.net")],
+                         ["own_school", "own_school", "own_school", "school_login", "school_login", "school_login"])
+        self.assertEqual(cold_start.Classifier(own, accounts=True)("idp.school.edu.cn", "JSESSIONID"), "school_login")
+        done = cold_start.ColdStart(self.profile, self.cache, own, accounts=True, keep_own=True).apply()
+        with closing(sqlite3.connect(self.profile / "Default" / "Cookies")) as db:
+            left = set(db.execute("SELECT host_key, name FROM cookies"))
+        self.assertEqual(left, {(".sciencedirect.com", "cf_clearance"), ("www.sciencedirect.com", "OptanonConsent"),
+                                ("idp.school.edu.cn", "JSESSIONID"), ("webvpn.school.edu.cn", "wengine_vpn_ticket")})
+        self.assertEqual(done["cookies"], 6)
 
     def test_another_profile_leaves_the_configured_cache_alone(self):
         before = (self.cache / "publisher_cookies.json").read_text()
@@ -197,9 +213,10 @@ class AnotherSchoolTests(unittest.TestCase):
             self.assertEqual(cold_start.before_sign_in(b), "cleared")
             self.assertEqual((len(applied), cold_start.signed_in_school()), (1, "https://idp.b.edu/idp"))
             # The personal publisher accounts with it (they keep the last school's access).
-            self.assertEqual(made.call_args.kwargs, {"accounts": True})
+            self.assertEqual(made.call_args.kwargs, {"accounts": True, "keep_own": True})
             self.assertEqual(cold_start.before_sign_in(b, always=True), "cleared")  # a test: signed out whatever it was
             self.assertEqual(len(applied), 2)
+            self.assertEqual(made.call_args.kwargs, {"accounts": True, "keep_own": False})
         with patch.object(cold_start, "for_config", return_value=Run(busy=True)), \
                 patch("paper_search_school.browser.profiles.wait_for_profile_release", return_value=False) as waited:
             self.assertEqual(cold_start.before_sign_in(a), "busy")

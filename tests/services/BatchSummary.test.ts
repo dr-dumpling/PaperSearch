@@ -46,7 +46,7 @@ describe("a lone download as a batch of one", () => {
       id: seen[0]!.id, total: 1, done: 1, succeeded: 0, failed: 1, finished: true,
       results: expect.objectContaining({
         folder: savePath,
-        failures: [{ cls: "user_side", reason: "等学校登录超时", title: "A Paper", journal: "Spine", doi: "10.1000/x" }],
+        failures: [{ cls: "user_side", reason: "等你登录超时", title: "A Paper", journal: "Spine", doi: "10.1000/x" }],
       }),
     })]);
   });
@@ -98,10 +98,10 @@ describe("main text and supplementary files apart", () => {
         attempts: [{ stage: "entitled_access", status: "error", code: "login_timeout", message: "" }] }),
     ]), 0, "/out");
     expect(summary.supplement_failures).toEqual([
-      { cls: "publisher_or_network", reason: "网站人机验证拦截", title: "Paper 1", journal: "APL", doi: "10.1000/1" },
-      { cls: "unsupported", reason: "网站暂不支持自动下载附录", title: "Paper 2", journal: "APL", doi: "10.1000/2" },
+      { cls: "external", reason: "被网站拦截", title: "Paper 1", journal: "APL", doi: "10.1000/1" },
+      { cls: "unsupported", reason: "附录暂未适配", title: "Paper 2", journal: "APL", doi: "10.1000/2" },
     ]);
-    expect(summary.failures).toEqual([expect.objectContaining({ reason: "等学校登录超时", title: "Paper 5" })]);
+    expect(summary.failures).toEqual([expect.objectContaining({ reason: "等你登录超时", title: "Paper 5" })]);
     expect(summary.supplements).toBe(2);
   });
 
@@ -133,16 +133,16 @@ describe("main text and supplementary files apart", () => {
       item(12, { markdown: { status: "unavailable", code: "page_no_fulltext", message: "" } }),
     ], "both"), 0, "/out").markdown_failures?.map((entry) => [entry.cls, entry.reason]);
     expect(why).toEqual([["unsupported", "网站暂不支持转换"], ["unsupported", "网页只有摘要"],
-      ["user_side", "学校订阅下载扩展需要更新"], ["unexplained", "转换出错"],
-      ["publisher_or_network", "网站拦截了当前网络"], ["publisher_or_network", "图片没下载成功"], ["user_side", "没有进行机构下载"],
-      ["no_access", "学校没有订阅"], ["user_side", "等学校登录超时"], ["publisher_or_network", "PubMed Central 没响应"],
-      ["publisher_or_network", "表格没取到"], ["unsupported", "文章页没有正文"]]);
+      ["user_side", "扩展需要更新"], ["unexplained", "转换出错"],
+      ["external", "被网站拦截"], ["external", "图片没下载成功"], ["user_side", "没进行学校订阅下载"],
+      ["no_access", "学校没有订阅"], ["user_side", "等你登录超时"], ["external", "PMC 没响应"],
+      ["external", "表格没取到"], ["unsupported", "文章页没有正文"]]);
     // The Markdown alone: a paper without it is a failure, by the same reasons (no PDF in its place).
     const alone = batchResults(batch([
       item(1, { markdown: { status: "ok", source: "publisher_page", message: "" } }),
       { ...item(2, { markdown: { status: "incomplete", code: "access_blocked", message: "" } }), status: "error" },
     ], "markdown"), 0, "/out");
-    expect([alone.main, alone.failures.map((entry) => [entry.cls, entry.reason])]).toEqual([1, [["publisher_or_network", "网站拦截了当前网络"]]]);
+    expect([alone.main, alone.failures.map((entry) => [entry.cls, entry.reason])]).toEqual([1, [["external", "被网站拦截"]]]);
     // Not asked for: no count at all (the window shows none).
     expect(batchResults(batch([item(1, {})], "main"), 0, "/out")).not.toHaveProperty("markdown");
     expect(batchResults(batch([item(1, {})], "main"), 0, "/out")).not.toHaveProperty("markdown_failures");
@@ -274,7 +274,7 @@ describe("main text and supplementary files apart", () => {
     const missing = item(1, { supplements: [{ label: "SM.pdf", status: "failed", reason: "verification_page" }] });
     const request = { doi: "10.1000/1" } as Parameters<typeof batchPaper>[0];
     expect(batchPaper(request, missing, undefined, "both")).toMatchObject({
-      state: "ok", path: "/out/1.pdf", supplement_cls: "publisher_or_network", supplement_reason: "网站人机验证拦截" });
+      state: "ok", path: "/out/1.pdf", supplement_cls: "external", supplement_reason: "被网站拦截" });
     expect(batchPaper(request, missing, undefined, "main")).not.toHaveProperty("supplement_reason");
     expect(batchPaper(request, item(1, { supplements: [{ label: "S1.pdf", status: "saved" }] }), undefined, "both"))
       .not.toHaveProperty("supplement_reason");

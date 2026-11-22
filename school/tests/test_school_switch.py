@@ -1,5 +1,7 @@
-"""没权限时换下一所学校 (school_switch.py; user, 2026-11-21): an article the school has no access to tried with the
-next saved school, the default one first; a journal's school remembered for the rest of the task."""
+"""没权限时换下一所学校 (school_switch.py; user, 2026-11-21): a paper the school has no access to (没权限) tried with the
+next saved school, the default one first; at once for a download on its own, at its end for a batch's papers (user,
+2026-11-22), where a paper is tried with the one school it is given."""
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,9 +23,6 @@ def config_with(current, *others):
 
 
 class WhoTakesPartTests(unittest.TestCase):
-    def setUp(self):
-        school_switch._GOT.clear()
-
     def test_the_default_school_then_each_one_pro_signs_in_with(self):
         accounts = {B["idp_entity_id"]: {"username": "u", "password": "p", "enabled": True},
                     C["idp_entity_id"]: {"username": "u", "password": "p", "enabled": False},  # auto sign-in off
@@ -36,12 +35,25 @@ class WhoTakesPartTests(unittest.TestCase):
             self.assertEqual([school_switch.name(s) for s in school_switch.schools(config)], ["甲大学", "乙大学"])
             self.assertTrue(school_switch.grouping(config))
             self.assertFalse(school_switch.grouping({**config, "school_switch": False}))
+            # The batch asks for them by name and entityID (server.school_switch_state), none while the switch is off.
+            from paper_search_school import server
+            with patch.object(server, "load_config", return_value=config):
+                self.assertEqual(json.loads(server.school_switch_state()), {"on": True, "schools": [
+                    {"name": "甲大学", "entity_id": A["idp_entity_id"]}, {"name": "乙大学", "entity_id": B["idp_entity_id"]}],
+                    "group": True})
+            with patch.object(server, "load_config", return_value={**config, "school_switch": False}):
+                self.assertEqual(json.loads(server.school_switch_state()), {"on": False, "schools": [], "group": False})
         with patch("paper_search_school.school_login.module", return_value=None):
             self.assertEqual(school_switch.schools(config), [])  # no Pro, no switching
             self.assertFalse(school_switch.grouping(config))
 
-    def test_only_no_access_switches(self):
+    def test_every_no_access_switches_and_nothing_else(self):
         self.assertTrue(school_switch.no_access(NO_ACCESS))
+        # Every failure under 没权限 (user, 2026-11-22): the school's sign-in not enabled for the publisher (IEEE, AHA's
+        # OpenAthens), no route for it there, or the user's mark, made with the default school.
+        for code in ("institution_not_registered", "institution_federation_unavailable", "no_entitlement"):
+            with self.subTest(code=code):
+                self.assertTrue(school_switch.no_access({"success": False, "error_type": code}))
         for other in (None, {"success": True}, {**NO_ACCESS, "reason_code": "institution_login_failed"},
                       {"success": False, "error_type": "login_failed"}, {"success": False, "error_type": "access_blocked"}):
             with self.subTest(other=other):
@@ -50,103 +62,129 @@ class WhoTakesPartTests(unittest.TestCase):
         self.assertFalse(school_switch.enabled({"school_switch": False}))
 
 
-class RememberedTests(unittest.TestCase):
-    def setUp(self):
-        school_switch._GOT.clear()
-
-    def test_a_journals_school_for_the_rest_of_the_task_alone(self):
-        task = ["batch-1"]
-        with patch("paper_search_school.progress_reporter.batch_id", side_effect=lambda: task[0]), \
-                patch.object(school_switch, "journal", side_effect=lambda doi: "issn:1234-5678" if "j1" in doi else "issn:9999-0000"), \
-                patch.object(school_switch, "schools", return_value=[A, B, C]):
-            with patch.object(school_switch, "schools", return_value=[A]):
-                self.assertEqual(school_switch.order_for({}, "10.1/j1.1"), [A])  # one school: no journal looked up
-            self.assertEqual(school_switch.journal.call_count, 0)
-            self.assertEqual(school_switch.order_for({}, "10.1/j1.1"), [A, B, C])
-            school_switch.remember("10.1/j1.1", B["idp_entity_id"])
-            self.assertEqual(school_switch.order_for({}, "10.1/j1.2"), [B, A, C])  # its journal's school first
-            self.assertEqual(school_switch.order_for({}, "10.1/j2.1"), [A, B, C])  # another journal: the default first
-            task[0] = "batch-2"
-            self.assertEqual(school_switch.order_for({}, "10.1/j1.3"), [A, B, C])  # another task starts again
-            task[0] = ""
-            school_switch.remember("10.1/j1.4", C["idp_entity_id"])
-            self.assertEqual(school_switch.remembered("10.1/j1.4"), "")  # a download on its own: nothing kept
-
-
 class DownloadTests(unittest.TestCase):
     """orchestrator._download_impl going down the schools."""
 
-    def run_download(self, answers, turns, *, busy_at=None, config=None):
+    def run_download(self, answers, turns, *, busy_at=None, config=None, last="", batch="", school=None):
         folder = Path(tempfile.mkdtemp())
-        config = {"output_dir": str(folder), **A, **(config or {})}
-        tried, phases, remembered, closed = [], [], [], []
+        config = {"output_dir": str(folder), **A, "saved_schools": [A, B, C], **(config or {})}
+        tried, phases, closed = [], [], []
+        self.marks_off = []
         answers = iter(answers)
+
+        self.entry_turns = []
 
         def fetched(doi, output_path, config):
             tried.append(config["school_name"])
+            self.entry_turns.append(config.get("institution_entry_turn", 0))
+            self.marks_off.append(bool(config.get(school_switch.MARKS_OFF)))
             answer = next(answers)
             if answer.get("success"):
                 Path(output_path).write_bytes(b"%PDF-1.4\n" + b"x" * 2000)
                 return {**answer, "file": str(output_path)}
             return dict(answer)
 
-        signs = []
+        signs = self.signs = []
 
         def signed(config, always=False):
             signs.append(config["school_name"])
             return "busy" if busy_at is not None and len(signs) == busy_at else ""
 
         with patch("paper_search_school.cold_start.before_sign_in", side_effect=signed), \
+                patch("paper_search_school.cold_start.signed_in_school", return_value=last), \
+                patch("paper_search_school.progress_reporter.batch_id", return_value=batch), \
                 patch.object(orchestrator, "load_config", side_effect=lambda: dict(config)), \
                 patch.object(orchestrator, "cache_get", return_value=None), patch.object(orchestrator, "cache_set"), \
                 patch.object(orchestrator, "try_institutional", side_effect=fetched), \
                 patch.object(orchestrator, "is_pdf_file", return_value=True), \
-                patch.object(school_switch, "order_for", return_value=turns), \
-                patch.object(school_switch, "remember", side_effect=lambda doi, entity: remembered.append(entity)), \
+                patch.object(school_switch, "schools", return_value=turns), \
                 patch("paper_search_school.progress_reporter.update", side_effect=lambda **kw: phases.append(kw.get("phase"))), \
                 patch("paper_search_school.browser.batch_session.active_batch",
                       SimpleNamespace(get=lambda: SimpleNamespace(close=lambda: closed.append(True)))):
-            result = orchestrator.download_institutional("10.1000/test", folder)
-        return result, tried, phases, remembered, closed
+            result = orchestrator.download_institutional("10.1000/test", folder, **({"school": school} if school else {}))
+        return result, tried, phases, closed
 
     def test_no_access_then_the_next_school_and_the_results_say_which(self):
-        result, tried, phases, remembered, closed = self.run_download([NO_ACCESS, {"success": True, "source": "institutional"}], [A, B, C])
+        result, tried, phases, closed = self.run_download([NO_ACCESS, {"success": True, "source": "institutional"}], [A, B, C])
         self.assertTrue(result["success"])
         self.assertEqual(tried, ["甲大学", "乙大学"])
         self.assertEqual(phases, ["没权限，换乙大学"])
         self.assertEqual(closed, [True])  # the batch's browser let go of the last school's sign-in
-        self.assertEqual(remembered, [B["idp_entity_id"]])
         self.assertEqual(result["school"], "乙大学")
+        self.assertEqual(self.marks_off, [False, True])  # the user's marks, made with the default school, not for 乙
 
     def test_the_default_school_that_got_it_said_by_no_name(self):
-        result, tried, phases, remembered, _ = self.run_download([{"success": True}], [A, B])
-        self.assertEqual((tried, phases, remembered), (["甲大学"], [], [A["idp_entity_id"]]))
+        result, tried, phases, _ = self.run_download([{"success": True}], [A, B])
+        self.assertEqual((tried, phases), (["甲大学"], []))
         self.assertNotIn("school", result)
 
-    def test_a_journals_school_first_named_though_tried_first(self):
-        # Its journal's school of this task first: not the default one, so the results say whose.
-        result, tried, *_ = self.run_download([{"success": True}], [B, A])
-        self.assertEqual((tried, result.get("school")), (["乙大学"], "乙大学"))
+    def test_a_school_whose_sign_in_the_publisher_does_not_take_is_followed_by_the_next(self):
+        refused = {"success": False, "error_type": "institution_not_registered", "action": "review_browser"}
+        result, tried, phases, _ = self.run_download([refused, {"success": True, "source": "institutional"}], [A, B])
+        self.assertEqual((result["success"], tried, phases, result["school"]), (True, ["甲大学", "乙大学"], ["没权限，换乙大学"], "乙大学"))
+
+    def test_a_batchs_paper_stays_with_its_school(self):
+        # A batch switches once at its end for all its papers without access (user, 2026-11-22): not here.
+        result, tried, phases, closed = self.run_download([NO_ACCESS], [A, B], batch="batch-1")
+        self.assertEqual((tried, phases, closed, result.get("schools_tried")), (["甲大学"], [], [], None))
+
+    def test_the_school_a_batch_names_is_said_and_the_users_marks_do_not_skip_it(self):
+        # The batch's end: its papers without access with the next school, named for each.
+        result, tried, phases, _ = self.run_download([{"success": True}], [A, B], batch="batch-1", school=B["idp_entity_id"])
+        self.assertEqual((tried, phases, result["school"], self.marks_off), (["乙大学"], [], "乙大学", [True]))
+        # The default school named: no name said, its marks stand.
+        result, tried, *_ = self.run_download([{"success": True}], [A, B], batch="batch-1", school=A["idp_entity_id"])
+        self.assertEqual((tried, "school" in result, self.marks_off), (["甲大学"], False, [False]))
+
+    def test_the_schools_entries_by_one_name_one_after_another(self):
+        # JAMA, Windows 2026-11-22: a test school's name two or three times in its search; the first (its library's proxy)
+        # waited on a picture code. The next entry, with the same school, before any other school.
+        waited = {"success": False, "error_type": "login_timeout", "action": "review_browser", "same_name_entries": 3}
+        result, tried, phases, closed = self.run_download([waited, {"success": True}], [A, B])
+        self.assertTrue(result["success"])
+        self.assertEqual((tried, self.entry_turns, phases), (["甲大学", "甲大学"], [0, 1], []))
+        self.assertNotIn("school", result)
+        # All three did not do: then the next school, from its first entry.
+        refused = {**NO_ACCESS, "same_name_entries": 3}
+        result, tried, phases, _ = self.run_download([refused, refused, refused, {"success": True}], [A, B])
+        self.assertEqual((tried, self.entry_turns), (["甲大学"] * 3 + ["乙大学"], [0, 1, 2, 0]))
+        self.assertEqual(result["school"], "乙大学")
+        # One entry, or a failure that is not the entry's (a blocked site): not tried again.
+        for answer in ({**NO_ACCESS, "same_name_entries": 1},
+                       {"success": False, "error_type": "access_blocked", "same_name_entries": 2}):
+            with self.subTest(answer=answer):
+                result, tried, *_ = self.run_download([answer], [A])
+                self.assertEqual(tried, ["甲大学"])
 
     def test_none_with_access_says_how_many_were_tried(self):
-        result, tried, phases, remembered, _ = self.run_download([NO_ACCESS, NO_ACCESS, NO_ACCESS], [A, B, C])
+        result, tried, phases, _ = self.run_download([NO_ACCESS, NO_ACCESS, NO_ACCESS], [A, B, C])
         self.assertFalse(result["success"])
         self.assertEqual(tried, ["甲大学", "乙大学", "丙大学"])
         self.assertEqual(phases, ["没权限，换乙大学", "没权限，换丙大学"])
-        self.assertEqual((result["schools_tried"], remembered), (3, []))
+        self.assertEqual(result["schools_tried"], 3)
 
     def test_a_sign_in_that_failed_is_not_another_accounts(self):
         failed = {"success": False, "error_type": "login_failed", "action": "login_required"}
-        result, tried, phases, *_ = self.run_download([failed], [A, B])
+        result, tried, phases, _ = self.run_download([failed], [A, B])
         self.assertEqual((tried, phases, result.get("schools_tried")), (["甲大学"], [], None))
 
     def test_one_school_alone_when_the_switch_is_off(self):
         result, tried, *_ = self.run_download([NO_ACCESS], [], config={"school_switch": False})
         self.assertEqual((tried, result.get("schools_tried")), (["甲大学"], None))
 
+    def test_the_default_school_after_another_schools_article_forgets_that_sign_in(self):
+        # Windows, 2026-11-22: the article after one the second school got (Wiley) went back to the default school, but the batch's
+        # browser, still open, kept the second school's sign-in, each article waiting 10 s for the profile. It is closed first.
+        result, tried, phases, closed = self.run_download([{"success": True}], [A, B], last=B["idp_entity_id"])
+        self.assertTrue(result["success"])
+        self.assertEqual((tried, phases, closed, self.signs), (["甲大学"], [], [True], ["甲大学"]))
+        # The same school's browser stays open.
+        *_, closed = self.run_download([{"success": True}], [A, B], last=A["idp_entity_id"])
+        self.assertEqual(closed, [])
+
     def test_a_browser_that_keeps_the_last_sign_in_ends_the_turns(self):
         # The second before_sign_in (the switch to 乙) finds the profile still in use: 乙 is not tried with 甲's session.
-        result, tried, phases, *_ = self.run_download([NO_ACCESS], [A, B, C], busy_at=2)
+        result, tried, phases, _ = self.run_download([NO_ACCESS], [A, B, C], busy_at=2)
         self.assertEqual((tried, phases), (["甲大学"], ["没权限，换乙大学"]))
         self.assertFalse(result["success"])
         self.assertNotIn("schools_tried", result)

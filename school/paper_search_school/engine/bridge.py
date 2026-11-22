@@ -74,6 +74,9 @@ _FAILURE_KINDS = {
     "doi_not_registered": ("doi_not_registered", "review_publisher_error"),
     # A site without a publisher profile: the shared rules found no institution entry.
     "generic_institution_entry_missing": ("generic_institution_entry_missing", "review_publisher_profiles"),
+    # A publisher with rules of its own: its article page showed no login entry the rules found
+    # (reported as download_failed until 2026-11-22, "原因不明"; Thieme's Thrombosis and Haemostasis).
+    "publisher_institution_entry_missing": ("publisher_institution_entry_missing", "review_browser"),
     # The site's page shows no way to any school's login (an open-access site, one with personal
     # accounts only): no school login was started (user, 2026-11-18).
     "no_institution_entry": ("no_institution_entry", ""),
@@ -352,7 +355,9 @@ def _try_builtin_institutional(
         remembered = entitlements.decision_for(doi, publisher_name, identity=identity)
     except Exception:
         remembered = None
-    if remembered and remembered.get("decision") == "skip":
+    # The user's marks were made with the default school: another one's visit is not skipped by them (没权限时换下一所学校).
+    from .. import school_switch
+    if remembered and remembered.get("decision") == "skip" and not config.get(school_switch.MARKS_OFF):
         log.info("   [Institutional] Skipped: %s marked as no access", remembered.get("key"))
         return {"success": False, "identifier": doi, "doi": doi, "source": "institutional:entitlement_memory",
                 "error_type": "no_entitlement", "reason": "user_marked_no_entitlement",
@@ -397,6 +402,8 @@ def _try_builtin_institutional(
             failure["supplements"] = result["supplements"]
         if isinstance(result.get("fulltext_page"), dict):
             failure["fulltext_page"] = result["fulltext_page"]
+        if isinstance(result.get("same_name_entries"), int):
+            failure["same_name_entries"] = result["same_name_entries"]
         if failure["error_type"] in _LOGIN_FAILURE_CODES:
             failure.update(reason=failure["error_type"], action="review_browser")
         if (result.get("error_type") == "paywall"
@@ -428,13 +435,16 @@ def _try_builtin_institutional(
         denial = next((f for f in failures if f.get("reason_code") ==
                        "institution_pdf_entitlement_missing"), None)
         primary = next((f for code in ("source_exception", "unsupported_platform", "article_not_yet_published",
-                                      "generic_institution_entry_missing", "no_institution_entry",
+                                      "generic_institution_entry_missing", "publisher_institution_entry_missing",
+                                      "no_institution_entry",
                                       "publisher_content_error", "access_blocked", *_LOGIN_FAILURE_CODES,
                                       "download_timeout")
                         for f in failures if f["error_type"] == code), denial or failures[-1])
         result = {"success": False, "identifier": doi, "doi": doi, "source": "institutional",
                   "error_type": primary["error_type"], "reason": primary["reason"],
-                  "action": primary["action"], "source_failures": failures}
+                  "action": primary["action"], "source_failures": failures,
+                  **({"same_name_entries": entries} if (entries := max((f.get("same_name_entries") or 0
+                                                                        for f in failures), default=0)) > 1 else {})}
         if primary["error_type"] == "access_blocked":
             _remember_blocked_journal(doi, identity)
         if (primary["error_type"] == "institution_federation_unavailable" and manual_school
@@ -823,6 +833,9 @@ def _try_browser_batch_download(
     failure = {"success": False, "identifier": doi, "source": "institutional:browser",
                "error_type": error_type, "reason": error_type, "action": action,
                "artifacts": _browser_artifacts(result, profile)}
+    if int(getattr(result, "_same_name_entries", 0) or 0) > 1:
+        # The school's entries by one name, one chosen this time: the orchestrator takes the next if it did not do.
+        failure["same_name_entries"] = int(result._same_name_entries)
     if supplements_mode in ("with", "only"):
         failure["supplements"] = result.supplements
     if getattr(result, "fulltext_page", None) and reason_code != "institution_pdf_entitlement_missing" \

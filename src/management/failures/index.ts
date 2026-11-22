@@ -12,8 +12,9 @@ import {
 /**
  * Failure summary from the run ledgers (ADR 0012): every failed institutional
  * download by class, publisher, site and code, with the evidence for "no
- * access" and, for each unexplained failure, where it stopped and its
- * diagnostic file. Run after a batch; the unexplained ones are what to look into.
+ * access" and, for each failure PaperSearch is to look into (unexplained, a site not
+ * supported yet), where it stopped, its diagnostic file and its screenshots. Run
+ * after a batch; those are what to look into.
  */
 export interface FailureQuery {
   /** A run id, or "latest" (the default when nothing else is given). */
@@ -31,6 +32,8 @@ export interface FailureItem {
   evidence?: string;
   stoppedAt?: string;
   diagnostic?: string;
+  /** The pages the backend kept as pictures when the item failed (the diagnostic's ``screenshots``). */
+  screenshots?: string[];
   /** Only present for a supplementary-file failure. */
   part?: "supplements";
 }
@@ -92,7 +95,12 @@ export function selectFailures(root: string, query: FailureQuery = {}, options: 
         notAttempted += 1;
         continue;
       }
-      const code = String((part ? incomplete?.reason : stage.code) || "download_failed");
+      const trace = (stage.trace ?? {}) as Record<string, unknown>;
+      const recorded = String((part ? incomplete?.reason : stage.code) || "download_failed");
+      // Before 2026-11-22 a publisher's article page without the login entry its rules look for was
+      // reported as download_failed; the backend's state kept what it was.
+      const code = !part && recorded === "download_failed" && trace.state === "publisher_institution_entry_missing"
+        ? trace.state : recorded;
       const backend = stage.backend as Record<string, unknown> | undefined;
       const current = describeFailure(code, backend, stage.trace as Record<string, unknown> | undefined);
       // An unregistered entry's evidence as said now: records before 2026-11-19 may carry an old
@@ -105,7 +113,6 @@ export function selectFailures(root: string, query: FailureQuery = {}, options: 
             ...(typeof stage.stoppedAt === "string" ? { stoppedAt: stage.stoppedAt } : {}) }
         : current;
       const detail = (backend?.diagnostic ?? backend?.record ?? {}) as Record<string, unknown>;
-      const trace = (stage.trace ?? {}) as Record<string, unknown>;
       const diagnostic = (backend?.diagnostic as Record<string, unknown> | undefined)?.file ?? trace.diagnostic;
       const record = (backend?.record as Record<string, unknown> | undefined)?.file ?? trace.record;
       const paper: ExportFailure = { doi, runId, ...description,
@@ -113,6 +120,8 @@ export function selectFailures(root: string, query: FailureQuery = {}, options: 
         site: hostOf(detail.final_url) || hostOf(detail.article_url) || "-", code,
         ...(part ? { part } : {}),
         ...(typeof diagnostic === "string" && diagnostic ? { diagnostic } : {}),
+        // Local paths for the text summary; an export takes the pictures from the diagnostic itself.
+        ...(!options.forExport && screenshotsOf(backend).length ? { screenshots: screenshotsOf(backend) } : {}),
         ...(typeof record === "string" && record ? { record } : {}),
         detail: options.forExport ? detail : {},
         outcome: options.forExport ? { status: item.status, supplements,
@@ -146,6 +155,7 @@ export function summarizeFailures(root: string, query: FailureQuery = {}): Failu
       ...(paper.evidence ? { evidence: paper.evidence } : {}),
       ...(paper.stoppedAt ? { stoppedAt: paper.stoppedAt } : {}),
       ...(paper.diagnostic ? { diagnostic: paper.diagnostic } : {}),
+      ...(paper.screenshots ? { screenshots: paper.screenshots } : {}),
       ...(paper.part ? { part: paper.part } : {}),
     });
     groups.set(key, group);
@@ -153,6 +163,13 @@ export function summarizeFailures(root: string, query: FailureQuery = {}): Failu
   const order = (c: FailureClass) => FAILURE_CLASSES.indexOf(c);
   return { root, runs, failed: papers.length, notAttempted, classes,
     groups: [...groups.values()].sort((a, b) => order(a.failureClass) - order(b.failureClass) || b.count - a.count) };
+}
+
+/** The diagnostic's screenshots: the page when it failed, then the pages kept on the way. */
+function screenshotsOf(backend: Record<string, unknown> | undefined): string[] {
+  const diagnostic = backend?.diagnostic as Record<string, unknown> | undefined;
+  const listed = Array.isArray(diagnostic?.screenshots) ? diagnostic.screenshots : [];
+  return [...new Set(listed.filter((file): file is string => typeof file === "string" && file !== ""))];
 }
 
 /** Run directories are named <yyyymmdd>-<hhmmss>-<id>, so names sort by start time. */
@@ -204,16 +221,20 @@ export function renderFailuresText(summary: FailureSummary, options: { all?: boo
     for (const group of groups) {
       lines.push(`  ${group.publisher} · ${group.site} · ${group.code}  ${group.count}`);
       if (failureClass === "no_access" && group.evidence) lines.push(`    依据：${group.evidence}`);
-      if (failureClass !== "unexplained") continue;
+      if (failureClass !== "unexplained" && failureClass !== "unsupported") continue;
       for (const item of group.items.slice(0, shown)) {
         lines.push(
           `    ${item.doi}` +
             (item.stoppedAt ? `  停在 ${item.stoppedAt}` : "") +
-            (item.diagnostic ? `\n      ${item.diagnostic}` : ""),
+            (item.diagnostic ? `\n      ${item.diagnostic}` : "") +
+            (item.screenshots ?? []).map((file) => `\n      截图：${file}`).join(""),
         );
       }
       if (group.items.length > shown) lines.push(`    …另 ${group.items.length - shown} 篇（--all 全部列出）`);
     }
+  }
+  if (summary.classes.unsupported || summary.classes.unexplained) {
+    lines.push("", "要我们排查：paper-search failures --export <文件.zip> 导出记录（发出前先看一遍），发给我们。");
   }
   return lines.join("\n");
 }

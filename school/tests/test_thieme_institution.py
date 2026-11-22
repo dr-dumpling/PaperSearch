@@ -32,6 +32,7 @@ class ThiemeInstitutionTests(unittest.TestCase):
         self.context=self.browser.new_context(service_workers='block')
         self.addCleanup(self.context.close)
         self.requests=[]
+        self.article=ARTICLE
         self.login_target=LOGIN+'?hook_url=https%3A%2F%2Fwww.thieme-connect.de%2Falerts&rdeLocaleAttr=en'
         self.article_html=f'<a href="{self.login_target}">Alert service</a><a href="/products/ejournals/buyDocument/{DOI}">Buy Article</a>'
         self.login_html=f'''<form action="/must-not-submit"><input name="user" type="text"><input type="password">
@@ -43,7 +44,7 @@ class ThiemeInstitutionTests(unittest.TestCase):
         def respond(route):
             self.requests.append(route.request.url)
             target=route.request.url.split('?',1)[0]
-            body=(self.article_html if target==ARTICLE else self.login_html if target==LOGIN
+            body=(self.article_html if target==self.article else self.login_html if target==LOGIN
                   else f'<a href="{CHOOSER}">Systematic search for institutions</a>' if target==SEARCH
                   else self.chooser_html)
             route.fulfill(status=200,content_type='text/html',body=body)
@@ -61,6 +62,30 @@ class ThiemeInstitutionTests(unittest.TestCase):
         self.assertEqual([url.split('?',1)[0] for url in self.requests],[ARTICLE,LOGIN,SEARCH,CHOOSER])
         self.assertEqual(parse_qs(urlparse(self.requests[1]).query)['hook_url'],[ARTICLE])
         self.assertFalse(self.downloader._article_access_available(self.page))
+
+    def test_a_journal_thieme_took_over_is_signed_in_from_its_article_too(self):
+        # Thrombosis and Haemostasis (Schattauer's 10.1160), 2026-11-22: its article page was not taken for
+        # Thieme's, so its login link was not followed and the login ended as "no institution entry".
+        self.article='https://www.thieme-connect.de/products/ejournals/abstract/10.1160/th12-05-0346'
+        self.result=DownloadResult(doi='10.1160/TH12-05-0346',status='failed',article_url=self.article)
+        self.page.goto(self.article)
+        self.assertTrue(self.downloader._click_sso_entry(self.page,self.result))
+        self.assertEqual(self.page.url,CHOOSER)
+        self.assertEqual(parse_qs(urlparse(self.requests[1]).query)['hook_url'],[self.article])
+
+    def test_with_the_rule_as_it_was_the_engine_still_takes_that_article_page(self):
+        # Thieme's rule before 2026-11-22 (its own 10.1055 only): the address ending with the
+        # item's DOI is the article all the same (batch_access._address_ends_with_this_doi).
+        from paper_search_school.adapters.thieme import ThiemeAdapter
+        from test_taken_over_journals import own_prefix_only
+        self.article='https://www.thieme-connect.de/products/ejournals/abstract/10.1160/th12-05-0346'
+        self.result=DownloadResult(doi='10.1160/TH12-05-0346',status='failed',article_url=self.article)
+        self.page.goto(self.article)
+        self.downloader._track_article_for_adapter(self.page,self.result.doi)
+        with patch.object(ThiemeAdapter,'is_success_article_url',own_prefix_only):
+            self.assertTrue(self.downloader._click_sso_entry(self.page,self.result))
+        self.assertEqual(self.page.url,CHOOSER)
+        self.assertEqual(parse_qs(urlparse(self.requests[1]).query)['hook_url'],[self.article])
 
     def test_school_is_selected_the_configured_school_is_typed_and_user_input_is_kept(self):
         for school in ('Synthetic University A','Synthetic University B',''):

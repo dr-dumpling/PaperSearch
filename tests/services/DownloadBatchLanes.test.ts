@@ -143,10 +143,15 @@ describe("two lanes at once", () => {
         const school = schoolCalls.map((call) => call.item).filter((item, at, all) => item !== all[at - 1]);
         const missed = plan.flatMap((p, offset) => (p.open === "found" ? [] : [offset + 1]));
         const stopAt = school.findIndex((item) => plan[item - 1].school === "stops");
-        expect(school).toEqual(missed.slice(0, stopAt < 0 ? missed.length : stopAt + 1));
+        // Then, unless stopped, each one that failed for a reason not known (the tier broke) once more at the end.
+        const again = stopAt < 0 ? missed.filter((item) => plan[item - 1].school === "throws") : [];
+        expect(school).toEqual([...missed.slice(0, stopAt < 0 ? missed.length : stopAt + 1), ...again]
+          .filter((item, at, all) => item !== all[at - 1]));
         // The window's position for each download, and counts that never go back.
         for (const call of schoolCalls) {
-          expect(call.batch!.index).toBe(call.batch!.done! + 1);
+          // Its place among those gone through: the finished, and those waiting for the end (原因不明).
+          expect(call.batch!.index).toBeGreaterThanOrEqual(call.batch!.done! + 1);
+          expect(call.batch!.index).toBeLessThanOrEqual(total);
           expect(call.batch!.done!).toBeLessThan(total);
         }
         const dones = [...schoolCalls.map((call) => call.batch!.done!)];

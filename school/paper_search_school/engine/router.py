@@ -215,7 +215,8 @@ def is_pdf_candidate_url(profile: PublisherProfile, url: str) -> bool:
 def is_thieme_article_pdf_url(url: str, doi: str = "") -> bool:
     """Exclude account/reset URLs that merely carry a PDF return address."""
     parsed = urlparse(url.strip())
-    match = re.fullmatch(r"/products/ejournals/pdf/(10\.1055/[^/]+)\.pdf",
+    # Any DOI: Thieme's own 10.1055 and those of the journals it took over (Schattauer's 10.1160).
+    match = re.fullmatch(r"/products/ejournals/pdf/(10\.\d{4,9}/[^/]+)\.pdf",
                          unquote(parsed.path).lower())
     return (parsed.scheme == "https" and not parsed.username and not parsed.password
             and parsed.netloc.lower() in {"www.thieme-connect.de", "thieme-connect.de",

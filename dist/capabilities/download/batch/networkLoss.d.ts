@@ -2,7 +2,7 @@ import type { DownloadWithFallbackResult } from "../types.js";
 /**
  * A batch that loses the computer's network waits for it, then does the paper again (user,
  * 2026-11-17: the Mac's Wi-Fi was gone for 100 s at 05:00, and in that time 40 papers ended,
- * 2 s each, as "DOI 暂时查不到").
+ * 2 s each, as "DOI 查不到").
  */
 /** The backend's word that neither doi.org nor PubMed answered (bridge._offline). */
 export declare const NETWORK_LOST_CODE = "network_unavailable";

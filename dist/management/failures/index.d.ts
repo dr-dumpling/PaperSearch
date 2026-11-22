@@ -2,8 +2,9 @@ import { type FailureClass } from "../../infrastructure/runlog/failureClass.js";
 /**
  * Failure summary from the run ledgers (ADR 0012): every failed institutional
  * download by class, publisher, site and code, with the evidence for "no
- * access" and, for each unexplained failure, where it stopped and its
- * diagnostic file. Run after a batch; the unexplained ones are what to look into.
+ * access" and, for each failure PaperSearch is to look into (unexplained, a site not
+ * supported yet), where it stopped, its diagnostic file and its screenshots. Run
+ * after a batch; those are what to look into.
  */
 export interface FailureQuery {
     /** A run id, or "latest" (the default when nothing else is given). */
@@ -20,6 +21,8 @@ export interface FailureItem {
     evidence?: string;
     stoppedAt?: string;
     diagnostic?: string;
+    /** The pages the backend kept as pictures when the item failed (the diagnostic's ``screenshots``). */
+    screenshots?: string[];
     /** Only present for a supplementary-file failure. */
     part?: "supplements";
 }

@@ -166,7 +166,7 @@ describe("a publisher whose school login stops working mid-batch", () => {
     for (const index of [2, 3, 4, 6]) {
       expect(result.items[index].attempts.at(-1)).toMatchObject({ stage: "entitled_access", code: "login_paused" });
     }
-    expect(result.failureClasses).toEqual({ school_side: 4 });
+    expect(result.failureClasses).toEqual({ external: 4 });
     // 接着下 goes no further after it.
     expect(batchStopped(result)).toBe(true);
   });
@@ -244,7 +244,8 @@ describe("a publisher whose school login stops working mid-batch", () => {
     ];
     const result = await downloadBatch({} as never, { items: [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ doi: science(n) })),
       savePath: "/tmp/out" }, window.backend, () => {}, tiers, async () => {});
-    expect(calls).toHaveLength(8);
+    // 2 and 3 (原因不明) once more at the end (user, 2026-11-22).
+    expect(calls).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 2, 3].map(science));
     expect(window.updates.some((u) => u.held?.length)).toBe(false);
     expect(result.items.map((item) => item.status)).toEqual(["ok", "error", "error", "error", "error", "error", "error", "ok"]);
   });
@@ -337,7 +338,7 @@ describe("serial download batch", () => {
         results: expect.objectContaining({
           content: "main", main: 2, stopped: false,
           sources: [["开放下载", 1], ["机构下载", 1]],
-          failures: [{ cls: "unexplained", reason: "需要学校登录", doi: "10.1000/fail" }],
+          failures: [{ cls: "unexplained", reason: "没进入学校登录页", doi: "10.1000/fail" }],
         }),
       }),
     ]);
@@ -355,7 +356,7 @@ describe("serial download batch", () => {
     expect(ledger.map((item) => [item.index, item.status])).toEqual([[1, "ok"], [2, "ok"], [3, "error"]]);
     expect(ledger[2].stages.length).toBeGreaterThan(0);
     expect(lines.at(-2)).toBe(
-      "[批量] 完成：成功 2，失败 1，共 3 篇。失败分类：原因不明 1（需要学校登录 1）；详情：paper-search failures --format text");
+      "[批量] 完成：成功 2，失败 1，共 3 篇。失败分类：原因不明 1（没进入学校登录页 1）；详情：paper-search failures --format text");
     // What is left goes on with one word.
     expect(lines.at(-1)).toContain("“接着下”");
   });
@@ -384,10 +385,12 @@ describe("serial download batch", () => {
       (line) => lines.push(line),
       tiers,
     );
-    expect(order).toEqual(["entitled:10.1000/ok:1/2", "entitled:10.1000/fail:2/2"]);
+    // The failure (login_required, 原因不明) once more at the end, still the batch's second paper to finish.
+    expect(order).toEqual(["entitled:10.1000/ok:1/2", "entitled:10.1000/fail:2/2", "entitled:10.1000/fail:2/2"]);
     expect(result).toEqual(expect.objectContaining({ mode: "entitled_only", total: 2, succeeded: 1, failed: 1, entitledAccessItems: 2 }));
-    expect(result.items.map((item) => item.attempts.map((a) => a.stage))).toEqual([["entitled_access"], ["entitled_access"]]);
+    expect(result.items.map((item) => item.attempts.map((a) => a.stage))).toEqual([["entitled_access"], ["entitled_access", "entitled_access"]]);
     expect(lines).toContain("[批量] 跳过开放来源，2 篇直接进入机构下载");
+    expect(lines).toContain("[批量] 原因不明的 1 篇再试一次");
   });
 
   it("two_phase: entitled access starts on the first item open access misses, while open access goes on", async () => {
@@ -440,10 +443,12 @@ describe("serial download batch", () => {
       tiers,
     );
     expect(order.indexOf("entitled:10.1000/ok")).toBeLessThan(order.indexOf("oa-done:10.1000/oa"));
-    expect(order.filter((step) => step.startsWith("entitled:"))).toEqual(["entitled:10.1000/ok", "entitled:10.1000/fail"]);
+    expect(order.filter((step) => step.startsWith("entitled:"))).toEqual(["entitled:10.1000/ok", "entitled:10.1000/fail",
+      "entitled:10.1000/fail"]);  // 原因不明 once more at the end
     // The window counts the whole batch: what has settled when each paper starts.
     expect(entitled.map((c) => [c.batch?.index, c.batch?.total, c.batch?.done, c.batch?.succeeded])).toEqual([
       [1, 3, 0, 0],
+      [3, 3, 2, 2],
       [3, 3, 2, 2],
     ]);
     expect(dirname(entitled[0].savePath!)).toBe(resolve("/tmp/own"));
@@ -524,6 +529,7 @@ describe("serial download batch", () => {
     expect(entitled.map((c) => [c.batch?.index, c.batch?.total, c.batch?.done, c.batch?.succeeded])).toEqual([
       [2, 6, 1, 1],
       [6, 6, 5, 5],
+      [6, 6, 5, 5],  // 原因不明 once more at the end
     ]);
   });
 
@@ -596,7 +602,7 @@ describe("serial download batch", () => {
     } }];
     await downloadBatch({} as never, { items: [{ doi: "10.1000/a" }, { doi: "10.1000/b" }], mode: "entitled_only" },
       fakeBackend([]), () => {}, tiers);
-    expect(seen).toHaveLength(2);
+    expect(seen).toHaveLength(4);  // each once more at the end (原因不明)
     expect(seen.every((c) => !c.shortUserWait)).toBe(true);
   });
 

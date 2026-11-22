@@ -139,7 +139,7 @@ function supplementsCell(paper) {
         return `已保存 ${saved}`;
     const reason = files.find((file) => file.status !== "saved")?.reason ?? "";
     if (reason === "supplements_not_supported")
-        return saved ? `已保存 ${saved}/${files.length}` : "网站暂不支持自动下载附录";
+        return saved ? `已保存 ${saved}/${files.length}` : schoolShortReason(reason);
     return `已保存 ${saved}/${files.length}：${schoolShortReason(reason, "附录没下载成功")}`;
 }
 function markdownCell(paper) {

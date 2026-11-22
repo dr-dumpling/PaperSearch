@@ -435,15 +435,27 @@ class AccessMixin:
 
     def _is_success_article_url(self, url: str) -> bool:
         verdict = self.adapter.is_article_page_url(url)
-        if verdict is not None:
-            return verdict
-        verdict = self.adapter.is_success_article_url(url)
-        if verdict is not None:
-            return verdict
-        lower = url.lower()
-        if self.profile.success_url_markers:
-            return any(marker in lower for marker in self.profile.success_url_markers)
-        return self._names_this_article(url)
+        if verdict is None:
+            verdict = self.adapter.is_success_article_url(url)
+        if verdict is None and self.profile.success_url_markers:
+            lower = url.lower()
+            verdict = any(marker in lower for marker in self.profile.success_url_markers)
+        if verdict is None:
+            return self._names_this_article(url)
+        # A rule of the publisher's that does not take the page still yields to an address ending
+        # in this item's DOI: a rule written for the publisher's own DOI prefix missed a journal it
+        # took over, which kept its prefix (Thieme's Thrombosis and Haemostasis, 10.1160, 2026-11-22).
+        return verdict or self._address_ends_with_this_doi(url)
+
+    def _address_ends_with_this_doi(self, url: str) -> bool:
+        """A page of the publisher's site, not a login page, whose path ends with this
+        item's DOI (as is or %2F-escaped, in any case): how article pages are addressed by
+        DOI. A PDF or a supplementary file has more after the DOI."""
+        doi = str(getattr(self, "_adapter_doi", "") or "").strip().lower()
+        if (not doi or not str(url or "").startswith("http") or not self._on_publisher_host(url)
+                or self._is_auth_page(url)):
+            return False
+        return unquote(urlparse(url).path).lower().rstrip("/").endswith("/" + doi)
 
     def _names_this_article(self, url: str) -> bool:
         """The article page for a profile without article-page markers of its own

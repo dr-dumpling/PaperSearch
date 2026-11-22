@@ -328,7 +328,7 @@ class BatchProgressTests(unittest.TestCase):
             "failures": [{"cls": "no_access", "reason": "学校没有订阅", "title": "A  <i>paper</i>\n", "journal": "Arthritis &amp; Rheumatology",
                           "doi": "10.1000/2", "extra": "dropped"},
                          {"cls": "made_up", "reason": "下载时程序出错"}, {"cls": "no_access"}, "x"],
-            "supplement_failures": [{"cls": "publisher_or_network", "reason": "网站人机验证拦截", "title": "B", "doi": "10.1000/1"},
+            "supplement_failures": [{"cls": "external", "reason": "被网站拦截", "title": "B", "doi": "10.1000/1"},
                                     {"reason": ""}],
         }
         self.new_process()
@@ -345,7 +345,7 @@ class BatchProgressTests(unittest.TestCase):
                 {"cls": "unexplained", "reason": "下载时程序出错", "title": "", "journal": "", "doi": "", "note": ""},
             ],
             "supplement_failures": [
-                {"cls": "publisher_or_network", "reason": "网站人机验证拦截", "title": "B", "journal": "", "doi": "10.1000/1", "note": ""},
+                {"cls": "external", "reason": "被网站拦截", "title": "B", "journal": "", "doi": "10.1000/1", "note": ""},
             ]})
         # A next item of the same batch starts without the old summary.
         self.item(3, 3, True, done=2, succeeded=1, failed=1)
@@ -365,14 +365,24 @@ class BatchProgressTests(unittest.TestCase):
             snap = self.state()
             self.assertEqual((snap["task"], snap["phase"]), ("机构 PDF 下载", "进入机构访问"))
             # The publisher's hourly limit pauses a batch item; a lone download ends with the summary.
-            outcome["paused"] = "到了每小时下载上限"
+            outcome["paused"] = "达到每小时下载上限"
         self.assertEqual((self.state()["status"], self.state()["awaiting_next"]), ("running", True))
         self.new_process()
-        failure = {"cls": "publisher_or_network", "reason": "到了每小时下载上限", "doi": "10.1000/solo"}
+        failure = {"cls": "external", "reason": "达到每小时下载上限", "doi": "10.1000/solo"}
         self.assertTrue(pr.sync_batch("solo", 1, 1, 0, 1, finished=True, results={"failures": [failure]}))
         snap = pr.read_snapshot()[0]
         self.assertEqual((snap["status"], snap["done"], snap["failed"]), ("done", 1, 1))
-        self.assertEqual(snap["results"]["failures"][0]["reason"], "到了每小时下载上限")
+        self.assertEqual(snap["results"]["failures"][0]["reason"], "达到每小时下载上限")
+
+    def test_an_older_failure_class_is_shown_as_its_class_now(self):
+        """Five classes since 2026-11-22 (user): a PaperSearch older than this window may still send the eight."""
+        self.item(1, 6, False)
+        failures = [{"cls": old, "reason": "x", "doi": f"10.1000/{n}"} for n, old in enumerate(
+            ("school_side", "publisher_or_network", "article_or_site", "adaptation", "no_access", "made_up"))]
+        self.new_process()
+        self.assertTrue(pr.sync_batch("b1", 6, 6, 0, 6, finished=True, results={"failures": failures}))
+        self.assertEqual([f["cls"] for f in pr.read_snapshot()[0]["results"]["failures"]],
+                         ["external", "external", "external", "unsupported", "no_access", "unexplained"])
 
     def test_the_hourly_limit_holds_the_window_until_its_time(self):
         """An article held by the hourly limit the user set keeps the capsule saying so,

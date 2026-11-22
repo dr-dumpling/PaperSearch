@@ -130,14 +130,21 @@ class EntityIdEntryTests(unittest.TestCase):
         self.assertEqual(self.clicked_index(page), 7)
         self.assertIn("(entityID)", [e for e in result.events if e["state"] == "institution_selected"][0]["detail"])
 
-    def test_two_entries_with_the_entity_id_are_one_school_but_two_names_tie(self):
+    def test_two_entries_with_the_entity_id_are_one_school_and_two_names_one_after_another(self):
         twins = [{"i": 1, "t": "Example University", "h": "", "ids": ENTITY},
                  {"i": 2, "t": "Example University", "h": "", "ids": ENTITY}]
         d, page = self.chooser(twins)
         self.assertTrue(d._click_unique_institution_entry(page, DownloadResult(doi="10.1/x", status="failed"), page.url))
         self.assertEqual(self.clicked_index(page), 1)
+        # By the name alone (user, 2026-11-22): the first; the second on the next turn.
         d, page = self.chooser([dict(it, ids="") for it in twins])
-        self.assertFalse(d._click_unique_institution_entry(page, DownloadResult(doi="10.1/x", status="failed"), page.url))
+        result = DownloadResult(doi="10.1/x", status="failed")
+        self.assertTrue(d._click_unique_institution_entry(page, result, page.url))
+        self.assertEqual((self.clicked_index(page), result._same_name_entries), (1, 2))
+        d, page = self.chooser([dict(it, ids="") for it in twins])
+        d.config["institution_entry_turn"] = 1
+        self.assertTrue(d._click_unique_institution_entry(page, DownloadResult(doi="10.1/x", status="failed"), page.url))
+        self.assertEqual(self.clicked_index(page), 2)
 
     def test_the_entry_gets_a_real_click_and_a_scripts_click_only_when_that_fails(self):
         from patchright.sync_api import TimeoutError as PlaywrightTimeout
@@ -274,6 +281,26 @@ class ElsevierAccessEntryTests(unittest.TestCase):
             auth_url_markers=(), auth_title_markers=(), sso_text_markers=())).adapter, "remembered_institution_entry"))
 
 
+class AnotherSignInTests(unittest.TestCase):
+    """Sage, Windows 2026-11-22: its list named a test school with idp=<its library's OpenAthens entityID>, which sent the
+    login straight back to the article; the saved Shibboleth entityID is the one that signs in."""
+    SAVED = "https://idp.example.edu.cn/idp/shibboleth"
+
+    def test_an_entry_naming_another_sign_in_is_not_clicked_by_its_name(self):
+        d = downloader("Example University", config={"idp_entity_id": self.SAVED})
+        other = "/action/ssostart?idp=https://idp.example.edu.cn/entity&redirectUri=/doi/10.1/x"
+        self.assertEqual(d._institution_entry_score({"t": "Example University", "ids": other}, self.SAVED), 1)
+        self.assertEqual(d._institution_entry_score({"t": "Example University", "ids": other.replace("/entity", "/idp/shibboleth")},
+                                                    self.SAVED), 4)
+        # Escaped once or twice, or none named: by its name as before.
+        self.assertEqual(d._institution_entry_score({"t": "Example University",
+                                                     "ids": "/action/ssostart?idp=https%253A%252F%252Fidp.example.edu.cn%252Fentity"},
+                                                    self.SAVED), 1)
+        self.assertEqual(d._institution_entry_score({"t": "Example University", "ids": "/institution/42"}, self.SAVED), 3)
+        # Without a saved sign-in nothing is told apart.
+        self.assertEqual(d._institution_entry_score({"t": "Example University", "ids": other}, ""), 3)
+
+
 class OpenAthensWayfinderTests(unittest.TestCase):
     def page(self, url):
         page = Mock()
@@ -298,6 +325,18 @@ class OpenAthensWayfinderTests(unittest.TestCase):
             page.goto.reset_mock()
             self.assertFalse(downloader("x", config={"idp_entity_id": host})._select_openathens_wayfinder(page, result))
             page.goto.assert_not_called()
+
+    def test_a_federations_school_the_publisher_sends_there_goes_straight_to_its_entity(self):
+        # LWW's Ovid, Windows 2026-11-22: a CARSI school on the wayfinder, which remembered another school ("Access
+        # through <another school>") and left the login waiting a minute; its search took 40 s another time.
+        page = self.page("https://wayfinder.openathens.net/?return=https://connect.openathens.net/x")
+        d = downloader("Example University", config={"idp_entity_id": "https://idp.example.edu.cn/idp/shibboleth",
+                                                     "publisher_institution_federation": "carsi"})
+        self.assertFalse(d.federation.openathens_entries)
+        result = DownloadResult(doi="10.1/x", status="failed")
+        self.assertTrue(d._select_institution(page, result))
+        self.assertIn("entityID=https%3A%2F%2Fidp.example.edu.cn%2Fidp%2Fshibboleth", page.goto.call_args.args[0])
+        self.assertEqual(result.events[-1]["state"], "institution_selected")
 
 
 class CarsiDiscoveryAssistTests(unittest.TestCase):

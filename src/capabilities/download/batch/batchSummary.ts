@@ -290,6 +290,6 @@ export function failure(
   }
   // Institutional access never ran for this item.
   return item.doi && sanitizeDoi(item.doi).valid
-    ? { cls: classifyFailureCode("institutional_not_run"), reason: "没有进行机构下载" }
+    ? { cls: classifyFailureCode("institutional_not_run"), reason: "没进行学校订阅下载" }
     : { cls: "unsupported", reason: "没有有效 DOI" };
 }

@@ -13,7 +13,8 @@ start forgets:
 
 It keeps bot-verification records (Cloudflare), personal publisher accounts
 and cookie-consent choices; before a sign-in with another school (``before_sign_in``)
-the personal accounts go too: Elsevier's keeps the school's access with it. Besides the profile's own cookie store it filters
+the personal accounts go too: Elsevier's keeps the school's access with it, while that school's own sign-in (its
+login hosts and domains) stays, as it would come back as it is. Besides the profile's own cookie store it filters
 the files that put cookies back: the session cookies saved for the next
 launch and the saved publisher cookies. IndexedDB goes per site. Chrome keeps
 every site's local storage in one database, which goes whole when it holds a
@@ -35,9 +36,10 @@ from . import federations
 from .browser.backend import SESSION_COOKIES_FILE, chrome_profile_dir, profile_holder
 from .browser.cookies import _CLOUDFLARE_COOKIE_NAMES, PUBLISHER_DOMAINS
 from .engine.batch_institution import InstitutionMixin, _school_auth_patterns
+from .schools import lookup as school_lookup
 
 DELETE = ("school_login", "publisher", "other_site")
-KEEP = ("verification", "personal_account", "consent")
+KEEP = ("verification", "personal_account", "consent", "own_school")
 
 # Personal publisher accounts (Elsevier's account system); extend when another
 # publisher keeps personal sign-in on a host of its own.
@@ -67,17 +69,24 @@ def _publisher_domains() -> tuple[str, ...]:
 
 class Classifier:
     """Sorts a cookie (host, name) or a site's data (host) into the categories above. ``accounts``: the personal
-    publisher accounts are forgotten as a school's login (another school to sign in with)."""
+    publisher accounts are forgotten as a school's login (another school to sign in with). ``keep_own``: the sign-in of
+    ``config``'s school, the one about to sign in, is kept (its login hosts and domains, not a service other schools
+    sign in on): forgetting another school's need not make it type its password again, which its login answered with
+    a picture code after a few that day (a test school, Windows, 2026-11-22)."""
 
-    def __init__(self, config: dict[str, Any], accounts: bool = False):
+    def __init__(self, config: dict[str, Any], accounts: bool = False, keep_own: bool = False):
         self.school_tokens = tuple(t.lower() for t in _school_auth_patterns(config) if t)
         self.publishers = _publisher_domains()
         self.accounts = accounts
+        own = (*school_lookup.login_hosts(config), *school_lookup.domains(config)) if keep_own else ()
+        self.own = tuple(h for h in dict.fromkeys(own) if h and not _under(h, FEDERATION_HOSTS))
 
     def __call__(self, host: str, name: str = "") -> str:
         host = (host or "").lower().lstrip(".").split(":")[0]
         if name and (name in _CLOUDFLARE_COOKIE_NAMES or name.startswith(("cf_chl", "__cf"))):
             return "verification"
+        if self.own and _under(host, self.own):
+            return "own_school"
         if _under(host, PERSONAL_ACCOUNT_HOSTS):
             # Elsevier's account keeps the school it was signed in through (remember.me signs the next visit in with
             # it, the school's access and all: a test of another school passed with the last one's, user 2026-11-21).
@@ -110,10 +119,11 @@ def _netscape_rows(path: Path) -> list[list[str]]:
 
 
 class ColdStart:
-    def __init__(self, profile: Path, cache_dir: Path | None, config: dict[str, Any], accounts: bool = False):
+    def __init__(self, profile: Path, cache_dir: Path | None, config: dict[str, Any], accounts: bool = False,
+                 keep_own: bool = False):
         self.profile = profile
         self.cache_dir = cache_dir  # None: the profile only, no saved cookie files
-        self.classify = Classifier(config, accounts)
+        self.classify = Classifier(config, accounts, keep_own)
 
     # -- reading ------------------------------------------------------------
 
@@ -265,7 +275,7 @@ def _write_json(path: Path, data: Any) -> None:
 
 
 def for_config(config: dict[str, Any], profile: str | None = None, cache_dir: str | None = None,
-               accounts: bool = False) -> ColdStart:
+               accounts: bool = False, keep_own: bool = False) -> ColdStart:
     """The cold start for the configured download profile (Chrome's own directory)
     and the configured cache. Another profile comes with only the cache named for
     it: the configured cache belongs to the configured profile."""
@@ -273,9 +283,9 @@ def for_config(config: dict[str, Any], profile: str | None = None, cache_dir: st
     from .engine.batch_common import _resolve_profile_dir
 
     if profile:
-        return ColdStart(Path(profile), Path(cache_dir) if cache_dir else None, config, accounts)
+        return ColdStart(Path(profile), Path(cache_dir) if cache_dir else None, config, accounts, keep_own)
     cache = cache_dir or config.get("cache_dir", str(DATA_DIR / "cache"))
-    return ColdStart(chrome_profile_dir(_resolve_profile_dir(config)), Path(cache), config, accounts)
+    return ColdStart(chrome_profile_dir(_resolve_profile_dir(config)), Path(cache), config, accounts, keep_own)
 
 
 # -- another school's sign-in --------------------------------------------------------------------
@@ -313,8 +323,9 @@ def before_sign_in(config: dict[str, Any], *, always: bool = False) -> str:
             _signed_in_path().parent.mkdir(parents=True, exist_ok=True)
             _write_json(_signed_in_path(), {"school": entity})
         return ""
-    # The personal publisher accounts too: Elsevier's signs the next visit in with the last school's access.
-    run = for_config(config, accounts=True)
+    # The personal publisher accounts too: Elsevier's signs the next visit in with the last school's access. The school
+    # about to sign in keeps its own sign-in, but not for a test (``always``): its account is what the test tries.
+    run = for_config(config, accounts=True, keep_own=not always)
     try:
         run.apply()
     except RuntimeError:

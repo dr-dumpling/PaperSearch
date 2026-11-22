@@ -132,6 +132,7 @@ Without `--targets`, these check and update only the places where the Skill is a
 | `paper-search run <tool>` | Call one tool exactly, with `--arg` or `--json-args` |
 | `paper-search failures` | Why downloads failed, summarized |
 | `paper-search update check` | Check for a new version |
+| `paper-search update install` | Update to the new version (or press "Update to" on the settings window's About page, which updates every part at once) |
 | `paper-search school` | Install, check, update or remove school subscription downloads |
 | `paper-search setup` / `config` | Configure keys, the Skill and the extension |
 | `paper-search settings` | Open the settings window: download folder, waits and reminders, API keys (needs school subscription downloads and a screen) |

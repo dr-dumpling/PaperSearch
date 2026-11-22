@@ -1,6 +1,8 @@
 """Thieme: journals on thieme-connect.de and thieme-connect.com.
 
-Article pages are ``/products/ejournals/(abstract|fulltext|pdf)/10.1055/<id>``.
+Article pages are ``/products/ejournals/(abstract|fulltext|pdf)/<DOI>``: Thieme's own ``10.1055/``, and the
+DOIs of the journals it took over, kept as they were (Schattauer's ``10.1160/``: Thrombosis and Haemostasis,
+2026-11-22, whose login had not been followed for it).
 The institution login runs on profile.thieme.de: the login page links the
 Shibboleth search, which links the federation chooser
 (``/HTML/sso/ejournals/shibboleth.htm``, "China (CARSI)"). Its session
@@ -105,7 +107,7 @@ class ThiemeAdapter(PublisherAdapter):
     def is_success_article_url(self, url: str) -> bool | None:
         parsed = urlparse(url.lower())
         return (parsed.scheme == "https" and parsed.netloc in _HOSTS
-                and bool(re.fullmatch(r"/products/ejournals/(?:abstract|fulltext|pdf)/10\.1055/[^/]+", parsed.path)))
+                and bool(re.fullmatch(r"/products/ejournals/(?:abstract|fulltext|pdf)/10\.\d{4,9}/[^/]+", parsed.path)))
 
     def is_article_pdf_url(self, url: str, doi: str = "") -> bool | None:
         return is_thieme_article_pdf_url(url, doi) and not self.d._is_supplementary_url(url)

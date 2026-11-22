@@ -61,7 +61,7 @@ TERMINAL_STATUSES = frozenset({"done", "failed", "cancelled", "interrupted"})
 MAX_REASON_ROWS = 5
 OPEN_FAILURES_UP_TO = 3
 MAX_LISTED_PAPERS = 200
-CLASS_ORDER = ("no_access", "user_side", "school_side", "publisher_or_network", "article_or_site", "unsupported", "unexplained")
+CLASS_ORDER = ("no_access", "user_side", "external", "unsupported", "unexplained")
 DEFAULT_LINGER_SECONDS = 8.0
 NOTICE_SECONDS = 10.0  # how long the download's answer to a click stays on screen
 
