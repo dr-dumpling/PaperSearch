@@ -133,6 +133,8 @@ export async function downloadWithFallback(searchers, options, tiers = createDef
             ...(result.code ? { code: result.code } : {}),
             ...(result.retryAfterSec ? { retryAfterSec: result.retryAfterSec } : {}),
             ...(result.hourlyPublisher ? { hourlyPublisher: result.hourlyPublisher } : {}),
+            ...(result.school ? { school: result.school } : {}),
+            ...(result.schools ? { schools: result.schools } : {}),
         });
         if (result.review) {
             review = result.review;

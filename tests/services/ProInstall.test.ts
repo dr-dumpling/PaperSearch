@@ -106,8 +106,13 @@ describe("installing PaperSearch Pro", () => {
 
     it("says to sign in to GitHub when the repository does not answer without a login", async () => {
       answer(404);
-      expect(await installPro({ from: "github:owner/Pro", env, githubToken: "" }))
+      expect(await installPro({ from: "github:owner/Pro", env, githubToken: "", ghStatus: () => "" }))
         .toEqual({ ok: false, code: "pro_github_login_required", message: "请先在终端运行 gh auth login 登录 GitHub" });
+      // Signed in, the login not readable here (macOS over SSH): to do it on the computer itself.
+      answer(404);
+      expect(await installPro({ from: "github:owner/Pro", env, githubToken: "",
+        ghStatus: () => "X Timeout trying to log in to github.com account someone (default)" }))
+        .toEqual({ ok: false, code: "pro_github_login_unreadable", message: "读不到 GitHub 登录（远程连接读不到），请在这台电脑上直接操作" });
       expect(asked[0].headers.Authorization).toBeUndefined();
       answer(404);
       expect(await installPro({ from: "github:owner/Pro", env, githubToken: "t0ken" }))

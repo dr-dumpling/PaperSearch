@@ -85,10 +85,15 @@ LANGUAGE_KEY = "progress_language"
 
 
 def language() -> str:
-    """The progress window's language: "zh" (the default) or "en"."""
-    return "en" if _config.load_config().get(LANGUAGE_KEY) == "en" else "zh"
+    """The progress window's language: "zh" (simplified Chinese, the default) or another of i18n.LANGUAGES."""
+    from . import i18n
+
+    saved = _config.load_config().get(LANGUAGE_KEY)
+    return saved if saved in i18n.LANGUAGES else "zh"
 
 
 def set_language(lang: str) -> None:
-    _config.update_config(LANGUAGE_KEY, "en" if lang == "en" else "zh")
+    from . import i18n
+
+    _config.update_config(LANGUAGE_KEY, lang if lang in i18n.LANGUAGES else "zh")
 

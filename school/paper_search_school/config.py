@@ -84,6 +84,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "publisher_hourly_limit": 100,
     # 改了上面的上限时，正在等上限的篇目是否立即按新上限接着下；false = 这一小时过后再按新上限。
     "publisher_hourly_limit_now": False,
+    # 没权限时换下一所学校 (school_switch.py; user, 2026-11-21): on unless turned off.
+    "school_switch": True,
     # 灰色源竞速浏览器的独立无头开关（只影响 sci-hub 竞速，机构登录仍有可见窗口）。
     # true = 竞速全程零窗口、零任务栏闪烁；指纹安全性由 UA 清洗保证。
     "scihub_browser_headless": False,

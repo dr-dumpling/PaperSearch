@@ -95,16 +95,28 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .head .title { font-weight: 600; font-size: 14px; }
 .head .sub { font-size: 12px; color: var(--dim); }
 /* The head's buttons close together (user, 2026-11-17): the pin's room comes from their gaps, not the text's. */
-.tools { display: flex; align-items: center; gap: 2px; margin-right: -3px; flex: none; }
-.tools .iconbtn { margin: 0; padding: 3px; }
+.tools { display: flex; align-items: center; gap: 0; margin-right: -3px; flex: none; }
+/* Each a 32 px target, drawn where it was (user, 2026-11-21: 最小化 was hard to hit): the margins take back what the
+   padding adds, the icons 24 px apart as before. */
+.tools .iconbtn { margin: -4px; padding: 8px; }
 .iconbtn { background: none; border: none; padding: 4px; margin: -4px; border-radius: 6px; color: var(--dim); display: inline-flex; cursor: pointer; }
 .iconbtn:hover { background: var(--hover); color: var(--fg); }
 .paper { margin: 14px 0 12px; }
 .paper .name { line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .paper .where { color: var(--faint); font-size: 12px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.paper .notice { color: var(--accent); font-size: 12px; margin-top: 3px; }
+.paper .notice { color: var(--accent); font-size: 12px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .paper-link { display: block; width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 6px; }
-.paper-link .name, .paper-link .where, .paper-link .notice { display: block; }
+.paper-link .where, .paper-link .notice { display: block; }
+/* The paper's block is one height whatever the paper (user, 2026-11-21: the card shook up and down as papers went by,
+   each change of height resizing the window, whose edge moves): the title two lines high even when one, the journal or
+   a notice one line, the step or the lane's line one row, each a fixed height. A title's symbols or another script, drawn
+   in a fallback font, made a line a pixel or two taller (Windows); the step's bar and the lane's line were not as tall
+   as each other. test_the_running_card_keeps_its_height_whatever_the_paper. */
+.paper .name { height: 2.9em; }
+.paper .where, .paper .notice { height: 1.45em; line-height: 1.45; }
+.paper-status { display: flex; align-items: center; height: 18px; margin-top: 8px; overflow: hidden; }
+.paper-status .steps { flex: 1; min-width: 0; margin-top: 0; }
+.paper-status .line { flex: 1; min-width: 0; margin-top: 0; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .paper-link:hover .name { text-decoration: underline; }
 .paper-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .steps { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
@@ -219,17 +231,64 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .nav-sub { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .settings-note { font-size: 11px; color: var(--ok); margin-top: 8px; }
 .key-group { font-size: 11px; color: var(--faint); margin: 12px 0 2px; }
-.key-group.pro-group { margin-top: 16px; }
-/* The Markdown page (PaperSearch Pro): its tile and state, what it does, 安装 or its progress, where to report. */
-.pro-head { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
-.pro-tile { width: 34px; height: 34px; border-radius: 9px; flex: none; display: flex; align-items: center; justify-content: center;
-            background: var(--accent); color: #fff; }
-.pro-tile svg.i { width: 18px; height: 18px; }
-.pro-name { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+/* The home page's last line (user, 2026-11-21): PaperSearch Pro, a blue link at its left; the language at its
+   right, one menu of the languages each in its own name. Installed, Pro's features are rows above, marked Pro. */
+.settings .home-foot { gap: 12px; padding: 10px 0 0; }
+/* 关于 PaperSearch (user, 2026-11-21): its icon and name centered, Pro's pill beside the name with the line a little to
+   the right (not the name alone centered: too far right), a wider space before Pro's part. */
+.app-icon { display: block; flex: none; }
+.about-hero { display: flex; flex-direction: column; align-items: center; margin-top: 12px; text-align: center; }
+.about-name { font-size: 16px; font-weight: 600; margin-top: 8px; white-space: nowrap; }
+.about-name.with-pill { transform: translateX(8px); }
+.about-name .pro-pill { margin-left: 6px; vertical-align: 2px; }
+.about-version { font-size: 12px; color: var(--dim); margin-top: 3px; }
+.about-version.new, .about-version.bad { color: var(--bad); }
+.about-action { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 14px; }
+.about-action .btn.primary { width: 100%; justify-content: center; padding: 6px 10px; font-size: 13px; }
+.about-action .btn.link { padding: 0; font-size: 12px; }
+.about-action .pro-bar { width: 100%; }
+.update-steps { align-self: stretch; }
+.about-caption { text-align: center; font-size: 11px; color: var(--dim); margin-top: 6px; }
+.about-gap { height: 18px; }
+.about-sec { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; margin-top: 22px; padding-bottom: 8px;
+             border-bottom: 0.5px solid var(--line); }
+.about-feat { padding: 6px 0; }
+.about-feat b { font-weight: 600; font-size: 12px; }
+.about-feat .pro-tag { display: inline-block; margin-left: 6px; vertical-align: 1px; }
+.about-feat .pl-sub { display: block; font-size: 11.5px; color: var(--dim); line-height: 1.45; margin-top: 1px; }
+.about-sub { font-size: 11px; color: var(--faint); margin: 12px 0 2px; }
+.settings .pro-activate { margin-top: 14px; }
+.version-link { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 2px 0; border: none; background: none;
+                font: inherit; font-size: 12px; color: var(--dim); cursor: pointer; }
+.version-link.new { color: var(--bad); font-weight: 600; }
+.version-link .pl-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.version-link:hover .pl-text { text-decoration: underline; }
+.version-link svg.i { width: 14px; height: 14px; flex: none; }
+.reopen-line { display: flex; align-items: center; gap: 8px; width: 100%; margin: 8px 0 0; padding: 7px 10px; border: none; border-radius: 8px;
+               background: rgba(22, 163, 74, 0.10); color: var(--ok); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.reopen-line svg.i { width: 14px; height: 14px; flex: none; }
+.reopen-line .k { margin-left: auto; font-weight: 600; white-space: nowrap; }
+.iconbtn.has-dot { position: relative; }
+.iconbtn.has-dot::after { content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--bad); }
+.tools .iconbtn.has-dot::after { top: 6px; right: 6px; }
+.nav-row .app-icon { margin: 0 1px; }
+.lang-btn { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 2px 0; border: none;
+                       background: none; font: inherit; font-size: 12px; cursor: pointer; }
+.lang-btn svg.i { width: 14px; height: 14px; flex: none; }
+.lang-wrap { position: relative; flex: none; }
+.lang-btn { color: var(--dim); }
+.lang-btn:hover, .lang-btn[aria-expanded="true"] { color: var(--fg); }
+.lang-menu { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 5; min-width: 150px; box-sizing: border-box; padding: 4px;
+             background: var(--bg); border-radius: 10px; box-shadow: 0 0 0 0.5px var(--line), 0 6px 20px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08); }
+.lang-menu button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 5px 8px;
+                    border: none; border-radius: 6px; background: none; font: inherit; font-size: 12px; color: var(--fg); text-align: left; cursor: pointer; }
+.lang-menu button:hover { background: var(--hover); }
+.lang-menu button[aria-checked="true"] { color: var(--accent); }
+.lang-menu button svg.i { width: 14px; height: 14px; }
+.lang-more { margin: 4px 4px 0; padding: 5px 4px 2px; border-top: 0.5px solid var(--line); font-size: 11px; color: var(--faint); }
+.nav-title .pro-pill.feature { margin-left: 6px; }
+/* Pro's pill (蓝标) and its texts, on the home page, 关于 PaperSearch and Pro's feature pages. */
 .pro-pill { font-size: 10.5px; font-weight: 500; line-height: 1.5; color: var(--accent); background: var(--hover); border-radius: 999px; padding: 0 7px; }
-.pro-state { font-size: 12px; color: var(--dim); }
-.pro-state.ok { color: var(--ok); }
-.pro-state.bad { color: var(--bad); }
 .pro-desc { font-size: 12px; line-height: 1.55; color: var(--dim); margin-top: 10px; }
 .pro-action { margin-top: 12px; }
 .pro-action:empty { display: none; }
@@ -244,13 +303,33 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 /* What Pro keeps, its counts, its sites and whether it is free (user, 2026-11-19). */
 /* What a Markdown keeps, the counts, the sites and the usage, as drawn on 2026-11-19: taller than the
    other settings pages, which the user prefers to a crowded page (the window grows, as for API key). */
-.pro-check { margin-left: auto; padding-right: 0; font-size: 12px; }
 .pro-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .pro-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 9px 2px 7px; border-radius: 999px;
             border: 0.5px solid var(--line); color: var(--dim); }
 .pro-chip svg.i { width: 13px; height: 13px; }
+/* What sets Pro's Markdown apart, a row that opens like the platforms' (user, 2026-11-21). */
+.pro-merits { padding: 0 0 8px 26px; }
+.pro-merit { display: flex; gap: 8px; padding: 6px 0; }
+.pro-merit svg.i { width: 15px; height: 15px; margin-top: 1px; color: var(--dim); }
+.pro-merit b { display: block; font-weight: 600; font-size: 12px; }
+.pro-merit span { display: block; font-size: 11.5px; color: var(--dim); line-height: 1.45; margin-top: 1px; }
 .pro-stats { margin-top: 12px; }
-.pro-row.static { cursor: default; }
+/* Pro's page (user, 2026-11-21): what it does now and what is coming, each a line; the activation code. */
+.pro-tag { flex: none; align-self: flex-start; font-size: 10.5px; line-height: 1.6; color: var(--dim); background: var(--hover);
+           border-radius: 4px; padding: 0 5px; }
+.pro-activate { margin-top: 14px; padding-top: 12px; border-top: 0.5px solid var(--line); }
+.pro-code-label { font-size: 11px; color: var(--dim); margin-bottom: 5px; }
+.pro-code { display: flex; gap: 6px; }
+.settings .pro-code input { flex: 1; min-width: 0; width: auto; height: 30px; text-align: left; background: var(--bg); padding: 0 8px;
+                            font-size: 13px; letter-spacing: 0.04em; }
+.pro-action .pro-code .btn.primary { width: auto; flex: none; padding: 5px 12px; }
+.settings .pro-action .err { text-align: left; margin: 6px 0 0; }
+.pro-needed { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 10px;
+              border-top: 0.5px solid var(--line); font-size: 12px; color: var(--dim); }
+.pro-needed .btn.link { padding-right: 0; gap: 2px; white-space: nowrap; flex: none; }
+.pro-needed .btn.link svg.i { width: 13px; height: 13px; }
+.pro-use .ok { color: var(--ok); }
+.pro-use .bad { color: var(--bad); }
 .pro-sites { padding: 0 0 8px 26px; }
 /* The platforms by kind, each site once (user, 2026-11-20: a list in groups, the multidisciplinary ones first). */
 .site-group { font-size: 11px; color: var(--faint); margin: 6px 0 3px; }
@@ -269,6 +348,9 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .login-row:hover .ls-name { color: var(--accent); }
 .login-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
 .login-row .ls-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.login-row .ls-n { flex: none; width: 12px; font-size: 11px; color: var(--faint); text-align: left; }
+/* Under the schools, whose rows end in a line already: its own line below, none above (two showed, 2026-11-21). */
+.settings .switch-row { border-top: none; border-bottom: 0.5px solid var(--line); }
 .login-row .ls-acct { margin-left: auto; font-size: 11.5px; color: var(--dim); white-space: nowrap; }
 .login-row svg.i { width: 13px; height: 13px; flex: none; color: var(--faint); }
 .tag.fill { background: rgba(22, 163, 74, 0.12); color: var(--ok); }
@@ -278,9 +360,11 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .tag.none { background: var(--hover); color: var(--dim); }
 .login-form { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; padding: 0 0 8px; font-size: 12px; color: var(--dim); }
 .settings .login-form input { width: 100%; box-sizing: border-box; text-align: left; background: var(--bg); padding: 5px 8px; font-size: 13px; }
-.login-pw { display: flex; align-items: center; gap: 4px; }
-.login-pw input { flex: 1; min-width: 0; }
-.login-pw .iconbtn { margin: 0; flex: none; }
+/* The eye inside the password's box, and the test article's line ending where the boxes end: the three rows' right
+   edges in line (user, 2026-11-21, 甲). */
+.login-pw { position: relative; display: block; min-width: 0; }
+.settings .login-pw input { padding-right: 30px; }
+.login-pw .iconbtn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); margin: 0; }
 .login-form .err, .login-form .key-actions { grid-column: 1 / -1; }
 .login-form .err { text-align: left; margin: 0; }
 .login-form .err:empty { display: none; }
@@ -293,13 +377,56 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .login-links .link-btn:hover, .login-links .link-btn:focus-visible { color: var(--accent); }
 .login-links .link-btn.danger:hover, .login-links .link-btn.danger:focus-visible, .login-links .link-btn.confirm { color: var(--bad); }
 .login-links .sep { color: var(--dim); }
+/* 测试登录 (user, 2026-11-21, as drawn): the article, then how the test went; while it runs, its steps in rows of their
+   own height and one line for what the download says, so that the page does not move as it goes. */
+.login-form .test-result { grid-column: 1 / -1; }
+.login-form .test-err { grid-column: 2; }
+.test-article { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.test-article .what { flex: 1; min-width: 0; color: var(--fg); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.test-article .what.empty { color: var(--dim); font-size: 11.5px; }  /* none filled in: what to do */
+.test-article .test-btn { padding: 3px 10px; flex: none; white-space: nowrap; }
+.test-article .link-btn, .test-edit .link-btn { border: none; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; flex: none; }
+/* The box holds the text and its button side by side: 查找中… is wider than 确定 and went over the text (user,
+   2026-11-21); the text gives way to whatever the button says, in any language. */
+.test-edit { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; height: 26px; box-sizing: border-box;
+             background: var(--bg); border: 0.5px solid var(--line); border-radius: 6px; padding: 0 8px; }
+.test-edit:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
+.settings .test-edit input { flex: 1; min-width: 0; width: auto; height: 24px; border: none; background: none; padding: 0;
+                             text-align: left; font-size: 13px; }
+.settings .test-edit input:focus { outline: none; }
+.test-edit .link-btn { font-size: 12px; white-space: nowrap; }
+.test-edit .link-btn:disabled { color: var(--dim); cursor: default; }
+.test-result { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; }
+.test-result svg.i { width: 15px; height: 15px; flex: none; margin-top: 1px; }
+.test-result.ok { background: rgba(22, 163, 74, 0.10); } .test-result.ok svg.i { color: var(--ok); }
+.test-result.bad { background: rgba(220, 38, 38, 0.08); } .test-result.bad svg.i { color: var(--bad); }
+.test-result .t { color: var(--fg); font-weight: 600; } .test-result .d { margin-top: 2px; }
+.login-test { padding: 2px 0 8px; font-size: 12px; color: var(--dim); }
+.test-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.test-steps li { display: flex; align-items: center; gap: 8px; height: 18px; color: var(--faint); }
+.test-steps li svg.i { width: 15px; height: 15px; color: var(--ok); }
+.test-steps li.done { color: var(--dim); }
+.test-steps li.now { color: var(--fg); font-weight: 600; }
+.test-steps .mark { width: 9px; height: 9px; margin: 0 3px; border-radius: 50%; border: 1.5px solid currentColor; box-sizing: border-box; }
+.test-steps li.now .mark { background: var(--accent); border-color: var(--accent); }
+.test-phase { height: 18px; line-height: 18px; margin: 6px 0 2px 23px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.login-test .key-actions { margin-top: 6px; }
 .login-add { padding: 0 0 10px; }
 .login-add-row .ls-name { font-weight: 500; }
 .login-add-row svg.i:first-child { color: var(--accent); }
 .login-find { display: flex; gap: 6px; }
 .settings .login-find input { flex: 1; min-width: 0; text-align: left; background: var(--bg); padding: 5px 8px; font-size: 13px; }
-.login-found { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 5px 0; border-bottom: 0.5px solid var(--line); }
-.login-found .ls-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 支持的学校: a search field, its magnifier inside (user, 2026-11-21: the plain box looked out of place). */
+.support-search { display: flex; align-items: center; gap: 6px; height: 32px; margin: 8px 0 6px; padding: 0 10px; box-sizing: border-box;
+                  border: 0.5px solid var(--line); border-radius: 8px; background: var(--hover); color: var(--dim); }
+.support-search:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
+.settings .support-search input { flex: 1; min-width: 0; width: auto; height: 100%; padding: 0; border: none; background: none;
+                                  text-align: left; font-size: 13px; -webkit-appearance: none; appearance: none; }
+.settings .support-search input:focus { outline: none; }
+.login-found { display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; padding: 5px 0; border-bottom: 0.5px solid var(--line); }
+/* A long name wraps, not cut (user, 2026-11-21); what is said of it stays at its top right. */
+.login-found .ls-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.login-found .tag, .login-found .btn { flex: none; }
 .login-found .ls-fed { font-size: 11px; color: var(--faint); }
 .login-found .btn { margin-left: auto; }
 .login-add .login-found:last-child { border-bottom: none; }
@@ -325,9 +452,6 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .strip .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .strip svg.i { width: 14px; height: 14px; }
 .strip.warn-strip { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
-.seg { display: inline-flex; border: 0.5px solid var(--line); border-radius: 7px; overflow: hidden; }
-.seg button { font: inherit; font-size: 12px; padding: 3px 10px; border: none; background: none; color: var(--dim); cursor: pointer; }
-.seg button.on { background: var(--accent); color: #fff; }
 .prompt { display: flex; align-items: center; gap: 10px; }
 .prompt svg.i { width: 22px; height: 22px; }
 .prompt .t { font-weight: 600; font-size: 14px; }
@@ -354,6 +478,17 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
             font: inherit; color: inherit; text-align: left; white-space: nowrap; cursor: pointer; }
 .grp .row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .grp .row .reason { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 支持的学校's head (back, title, the numbers, search) on top while its list scrolls (user, 2026-11-21). */
+.support-top { position: sticky; top: 0; z-index: 2; background: var(--bg); padding-bottom: 2px; }
+#support-list .row { display: flex; align-items: center; gap: 6px; width: 100%; padding: 8px 0; border: none;
+                     border-bottom: 0.5px solid var(--line); background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+#support-list .row:hover .reason { color: var(--accent); }
+#support-list .row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+#support-list .row .reason { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+#support-list .row .n { font-weight: 600; }
+#support-list .row svg.i { width: 14px; height: 14px; color: var(--faint); }
+.support-region > .row .reason { font-weight: 600; }
+.support-countries { padding-left: 14px; }
 .grp .row .n { font-weight: 600; }
 .grp .row svg.i { width: 14px; height: 14px; color: var(--faint); }
 .grp .m { font-size: 12px; color: var(--faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -381,42 +516,62 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 <div id="root" class="pill capsule-drag-region"></div>
 <script>
 "use strict";
-// English: the window's progress_language. The table (assets/capsule_en.json) is put
-// in here when the window loads the page; every text shown passes through tr().
+// The window's progress_language: Chinese (zh, simplified) is the page's
+// own; English (assets/capsule_en.json) and Traditional Chinese (assets/capsule_zh-Hant.json, made from it by
+// school/tools/zh_hant_table.py, user 2026-11-21) are put in here when the window loads the page; every text shown
+// passes through tr().
+// Japanese, Korean and French too (user, 2026-11-21: "中文、英文、日语、韩文，还有法语…都需要支持"): a text their table
+// does not know is said in English, not left in Chinese.
 const EN = /*CAPSULE_EN*/null;
-const EN_PATTERNS = EN ? EN.patterns.map(([source, target]) => [new RegExp(source), target]) : [];
+const HANT = /*CAPSULE_ZH_HANT*/null;
+const JA = /*CAPSULE_JA*/null;
+const KO = /*CAPSULE_KO*/null;
+const FR = /*CAPSULE_FR*/null;
+const TABLES = Object.fromEntries([["en", EN], ["zh-Hant", HANT], ["ja", JA], ["ko", KO], ["fr", FR]].filter(([, table]) => table)
+  .map(([code, table]) => [code, { ...table, patterns: table.patterns.map(([source, target]) => [new RegExp(source), target]) }]));
 const HAN = /[\u4e00-\u9fff]/;
 let lang = "zh";
+// The languages that list with a comma, not 、 (Japanese keeps 、).
+const commaLang = () => ["en", "ko", "fr"].includes(lang);
 const BRACKETS = /^(.+?)（(.+)）$/;
 const LISTED = /^([^：]+)：(.+)$/;
-function trOne(core) {
+function trOne(core, table = TABLES[lang]) {
   if (!HAN.test(core)) return core;
-  let english = Object.hasOwn(EN.exact, core) ? EN.exact[core] : null;
-  if (english === null) {
-    const found = EN_PATTERNS.find(([pattern]) => pattern.test(core));
-    if (found) english = core.replace(found[0], found[1]);
+  let said = Object.hasOwn(table.exact, core) ? table.exact[core] : null;
+  if (said === null) {
+    const found = table.patterns.find(([pattern]) => pattern.test(core));
+    // What the text names in it is said too where it is a text of the table ("更新学校订阅下载扩展出错"); a name keeps
+    // its words, in Traditional Chinese its characters ("没权限，换红木兰大学").
+    if (found) {
+      const parts = found[0].exec(core);
+      said = core.replace(found[0], found[1].replace(/\$(\d)/g, (_, i) => (HAN.test(parts[i] || "") ? trOne(parts[i], table) : parts[i] || "")));
+    }
   }
-  const parts = english === null && BRACKETS.exec(core);
+  // Traditional Chinese: a text the table does not know, its characters (a name keeps its words).
+  if (said === null && table.chars) return core.replace(/[\u4e00-\u9fff]/g, (c) => table.chars[c] || c);
+  const parts = said === null && BRACKETS.exec(core);
   // "开放下载 18（出版社 API 3、预印本 1）": the text and what its brackets list, each on its own.
-  if (parts) english = trOne(parts[1]) + " (" + parts[2].split("、").map(trOne).join(", ") + ")";
+  if (parts) said = trOne(parts[1], table) + " (" + parts[2].split("、").map((p) => trOne(p, table)).join(", ") + ")";
   // "不完整：参考文献少 1 条，少 1 张图": a known word, then what it lists, each on its own.
-  const listed = english === null && LISTED.exec(core);
-  if (listed && trOne(listed[1]) !== listed[1]) english = trOne(listed[1]) + ": " + listed[2].split("，").map(trOne).join(", ");
-  return english === null ? core : english;
+  const listed = said === null && LISTED.exec(core);
+  if (listed && trOne(listed[1], table) !== listed[1]) said = trOne(listed[1], table) + ": " + listed[2].split("，").map((p) => trOne(p, table)).join(", ");
+  // Japanese, Korean, French: what their table does not know, in English rather than in Chinese.
+  if (said === null && table !== TABLES.en && TABLES.en) return trOne(core, TABLES.en);
+  return said === null ? core : said;
 }
 function tr(text) {
   // "PDF、Markdown": the kinds' names need no table, only their separator.
-  if (lang === "en" && text && !HAN.test(text) && String(text).includes("、")) return String(text).replace(/、/g, ", ");
-  if (lang !== "en" || !EN || !text || !HAN.test(text)) return text;
+  if (commaLang() && text && !HAN.test(text) && String(text).includes("、")) return String(text).replace(/、/g, ", ");
+  if (!TABLES[lang] || !text || !HAN.test(text)) return text;
   return String(text).split(" · ").map((part) => {
     const core = part.trim();
     if (!core || !HAN.test(core)) return part;
-    const english = trOne(core);
-    return english === core ? part : part.replace(core, english);
+    const said = trOne(core);
+    return said === core ? part : part.replace(core, said);
   }).join(" · ");
 }
 function localize(node) {
-  if (lang !== "en" || !EN) return;
+  if (!TABLES[lang]) return;
   const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
   for (let text = walker.nextNode(); text; text = walker.nextNode()) {
     const english = tr(text.nodeValue);
@@ -445,6 +600,13 @@ const ICONS = {
   left: '<path d="M15 6l-6 6 6 6"/>',
   right: '<path d="M9 6l6 6-6 6"/>',
   down: '<path d="M6 9l6 6 6-6"/>',
+  up: '<path d="M6 15l6-6 6 6"/>',
+  tick: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  // Two four-pointed stars: PaperSearch Pro's link (user, 2026-11-21).
+  upcircle: '<circle cx="12" cy="12" r="9"/><path d="M12 16V8M8.5 11.5L12 8l3.5 3.5"/>',
+  refresh: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/>',
+  sparkles: '<path d="M10 7a6 6 0 0 0 6 6a6 6 0 0 0 -6 6a6 6 0 0 0 -6 -6a6 6 0 0 0 6 -6z"/>'
+    + '<path d="M18.5 3a2.5 2.5 0 0 0 2.5 2.5a2.5 2.5 0 0 0 -2.5 2.5a2.5 2.5 0 0 0 -2.5 -2.5a2.5 2.5 0 0 0 2.5 -2.5z"/>',
   gear: gearPath(),
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   key: '<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L19 4M16 7l2.5 2.5M14 9l2 2"/>',
@@ -457,6 +619,8 @@ const ICONS = {
   gift: '<rect x="4" y="9" width="16" height="11" rx="1.5"/><path d="M3 9h18M12 9v11M12 9c-1.4-2.8-4.8-3.4-4.8-1.1 0 1.1 2.4 1.1 4.8 1.1zM12 9c1.4-2.8 4.8-3.4 4.8-1.1 0 1.1-2.4 1.1-4.8 1.1z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.5 5.4 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.4-3.5-8.5s1.1-6.1 3.5-8.5z"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
+  link: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/>',
   external: '<path d="M14 5h5v5M19 5l-8 8"/><path d="M18 14v4a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18V7a1.5 1.5 0 0 1 1.5-1.5H10"/>',
 };
 function gearPath() {
@@ -469,6 +633,27 @@ function gearPath() {
   return '<polygon points="' + pts.join(" ") + '"/><circle cx="12" cy="12" r="3"/>';
 }
 const icon = (name, extra) => '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"' + (extra || "") + ">" + ICONS[name] + "</svg>";
+// PaperSearch's own icon (assets/icon.svg), and Pro's: the same paper and lens on a blue-violet turning to a soft rose
+// gold, a light from its top left (user, 2026-11-21: 丙, elegant beside the plain one).
+let appIconCount = 0;
+function appIcon(size, pro) {
+  const id = "ai" + (++appIconCount);
+  const fill = pro ? '<linearGradient id="' + id + 'g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6F78F2"/>'
+      + '<stop offset=".5" stop-color="#A67BD9"/><stop offset="1" stop-color="#E3AFC0"/></linearGradient>'
+      + '<radialGradient id="' + id + 's" cx=".28" cy=".2" r=".75"><stop offset="0" stop-color="#fff" stop-opacity=".3"/>'
+      + '<stop offset=".5" stop-color="#fff" stop-opacity=".05"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>'
+    : '<linearGradient id="' + id + 'g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B9BFF"/><stop offset="1" stop-color="#9A72FF"/></linearGradient>';
+  return '<svg class="app-icon' + (pro ? " pro" : "") + '" width="' + size + '" height="' + size + '" viewBox="0 0 512 512" aria-hidden="true"><defs>' + fill + "</defs>"
+    + '<rect x="32" y="32" width="448" height="448" rx="104" fill="url(#' + id + 'g)"/>'
+    + (pro ? '<rect x="32" y="32" width="448" height="448" rx="104" fill="url(#' + id + 's)"/>' : "")
+    + '<g transform="rotate(-8 220 240)"><rect x="112" y="100" width="206" height="270" rx="30" fill="#fff" opacity=".96"/>'
+    + '<rect x="148" y="148" width="116" height="18" rx="9" fill="#DCE3FF"/><rect x="148" y="192" width="134" height="18" rx="9" fill="#DCE3FF"/>'
+    + '<rect x="148" y="236" width="80" height="18" rx="9" fill="#DCE3FF"/></g><circle cx="306" cy="300" r="92" fill="#8C8BFF" opacity=".55"/>'
+    + '<circle cx="306" cy="300" r="92" fill="none" stroke="#fff" stroke-width="26"/>'
+    + '<line x1="374" y1="368" x2="424" y2="418" stroke="#fff" stroke-width="32" stroke-linecap="round"/>'
+    + '<path d="M306 248 Q306 300 358 300 Q306 300 306 352 Q306 300 254 300 Q306 300 306 248Z" fill="#fff"/>'
+    + '<path d="M352 236 Q352 252 368 252 Q352 252 352 268 Q352 252 336 252 Q352 252 352 236Z" fill="#fff" opacity=".9"/></svg>';
+}
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function ring(pct, size, stroke, label) {
   const r = (size - stroke) / 2, c = 2 * Math.PI * r, d = Math.max(0, Math.min(100, pct)) / 100 * c;
@@ -498,14 +683,15 @@ let settingsDraft = {};
 let notifyCheck = null;  // the notification check under the switch: {state: testing, sent, off, unseen or failed}
 // Settings pages: "home" lists download, wait and keys. settingsOnly: this window was started
 // just to show them (`paper-search-school settings`), so it closes with them unless a download runs.
-const SETTINGS_PAGES = ["home", "download", "wait", "keys", "pro", "markdown", "login"];
+const SETTINGS_PAGES = ["home", "about", "download", "wait", "keys", "pro", "markdown", "login"];
 // PaperSearch Pro's pages (config/edition.ts): Pro itself (installing it, its version and updates), and
 // each of its features (user, 2026-11-19: the Markdown, the school's sign-in, more to come).
 const PRO_PAGES = ["pro", "markdown", "login"];
-// Installed, Pro's features are on the home page (the user's choice, 2026-11-19: 铺开); not yet, on
-// Pro's own page, under 安装.
+// Pro's features are on the home page, under its title, installed or not (user, 2026-11-19: 铺开; 2026-11-21: C).
 const proInstalled = () => !!(proStatus && proStatus.ok && proStatus.installed) && proInstall.state !== "running";
-const parentPage = (page) => page === "login_schools" ? "login" : ["markdown", "login"].includes(page) && !proInstalled() ? "pro" : "home";
+const parentPage = (page) => page === "login_schools" ? "login" : page === "pro_activate" ? "about" : "home";
+// Pro's page became 关于 PaperSearch (user, 2026-11-21: one version, Pro part of it); asked for by its old name too.
+const pageNamed = (page) => page === "pro" ? "about" : page;
 // The Markdown page is one of PaperSearch Pro's features: the backend says whether this edition has it (edition.py).
 const proOn = () => !settings || settings.pro !== false;
 let settingsPage = "home", settingsNote = "", settingsOnly = false, lastStrip = "";
@@ -518,13 +704,93 @@ let proStatus = null, proInstall = { state: "idle" }, proInstallTimer = 0;
 let schoolLogin = null, loginError = "", loginValues = {}, loginShown = false;
 // The school whose account is open on the page (its entityID), and 添加学校: what was typed, what was found.
 let loginOpen = "", schoolQuery = "", schoolFound = null, schoolFinding = false, confirmForget = "", loginAdding = false;
-// 支持哪些学校: the list Pro gives, what is typed to narrow it, the province open.
-let supportList = null, supportFilter = "", supportOpen = "";
+// 测试登录 (school_test.py): the test as the window runs it ({state: idle, running (key, step, phase), done (key, ok,
+// title, detail, seconds)}); the article it opens for the school open ({doi}: "" while none is set), and its box: open
+// or not, what is typed, why it was not taken, a lookup going on; the account as saved (the test uses that: changed
+// fields are saved first).
+// One version and one update (user, 2026-11-21; updates.py): the version this window runs and the one installed now
+// (an update elsewhere: they differ, 重新打开), the check's answer, the update as it goes.
+let versionInfo = { running: "", installed: "" }, versionCheck = { state: "idle" }, updateRun = { state: "idle" };
+let versionTimer = 0, updateTimer = 0;
+const newerVersion = () => versionCheck.state === "done" && !!(versionCheck.update || versionCheck.pro_update) && updateRun.state !== "done";
+async function refreshVersions() {
+  try { versionInfo = (await api().versions()) || versionInfo; } catch (error) { /* an older backend: none */ }
+}
+async function checkVersions(again = false) {
+  await refreshVersions();
+  try { versionCheck = (await api().check_versions(again)) || { state: "idle" }; } catch (error) { return; }
+  watchVersions();
+  if (panel === "settings") render(true);
+}
+function watchVersions() {
+  clearInterval(versionTimer);
+  if (versionCheck.state !== "running") return;
+  versionTimer = setInterval(async () => {
+    let next;
+    try { next = await api().versions_state(); } catch (error) { return; }
+    versionCheck = next || { state: "idle" };
+    if (versionCheck.state === "running") return;
+    clearInterval(versionTimer);
+    render(true);  // the card's dot, the foot's line, the about page
+  }, 700);
+}
+// 更新 as it goes: each step, then (PaperSearch itself updated) the window opening again with the new one.
+function watchUpdate() {
+  clearInterval(updateTimer);
+  if (updateRun.state !== "running") return;
+  updateTimer = setInterval(async () => {
+    let next;
+    try { next = await api().update_state(); } catch (error) { return; }
+    const before = JSON.stringify(updateRun);
+    updateRun = next || { state: "idle" };
+    if (updateRun.state !== "running") {
+      clearInterval(updateTimer);
+      if (updateRun.state === "done" && updateRun.reopen) {
+        render(true);
+        try { await api().reopen_window("about"); } catch (error) { /* the window stays; 重新打开 says the rest */ }
+        return;
+      }
+      if (updateRun.state === "done") {
+        // Pro alone updated: read again, the page as it is now.
+        try { proStatus = await api().pro_status(); } catch (error) { /* as it was */ }
+        updateRun = { state: "idle" };
+        await checkVersions(true);
+      }
+    }
+    if (JSON.stringify(updateRun) !== before && panel === "settings") render(true);
+  }, 600);
+}
+// Installed elsewhere since this window started (a terminal, an AI tool): said on every settings page, 重新打开.
+const reopenLine = () => versionInfo.installed && versionInfo.running && versionInfo.installed !== versionInfo.running
+  && updateRun.state === "idle" ? '<button type="button" class="reopen-line" data-act="reopen_window">' + icon("refresh")
+  + "<span>" + esc("已更新到 " + versionInfo.installed) + '</span><span class="k">' + esc("重新打开") + "</span></button>" : "";
+let schoolTest = { state: "idle" }, testArticle = null, testArticleFor = null, testTimer = 0, loginSavedValues = {};
+let testEditing = false, testArticleText = "", testArticleError = "", testArticleSaving = false;
+// 支持哪些学校: the list Pro gives, what is typed to narrow it, the regions open, the country whose page is open, its
+// parts open, and where the regions' page was scrolled to, for going back to it.
+let supportList = null, supportFilter = "", supportOpen = "", supportRegions = new Set(), supportParts = new Set(), supportBack = 0;
+// Where the page was scrolled, put back once it is drawn again (user, 2026-11-21: a press on the card's background
+// sent 支持的学校's long list to its top); where a page gone to or back to is to be (pageScroll, its top: 0).
+let keepScroll = null, pageScroll = null;
+const surfaceTop = () => root.querySelector(":scope > .surface")?.scrollTop || 0;
+// What scrolls a row: the nearest box that scrolls its content, else the page.
+function scrollerOf(el) {
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    if (/(auto|scroll)/.test(getComputedStyle(node).overflowY) && node.scrollHeight > node.clientHeight) return node;
+  }
+  return document.scrollingElement || document.documentElement;
+}
 // What the last 保存, 清除 or switch did, said under the fields (user, 2026-11-19: 保存 said nothing).
 let loginDone = "";
 // The Save button saying "已保存" a moment once pressed (user, 2026-11-20: not a line below).
 let loginSaved = false, loginSavedTimer = 0;
-let proCheck = { state: "idle" }, proCheckTimer = 0, proSitesOpen = false;
+let proSitesOpen = false, proMeritsOpen = false;
+// The activation code typed on Pro's page, and why it was not sent (none typed).
+let proCode = "", proCodeError = "";
+// The languages the window speaks, each in its own name, in one menu at the home page's foot (user, 2026-11-21:
+// more to come, 日本語, 한국어, Français among them); whether that menu is open.
+const LANGUAGES = [["zh", "简体中文"], ["zh-Hant", "繁體中文"], ["en", "English"], ["ja", "日本語"], ["ko", "한국어"], ["fr", "Français"]];
+let languageOpen = false;
 let lastHtml = "", hoverTimer = 0, leaveTimer = 0, pollTimer = 0, kinds = [];
 const api = () => window.pywebview.api;
 
@@ -570,7 +836,7 @@ function header(title, sub, closable) {
     + (V.mode === "running" || V.mode === "attention" ? ring(V.pct, 40, 4, V.pct + "%") : "")
     + '<div class="text"><div class="title">' + esc(title) + '</div>' + (sub ? '<div class="sub">' + esc(sub) + "</div>" : "") + "</div></div>"
     + '<div class="tools">' + pinButton()
-    + '<button class="iconbtn" data-act="settings" aria-label="设置">' + icon("gear") + "</button>"
+    + '<button class="iconbtn' + (newerVersion() ? " has-dot" : "") + '" data-act="settings" aria-label="设置">' + icon("gear") + "</button>"
     + '<button class="iconbtn" data-act="' + (closable ? "close" : "minimize") + '" aria-label="' + (closable ? "关闭" : "最小化")
     + '" title="' + (closable ? "关闭" : "最小化到程序坞") + '">' + icon(closable ? "close" : "minimize") + "</button></div></div>";
 }
@@ -586,13 +852,17 @@ function paperBlock() {
   html += note ? "<" + tag + ' class="notice">' + esc(note) + "</" + tag + ">"
                : (v.where ? "<" + tag + ' class="where">' + esc(v.where) + (v.title && v.current ? " · " + esc(v.current) : "") + "</" + tag + ">" : "");
   if (v.browser) html += "</button>";
+  // The step or the lane's line in one row of its own height, there when neither is (see .paper-status); a line
+  // longer than the row says the rest on hover.
+  html += '<div class="paper-status">';
   if (v.step) {
     html += '<div class="steps"><div class="bars">' + v.steps.map((_, i) =>
       "<span" + (i < v.step.index ? ' class="done"' : i === v.step.index ? ' class="now"' : "") + "></span>").join("")
       + '</div><span class="label">' + esc(v.step.label) + "</span></div>";
   } else if (v.line) {
-    html += '<div class="line">' + esc(v.line) + "</div>";
+    html += '<div class="line" title="' + esc(v.line) + '">' + esc(v.line) + "</div>";
   }
+  html += "</div>";
   // What each lane got (开放下载, 机构下载), on one line.
   return html + "</div>";
 }
@@ -647,11 +917,11 @@ function heldBlock() {
     // The button says 已确认; the line, when they go on.
     const copy = V.held_wait ? "正在继续下载 " + heldCount() + " 篇" : "本篇完成后继续下载 " + heldCount() + " 篇";
     return '<div class="held"><div class="head"><span class="copy">' + esc(copy) + '</span><span class="btn done">' + icon("check") + "已确认</span></div>"
-      + '<div class="names">' + esc(held.map((h) => h.name).join(lang === "en" ? ", " : "、")) + "</div></div>";
+      + '<div class="names">' + esc(held.map((h) => h.name).join(commaLang() ? ", " : "、")) + "</div></div>";
   }
   return '<div class="held"><div class="head"><span class="copy">' + esc("学校登录中途失败，已暂停 " + heldCount() + " 篇")
     + '</span><button class="btn" data-act="resume_held">登录并继续</button></div>'
-    + '<div class="names">' + esc(held.map((h) => h.name).join(lang === "en" ? ", " : "、")) + "</div></div>";
+    + '<div class="names">' + esc(held.map((h) => h.name).join(commaLang() ? ", " : "、")) + "</div></div>";
 }
 
 // Pages from sites not yet supported this batch: the site (or how many), how their Markdown
@@ -727,7 +997,7 @@ function attentionCard() {
     + '<button type="button" class="prompt attention-target" data-act="show_browser" aria-label="打开下载浏览器">' + icon(a.login ? "lock" : "alert")
     + '<div class="attention-copy"><div class="t">' + esc(title) + '</div><div class="s">点击打开浏览器，查看并继续</div></div><span class="attention-arrow" aria-hidden="true">›</span></button>';
   if (panel === "confirm") return html + actionsBlock() + "</div>";
-  html += '<div class="actions"><button class="iconbtn" data-act="settings" aria-label="设置">' + icon("gear")
+  html += '<div class="actions"><button class="iconbtn' + (newerVersion() ? " has-dot" : "") + '" data-act="settings" aria-label="设置">' + icon("gear")
     + '</button><span class="grow"></span>';
   if (V.actions) {
     html += '<button class="btn" data-act="skip_item">跳过本篇</button>'
@@ -891,13 +1161,16 @@ function taskStrip() {
   return "";
 }
 
-function settingsHead(title) {
+function settingsHead(title, sub = "设置") {
+  return settingsHeadOnly(title, sub) + reopenLine();
+}
+function settingsHeadOnly(title, sub = "设置") {
   // A window opened just for the settings closes from any page; the home page has nothing to go back to.
   const closable = settingsOnly && !busy(), home = settingsPage === "home";
   lastStrip = taskStrip();
   return '<div class="head">' + (home && closable ? "" : '<button class="iconbtn" data-act="back" aria-label="返回">' + icon("left") + "</button>")
     + '<div class="drag capsule-drag-region"><div class="text"><div class="title">' + esc(title) + "</div>"
-    + (home ? "" : '<div class="sub">设置</div>') + "</div></div>"
+    + (home || !sub ? "" : '<div class="sub">' + esc(sub) + "</div>") + "</div></div>"
     + (closable ? '<button class="iconbtn" data-act="close_settings" aria-label="关闭">' + icon("close") + "</button>" : "")
     + '</div><div id="task-strip">' + lastStrip + "</div>";
 }
@@ -905,25 +1178,43 @@ function settingsHead(title) {
 const fieldsOn = (page) => settings.fields.filter((f) => (f.page || "wait") === page);
 const field = (name) => settings.fields.find((f) => f.name === name);
 
+// The user's own folder as ~ on the home page's line (user, 2026-11-21: /Users/<name>/Downloads and the hourly limit
+// did not fit one line in English); the download page shows the folder whole.
+const shortPath = (path) => String(path || "").replace(/^(?:\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)(?=[\/\\]|$)/, "~");
 function settingsHome() {
   const hourly = field("hourly"), login = field("login");
   const rows = [
-    ["download", "folder", "下载", [settings.download_dir, hourly ? "每家每小时 " + hourly.value + " 篇" : ""]],
+    ["download", "folder", "下载", [shortPath(settings.download_dir), hourly ? "每家每小时 " + hourly.value + " 篇" : ""]],
     ["wait", "clock", "等待和提醒", [login ? "登录页 " + login.value + " 秒" : "", "系统通知" + (notifyOn ? "开" : "关")]],
     ["keys", "key", "API key", [apiKeys && apiKeys.ok ? "已填 " + apiKeys.filled + "/" + apiKeys.total : ""]],
   ];
-  return settingsHead("设置") + rows.map(navRow).join("") + (proOn() ? proHomeRows() : "")
-    // The language row reads the same in both languages.
-    + '<div class="row"><span>语言</span><span class="seg">' + ["zh", "en"].map((code) => '<button type="button" data-act="language" data-lang="'
-      + code + '" aria-pressed="' + (lang === code) + '"' + (lang === code ? ' class="on"' : "") + ">" + (code === "zh" ? "中文" : "English")
-      + "</button>").join("") + "</span></div>"
+  const installed = proOn() && !!(proStatus && proStatus.ok && proStatus.installed);
+  // Pro not there: one row of its own, last, to 关于 PaperSearch where it is introduced (user, 2026-11-21: 乙, its
+  // line saying 需要激活); there: its features' rows.
+  const pro = !proOn() ? "" : installed ? proFeatures().map(navRow).join("")
+    : navRow(["about", "pro-app", "PaperSearch", [proActivated() ? "已激活 · 未安装" : proActivation().state === "expired" ? "激活已过期" : "需要激活"], "Pro"]);
+  return settingsHead("设置") + rows.map(navRow).join("") + pro
+    + '<div class="row home-foot">' + versionLink() + languageMenu() + "</div>"
     + (settingsNote ? '<div class="settings-note" role="status">' + esc(settingsNote) + "</div>" : "");
 }
 
+// The language, at the right of the home page's foot: its own name, and open, the others each in theirs.
+function languageMenu() {
+  const name = (LANGUAGES.find(([code]) => code === lang) || LANGUAGES[0])[1];
+  return '<span class="lang-wrap"><button type="button" class="lang-btn" data-act="language_menu" aria-haspopup="menu" aria-expanded="'
+    + languageOpen + '" aria-label="' + esc("语言 · " + name) + '">' + icon("globe") + "<span>" + name + "</span>"
+    + icon(languageOpen ? "up" : "down") + "</button>"
+    + (languageOpen ? '<div class="lang-menu" role="menu">' + LANGUAGES.map(([code, own]) => '<button type="button" role="menuitemradio"'
+      + ' data-act="language" data-lang="' + code + '" aria-checked="' + (code === lang) + '"><span>' + own + "</span>"
+      + (code === lang ? icon("tick") : "") + "</button>").join("")
+      + '<div class="lang-more">' + esc("更多语言陆续加入") + "</div></div>" : "") + "</span>";
+}
+
 // A row that opens a page: its icon, its name, what it holds now.
-function navRow([page, glyph, title, sub]) {
-  return '<button type="button" class="nav-row" data-act="settings_page" data-page="' + page + '">' + icon(glyph)
-    + '<span class="nav-text"><span class="nav-title">' + esc(title) + '</span><span class="nav-sub">'
+function navRow([page, glyph, title, sub, badge]) {
+  return '<button type="button" class="nav-row" data-act="settings_page" data-page="' + page + '">' + (glyph === "pro-app" ? appIcon(16, true) : icon(glyph))
+    + '<span class="nav-text"><span class="nav-title">' + esc(title)
+    + (badge ? '<span class="pro-pill feature">' + esc(badge) + "</span>" : "") + '</span><span class="nav-sub">'
     + esc(sub.filter(Boolean).join(" · ")) + "</span></span>" + icon("right") + "</button>";
 }
 
@@ -1006,21 +1297,13 @@ function settingsKeys() {
     + "</div>";
 }
 
-// The Markdown page (user, 2026-11-18): PaperSearch Pro, a beta (测试版); what it does; 安装 when it
-// is not here, with its progress, or 重试 after a failed one; and where to report a conversion.
-// Nothing of subscriptions or keys while it is free.
-function proStateLine() {
-  if (proInstall.state === "running") return ["", "正在安装…"];
-  if (proInstall.state === "failed") return ["bad", "安装没有完成：" + (proInstall.message || "安装出错")];
-  if (!proStatus || !proStatus.ok) return ["bad", (proStatus && proStatus.error) || "读取失败"];
-  if (!proStatus.installed) return ["", "未安装"];
-  const installed = "已安装" + (proStatus.version ? " · " + proStatus.version : "");
-  // 检查更新 (user, 2026-11-19): its answer after the version.
-  if (proCheck.state === "running") return ["ok", installed + " · 正在检查更新…"];
-  if (proCheck.state === "failed") return ["bad", installed + " · " + (proCheck.message || "检查更新出错")];
-  if (proCheck.state === "done") return ["ok", installed + " · " + (proCheck.update ? "有新版本 " + proCheck.latest : "已是最新")];
-  return ["ok", installed];
-}
+
+// PaperSearch Pro's state (user, 2026-11-18, -21): not installed, whether this computer is activated
+// (src/management/pro/activate.ts: PaperSearch's activation server, its address still to come); installing,
+// activating first when a code was typed.
+const proActivation = () => (proStatus && proStatus.activation) || { state: "none", tail: "", until: "" };
+const proActivated = () => proActivation().state === "active";
+const proActivating = () => proInstall.state !== "idle" && proInstall.step === "activate";
 
 function proProgress() {
   const done = proInstall.done || 0, total = proInstall.total || 0, mb = (bytes) => (bytes / 1048576).toFixed(1);
@@ -1028,24 +1311,67 @@ function proProgress() {
            note: total ? "正在下载 " + mb(done) + " / " + mb(total) + " MB" : "正在下载…" };
 }
 
+// Under Pro's state: the download's progress; installed, 更新到 a newer one; not installed,
+// 激活 Pro (the activation's own page), or 安装 once activated. No notes beside them (user, 2026-11-21).
 function proAction() {
-  const install = (label, hint) => '<button type="button" class="btn primary" data-act="install_pro">' + esc(label) + "</button>"
-    + '<div class="pro-hint">' + esc(hint) + "</div>";
+  const button = (label) => '<button type="button" class="btn primary" data-act="install_pro">' + esc(label) + "</button>";
   if (proInstall.state === "running") {
+    if (proActivating()) return "";
     const progress = proProgress();
     return '<div class="pro-bar"><span style="width:' + progress.width.toFixed(1) + '%"></span></div>'
       + '<div class="pro-hint" id="pro-progress">' + esc(progress.note) + "</div>";
   }
-  if (proInstall.state === "failed") return install("重试", "已下载的部分不会留下");
-  if (proStatus && proStatus.ok && proStatus.installed && proCheck.state === "done" && proCheck.update) {
-    return install("更新到 " + proCheck.latest, "核对完整后才替换原有的，转换记录保留");
+  if (!proStatus || !proStatus.ok) return "";
+  if (proInstall.state === "failed" && (proStatus.installed || proActivated()) && !proActivating()) return button("重试");
+  if (proStatus.installed) {
+    if (proActivation().state === "expired") return proCodeField("重新激活");
+    // Its updates come with PaperSearch's, on the same page (user, 2026-11-21: one version, one button).
+    return "";
   }
-  // About the size of Pro's bundle (pro/build.mjs --release), said before the download tells it.
-  return proStatus && proStatus.ok && !proStatus.installed ? install("安装", "约 4 MB · PDF 和补充材料不需要它") : "";
+  return proActivated() ? button("安装")
+    : '<button type="button" class="btn primary" data-act="settings_page" data-page="pro_activate">' + esc("激活 Pro") + "</button>";
+}
+
+// The activation code, typed and kept through a redraw; why it was not taken, under it. While the code is sent,
+// its button says so.
+function proCodeField(label, sending = false) {
+  const error = proCodeError || (proInstall.state === "failed" && proActivating() ? proInstall.message || "激活出错" : "");
+  return '<div class="pro-code-label">' + esc("激活码") + '</div><div class="pro-code"><input id="pro-code" type="text" autocomplete="off"'
+    + ' spellcheck="false" value="' + esc(proCode) + '" placeholder="XXXX-XXXX-XXXX" aria-label="' + esc("激活码") + '">'
+    + '<button type="button" class="btn primary" data-act="activate_pro"' + (sending ? " disabled" : "") + ">"
+    + esc(sending ? "正在激活…" : label) + "</button></div>"
+    + (error ? '<div class="err pro-code-err" role="alert">' + esc(error) + "</div>" : "");
+}
+
+// The activation, a page of its own from Pro's (user, 2026-11-21): the code and 激活; taken, the install's
+// progress here; installed, the home page, where Pro's features are now. An install that failed after the
+// activation: why, and 重试.
+function settingsProActivate() {
+  const installing = proInstall.state === "running" && !proActivating();
+  const failed = proInstall.state === "failed" && !proActivating() && proActivated();
+  const body = installing ? proAction()
+    : failed ? proAction() + '<div class="err pro-code-err" role="alert">' + esc("安装没有完成：" + (proInstall.message || "安装出错")) + "</div>"
+    : proCodeField("激活", proInstall.state === "running");
+  return settingsHead("激活 Pro") + '<div class="pro-action">' + body + "</div>"
+    + (settingsNote ? '<div class="settings-note" role="status">' + esc(settingsNote) + "</div>" : "");
 }
 
 // What a Markdown keeps, beside the description.
 const PRO_KEEPS = [["photo", "图片"], ["table", "表格"], ["formula", "公式"], ["list", "参考文献"]];
+// What sets it apart (user, 2026-11-21): a row like the platforms', its three names under the title; opened, each
+// said in full.
+const PRO_MERITS = [
+  ["file", "出版社原文", "取自出版社网页或 XML，不从 PDF 识别：章节、图注、表格（含合并单元格）和 LaTeX 公式按原文还原，避免识别错误。"],
+  ["check", "完整才保存", "图片或表格有缺失就不生成，记为失败并说明原因，后续重试。"],
+  ["link", "来源可追溯", "每篇保留出版社原始网页或 XML，以及来源清单：来源地址、DOI 核对结果和获取时间。"],
+];
+function proMerits() {
+  return '<button type="button" class="nav-row pro-row" data-act="pro_merits" aria-expanded="' + proMeritsOpen + '">' + icon("shield")
+    + '<span class="nav-text"><span class="nav-title">' + esc("三项特点") + '</span><span class="nav-sub">'
+    + esc("出版社原文 · 完整才保存 · 来源可追溯") + "</span></span>" + icon(proMeritsOpen ? "down" : "right") + "</button>"
+    + (proMeritsOpen ? '<div class="pro-merits">' + PRO_MERITS.map(([glyph, title, said]) => '<div class="pro-merit">' + icon(glyph)
+      + "<div><b>" + esc(title) + "</b><span>" + esc(said) + "</span></div></div>").join("") + "</div>" : "");
+}
 
 // The Markdown saved on this computer, how many complete, and the publishers' platforms with rules.
 function proStats() {
@@ -1088,57 +1414,129 @@ function siteGroups(sites) {
   return groups.filter(([, names]) => names.length);
 }
 
-// Whether Pro is free now and until when (the user, 2026-11-19: the page ends with it).
-function proAccessSaid() {
-  const access = (proStatus && proStatus.access) || {};
-  return access.mode === "key" ? "需要密钥" : access.until ? "测试期间免费，至 " + access.until : "测试期间免费，截止日期待定";
+// What Pro does now and what is coming (user, 2026-11-21: Zotero, a map of related papers as ResearchRabbit
+// draws one, and new papers pushed by subscription), on its page, installed or not.
+const PRO_NOW = [
+  ["file", "Markdown 全文", "出版社原文转成 Markdown，图表、公式完整"],
+  ["lock", "学校自动登录", "学校登录页自动填写账号，批量下载不用守着"],
+];
+const PRO_COMING = [
+  ["Zotero 整合", "文献库里缺 PDF 的条目自动补下，挂回原条目"],
+  ["文献关系图", "从一篇论文出发，沿引用找相关文献，画成关系图"],
+  // User, 2026-11-21: what each one wants, pushed to them.
+  ["文献订阅", "按关注的主题、期刊或作者，定期推送新论文"],
+];
+// 使用状态 on Pro's page once installed: activated, its code's last four characters and until when; before the
+// activation server (none kept), whether Pro is free and until when (Pro's own switch).
+function proUsage(heading = true) {
+  const activation = proActivation(), access = (proStatus && proStatus.access) || {};
+  const row = (label, value, tone) => '<div class="row pro-use"><span>' + esc(label) + '</span><span class="' + (tone || "dim") + '">'
+    + esc(value) + "</span></div>";
+  const rows = activation.state !== "none"
+    ? row("激活状态", activation.state === "active" ? "已激活" : "已过期", activation.state === "active" ? "ok" : "bad")
+      + row("激活码", "••••" + activation.tail) + row("有效期", activation.until ? "至 " + activation.until : "不限")
+    : access.mode === "key" ? row("使用方式", "需要激活")
+    : row("使用方式", "测试期间免费") + row("截止日期", access.until || "待定");
+  return (heading ? '<div class="key-group">' + esc("使用状态") + "</div>" : "") + rows;
 }
 
-function proAccess() {
-  const said = proAccessSaid();
-  return '<div class="nav-row pro-row static">' + icon("gift") + '<span class="nav-text"><span class="nav-title">' + esc("使用状态")
-    + '</span><span class="nav-sub">' + esc(said) + "</span></span></div>";
-}
-
-// PaperSearch Pro's page (user, 2026-11-19): installing it, its version and whether it is free, then
-// its features, each a page of its own; where to report a problem at the foot.
+// PaperSearch Pro's features (user, 2026-11-19), each a page of its own; on the home page under Pro's title once installed.
 function proFeatures() {
-  const installed = !!(proStatus && proStatus.ok && proStatus.installed);
-  const converted = installed ? (proStatus.converted || 0) : 0, sites = installed ? (proStatus.sites || []).length : 0;
+  const converted = proStatus.converted || 0, sites = (proStatus.sites || []).length;
   return [
-    ["markdown", "file", "Markdown 全文", installed ? ["已转换 " + converted.toLocaleString("en-US") + " 篇", sites + " 个平台"]
-      : ["把论文全文转成 Markdown"]],
+    ["markdown", "file", "Markdown 全文", ["已转换 " + converted.toLocaleString("en-US") + " 篇", sites + " 个平台"], "Pro"],
     ["login", "lock", "学校自动登录", !schoolLogin || !schoolLogin.ok ? [] : !schoolLogin.saved ? ["未填"]
-      : [schoolLogin.enabled ? "已打开" : "已关闭", schoolLogin.username]],
+      : [schoolLogin.enabled ? "已打开" : "已关闭", schoolLogin.username], "Pro"],
   ];
 }
 
-// The home page's part of Pro (user, 2026-11-19: 铺开). Installed: its features under its name, then
-// its version and updates; not yet (or installing): one row to Pro's page.
-function proHomeRows() {
-  if (!proInstalled()) {
-    return navRow(["pro", "shield", "PaperSearch Pro", proInstall.state === "running" ? ["正在安装…"]
-      : [proStatus && proStatus.ok ? "未安装" : ""]]);
-  }
-  return '<div class="key-group pro-group">' + esc("PaperSearch Pro · 测试版") + "</div>"
-    + proFeatures().map(navRow).join("")
-    + navRow(["pro", "shield", "版本与更新", [proStatus.version || "", proAccessSaid()]]);
+// PaperSearch's version at the left of the home page's foot, for everyone, to 关于 PaperSearch (user, 2026-11-21: one
+// version and one update, Pro with it); a newer one there, the whole line in red saying so (乙).
+function versionLink() {
+  const update = newerVersion();
+  const said = update ? (versionCheck.update ? "有新版本 " + versionCheck.latest + "，点此更新" : "有新版本，点此更新")
+    : "PaperSearch" + (versionInfo.running ? " " + versionInfo.running : "");
+  return '<button type="button" class="version-link' + (update ? " new" : "") + '" data-act="settings_page" data-page="about">'
+    + (update ? icon("upcircle") : "") + '<span class="pl-text">' + esc(said) + "</span></button>";
 }
 
-function settingsPro() {
-  const [tone, state] = proStateLine();
-  const installed = proInstalled();
-  return settingsHead(installed ? "版本与更新" : "PaperSearch Pro")
-    + '<div class="pro-head"><span class="pro-tile">' + icon("shield") + '</span><span class="nav-text">'
-    + '<span class="pro-name">PaperSearch Pro<span class="pro-pill">' + esc("测试版") + "</span></span>"
-    + '<span class="pro-state' + (tone ? " " + tone : "") + '" role="status">' + esc(state) + "</span></span>"
-    + (installed && proCheck.state !== "running" ? '<button type="button" class="btn link pro-check" data-act="check_pro">'
-      + esc("检查更新") + "</button>" : "") + "</div>"
-    + '<div class="pro-action">' + proAction() + "</div>"
-    // Not installed yet: what it brings, each to its page; installed, they are on the home page.
-    + (installed ? proAccess() : '<div class="key-group">' + esc("功能") + "</div>" + proFeatures().map(navRow).join(""))
-    + '<div class="pro-foot"><span>' + esc("用着有问题？") + "</span>"
-    + '<button type="button" class="btn link" data-act="pro_issue">' + esc("提交 issue") + icon("right") + "</button></div>"
+
+// A Pro feature's page before Pro is there (user, 2026-11-21: as one not paid for sees it): what it needs, and
+// the way to Pro's page.
+function proNeeded() {
+  const activated = proActivated();
+  return '<div class="pro-needed"><span>' + esc(activated ? "安装 PaperSearch Pro 后可用" : "激活 PaperSearch Pro 后可用") + "</span>"
+    + '<button type="button" class="btn link" data-act="settings_page" data-page="about">' + esc(activated ? "去安装" : "去激活")
+    + icon("right") + "</button></div>";
+}
+
+// 关于 PaperSearch (user, 2026-11-21, as drawn): its icon, name and version, and its update, Pro's with it; then Pro.
+// Not bought: its features, what is coming (计划中 after each name), 激活 Pro at the foot. Bought: the icon Pro's, Pro
+// beside the name (the line shifted a little to the right), its state, what is coming, 提交 issue.
+const UPDATE_STEPS = { paper_search: "PaperSearch", school: "学校订阅下载扩展", skills: "Skill", pro: "Pro" };
+function versionLine() {
+  const running = versionInfo.running || versionCheck.current || "";
+  const at = (said) => (running ? running + " · " : "") + said;
+  if (updateRun.state === "running" || (updateRun.state === "done" && updateRun.reopen)) {
+    return ["", updateRun.state === "done" ? "正在重新打开…" : updateRun.target ? "正在更新到 " + updateRun.target + "…" : "正在更新…"];
+  }
+  if (updateRun.state === "failed") return ["bad", at(updateRun.message || "更新出错")];
+  if (versionCheck.state === "running") return ["", at("正在检查更新…")];
+  if (versionCheck.state === "failed") return ["bad", at(versionCheck.message || "检查更新出错")];
+  if (newerVersion()) return ["new", at(versionCheck.update ? "有新版本 " + versionCheck.latest : "有新版本")];
+  if (versionCheck.state === "done") return ["", at("已是最新版本")];
+  return ["", running];
+}
+function aboutAction() {
+  const steps = updateRun.steps || [];
+  if (updateRun.state === "running" || (updateRun.state === "done" && updateRun.reopen)) {
+    const done = updateRun.state === "done" ? steps.length : updateRun.step || 0;
+    return '<div class="about-action"><div class="pro-bar"><span style="width:' + (steps.length ? (done / steps.length) * 100 : 0).toFixed(1)
+      + '%"></span></div><ol class="test-steps update-steps">' + steps.map((step, i) => '<li class="' + (i < done ? "done" : i === done ? "now" : "")
+        + '">' + (i < done ? icon("check") : '<span class="mark"></span>') + "<span>"
+        + esc(step === "paper_search" && updateRun.target ? "PaperSearch " + updateRun.target : UPDATE_STEPS[step] || step) + "</span></li>").join("")
+      + "</ol>" + (steps.includes("paper_search") ? '<div class="about-caption">' + esc("完成后窗口会自动重新打开") + "</div>" : "") + "</div>";
+  }
+  if (updateRun.state === "failed") {
+    return '<div class="about-action"><button type="button" class="btn primary" data-act="update_all">' + esc("重试") + "</button></div>";
+  }
+  if (newerVersion()) {
+    const label = versionCheck.update ? "更新到 " + versionCheck.latest : "更新";
+    return '<div class="about-action">' + (busy()
+      ? '<button type="button" class="btn primary" disabled>' + esc("下载结束后更新") + "</button>"
+      : '<button type="button" class="btn primary" data-act="update_all">' + esc(label) + "</button>")
+      + (versionCheck.update && versionCheck.notes ? '<button type="button" class="btn link" data-act="release_notes">' + esc("这次更新了什么") + "</button>" : "")
+      + "</div>";
+  }
+  return versionCheck.state === "running" ? "" : '<div class="about-action"><button type="button" class="btn link" data-act="check_versions">'
+    + esc("检查更新") + "</button></div>";
+}
+const aboutFeature = ([title, said], planned) => '<div class="about-feat"><b>' + esc(title) + "</b>"
+  + (planned ? '<span class="pro-tag">' + esc("计划中") + "</span>" : "") + '<span class="pl-sub">' + esc(said) + "</span></div>";
+const aboutComing = () => '<div class="about-sub">' + esc("即将推出") + "</div>" + PRO_COMING.map((f) => aboutFeature(f, true)).join("");
+function settingsAbout() {
+  const installed = proOn() && !!(proStatus && proStatus.ok && proStatus.installed);
+  const [tone, line] = versionLine();
+  const hero = '<div class="about-hero">' + appIcon(56, installed) + '<div class="about-name' + (installed ? " with-pill" : "") + '">PaperSearch'
+    + (installed ? '<span class="pro-pill">Pro</span>' : "") + '</div><div class="about-version' + (tone ? " " + tone : "") + '" role="status">'
+    + esc(line) + "</div></div>" + aboutAction();
+  let pro = "";
+  if (proOn() && installed) {
+    pro = '<div class="about-gap"></div>' + (proAction() ? '<div class="pro-action">' + proAction() + "</div>" : "") + proUsage(false) + aboutComing()
+      + '<div class="pro-foot"><span>' + esc("用着有问题？") + "</span>"
+      + '<button type="button" class="btn link" data-act="pro_issue">' + esc("提交 issue") + icon("right") + "</button></div>";
+  } else if (proOn()) {
+    const access = (proStatus && proStatus.access) || {};
+    pro = '<div class="about-sec">' + appIcon(20, true) + '<span>PaperSearch</span><span class="pro-pill">Pro</span></div>'
+      + PRO_NOW.map(([, title, said]) => aboutFeature([title, said], false)).join("") + aboutComing()
+      + '<div class="pro-action pro-activate">' + proAction() + "</div>"
+      // An install that did not finish says why under its 重试 (the activation's own page says it too).
+      + (proInstall.state === "failed" && !proActivating() && proActivated() ? '<div class="err pro-code-err" role="alert">'
+        + esc("安装没有完成：" + (proInstall.message || "安装出错")) + "</div>" : "")
+      + (proInstall.state !== "running" && access.mode !== "key" && !proActivated() ? '<div class="about-caption">' + esc("测试期间免费") + "</div>" : "");
+  }
+  // Its head says 设置 alone: the name is the page's own, under the icon (user, 2026-11-21).
+  return settingsHead("设置", "") + hero + pro
     + (settingsNote ? '<div class="settings-note" role="status">' + esc(settingsNote) + "</div>" : "");
 }
 
@@ -1148,9 +1546,10 @@ function settingsMarkdown() {
   return settingsHead("Markdown 全文")
     + '<div class="pro-desc">' + esc("把论文全文转成 Markdown，以下内容一并保留：") + "</div>"
     + '<div class="pro-chips">' + PRO_KEEPS.map(([glyph, text]) => '<span class="pro-chip">' + icon(glyph) + esc(text) + "</span>").join("") + "</div>"
-    + (installed ? proStats() + proSites() : '<div class="pro-desc">' + esc("安装 PaperSearch Pro 后可用") + "</div>")
-    + '<div class="pro-foot"><span>' + esc("转换有缺漏、出错，或想加出版社？") + "</span>"
-    + '<button type="button" class="btn link" data-act="pro_issue">' + esc("提交 issue") + icon("right") + "</button></div>"
+    + (installed ? proStats() + proMerits() + proSites()
+      + '<div class="pro-foot"><span>' + esc("转换有缺漏、出错，或想加出版社？") + "</span>"
+      + '<button type="button" class="btn link" data-act="pro_issue">' + esc("提交 issue") + icon("right") + "</button></div>"
+      : proMerits() + proNeeded())
     + (settingsNote ? '<div class="settings-note" role="status">' + esc(settingsNote) + "</div>" : "");
 }
 
@@ -1168,20 +1567,95 @@ function tagHtml(status) {
   const [cls, text] = schoolTag(status);
   return '<span class="tag ' + cls + '">' + esc(text) + "</span>";
 }
-const schoolName = (s) => (lang === "en" && s.name_en ? s.name_en : s.name) || s.key;
+// A school's name in the window's language (user, 2026-11-21): in English its English name; in another its name in
+// that language where Pro has one (Wikidata's), in Traditional Chinese else its Chinese one (tr() turns its
+// characters); else its own name as its federation lists it, not a translation.
+function schoolName(s) {
+  const names = s.names || {};
+  if (lang === "en") return s.name_en || s.name || s.key;
+  return names[lang] || (lang === "zh-Hant" ? names.zh : "") || s.name || s.name_en || s.key;
+}
 
 async function loadLoginValues() {
   try { loginValues = (await api().school_login_saved(loginOpen)) || {}; } catch (error) { loginValues = {}; }
+  loginSavedValues = { ...loginValues };
+  // 测试登录's article for the school open, and a test going on when the page was left.
+  if (testArticleFor !== loginOpen) {
+    testArticleFor = loginOpen; testArticle = null; testEditing = false; testArticleError = ""; testArticleText = "";
+    try {
+      const answer = await api().school_test_article(loginOpen);
+      if (answer && answer.ok) testArticle = answer;
+    } catch (error) { testArticle = null; }
+  }
+  try { schoolTest = (await api().school_test_state()) || { state: "idle" }; } catch (error) { schoolTest = { state: "idle" }; }
+  if (schoolTest.state === "running") watchSchoolTest();
 }
 
-function loginSchool(s) {
+// While a test runs, how it goes is asked for each second; the page is drawn again as its step or line changes.
+function watchSchoolTest() {
+  clearInterval(testTimer);
+  testTimer = setInterval(async () => {
+    let next;
+    try { next = await api().school_test_state(); } catch (error) { return; }
+    const before = JSON.stringify(schoolTest);
+    schoolTest = next || { state: "idle" };
+    if (schoolTest.state !== "running") {
+      clearInterval(testTimer);
+      // The school's account may have been turned off (a password the school refused).
+      try { const state = await api().school_login_state(); if (state && state.ok) schoolLogin = state; } catch (error) { /* as it was */ }
+    }
+    if (JSON.stringify(schoolTest) !== before && panel === "settings" && settingsPage === "login") render(true);
+  }, 1000);
+}
+
+// 测试登录 going on (user, 2026-11-21, as drawn): its steps, the one it is at and what the download says there; 停止测试.
+const TEST_STEPS = ["打开文章页", "学校登录", "下载全文", "核对 PDF"];
+function loginTesting(t) {
+  return '<div class="login-test" role="status"><ol class="test-steps">' + TEST_STEPS.map((label, i) =>
+      '<li class="' + (i < t.step ? "done" : i === t.step ? "now" : "") + '">' + (i < t.step ? icon("check") : '<span class="mark"></span>')
+      + "<span>" + esc(label) + "</span></li>").join("") + "</ol>"
+    + '<div class="test-phase">' + esc(t.stopping ? "正在停止…" : t.phase || "") + "</div>"
+    + '<div class="key-actions"><span class="grow"></span><button class="btn" data-act="school_test_stop"' + (t.stopping ? " disabled" : "")
+    + ">" + esc("停止测试") + "</button></div></div>";
+}
+// Before and after: how the last test of this school went, and the article the next opens, set by the user (user,
+// 2026-11-21: its DOI and 修改, which opens a box for a DOI or the article's address; none set for them, a short line
+// saying what to do and 填写), the test's own button 测试 at its end (甲: beside its article, so that it says what it
+// tests). 文章 beside 账号 and 密码, two characters each; its line ends where their boxes end.
+function loginTest(s) {
+  if (!testArticle) return "";
+  const label = "<span>" + esc("文章") + "</span>";
+  const t = schoolTest.state === "done" && schoolTest.key === s.key ? schoolTest : null;
+  const result = t ? '<div class="test-result ' + (t.ok ? "ok" : "bad") + '" role="status">' + icon(t.ok ? "check" : "alert")
+    + '<div><div class="t">' + esc(t.title) + "</div>" + (t.detail ? '<div class="d">' + esc(t.detail) + "</div>" : "")
+    + (t.ok ? '<div class="d">' + esc("用时 " + t.seconds + " 秒 · 测试下的 PDF 已删掉") + "</div>" : "") + "</div></div>" : "";
+  // Also for a school whose account is not saved yet: 测试 saves what is typed first.
+  const test = '<button class="btn test-btn" data-act="school_test">' + esc("测试") + "</button>";
+  if (testEditing) {
+    return result + label + '<div class="test-article"><span class="test-edit">'
+      + '<input id="test-article" type="text" autocomplete="off" spellcheck="false" value="' + esc(testArticleText)
+      + '" placeholder="' + esc("DOI 或文章网址") + '" aria-label="' + esc("测试文章") + '">'
+      + '<button type="button" class="link-btn" data-act="test_article_save"' + (testArticleSaving ? " disabled" : "") + ">"
+      + esc(testArticleSaving ? "查找中…" : "确定") + "</button></span>" + test + "</div>"
+      + (testArticleError ? '<div class="err test-err" role="status">' + esc(testArticleError) + "</div>" : "");
+  }
+  const doi = testArticle.doi;
+  return result + label + '<div class="test-article"><span class="what' + (doi ? "" : " empty") + '"' + (doi ? ' title="' + esc(doi) + '"' : "")
+    + ">" + esc(doi || "填入学校订阅文章 DOI 或网址") + "</span>"
+    + '<button type="button" class="link-btn" data-act="test_article_edit">' + esc(doi ? "修改" : "填写") + "</button>" + test + "</div>";
+}
+
+function loginSchool(s, index) {
   const shown = loginOpen === s.key;
+  // Their order, where there is more than one (user, 2026-11-21: 没权限时换下一所学校 goes down it; 1 the default).
+  const many = ((schoolLogin && schoolLogin.schools) || []).length > 1;
   const row = '<button type="button" class="login-row" data-act="login_open" data-key="' + esc(s.key) + '" aria-expanded="' + shown + '">'
-    + '<span class="ls-name">' + esc(schoolName(s)) + "</span>"
+    + (many ? '<span class="ls-n">' + (index + 1) + "</span>" : "") + '<span class="ls-name">' + esc(schoolName(s)) + "</span>"
     + (s.current ? '<span class="tag default">' + esc("默认") + "</span>" : "") + tagHtml(s.status)
     + '<span class="ls-acct">' + esc(s.saved ? (s.enabled ? s.username : "已关闭") : "未填账号") + "</span>"
     + icon(shown ? "down" : "right") + "</button>";
   if (!shown) return '<div class="login-school">' + row + "</div>";
+  if (schoolTest.state === "running" && schoolTest.key === s.key) return '<div class="login-school">' + row + loginTesting(schoolTest) + "</div>";
   return '<div class="login-school">' + row
     + (s.off === "rejected" ? '<div class="err" style="text-align:left;margin:0 0 8px">'
       + esc("学校没有接受保存的密码，自动登录已关闭；更新密码后保存，就会重新打开") + "</div>" : "")
@@ -1195,6 +1669,7 @@ function loginSchool(s) {
       + icon("eye") + "</button></span>"
     // A line for an error, or the next step once a school is added; "saved" said on the button itself (user, 2026-11-20).
     + '<div class="err' + (loginError ? "" : " ok") + '" id="login-error" role="status">' + esc(loginError || loginDone) + "</div>"
+    + loginTest(s)
     + '<div class="key-actions">'
     + (s.saved ? '<button class="btn" data-act="login_switch">' + esc(s.enabled ? "关闭自动登录" : "打开自动登录") + "</button>" : "")
     + '<span class="grow"></span>'
@@ -1228,7 +1703,7 @@ function loginFound() {
 function settingsLogin() {
   const s = schoolLogin, head = settingsHead("学校自动登录");
   if (!s || !s.ok) return head + '<div class="err" style="text-align:left">' + esc((s && s.error) || "读取失败") + "</div>";
-  if (!s.pro) return head + '<div class="settings-note" style="color:var(--bad)">' + esc("需要 PaperSearch Pro") + "</div>";
+  if (!s.pro) return head + '<div class="pro-desc">' + esc("学校登录页自动填写账号和密码，批量下载不用守着。") + "</div>" + proNeeded();
   // 添加学校 a row like the schools', opened to its search (user, 2026-11-20: a box alone said nothing).
   return head + '<div style="margin-top:8px">' + (s.schools || []).map(loginSchool).join("")
     + '<div class="login-school"><button type="button" class="login-row login-add-row" data-act="login_add" aria-expanded="' + loginAdding + '">'
@@ -1237,52 +1712,153 @@ function settingsLogin() {
       + esc(schoolQuery) + '" placeholder="' + esc("中文名、英文名或学校网址") + '" aria-label="' + esc("学校名称") + '">'
       + '<button class="btn" data-act="find_school">' + esc("查找") + "</button></div>" + loginFound() + "</div>" : "")
     + "</div></div>"
+    // 没权限时换下一所学校 (user, 2026-11-21; school_switch.py): one row, its switch at its right, on by default; there
+    // with more than one school only.
+    + ((s.schools || []).length > 1 ? '<div class="row switch-row"><span>' + esc("没权限时换下一所学校") + "</span>"
+      + '<button class="switch' + (s.switch !== false ? " on" : "") + '" data-act="school_switch" role="switch" aria-checked="'
+      + (s.switch !== false) + '" aria-label="' + esc("没权限时换下一所学校") + '"></button></div>' : "")
     // How many schools and which, on a page of their own (user, 2026-11-20: a link, not a line of numbers).
     + '<div class="login-more"><button type="button" class="btn link" data-act="settings_page" data-page="login_schools">'
     + esc("支持哪些学校") + icon("right") + "</button></div>";
 }
 
-// 支持哪些学校: the schools Pro knows, how many of each kind, in groups (the most schools first): a mainland school by
-// its province, any other by its country or region (user, 2026-11-20); narrowed by what is typed; each school with
-// what Pro does for it.
-function supportGroup(s) {
-  return (s.country && s.country !== "中国" ? s.country : s.province) || "其他";
+// 支持哪些学校: the schools Pro knows, how many of each kind, in two pages (user, 2026-11-21): the world's regions, each
+// opening in place to its countries (several may be open), and a country's schools on a page of their own (nested in one
+// list, they would not fit the window; a page for the regions' countries too was a level too many). On a big country's
+// page its parts open in place the same way (user, 2026-11-21, 甲): China's provinces, then Hong Kong, Macao and Taiwan;
+// a US school's state, a UK one's nation; Germany's by kind (Pro names no German states yet); a smaller country's schools
+// listed whole. Asia first and China first in it. The page's head (back, title, search) stays on top while its list
+// scrolls; a long name wraps. What is typed narrows the page's own country, or all; a province's or state's name finds
+// its schools. Each school with what Pro does for it.
+const SUPPORT_REGIONS = ["亚洲", "欧洲", "北美洲", "南美洲", "非洲", "大洋洲", "其他"];
+const CHINA_PLACES = ["香港", "澳门", "台湾"];
+// Each country the school lists name, by its region; one not here is listed under 其他 (Pro's tests check the lists
+// against this table).
+const SUPPORT_COUNTRIES = {
+  "亚洲": "以色列 伊朗 卡塔尔 印度 印度尼西亚 哈萨克斯坦 土耳其 塞浦路斯 孟加拉国 巴基斯坦 巴林 斯里兰卡 新加坡 日本 沙特阿拉伯 泰国 科威特 约旦 菲律宾 越南 阿塞拜疆 阿曼 阿联酋 韩国 马来西亚 黎巴嫩 老挝 文莱",
+  "欧洲": "丹麦 乌克兰 保加利亚 克罗地亚 冰岛 匈牙利 北马其顿 卢森堡 塞尔维亚 奥地利 希腊 德国 意大利 拉脱维亚 挪威 捷克 摩尔多瓦 斯洛伐克 斯洛文尼亚 比利时 法国 波兰 爱尔兰 爱沙尼亚 瑞典 瑞士 白俄罗斯 立陶宛 罗马尼亚 芬兰 英国 荷兰 葡萄牙 西班牙 阿尔巴尼亚 马耳他 黑山 安道尔 马恩岛 法罗群岛",
+  "北美洲": "加拿大 哥斯达黎加 墨西哥 多米尼加 安圭拉 巴巴多斯 巴拿马 洪都拉斯 牙买加 特立尼达和多巴哥 美国 危地马拉 圣基茨和尼维斯",
+  "南美洲": "乌拉圭 厄瓜多尔 哥伦比亚 巴西 智利 秘鲁 阿根廷",
+  "非洲": "乌干达 加纳 南非 博茨瓦纳 坦桑尼亚 埃及 多哥 安哥拉 尼日利亚 布基纳法索 摩洛哥 肯尼亚 苏丹 赞比亚 马拉维 马里 阿尔及利亚 埃塞俄比亚 卢旺达 莱索托 埃斯瓦蒂尼 利比里亚 塞舌尔",
+  "大洋洲": "新西兰 澳大利亚 斐济"
+};
+const REGION_OF = Object.fromEntries(Object.entries(SUPPORT_COUNTRIES).flatMap(([region, names]) =>
+  names.split(" ").map((name) => [name, region])));
+const inChina = (s) => s.country === "中国" || CHINA_PLACES.includes(s.country);
+function supportRegion(s) {
+  return inChina(s) ? "亚洲" : REGION_OF[s.country] || "其他";
 }
-function supportRows(list) {
-  // In English, a school's English name (user, 2026-11-20); its own federation's name otherwise.
-  return list.map((s) => '<div class="login-found"><span class="ls-name">' + esc(lang === "en" && s.name_en ? s.name_en : s.name)
-    + "</span>" + tagHtml(s.status) + "</div>").join("");
+function supportGroup(s) {
+  return inChina(s) ? "中国" : s.country || "国家未注明";
+}
+// A country's part: a mainland school's province (Hong Kong, Macao and Taiwan their own), a US school's state or a UK
+// one's nation where Pro names them, else its kind for a country of more schools than BIG_COUNTRY (Germany's 382:
+// user, 2026-11-21, by kind until Pro names its states); "" for a country listed whole.
+const BIG_COUNTRY = 350;
+const KIND_ORDER = ["大学", "研究机构", "医院", "其他"];
+const UNSTATED = ["未注明省份", "未注明州", "未注明地区", "国家未注明"];
+function supportPartOf(country, list) {
+  if (country === "中国") return (s) => s.country === "中国" ? s.province || "未注明省份" : s.country;
+  if (list.some((s) => s.area)) return (s) => s.area || (country === "美国" ? "未注明州" : "未注明地区");
+  if (list.length > BIG_COUNTRY && list.some((s) => s.kind)) return (s) => KIND_ORDER.includes(s.kind) ? s.kind : "其他";
+  return null;
+}
+// China first; the most schools first; Hong Kong, Macao and Taiwan after the provinces; a kind in KIND_ORDER's order;
+// a place not given last.
+function supportOrder(entries) {
+  const rank = (name) => name === "中国" ? -1 : CHINA_PLACES.includes(name) ? 1 : UNSTATED.includes(name) ? 2 : 0;
+  const kinds = entries.every(([name]) => KIND_ORDER.includes(name));
+  return entries.sort((a, b) => (rank(a[0]) - rank(b[0]))
+    || (kinds ? KIND_ORDER.indexOf(a[0]) - KIND_ORDER.indexOf(b[0]) : b[1].length - a[1].length));
+}
+function groupBy(list, key) {
+  const groups = new Map();
+  for (const s of list) groups.set(key(s), [...(groups.get(key(s)) || []), s]);
+  return supportOrder([...groups.entries()]);
+}
+function supportRows(list, where = null) {
+  // Its name in the window's language (schoolName), wrapped when long; found by a search, where it is beside it (its
+  // country, or its part of the country open).
+  return list.map((s) => '<div class="login-found"><span class="ls-name">' + esc(schoolName(s))
+    + (where && where(s) ? '<span class="ls-fed"> · ' + esc(where(s)) + "</span>" : "") + "</span>" + tagHtml(s.status) + "</div>").join("");
+}
+function supportRow(act, key, count, open) {
+  return '<button type="button" class="row" data-act="' + act + '" data-key="' + esc(key) + '"'
+    + (open === undefined ? "" : ' aria-expanded="' + open + '"') + '>'
+    + '<span class="reason">' + esc(key) + '</span><span class="n">' + count + "</span>" + icon(open ? "down" : "right") + "</button>";
+}
+// A school in two federations (its country's and OpenAthens: a university of Beijing's listed twice; 91 such in Chinese,
+// 2026-11-21) listed once, by its country and its name as the window shows it; what Pro does for it the better of the
+// two. Counted once in the numbers too.
+const STATUS_RANK = { verified: 0, surveyed: 0, trial: 1, check: 2 };
+let supportOnce = { list: null, lang: "", schools: [] };
+function supportSchools() {
+  const listed = (supportList && supportList.schools) || [];
+  if (supportOnce.list !== listed || supportOnce.lang !== lang) {
+    const kept = new Map(), rank = (s) => STATUS_RANK[s.status] ?? 3;
+    for (const s of listed) {
+      const key = s.country + "\n" + schoolName(s), there = kept.get(key);
+      if (!there || rank(s) < rank(there)) kept.set(key, s);
+    }
+    supportOnce = { list: listed, lang, schools: [...kept.values()] };
+  }
+  return supportOnce.schools;
+}
+// The schools of the page open: a country's, by their names as the window shows them, in its language's order (pinyin
+// in Chinese, strokes in Traditional Chinese; China's mainland first, then Hong Kong, Macao and Taiwan), or all.
+function supportHere() {
+  const all = supportSchools();
+  if (!supportOpen) return all;
+  let order;
+  try { order = new Intl.Collator(lang); } catch (error) { order = new Intl.Collator(); }
+  const place = (s) => supportOpen === "中国" ? CHINA_PLACES.indexOf(s.country) : 0;
+  return all.filter((s) => supportGroup(s) === supportOpen).map((s) => [place(s), schoolName(s), s])
+    .sort((a, b) => a[0] - b[0] || order.compare(a[1], b[1])).map(([, , s]) => s);
 }
 function supportListHtml() {
-  const all = (supportList && supportList.schools) || [];
-  const wanted = supportFilter.trim().toLowerCase();
+  const here = supportHere(), wanted = supportFilter.trim().toLowerCase();
   if (wanted) {
-    const said = (s) => [s.name, s.name_en, s.province, s.country, tr(s.province || ""), tr(s.country || "")].join(" ").toLowerCase();
-    const found = all.filter((s) => said(s).includes(wanted));
-    return found.length ? supportRows(found.slice(0, 80)) : '<div class="key-note">' + esc("没有符合的学校") + "</div>";
+    // Found by any of its names, whatever the window's language, or its province's, state's or country's.
+    const said = (s) => [s.name, s.name_en, ...Object.values(s.names || {}), s.province, s.area, s.country, tr(s.province || ""),
+      tr(s.area || ""), tr(s.country || "")].join(" ").toLowerCase();
+    const found = here.filter((s) => said(s).includes(wanted));
+    const where = supportOpen ? supportPartOf(supportOpen, here) : (s) => s.country;
+    return found.length ? supportRows(found.slice(0, 200), where) : '<div class="key-note">' + esc("没有符合的学校") + "</div>";
   }
-  const provinces = new Map();
-  for (const s of all) provinces.set(supportGroup(s), [...(provinces.get(supportGroup(s)) || []), s]);
-  return [...provinces.entries()].sort((a, b) => b[1].length - a[1].length).map(([province, list]) => {
-    const shown = supportOpen === province;
-    return '<div class="grp"><button type="button" class="row" data-act="support_group" data-province="' + esc(province) + '" aria-expanded="' + shown + '">'
-      + '<span class="reason">' + esc(province) + '</span><span class="n">' + list.length + "</span>" + icon(shown ? "down" : "right") + "</button>"
-      + (shown ? '<div style="margin-top:4px">' + supportRows(list) + "</div>" : "") + "</div>";
-  }).join("");
+  if (supportOpen) {
+    // A big country's parts, each opening in place to its schools (several may be open), as the regions do.
+    const part = supportPartOf(supportOpen, here);
+    if (!part) return supportRows(here);
+    return groupBy(here, part).map(([key, there]) => {
+      const open = supportParts.has(key);
+      return '<div class="support-region">' + supportRow("support_part", key, there.length, open)
+        + (open ? '<div class="support-countries">' + supportRows(there) + "</div>" : "") + "</div>";
+    }).join("");
+  }
+  return SUPPORT_REGIONS.map((region) => [region, here.filter((s) => supportRegion(s) === region)]).filter(([, list]) => list.length)
+    .map(([region, list]) => {
+      const open = supportRegions.has(region);
+      return '<div class="support-region">' + supportRow("support_region", region, list.length, open)
+        + (open ? '<div class="support-countries">' + groupBy(list, supportGroup)
+          .map(([key, there]) => supportRow("support_group", key, there.length)).join("") + "</div>" : "") + "</div>";
+    }).join("");
 }
 function settingsLoginSchools() {
-  const head = settingsHead("支持的学校");
+  const here = supportList && supportList.ok ? supportHere() : [];
+  const head = settingsHead(supportOpen || "支持的学校", supportOpen ? here.length + " 所" : "设置");
   if (!supportList) return head + '<div class="key-note">' + esc("读取中…") + "</div>";
   if (!supportList.ok) return head + '<div class="err" style="text-align:left">' + esc(supportList.error || "读取失败") + "</div>";
-  const all = supportList.schools || [];
+  const all = supportSchools();
   const filled = all.filter((s) => s.status === "surveyed" || s.status === "verified").length;
   const check = all.filter((s) => s.status === "check").length;
-  // What each number means, in a line (user, 2026-11-20: the page was not clear).
-  return head + '<div class="stats" style="margin-top:10px"><div><b>' + filled + "</b><span>" + esc("所学校自动填写账号密码") + "</span></div>"
-    + "<div><b>" + check + "</b><span>" + esc("所学校需自己登录") + "</span></div></div>"
-    + '<div class="key-note" style="margin-top:8px">' + esc("自动填写：打开学校登录页时，替你填好账号密码并提交。需自己登录：学校登录页有验证码、短信或扫码，要你自己完成。") + "</div>"
-    + '<div class="login-find" style="margin:6px 0 6px"><input id="support-filter" type="text" autocomplete="off" spellcheck="false" value="'
-    + esc(supportFilter) + '" placeholder="' + esc("筛选学校、省份或国家") + '" aria-label="' + esc("筛选学校、省份或国家") + '"></div>'
+  // The numbers, each saying what it counts, on the first page only; the line explaining them was removed (user,
+  // 2026-11-21).
+  const stats = supportOpen ? "" : '<div class="stats" style="margin-top:10px"><div><b>' + filled + "</b><span>" + esc("所学校自动填写账号密码")
+    + "</span></div><div><b>" + check + "</b><span>" + esc("所学校需自己登录") + "</span></div></div>";
+  const hint = supportOpen ? "搜索学校" : "搜索学校或地区";
+  return '<div class="support-top">' + head + stats
+    + '<label class="support-search">' + icon("search") + '<input id="support-filter" type="search" autocomplete="off" spellcheck="false" value="'
+    + esc(supportFilter) + '" placeholder="' + esc(hint) + '" aria-label="' + esc(hint) + '"></label></div>'
     + '<div id="support-list">' + supportListHtml() + "</div>";
 }
 
@@ -1295,35 +1871,28 @@ function watchProInstall() {
     let next;
     try { next = await api().pro_install_state(); } catch (error) { return; }
     proInstall = next || { state: "idle" };
-    if (proInstall.state === "running") return updateProProgress();
+    if (proInstall.state === "running") return proActivating() ? undefined : updateProProgress();
     clearInterval(proInstallTimer);
+    // Read again however it ended: an activation taken before a failed install is kept (重试, not the code again).
+    const fresh = !(proStatus && proStatus.installed);
+    try { proStatus = await api().pro_status(); } catch (error) { proStatus = null; }
     if (proInstall.state === "done") {
-      try { proStatus = await api().pro_status(); } catch (error) { proStatus = null; }
       proInstall = { state: "idle" };
-      proCheck = { state: "idle" };  // updated: what was found is installed now
+      proCode = "";
+      // Activated and installed (user, 2026-11-21): back on the home page, where its features are now.
+      if (fresh && proStatus && proStatus.installed && panel === "settings" && ["about", "pro_activate"].includes(settingsPage)) {
+        settingsPage = "home"; settingsNote = "PaperSearch Pro 已安装";
+      }
     }
     // Not over another settings page, where something may be being typed.
-    if (panel === "settings" && ["home", "pro", "markdown"].includes(settingsPage)) render(true);
+    if (panel === "settings" && ["home", "about", "pro_activate", "markdown"].includes(settingsPage)) render(true);
   }, 300);
 }
 
-// 检查更新 runs a few seconds: asked for until it is done, then the page is drawn again.
-function watchProCheck() {
-  clearInterval(proCheckTimer);
-  if (proCheck.state !== "running") return;
-  proCheckTimer = setInterval(async () => {
-    let next;
-    try { next = await api().pro_check_state(); } catch (error) { return; }
-    proCheck = next || { state: "idle" };
-    if (proCheck.state === "running") return;
-    clearInterval(proCheckTimer);
-    if (panel === "settings" && settingsPage === "pro") render(true);
-  }, 400);
-}
 
 function updateProProgress() {
   const bar = root.querySelector(".pro-bar span"), line = root.querySelector("#pro-progress");
-  if (!bar || !line) return panel === "settings" && settingsPage === "pro" ? render(true) : undefined;
+  if (!bar || !line) return panel === "settings" && ["about", "pro_activate"].includes(settingsPage) ? render(true) : undefined;
   const progress = proProgress();
   bar.style.width = progress.width.toFixed(1) + "%";
   line.textContent = tr(progress.note);
@@ -1367,7 +1936,9 @@ function holdSettingsHeight() {
 
 function settingsCard() {
   const page = { download: settingsDownload, wait: settingsWait, keys: settingsKeys,
-    ...(proOn() ? { pro: settingsPro, markdown: settingsMarkdown, login: settingsLogin, login_schools: settingsLoginSchools } : {}) }[settingsPage] || settingsHome;
+    about: settingsAbout,
+    ...(proOn() ? { pro_activate: settingsProActivate, markdown: settingsMarkdown, login: settingsLogin,
+                    login_schools: settingsLoginSchools } : {}) }[settingsPage] || settingsHome;
   return '<div class="card-body settings">' + page() + "</div>";
 }
 
@@ -1447,8 +2018,10 @@ async function loadSettings() {
 
 async function openSettings(request) {
   await loadSettings();
-  panel = "settings"; open = true; settingsNote = ""; confirmClear = ""; revealed = false;
-  settingsPage = SETTINGS_PAGES.includes(request.page) && (!PRO_PAGES.includes(request.page) || proOn()) ? request.page : "home";
+  panel = "settings"; open = true; settingsNote = ""; confirmClear = ""; revealed = false; languageOpen = false;
+  const asked = pageNamed(request.page);
+  settingsPage = SETTINGS_PAGES.includes(asked) && (!PRO_PAGES.includes(asked) || proOn()) ? asked : "home";
+  refreshVersions();
   editing = settingsPage === "keys" ? request.service || "" : "";
   editValues = editing ? await savedValues(editing) : {};
   loginShown = false;
@@ -1513,12 +2086,18 @@ function render(force) {
   // Keep the real button (and its pointer/focus target) through countdown ticks.
   if (unchanged && (!attention || !updateAttentionCountdown())) return;
   const previous = root.getBoundingClientRect();
+  // Read before the height it scrolls in is taken off, which puts it back at its top.
+  const scrolledTo = surfaceTop();
   root.style.width = ""; root.style.height = "";
   root.style.removeProperty("--content-max-height");
   if (!unchanged) {
     // A scrolled list keeps its place while its page is redrawn (a key opened or saved, a group opened).
     const place = panel + ":" + (panel === "settings" ? settingsPage : papersKind);
     const scrolled = place === lastPlace ? root.querySelector(".papers-scroll, .keys-scroll")?.scrollTop || 0 : 0;
+    // The page itself scrolled (支持的学校's long list) keeps its place too (user, 2026-11-21: a press on the card's
+    // background, which starts and ends a drag, drew it again at its top), put back once it scrolls (keepSupportPlace).
+    if (pageScroll !== null) { keepScroll = pageScroll || null; pageScroll = null; }
+    else if (place === lastPlace && scrolledTo > 0) keepScroll = scrolledTo;
     lastPlace = place;
     root.className = cls + " capsule-drag-region" + (cls !== lastCls ? " fade" : "");
     root.innerHTML = '<div class="surface">' + html + "</div>";
@@ -1532,6 +2111,17 @@ function render(force) {
   lastHtml = html;
   lastCls = cls;
   fit(previous);
+  keepSupportPlace(!root.classList.contains("animating"));
+}
+
+// The page stays where it was scrolled when drawn again (keepScroll). A page taller than the screen scrolls only once the
+// window has its size: the native resize (animateFit) sets the height it scrolls in, after the page was drawn anew at
+// its top, so it is put back then, and again when the resize ends; a page whose window does not change, at once.
+function keepSupportPlace(last) {
+  if (keepScroll === null) return;
+  const surface = root.querySelector(":scope > .surface");
+  if (surface && surface.scrollHeight > surface.clientHeight) surface.scrollTop = keepScroll;
+  if (last) keepScroll = null;
 }
 
 let fitGeneration = 0, layoutQueue = Promise.resolve();
@@ -1573,6 +2163,7 @@ async function animateFit(generation, expanded, from, to, pad) {
   const border = document.body.classList.contains("mac") ? 1 : 0;
   root.style.setProperty("--content-max-height", Math.max(0, to[1] - border) + "px");
   root.firstElementChild.style.width = Math.max(0, to[0] - border) + "px";
+  keepSupportPlace(false);
   const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 240;
   const started = performance.now();
   // One outstanding native resize at a time; a newer layout cancels this animation.
@@ -1592,6 +2183,7 @@ async function animateFit(generation, expanded, from, to, pad) {
     if (generation === fitGeneration) {
       root.classList.remove("animating");
       settledGeneration = generation; settledSize = to; settledExpanded = expanded;
+      keepSupportPlace(true);
     }
   }
   observeHover();
@@ -1624,8 +2216,16 @@ async function act(action, target) {
   switch (action) {
     // Back as a capsule when restored, unless pinned: a pinned card comes back open (user, 2026-11-20:
     // on Windows, minimized and restored, the pinned card had shrunk to the capsule).
-    case "minimize": if (!pinned) open = false; panel = ""; render(true); return api().minimize();
-    case "close": closing = true; ++fitGeneration; clearInterval(pollTimer); clearInterval(proInstallTimer); clearTimeout(hoverTimer); clearTimeout(leaveTimer); return api().request_close();  // no call left waiting on a closed page
+    case "minimize": {
+      if (!pinned) open = false;
+      panel = ""; minimizing = true;
+      render(true);
+      // Folded to the capsule before it goes into the Dock or the taskbar (user, 2026-11-21): minimized while it
+      // still shrank, the window went at the card's size, and brought back showed the card a moment first.
+      await layoutQueue;
+      try { return await api().minimize(); } finally { setTimeout(() => { minimizing = false; }, 400); }
+    }
+    case "close": closing = true; ++fitGeneration; clearInterval(pollTimer); clearInterval(proInstallTimer); clearInterval(testTimer); clearInterval(versionTimer); clearInterval(updateTimer); clearTimeout(hoverTimer); clearTimeout(leaveTimer); return api().request_close();  // no call left waiting on a closed page
     case "folder": return api().open_folder();
     case "expand": open = true; panel = ""; return render(true);
     case "pin":
@@ -1677,14 +2277,19 @@ async function act(action, target) {
       return say(said);
     }
     case "settings": return openSettings({ page: "home" });
+    case "language_menu":
+      languageOpen = !languageOpen;
+      render(true);
+      return root.querySelector(languageOpen ? ".lang-menu [aria-checked=true]" : ".lang-btn")?.focus();
     case "language": {
+      languageOpen = false;
       const result = await api().set_language(target.dataset.lang);
       if (result.ok) lang = result.language;
       return render(true);
     }
     case "settings_page":
-      settingsPage = target.dataset.page; settingsErrors = {}; settingsDraft = {}; settingsNote = ""; editing = ""; editValues = {};
-      loginError = ""; loginDone = ""; confirmClear = ""; loginShown = false;
+      settingsPage = pageNamed(target.dataset.page); settingsErrors = {}; settingsDraft = {}; settingsNote = ""; editing = ""; editValues = {};
+      loginError = ""; loginDone = ""; confirmClear = ""; loginShown = false; languageOpen = false;
       if (settingsPage === "login") {
         // The default school open first; 添加学校 starts empty.
         loginOpen = ((schoolLogin && schoolLogin.schools) || []).find((s) => s.current)?.key || "";
@@ -1692,12 +2297,18 @@ async function act(action, target) {
         loginAdding = !loginOpen;  // no school yet: straight to finding one
       }
       if (settingsPage === "login_schools") {
-        supportFilter = ""; supportOpen = ""; supportList = null; render(true);
+        supportFilter = ""; supportOpen = ""; supportRegions = new Set(); supportParts = new Set(); supportBack = 0; supportList = null; render(true);
         try { supportList = await api().school_support_list(); } catch (error) { supportList = { ok: false, error: "读取失败" }; }
       }
       return render(true);
     case "back":
       if (panel !== "settings") { panel = ""; return render(true); }
+      languageOpen = false;
+      if (settingsPage === "login_schools" && supportOpen) {
+        // From a country's page to the regions', where it was.
+        supportOpen = ""; supportParts = new Set(); supportFilter = ""; pageScroll = supportBack || 0;
+        return render(true);
+      }
       if (settingsPage === "home") return leaveSettings();
       settingsPage = parentPage(settingsPage); editing = ""; editValues = {}; settingsErrors = {}; settingsDraft = {};
       loginError = ""; confirmClear = ""; return render(true);
@@ -1719,14 +2330,21 @@ async function act(action, target) {
       render(true);
       return watchProInstall();
     }
-    case "check_pro": {
-      try { proCheck = (await api().check_pro()) || { state: "idle" }; }
-      catch (error) { proCheck = { state: "failed", message: "检查更新出错" }; }
+    case "activate_pro": {
+      // 激活 (user, 2026-11-21): the code to the activation server, then the install.
+      const code = proCode.trim();
+      if (!code) { proCodeError = "请输入激活码"; render(true); return root.querySelector("#pro-code")?.focus(); }
+      proCodeError = "";
+      try { proInstall = (await api().install_pro(code)) || { state: "idle" }; }
+      catch (error) { proInstall = { state: "failed", step: "activate", message: "激活出错" }; }
       render(true);
-      return watchProCheck();
+      return watchProInstall();
     }
     case "pro_sites":
       proSitesOpen = !proSitesOpen;
+      return render(true);
+    case "pro_merits":
+      proMeritsOpen = !proMeritsOpen;
       return render(true);
     case "pro_issue": {
       const result = await api().open_issue();
@@ -1770,8 +2388,83 @@ async function act(action, target) {
       }
       await loadLoginValues(); return render(true);
     }
+    case "school_test": {
+      // The test uses the account as saved: fields changed since are saved first.
+      loginError = ""; loginDone = "";
+      if ((loginValues.username || "") !== (loginSavedValues.username || "") || (loginValues.password || "") !== (loginSavedValues.password || "")) {
+        const saved = await api().save_school_login(loginValues.username || "", loginValues.password || "", true, loginOpen);
+        if (!saved.ok) { loginError = saved.error || "保存失败"; return render(true); }
+        schoolLogin = saved; loginSavedValues = { ...loginValues };
+      }
+      if (testEditing && testArticleText.trim()) {
+        // An article typed and not yet taken: taken first, or why not said.
+        await act("test_article_save");
+        if (testEditing) return;
+      }
+      if (!testArticle || !testArticle.doi) {
+        // None filled in: its box opened for one.
+        testEditing = true; testArticleError = "先填测试文章"; render(true);
+        return root.querySelector("#test-article")?.focus();
+      }
+      const started = await api().start_school_test(loginOpen, testArticle ? testArticle.doi : "");
+      if (started.error) { loginError = started.error; return render(true); }
+      schoolTest = started; watchSchoolTest();
+      return render(true);
+    }
+    case "school_switch": {
+      let answer;
+      try { answer = await api().set_school_switch(!(schoolLogin && schoolLogin.switch !== false)); } catch (error) { answer = null; }
+      if (answer && answer.ok) schoolLogin = answer;
+      else { loginError = (answer && answer.error) || "保存失败"; }
+      return render(true);
+    }
+    case "check_versions":
+      versionCheck = { state: "running" }; render(true);
+      return checkVersions(true);
+    case "update_all": {
+      let started;
+      try { started = await api().update_all(); } catch (error) { started = { state: "idle", error: "更新出错" }; }
+      if (started && started.error) { settingsNote = started.error; return render(true); }
+      updateRun = started || { state: "idle" }; settingsNote = "";
+      watchUpdate();
+      return render(true);
+    }
+    case "release_notes": {
+      const answer = await api().open_release_notes();
+      if (answer && !answer.ok) say(answer.message);
+      return;
+    }
+    case "reopen_window": {
+      const answer = await api().reopen_window(settingsPage === "about" ? "about" : "home");
+      if (answer && !answer.ok) { settingsNote = answer.message; render(true); }
+      return;
+    }
+    case "school_test_stop":
+      schoolTest = await api().stop_school_test();
+      return render(true);
+    case "test_article_edit":
+      testEditing = true; testArticleError = ""; testArticleText = (testArticle && testArticle.doi) || "";
+      render(true);
+      return root.querySelector("#test-article")?.focus();
+    case "test_article_save": {
+      // By its DOI or its page's address, the DOI looked up (school_test.doi_of); emptied, none.
+      testArticleSaving = true; testArticleError = ""; render(true);
+      let answer;
+      try { answer = await api().set_school_test_article(loginOpen, testArticleText); } catch (error) { answer = { ok: false, error: "保存失败" }; }
+      testArticleSaving = false;
+      if (answer && answer.ok) { testArticle = answer; testEditing = false; } else testArticleError = (answer && answer.error) || "保存失败";
+      return render(true);
+    }
+    case "support_region": case "support_part": {
+      // Its countries (a country's part: its schools) shown or hidden in place, the page where it was; the others left
+      // as they are.
+      const open = action === "support_region" ? supportRegions : supportParts, key = target.dataset.key;
+      if (!open.delete(key)) open.add(key);
+      return render(true);
+    }
     case "support_group":
-      supportOpen = supportOpen === target.dataset.province ? "" : target.dataset.province;
+      // The country's page, at its top, its parts closed; where the regions' page was kept for coming back.
+      supportBack = surfaceTop(); supportOpen = target.dataset.key; supportParts = new Set(); supportFilter = ""; pageScroll = 0;
       return render(true);
     case "login_add": {
       loginAdding = !loginAdding; schoolFound = null; loginError = "";
@@ -1892,8 +2585,9 @@ async function act(action, target) {
   }
 }
 
-// A paper list scrolls; pressing in it must not drag the window.
-const interactive = (target) => target.closest('button, input, select, textarea, a, [contenteditable="true"], [role="button"], .paper-list, .papers-scroll, .keys-scroll');
+// A paper list scrolls; pressing in it must not drag the window. Nor in 支持的学校's list (user, 2026-11-21: a press
+// between its rows dragged, and the redraw after it went back to the top).
+const interactive = (target) => target.closest('button, input, select, textarea, a, [contenteditable="true"], [role="button"], .paper-list, .papers-scroll, .keys-scroll, #support-list');
 // The dot's card: open while the pointer is on the dot or the card, a moment's grace between
 // them. Told by where the pointer moves, not by its leaving: the card is redrawn every second
 // and a dot redrawn under the pointer never says it was left.
@@ -1977,6 +2671,16 @@ root.addEventListener("input", (event) => {
   else if (input.id === "login-user") loginValues.username = input.value;
   else if (input.id === "login-password") loginValues.password = input.value;
   else if (input.id === "school-query") schoolQuery = input.value;
+  else if (input.id === "test-article") { testArticleText = input.value; testArticleError = ""; }
+  else if (input.id === "pro-code") {
+    proCode = input.value;
+    // Typing again clears why the last code was not taken.
+    if (proCodeError || (proInstall.state === "failed" && proActivating())) {
+      proCodeError = "";
+      if (proInstall.state === "failed") proInstall = { state: "idle" };
+      root.querySelector(".pro-code-err")?.remove();
+    }
+  }
   else if (input.id === "support-filter") {
     supportFilter = input.value;
     const box = root.querySelector("#support-list");
@@ -1987,6 +2691,21 @@ root.addEventListener("click", (event) => {
   const target = event.target.closest("[data-act]");
   if (target) { event.stopPropagation(); act(target.dataset.act, target); }
 });
+// The language menu closes on a press anywhere else, taken off at once: a press on the card's background starts
+// the window's drag, while which the page is not drawn again.
+document.addEventListener("pointerdown", (event) => {
+  if (languageOpen && !event.target.closest(".lang-wrap")) closeLanguageMenu();
+}, true);
+function closeLanguageMenu() {
+  languageOpen = false;
+  root.querySelector(".lang-menu")?.remove();
+  const button = root.querySelector(".lang-btn");
+  if (!button) return;
+  button.setAttribute("aria-expanded", "false");
+  button.lastElementChild.outerHTML = icon("down");
+}
+// While the card folds to go into the Dock, the pointer still on it does not open it again.
+let minimizing = false;
 function setHover(inside, force = false) {
   // Minimize/task transitions can fold the card while the pointer stays inside.
   if (!force && hovering === inside && (!inside || open)) return;
@@ -1994,7 +2713,7 @@ function setHover(inside, force = false) {
   clearTimeout(hoverTimer); clearTimeout(leaveTimer);
   if (dragging || attentionPointer !== null) return;
   if (inside) {
-    hoverTimer = setTimeout(() => { if (!open) { open = true; render(true); } }, 100);
+    hoverTimer = setTimeout(() => { if (!open && !minimizing) { open = true; render(true); } }, 100);
   } else {
     // Leave enough time to cross the edge; open menus and settings stay usable.
     leaveTimer = setTimeout(() => { if (!panel && !pinned) { open = false; render(true); } }, 280);
@@ -2037,13 +2756,17 @@ window.addEventListener("pointercancel", endAttentionPress);
 window.addEventListener("blur", endAttentionPress);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && panel) {
+    if (languageOpen) { closeLanguageMenu(); return root.querySelector(".lang-btn")?.focus(); }
+    // Its box closed, the article as it was.
+    if (testEditing && event.target.id === "test-article") { testEditing = false; testArticleError = ""; return render(true); }
     if (panel !== "settings") { panel = ""; render(true); }
     else act(editing ? "cancel_key" : "back");
   }
   if (event.key === "Enter" && panel === "settings" && event.target.tagName === "INPUT") {
     if (settingsPage === "keys" && editing) act("save_key", { dataset: { service: editing }, textContent: "" });
     else if (settingsPage === "download" || settingsPage === "wait") act("save");
-    else if (settingsPage === "login") act(event.target.id === "school-query" ? "find_school" : "save_login", { dataset: {} });
+    else if (settingsPage === "login") act(event.target.id === "school-query" ? "find_school" : event.target.id === "test-article" ? "test_article_save" : "save_login", { dataset: {} });
+    else if (["about", "pro_activate"].includes(settingsPage) && event.target.id === "pro-code") act("activate_pro");
   }
 });
 
@@ -2052,6 +2775,8 @@ window.addEventListener("pywebviewready", async () => {
   document.body.classList.add(platform === "darwin" ? "mac" : platform === "win32" ? "win" : "other");
   await tick();
   pollTimer = setInterval(tick, 500);
+  setTimeout(() => checkVersions(), 3000);
+  setInterval(() => checkVersions(), 6 * 3600 * 1000);
 });
 </script>
 </body>

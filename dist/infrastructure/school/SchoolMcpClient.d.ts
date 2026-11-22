@@ -61,6 +61,10 @@ export declare class SchoolMcpClient implements SchoolBackend {
         waitSec: number;
         limit: number;
     } | undefined>;
+    /** Whether the batch takes one journal's papers one after another (school_switch_state), on its backend. */
+    schoolSwitch(signal?: AbortSignal): Promise<{
+        group: boolean;
+    } | undefined>;
     /** The batch's papers for the window's lists, on the backend the batch already has. */
     reportBatchPapers(update: SchoolBatchPapers, last?: boolean): Promise<boolean>;
     /**

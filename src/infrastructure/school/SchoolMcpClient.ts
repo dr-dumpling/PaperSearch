@@ -66,7 +66,7 @@ export const SCHOOL_BACKEND_UTF8_ENV: Readonly<Record<string, string>> = { PYTHO
 
 const SCHOOL_BACKEND_SOURCE = "school";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.7.1";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.7.2";
 
 interface ActiveSession {
   client: Client;
@@ -532,6 +532,24 @@ export class SchoolMcpClient implements SchoolBackend {
         { name: "school_hourly_wait", arguments: { publisher } }, undefined, requestOptions(this.toolTimeoutMs, signal));
       assertProtocolIntegrity(session.protocolState);
       return hourlyWaitAnswer(result);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Whether the batch takes one journal's papers one after another (school_switch_state), on its backend. */
+  async schoolSwitch(signal?: AbortSignal): Promise<{ group: boolean } | undefined> {
+    const session = this.retainedSession;
+    if (!session || session.readiness.state !== "available" || !session.batchSupport.switchStateTool) return undefined;
+    try {
+      assertProtocolIntegrity(session.protocolState);
+      const result = await session.client.callTool(
+        { name: "school_switch_state", arguments: {} }, undefined, requestOptions(this.toolTimeoutMs, signal));
+      assertProtocolIntegrity(session.protocolState);
+      const content = (result as { content?: unknown })?.content;
+      const block = Array.isArray(content) && content.length === 1 ? content[0] as { type?: unknown; text?: unknown } : undefined;
+      if ((result as { isError?: unknown })?.isError === true || block?.type !== "text" || typeof block.text !== "string") return undefined;
+      return { group: (JSON.parse(block.text) as { group?: unknown }).group === true };
     } catch {
       return undefined;
     }

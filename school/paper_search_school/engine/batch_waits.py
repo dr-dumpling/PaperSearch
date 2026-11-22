@@ -7,6 +7,7 @@ from __future__ import annotations
 import inspect
 import re
 import time
+from collections.abc import Callable
 from contextlib import ExitStack
 from typing import Any
 from urllib.parse import urlparse
@@ -24,17 +25,21 @@ class UserWaitMixin:
         page: Any,
         result: DownloadResult,
         deadline: float,
+        until: Callable[[], bool] | None = None,
     ) -> bool:
+        """``until``: what the wait is for has arrived behind the verification page
+        (``_wait_for_challenge``)."""
         try:
             signature = inspect.signature(self._wait_for_challenge)
         except (TypeError, ValueError):
             return self._wait_for_challenge(page, result)
-        accepts_deadline = "deadline" in signature.parameters or any(
-            param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()
-        )
-        if accepts_deadline:
-            return self._wait_for_challenge(page, result, deadline=deadline)
-        return self._wait_for_challenge(page, result)
+        any_keyword = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values())
+        options: dict[str, Any] = {}
+        if "deadline" in signature.parameters or any_keyword:
+            options["deadline"] = deadline
+        if until is not None and ("until" in signature.parameters or any_keyword):
+            options["until"] = until
+        return self._wait_for_challenge(page, result, **options)
 
     # A wait off the school's login page (verification, the publisher's pages and
     # choosers, the PDF step): config ``browser_page_wait_timeout``, else this.
@@ -571,8 +576,12 @@ class UserWaitMixin:
         else:
             progress_reporter.update_attention_deadline(key, deadline)
 
-    def _wait_for_challenge(self, page: Any, result: DownloadResult, *, deadline: float | None = None) -> bool:
-        """Wait while a verification page is up, until ``_wait_deadline``."""
+    def _wait_for_challenge(self, page: Any, result: DownloadResult, *, deadline: float | None = None,
+                            until: Callable[[], bool] | None = None) -> bool:
+        """Wait while a verification page is up, until ``_wait_deadline``. ``until``: the
+        wait ends, as passed, once it says what it waits for has arrived though the page
+        is still up (the PDF's answer, captured while ScienceDirect's tab stayed on "Just
+        a moment...": two articles failed with the PDF in hand, 2026-11-21)."""
         interaction = ExitStack()
         activity, activity_owned = self._observe_page_activity(page, result)
         automatic: dict[str, Any] = {}
@@ -587,6 +596,11 @@ class UserWaitMixin:
             checks = 0
             while True:
                 self._check_user_decision(result, page)
+                if until is not None and until():
+                    if waited:
+                        result.state = state_before
+                        self._event(result, "challenge_wait_ended", "what it waited for arrived")
+                    return True
                 # While the interstitial is up, look only at title and URL.
                 shell = self._challenge_shell(page)
                 if not shell:

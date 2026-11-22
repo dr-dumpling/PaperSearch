@@ -723,6 +723,7 @@ class SearchListsNoSchoolTests(unittest.TestCase):
         result = Mock(events=[{"state": "auto_institution_search", "detail": f"{name} @ {self.URL}"}])
         result._search_miss = None
         d._event = lambda result, state, detail: result.events.append({"state": state, "detail": detail})
+        d._dismiss_cookie_banners = Mock(return_value=False)  # a page without one (answered before each typing)
         return d, result
 
     def settle(self, d, result, scored, body=""):
@@ -846,6 +847,32 @@ class SearchListsNoSchoolTests(unittest.TestCase):
         with patch.object(batch_institution.time, "time", return_value=107.0):
             self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["北大学", "Kita University"]))
         box.press_sequentially.assert_not_called()
+
+    def test_an_empty_box_is_typed_in_again_once_before_the_school_is_said_not_listed(self):
+        """Springer Nature's chooser, 2026-11-22: a cookie banner over the page took the keys, the box
+        stayed empty, and the school was said not listed. The name is typed again, once."""
+        d, result = self.downloader(name="Kita University")
+        d._dismiss_cookie_banners = Mock(return_value=False)
+        result._institution_not_listed = False
+        result.events = [{"state": "auto_institution_search", "detail": f"Kita University @ {self.URL}"}]
+        result._search_box, result._search_baseline = (self.URL, "#search"), (self.URL, {"Help"})
+        box = Mock(**{"input_value.return_value": "", "is_visible.return_value": True})
+        page = Mock(**{"locator.return_value.first": box, "evaluate.return_value": True})  # its list closed
+        from paper_search_school.engine import batch_institution
+        result._search_typed_at = 100.0
+        with patch.object(batch_institution.time, "time", return_value=100.0 + d.SEARCH_NOTHING_SEC):
+            self.assertTrue(d._search_again_by_another_name(page, result, self.URL, ["Kita University"]))
+        box.press_sequentially.assert_called_once_with("Kita University", delay=40)
+        d._dismiss_cookie_banners.assert_called_once()
+        self.assertEqual((result.events[-1]["state"], result._institution_not_listed),
+                         ("institution_search_lost", False))
+        # Typed again and still nothing: not listed, as before.
+        result._search_typed_at = 200.0
+        with patch.object(batch_institution.time, "time", return_value=200.0 + d.SEARCH_NOTHING_SEC):
+            self.assertFalse(d._search_again_by_another_name(page, result, self.URL, ["Kita University"]))
+        self.assertEqual((result.events[-1]["state"], result._institution_not_listed),
+                         ("institution_search_found_nothing", True))
+        box.press_sequentially.assert_called_once()
 
     def test_settled_results_without_the_school_try_its_next_name_first(self):
         # Its own name in Latin letters with no accent: the English one is searched first.

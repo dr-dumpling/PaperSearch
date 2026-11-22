@@ -45,8 +45,12 @@ def download_institutional(
     login_wait: int | None = None,
     fulltext: bool | str | None = None,
     school: str | None = None,
+    fresh: bool = False,
 ) -> dict[str, Any]:
     """Download one DOI through institutional access only.
+
+    ``fresh`` (the settings' 测试登录, school_test.py): neither from the cache nor into it: the download itself is
+    what is tested.
 
     ``login_only`` (``login``): the download's own steps up to the article's
     access, then stop: no PDF, nothing cached. ``login_wait``: seconds to wait
@@ -97,6 +101,8 @@ def download_institutional(
             extra["login_wait"] = login_wait
         if school and school.strip():
             extra["school"] = school.strip()
+        if fresh:
+            extra["fresh"] = True
         return _download_impl(doi, output_dir, **extra)
     finally:
         with _INFLIGHT_LOCK:
@@ -107,7 +113,7 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
                    supplements: str | None = None, user_wait: str | None = None,
                    diagnostics_dir: str | None = None, title: str | None = None,
                    login_only: bool = False, login_wait: int | None = None,
-                   fulltext: str | None = None, school: str | None = None) -> dict[str, Any]:
+                   fulltext: str | None = None, school: str | None = None, fresh: bool = False) -> dict[str, Any]:
     config = load_config()
     if school:
         # Another saved school for this download alone, as the user asked; the config's own
@@ -146,7 +152,7 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
         config["diagnostics_dir"] = str(Path(diagnostics_dir).resolve())
     output_path = target_dir / f"{safe_filename(doi)}.pdf"
 
-    cached = None if login_only else cache_get(doi, config)
+    cached = None if login_only or fresh else cache_get(doi, config)
     if cached and cached.get("success"):
         cached_file = Path(str(cached.get("file") or ""))
         if cached_file.exists() and is_pdf_file(cached_file):
@@ -161,12 +167,56 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
             return cached
 
     log.info(f"paper-search-school - {doi}")
+    # Another school than the one the browser last signed in with: that sign-in forgotten first; a test
+    # (``fresh``) always starts signed out, so that the account is what it tries (user, 2026-11-21).
+    from .cold_start import before_sign_in
+    from . import school_switch
+    from .schools import saved as saved_schools
 
-    try:
-        result = try_institutional(doi, output_path, config)
-    except Exception as exc:
-        log.info(f"   [Institutional] route exception: {type(exc).__name__}")
-        return fail(doi, "institutional route raised", error_type="source_exception", action="review_logs")
+    # 没权限时换下一所学校 (school_switch.py): the schools to try in turn, its journal's school of this task first.
+    # One alone: the switch off, a school named for this download, the test of one, a sign-in only.
+    turns = (school_switch.order_for(config, doi) if school_switch.enabled(config) and not school and not fresh
+             and not login_only else [])
+    if turns and not saved_schools.is_current(config, turns[0]):
+        saved_schools.apply(config, turns[0])
+    turn = 0
+    while True:
+        signed = before_sign_in(config, always=fresh)
+        if signed == "cleared":
+            log.info("   [Institutional] the browser's sign-in with another school forgotten")
+        elif signed == "busy" and fresh:
+            return fail(doi, "the download browser is open", error_type="browser_busy", action="close_browser")
+
+        try:
+            result = try_institutional(doi, output_path, config)
+        except Exception as exc:
+            log.info(f"   [Institutional] route exception: {type(exc).__name__}")
+            return fail(doi, "institutional route raised", error_type="source_exception", action="review_logs")
+        if turn + 1 >= len(turns) or not school_switch.no_access(result):
+            break
+        # Signed in, no access: the next school, its sign-in after this one's is forgotten (the batch's browser closed
+        # first to let go of it; one that will not let go ends the turns: the next would try this school's session).
+        turn += 1
+        following = turns[turn]
+        log.info(f"   [Institutional] no access with {school_switch.name(turns[turn - 1])}; next: {school_switch.name(following)}")
+        from . import progress_reporter
+        from .browser.batch_session import active_batch
+
+        progress_reporter.update(stage="switching_school", phase=f"没权限，换{school_switch.name(following)}")
+        batch = active_batch.get()
+        if batch is not None:
+            batch.close()
+        saved_schools.apply(config, following)
+        if before_sign_in(config) == "busy":
+            log.info("   [Institutional] the browser kept the last school's sign-in; no other school tried")
+            turn -= 1
+            break
+    if len(turns) > 1 and result and result.get("success"):
+        school_switch.remember(doi, str(config.get("idp_entity_id") or "").strip())
+        if turn or not saved_schools.is_current(load_config(), turns[turn]):
+            result["school"] = school_switch.name(turns[turn])  # not the default school's: the results say whose
+    elif turns and turn and school_switch.no_access(result):
+        result["schools_tried"] = turn + 1  # the lists say "N 所学校都没有权限"
     # An article that re-checked a blocked journal's site: open again unless blocked again.
     from . import blocked_journals
     blocked_journals.recheck_ended(doi, blocked=bool(result) and result.get("error_type") == "access_blocked")
@@ -193,5 +243,7 @@ def _download_impl(doi: str, output_dir: str | Path | None, *,
     result.setdefault("doi", doi)
     result["file"] = str(file_path)
     result.setdefault("size_kb", round(file_path.stat().st_size / 1024, 1))
+    if fresh:
+        return result
     cache_set(doi, result, config)
     return result

@@ -38,9 +38,16 @@ ASSETS = Path(__file__).with_name("assets")
 PAGE = ASSETS / "capsule.html"
 
 
+#: Where each language's table goes in the page.
+_TABLE_MARKS = {"en": "CAPSULE_EN", "zh-Hant": "CAPSULE_ZH_HANT", "ja": "CAPSULE_JA", "ko": "CAPSULE_KO", "fr": "CAPSULE_FR"}
+
+
 def page_html() -> str:
-    """The page with its English table in it (the window loads it as one string)."""
-    return PAGE.read_text(encoding="utf-8").replace("/*CAPSULE_EN*/null", i18n.TABLE.read_text(encoding="utf-8"))
+    """The page with its tables in it, one per language (the window loads it as one string)."""
+    page = PAGE.read_text(encoding="utf-8")
+    for code, mark in _TABLE_MARKS.items():
+        page = page.replace(f"/*{mark}*/null", i18n.TABLES[code].read_text(encoding="utf-8"))
+    return page
 # PaperSearch's icon (assets/icon.svg) for the Dock.
 ICON = ASSETS / "icon-512.png"
 # The first, collapsed frame; the page then reports the size it needs.
@@ -142,6 +149,10 @@ class Notifier:
         message = str(new[-1].get("message") or "需要你在浏览器里处理")
         message = i18n.translate(message, user_settings.language())
         threading.Thread(target=self._send, args=("PaperSearch", message, state), daemon=True).start()
+
+
+#: How many schools 添加学校 lists at most (a country's name finds all of its).
+FOUND_SHOWN = 50
 
 
 class Api:
@@ -420,7 +431,7 @@ class Api:
     def set_language(self, lang: str) -> dict[str, Any]:
         """The language switch saves at once and the page follows it."""
         if lang not in i18n.LANGUAGES:
-            return {"ok": False, "error": "语言只能是中文或英文"}
+            return {"ok": False, "error": "不支持这种语言"}
         try:
             user_settings.set_language(lang)
         except (OSError, ValueError) as exc:
@@ -606,7 +617,9 @@ class Api:
                                "status": school_login.school_status(entity_id, pro) if pro is not None else ""})
             listed.sort(key=lambda school: not school["current"])
             current = next((school for school in listed if school["current"]), {})
-            return {"ok": True, "pro": pro is not None, "schools": listed,
+            from . import school_switch
+
+            return {"ok": True, "pro": pro is not None, "schools": listed, "switch": school_switch.enabled(config),
                     "counts": school_login.school_counts(pro) if pro is not None else {},
                     "school": current.get("name", ""), "entity": bool(current.get("entity")), "saved": bool(current.get("saved")),
                     "username": current.get("username", ""), "enabled": bool(current.get("enabled")),
@@ -675,6 +688,82 @@ class Api:
             return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
         return self.school_login_state()
 
+    # 测试登录 (user, 2026-11-21; school_test.py): a saved school's account tried on an article, as a download goes.
+    def school_test_article(self, key: str = "") -> dict[str, Any]:
+        """The article this school's test opens: {ok, doi} ("" while the user has set none)."""
+        if not pro_features():
+            return {"ok": False, "error": "这个版本没有自动登录"}
+        from .config import load_config
+        from .school_test import article
+
+        entity_id = self._login_school(load_config(), key)
+        return {"ok": True, **article(entity_id)} if entity_id else {"ok": False, "error": "这所学校还没有添加"}
+
+    def set_school_test_article(self, key: str = "", text: str = "") -> dict[str, Any]:
+        """The article set by its DOI or its page's address (user, 2026-11-21: set by them, none for them)."""
+        if not pro_features():
+            return {"ok": False, "error": "这个版本没有自动登录"}
+        try:
+            from .config import load_config
+            from .school_test import set_article
+
+            entity_id = self._login_school(load_config(), key)
+            return set_article(entity_id, str(text or "")) if entity_id else {"ok": False, "error": "这所学校还没有添加"}
+        except Exception as exc:
+            return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
+
+    def start_school_test(self, key: str = "", doi: str = "") -> dict[str, Any]:
+        """Starts the test of a saved school whose account is saved, on ``doi``; or says why not."""
+        if not pro_features():
+            return {"state": "idle", "error": "这个版本没有自动登录"}
+        try:
+            from . import school_login
+            from .config import load_config
+
+            config = load_config()
+            entity_id = self._login_school(config, key)
+            if not entity_id:
+                return {"state": "idle", "error": "这所学校还没有添加"}
+            if not school_login.saved(config, entity_id):
+                return {"state": "idle", "error": "先保存账号和密码，再测试"}
+            doi = str(doi or "").strip()
+            if not doi:
+                return {"state": "idle", "error": "先填测试文章"}
+            return self._school_test().start(entity_id, doi)
+        except Exception as exc:
+            return {"state": "idle", "error": f"测试没有开始：{type(exc).__name__}"}
+
+    def school_test_state(self) -> dict[str, Any]:
+        return self._school_test().state()
+
+    def stop_school_test(self) -> dict[str, Any]:
+        return self._school_test().stop()
+
+    def forget_school_test(self) -> dict[str, Any]:
+        self._school_test().forget()
+        return self._school_test().state()
+
+    def _school_test(self):
+        from .school_test import SchoolTest
+
+        test = getattr(self, "_test", None)
+        if test is None:
+            test = self._test = SchoolTest()
+        return test
+
+    def set_school_switch(self, on: bool = True) -> dict[str, Any]:
+        """没权限时换下一所学校 on or off (school_switch.py); the page's state after it."""
+        if not pro_features():
+            return {"ok": False, "error": "这个版本没有自动登录"}
+        try:
+            from .config import update_config
+            from .school_switch import SETTING
+
+            update_config(SETTING, "true" if on else "false")
+        except Exception as exc:
+            return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
+        return self.school_login_state()
+
     def clear_school_login(self, key: str = "") -> dict[str, Any]:
         if not pro_features():
             return {"ok": False, "error": "这个版本没有自动登录"}
@@ -710,16 +799,35 @@ class Api:
             saved_schools.remember(config)
             saved = {str(entry.get("idp_entity_id") or "").strip() for entry in saved_schools.saved(config)}
             pro = school_login.module()
+            # 支持哪些学校's own search too (user, 2026-11-21: 台湾 found nothing here, Taiwan's schools there): Pro's
+            # list by any of its names (Wikidata's Chinese one among them), its country, province or state, in
+            # Chinese or English; each school's names in other languages for the page to show.
+            listed = [school for school in school_login.school_list(pro) if school["key"]] if pro is not None else []
+            known = {school["key"]: school for school in listed}
+            wanted = query.lower()
+
+            def said(school: dict[str, Any]) -> str:
+                places = [school["province"], school["area"], school["country"]]
+                return " ".join([school["name"], school["name_en"], *school["names"].values(), *places,
+                                 *(i18n.translate(place, "en") for place in places if place)]).lower()
+
             results = [{"key": school.entity_id, "name": school.name, "name_en": school.name_en,
+                        "names": known.get(school.entity_id, {}).get("names", {}),
                         "federation": school.summary()["federation"], "added": school.entity_id in saved,
                         "status": school_login.school_status(school.entity_id, pro) if pro is not None else ""}
                        for school in schools if school.entity_id]
+            taken = {result["key"] for result in results}
+            results += [{"key": school["key"], "name": school["name"], "name_en": school["name_en"], "names": school["names"],
+                         "federation": school["country"], "added": school["key"] in saved, "status": school["status"]}
+                        for school in listed if school["key"] not in taken and wanted in said(school)]
         except Exception as exc:
             return {"ok": False, "error": f"查找失败：{type(exc).__name__}"}
-        note = ("" if results else "这所学校所在的学术联盟还不支持" if found.unsupported
+        left = max(0, len(results) - FOUND_SHOWN)
+        note = (f"还有 {left} 所没列出，输入更完整的名称可以缩小范围" if left
+                else "" if results else "这所学校所在的学术联盟还不支持" if found.unsupported
                 else "学校名单暂时读不到，请稍后再试" if found.unavailable
                 else "没有找到这所学校：换成学校的正式中文名、英文名或网址试试")
-        return {"ok": True, "results": results, "note": note}
+        return {"ok": True, "results": results[:FOUND_SHOWN], "note": note}
 
     def add_school(self, key: str = "") -> dict[str, Any]:
         """A school found by 添加学校 kept in the saved list, the default one unchanged (none yet: it)."""
@@ -804,27 +912,12 @@ class Api:
         except Exception as exc:
             return {"ok": False, "error": f"读取失败：{type(exc).__name__}"}
 
-    def install_pro(self) -> dict[str, Any]:
-        """The Markdown page's 安装: starts it, or says how it goes (pro_install_state)."""
-        return self._pro_installer().start()
+    def install_pro(self, code: str | None = None) -> dict[str, Any]:
+        """Pro's 安装, or 激活并安装 with the code typed: starts it, or says how it goes (pro_install_state)."""
+        return self._pro_installer().start(None if code is None else str(code))
 
     def pro_install_state(self) -> dict[str, Any]:
         return self._pro_installer().state()
-
-    def check_pro(self) -> dict[str, Any]:
-        """The Markdown page's 检查更新: starts it, or says how it goes (pro_check_state)."""
-        return self._pro_checker().start()
-
-    def pro_check_state(self) -> dict[str, Any]:
-        return self._pro_checker().state()
-
-    def _pro_checker(self):
-        from .pro_status import ProCheck
-
-        checker = getattr(self, "_pro_check", None)
-        if checker is None:
-            checker = self._pro_check = ProCheck()
-        return checker
 
     def _pro_installer(self):
         from .pro_status import ProInstall
@@ -833,6 +926,69 @@ class Api:
         if installer is None:
             installer = self._pro_install = ProInstall()
         return installer
+
+    # One version and one update (user, 2026-11-21; updates.py): the about page, the home page's foot, the card's dot.
+    def versions(self) -> dict[str, Any]:
+        """The version this window runs and the one installed now (an update elsewhere: they differ)."""
+        from . import updates
+
+        return {"running": updates.RUNNING, "installed": updates.installed_version()}
+
+    def check_versions(self, again: bool = False) -> dict[str, Any]:
+        return self._version_check().start(bool(again))
+
+    def versions_state(self) -> dict[str, Any]:
+        return self._version_check().state()
+
+    def update_all(self) -> dict[str, Any]:
+        """更新: what the last check found behind (PaperSearch, then its extension and Skills; Pro)."""
+        checked = self._version_check().state()
+        if checked.get("state") != "done":
+            return {"state": "idle", "error": "先检查更新"}
+        return self._updater().start(bool(checked.get("update")), bool(checked.get("pro_update")),
+                                     str(checked.get("latest") if checked.get("update") else ""))
+
+    def update_state(self) -> dict[str, Any]:
+        return self._updater().state()
+
+    def reopen_window(self, page: str = "about") -> dict[str, Any]:
+        """The settings opened again with the PaperSearch installed now, once this window has closed."""
+        from . import updates
+
+        page = page if page in ("home", "about") else "about"
+        if not updates.reopen(page):
+            return {"ok": False, "message": "找不到 paper-search 命令，请关掉窗口后重新打开设置"}
+        threading.Timer(0.3, self.request_close).start()
+        return {"ok": True}
+
+    def open_release_notes(self) -> dict[str, Any]:
+        """这次更新了什么: the release notes where the check found the new version."""
+        import webbrowser
+
+        url = str(self._version_check().state().get("notes") or "")
+        if not url.startswith("https://"):
+            return {"ok": False, "message": "没有更新说明"}
+        try:
+            opened = webbrowser.open(url)
+        except Exception as exc:
+            return {"ok": False, "message": f"打开失败：{type(exc).__name__}"}
+        return {"ok": True} if opened else {"ok": False, "message": "打开失败：没有找到默认浏览器"}
+
+    def _version_check(self):
+        from .updates import VersionCheck
+
+        check = getattr(self, "_versions", None)
+        if check is None:
+            check = self._versions = VersionCheck()
+        return check
+
+    def _updater(self):
+        from .updates import UpdateAll
+
+        updater = getattr(self, "_update_all", None)
+        if updater is None:
+            updater = self._update_all = UpdateAll()
+        return updater
 
     def open_issue(self) -> dict[str, Any]:
         """GitHub's new-issue page for the Markdown, its title begun."""

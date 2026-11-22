@@ -31,7 +31,7 @@ class AsyncPdfChallengeBudgetTests(unittest.TestCase):
         challenge = iter([True])
         seen = {}
 
-        def verification(page_, result_, deadline):
+        def verification(page_, result_, deadline, until=None):
             seen["budget"] = deadline - clock.now
             clock.sleep(150)  # the user needs two and a half minutes
             return True

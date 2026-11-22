@@ -261,6 +261,8 @@ export type SchoolInvocationOutcome = {
     identifier: string;
     path: string;
     source?: string;
+    /** Got through a saved school other than the default one (没权限时换下一所学校): its name, for the lists. */
+    school?: string;
     trace?: SchoolTrace;
     supplements?: SchoolSupplement[];
     fulltextPage?: SchoolFulltextPage;
@@ -275,6 +277,8 @@ export type SchoolInvocationOutcome = {
     retryAfterSec?: number;
     /** rate_limited: the publisher whose hour it is, as the backend counts it (hourlyWait asks for it). */
     hourlyPublisher?: string;
+    /** No access with any of the saved schools tried, this many (没权限时换下一所学校). */
+    schoolsTried?: number;
     trace?: SchoolTrace;
     supplements?: SchoolSupplement[];
     fulltextPage?: SchoolFulltextPage;
@@ -324,6 +328,14 @@ export interface SchoolBackend {
     hourlyWait?(publisher: string, signal?: AbortSignal): Promise<{
         waitSec: number;
         limit: number;
+    } | undefined>;
+    /**
+     * Optional: whether a batch takes one journal's papers one after another (PaperSearch Pro's 没权限时换下一所学校: the
+     * switch on and more than one school taking part, user 2026-11-21). Only on a backend the batch already has;
+     * undefined when there is none or it cannot say. Never throws.
+     */
+    schoolSwitch?(signal?: AbortSignal): Promise<{
+        group: boolean;
     } | undefined>;
 }
 export interface SchoolMcpClientOptions {

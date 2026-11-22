@@ -1,8 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
+import { updateSourceOf } from "../../src/management/updates/selfUpdate.js";
+
+// The registry's check: an install from npm. The private install (its package.json names its repository) checks
+// GitHub instead, tested in tests/services/SelfUpdate.test.ts.
+const fromNpm = updateSourceOf(JSON.parse(readFileSync("package.json", "utf8"))).kind === "npm";
 
 describe("CLI update notices", () => {
   let root: string;
@@ -56,7 +61,7 @@ describe("CLI update notices", () => {
     expect(cli(["tools"], { PAPER_SEARCH_UPDATE_NOTIFY: undefined }).stderr).not.toContain("PaperSearch update available:");
   });
 
-  it("checks explicitly even with automatic checks disabled and reports bounded failure", () => {
+  (fromNpm ? it : it.skip)("checks explicitly even with automatic checks disabled and reports bounded failure", () => {
     writeFileSync(guard, `globalThis.fetch = async () => new Response(JSON.stringify({
       name: "papersearch", version: "99.0.0", dist: {tarball: "https://registry.npmjs.org/papersearch/-/papersearch-99.0.0.tgz"}
     }));`);

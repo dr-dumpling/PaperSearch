@@ -7,6 +7,7 @@ const BATCH_PROGRESS_TOOL = "school_batch_progress";
 const BATCH_PAPERS_TOOL = "school_batch_papers";
 const KEEP_SESSION_TOOL = "school_keep_session";
 const HOURLY_WAIT_TOOL = "school_hourly_wait";
+const SWITCH_STATE_TOOL = "school_switch_state";
 export const CLOSE_BATCH_BROWSER = "school_close_batch_browser";
 const COMPATIBILITY_BATCH = {
     id: "paper-search-compatibility",
@@ -57,6 +58,7 @@ export function selectSchoolBatchSupport(tools, strategy) {
     const papers = tools.filter((tool) => tool.name === BATCH_PAPERS_TOOL);
     const keep = tools.filter((tool) => tool.name === KEEP_SESSION_TOOL);
     const hourly = tools.filter((tool) => tool.name === HOURLY_WAIT_TOOL);
+    const switchState = tools.filter((tool) => tool.name === SWITCH_STATE_TOOL);
     const keepBrowser = !!download && close.length === 1 && acceptsDeclaredArguments(close[0].inputSchema, {}) &&
         acceptsDeclaredArguments(download.inputSchema, {
             ...createSchoolDownloadArguments(COMPATIBILITY_DOI, "output", strategy, COMPATIBILITY_BATCH),
@@ -88,6 +90,7 @@ export function selectSchoolBatchSupport(tools, strategy) {
         ...(keep.length === 1 && acceptsDeclaredArguments(keep[0].inputSchema, {}) ? { keepSessionTool: true } : {}),
         ...(hourly.length === 1 && acceptsDeclaredArguments(hourly[0].inputSchema, { publisher: "Elsevier" })
             ? { hourlyWaitTool: true } : {}),
+        ...(switchState.length === 1 && acceptsDeclaredArguments(switchState[0].inputSchema, {}) ? { switchStateTool: true } : {}),
         progressTool: progress.length === 1 &&
             acceptsDeclaredArguments(progress[0].inputSchema, {
                 batch_id: COMPATIBILITY_BATCH.id,

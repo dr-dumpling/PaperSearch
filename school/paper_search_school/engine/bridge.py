@@ -42,6 +42,9 @@ _FAILURE_KINDS = {
     "browser_unresponsive": ("browser_unresponsive", "review_browser"),
     "browser_operation_timeout": ("browser_operation_timeout", "review_browser"),
     "publisher_access_blocked": ("access_blocked", "review_access"),
+    # The site said its downloads are used up for now (batch_capture ``_note_download_limit``):
+    # like a block, the journal's later articles wait and one re-checks now and then.
+    "publisher_download_limit": ("access_blocked", "review_access"),
     "publisher_unreachable": ("publisher_unreachable", "review_publisher_error"),
     "sso_required": ("paywall", "login_required"),
     "institution_pdf_entitlement_missing": ("paywall", "review_entitlement"),
@@ -124,7 +127,15 @@ def _failure_reason_code(result: Any) -> str:
         reason_code = "login_timeout" if wait_page in ("school_login", "school_choice") else "login_not_reached"
     elif reason_code == "sso_required" and getattr(result, "_user_wait_expired", False):
         reason_code = "login_timeout"  # the login waited on the user until its time was up
+    if getattr(result, "_download_limit", "") and reason_code in _PDF_NOT_ARRIVED:
+        # The site had said its downloads were used up: that, not the wait, is why.
+        reason_code = "publisher_download_limit"
     return reason_code
+
+
+# Failures that only say the PDF did not come (a site's download-limit notice says why).
+_PDF_NOT_ARRIVED = frozenset({"challenge_or_viewer_timeout", "pdf_not_captured", "download_failed",
+                              "request_failed", "download_timeout", "browser_operation_timeout", ""})
 
 
 def try_institutional(

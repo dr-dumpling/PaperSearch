@@ -4,16 +4,18 @@
  * SHA-256 (pro/build.mjs). They come from a folder (`--from <folder>`), a web address, or a GitHub
  * release (`github:<owner>/<repo>`, its newest `pro-v*` release; a private repository is read with
  * this computer's GitHub login, `gh auth token`); the file is checked against its SHA-256, and the
- * install replaces the old one only once whole.
+ * install replaces the old one only once whole. Once there is an activation server, only an activated
+ * computer installs it (activate.ts).
  * The settings window's 安装 runs `paper-search pro install --progress`, reading its progress lines.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import axios from "axios";
 import { USER_AGENT } from "../../config/constants.js";
 import { markdownProEntry, paperSearchDataHome } from "../../infrastructure/school/index.js";
+import { installAllowed } from "./activate.js";
 /**
  * Where Pro's releases are published. For now the private repository's releases, which only a
  * computer signed in to its GitHub account can download (user, 2026-11-18: testing the 安装 with a
@@ -75,12 +77,15 @@ function webSource(address, timeoutMs) {
     };
 }
 /** This computer's GitHub login: GH_TOKEN or GITHUB_TOKEN, else what `gh auth token` gives; never shown or kept. */
-function githubToken(env) {
+// The settings window may not have the shell's PATH: gh's usual places too.
+const GH_PLACES = ["gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh", "C:\\Program Files\\GitHub CLI\\gh.exe"];
+export const GITHUB_LOGIN_REQUIRED = "请先在终端运行 gh auth login 登录 GitHub";
+export const GITHUB_LOGIN_UNREADABLE = "读不到 GitHub 登录（远程连接读不到），请在这台电脑上直接操作";
+export function githubToken(env) {
     const given = (env.GH_TOKEN || env.GITHUB_TOKEN || "").trim();
     if (given)
         return given;
-    // The settings window may not have the shell's PATH: gh's usual places too.
-    for (const gh of ["gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh", "C:\\Program Files\\GitHub CLI\\gh.exe"]) {
+    for (const gh of GH_PLACES) {
         try {
             const token = execFileSync(gh, ["auth", "token"], { encoding: "utf8", timeout: 10_000, windowsHide: true,
                 stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -93,7 +98,24 @@ function githubToken(env) {
     }
     return "";
 }
-function githubSource(owner, repo, token, timeoutMs) {
+/** gh's account list (`gh auth status`, on stdout or stderr as gh's version has it); "" without gh. */
+function ghAuthStatus() {
+    for (const gh of GH_PLACES) {
+        const done = spawnSync(gh, ["auth", "status"], { encoding: "utf8", timeout: 10_000, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+        if (!done.error)
+            return `${done.stdout ?? ""}\n${done.stderr ?? ""}`;
+    }
+    return "";
+}
+/**
+ * Why no GitHub login could be used: gh names an account whose login it could not read here (macOS over SSH: the
+ * keychain is shut to a remote connection; user, 2026-11-21, logged in and asked to log in again), or there is none.
+ */
+export function githubLoginMissing(status = ghAuthStatus) {
+    return /\baccount \S/.test(status()) ? { unreadable: true, message: GITHUB_LOGIN_UNREADABLE }
+        : { unreadable: false, message: GITHUB_LOGIN_REQUIRED };
+}
+function githubSource(owner, repo, token, timeoutMs, ghStatus) {
     const headers = { "User-Agent": USER_AGENT, "X-GitHub-Api-Version": "2022-11-28",
         ...(token ? { Authorization: `Bearer ${token}` } : {}) };
     let assets;
@@ -109,8 +131,10 @@ function githubSource(owner, repo, token, timeoutMs) {
         catch (error) {
             // A private repository answers 404 to whoever is not signed in to an account that may read it.
             if (axios.isAxiosError(error) && [401, 403, 404].includes(error.response?.status ?? 0)) {
-                throw token ? new ProInstallError("pro_release_not_found", "GitHub 上没找到 Pro 安装包")
-                    : new ProInstallError("pro_github_login_required", "请先在终端运行 gh auth login 登录 GitHub");
+                if (token)
+                    throw new ProInstallError("pro_release_not_found", "GitHub 上没找到 Pro 安装包");
+                const missing = githubLoginMissing(ghStatus);
+                throw new ProInstallError(missing.unreadable ? "pro_github_login_unreadable" : "pro_github_login_required", missing.message);
             }
             throw error;
         }
@@ -142,13 +166,13 @@ function githubSource(owner, repo, token, timeoutMs) {
         },
     };
 }
-function sourceOf(from, env, timeoutMs, token) {
+function sourceOf(from, env, timeoutMs, token, ghStatus) {
     const given = (from ?? env.PAPER_SEARCH_PRO_RELEASE_URL ?? PRO_RELEASE_URL).trim();
     if (!given)
         return undefined;
     const github = /^github:([\w.-]+)\/([\w.-]+)$/i.exec(given);
     if (github)
-        return githubSource(github[1], github[2], token ?? githubToken(env), timeoutMs);
+        return githubSource(github[1], github[2], token ?? githubToken(env), timeoutMs, ghStatus);
     return /^https?:\/\//i.test(given) ? webSource(given, timeoutMs) : folderSource(given);
 }
 /** "0.1.10" is newer than "0.1.9"; a pre-release ("0.2.0-beta.1") is older than its release. */
@@ -170,7 +194,7 @@ export function newerVersion(candidate, current) {
 /** The newest Pro released, beside the one installed: the settings window's 检查更新 (user, 2026-11-19). */
 export async function checkPro(options = {}) {
     const env = options.env ?? process.env;
-    const source = sourceOf(options.from, env, options.timeoutMs ?? 30_000, options.githubToken);
+    const source = sourceOf(options.from, env, options.timeoutMs ?? 30_000, options.githubToken, options.ghStatus);
     if (!source)
         return { ok: false, code: "pro_release_unavailable", message: "PaperSearch Pro 的下载地址还没开放" };
     try {
@@ -191,7 +215,10 @@ export async function checkPro(options = {}) {
 /** Installs Pro into PaperSearch's data, replacing the one there only once the new one is whole and checked. */
 export async function installPro(options = {}) {
     const env = options.env ?? process.env;
-    const source = sourceOf(options.from, env, options.timeoutMs ?? 60_000, options.githubToken);
+    // Once there is an activation server (activate.ts), only an activated computer installs Pro.
+    if (!installAllowed(env))
+        return { ok: false, code: "pro_activation_required", message: "请先激活 PaperSearch Pro" };
+    const source = sourceOf(options.from, env, options.timeoutMs ?? 60_000, options.githubToken, options.ghStatus);
     if (!source)
         return { ok: false, code: "pro_release_unavailable", message: "PaperSearch Pro 的下载地址还没开放" };
     const target = proInstallDir(env);

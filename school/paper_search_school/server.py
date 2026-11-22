@@ -132,6 +132,9 @@ def school_download(
         if not result.get("success"):
             if result.get("error_type") == "access_blocked":
                 outcome["failure_phase"] = "网站已阻止当前访问，未取得 PDF"
+            if isinstance(result.get("schools_tried"), int):
+                # 没权限时换下一所学校: every saved school tried, none with access (user, 2026-11-21).
+                outcome["failure_phase"] = f"{result['schools_tried']} 所学校都没有权限"
             if result.get("error_type") == "rate_limited":
                 until = time.time() + int(result.get("retry_after_sec") or 0)
                 outcome["paused"] = outcome["failure_phase"] = progress_reporter.hourly_phase(
@@ -237,6 +240,19 @@ async def school_keep_session() -> str:
     that did not save its PDF. Answers {"kept": true} or {"kept": false, "reason": ...}."""
     result = await asyncio.get_running_loop().run_in_executor(_batch_worker, _batch_browser.keep_session)
     return json.dumps(result)
+
+
+@mcp_app.tool()
+def school_switch_state() -> str:
+    """Whether a batch takes one journal's papers one after another (没权限时换下一所学校, school_switch.py): the switch
+    on and more than one school taking part, so that a school switched to for a journal is not switched away from and
+    back. Opens no browser. Answers {"on": bool, "schools": n, "group": bool}."""
+    from . import school_switch
+
+    config = load_config()
+    count = len(school_switch.schools(config))
+    on = school_switch.enabled(config)
+    return json.dumps({"on": on, "schools": count, "group": on and count > 1})
 
 
 @mcp_app.tool()

@@ -56,11 +56,14 @@ export function normalizeDownloadResult(
       throw new SchoolToolResultError("invalid_download_result");
     }
     const source = safeDiagnosticLabel(payload.source);
+    // The saved school it was got through, when not the default one (school_switch.py): a name to show, no more.
+    const school = typeof payload.school === "string" && payload.school.trim().length <= 120 ? payload.school.trim() : "";
     return {
       kind: "success",
       identifier,
       path: payload.file,
       ...(source ? { source } : {}),
+      ...(school ? { school } : {}),
       ...(trace ? { trace } : {}),
       ...(supplements ? { supplements } : {}),
       ...(fulltextPage ? { fulltextPage } : {}),
@@ -85,10 +88,12 @@ export function normalizeDownloadResult(
       safeReasonCode(payload.action) ||
       "download_failed";
   const retryAfter = payload.retry_after_sec;
+  const tried = payload.schools_tried;
   return {
     kind: "attempt_error",
     identifier,
     code,
+    ...(typeof tried === "number" && Number.isInteger(tried) && tried >= 2 && tried <= 20 ? { schoolsTried: tried } : {}),
     message: `School backend did not return a usable PDF (${code}).`,
     ...(code === "rate_limited" && typeof retryAfter === "number" && Number.isFinite(retryAfter) && retryAfter > 0
       ? { retryAfterSec: Math.min(3600, Math.ceil(retryAfter)),

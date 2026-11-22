@@ -168,6 +168,7 @@ class AnnualReviewsAdapter(PublisherAdapter):
         try:
             input_box = page.locator(_OPENATHENS_BOX).first
             if input_box.is_visible(timeout=1_500):
+                d._clear_before_typing(page, result)
                 input_box.fill(d._typed_school_name())
                 page.locator("text=Find Your Organization").last.click(timeout=5_000, no_wait_after=True)
                 d._event(result, "institution_search", f"OpenAthens: {d.institution_query}")

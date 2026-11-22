@@ -16,11 +16,12 @@ class ProStatusTests(unittest.TestCase):
                          Path("/data").resolve() / "paper-search-cli" / "pro" / "index.js")
 
     def test_installed_with_its_version_or_not(self):
-        nothing_yet = {"sites": [], "converted": 0, "complete": 0, "access": {"mode": "free", "until": ""}}
+        none = {"state": "none", "tail": "", "until": ""}
+        nothing_yet = {"sites": [], "converted": 0, "complete": 0, "access": {"mode": "free", "until": ""}, "activation": none}
         with tempfile.TemporaryDirectory() as tmp:
             entry = Path(tmp) / "pro" / "index.js"
             env = {"PAPER_SEARCH_PRO_PATH": str(entry), "XDG_DATA_HOME": tmp}
-            self.assertEqual(pro_status.status(env), {"installed": False, "version": ""})
+            self.assertEqual(pro_status.status(env), {"installed": False, "version": "", "activation": none})
             entry.parent.mkdir()
             entry.write_text("export {};", encoding="utf-8")
             self.assertEqual(pro_status.status(env), {"installed": True, "version": "", **nothing_yet})
@@ -41,34 +42,30 @@ class ProStatusTests(unittest.TestCase):
             (folder / "access.json").write_text(json.dumps({"mode": "free", "until": until, "firstSeen": 1}), encoding="utf-8")
             self.assertEqual(pro_status.status(env), {"installed": True, "version": "0.1.1", "sites": ["Science", "NEJM"],
                                                       "converted": 12, "complete": 12,
-                                                      "access": {"mode": "free", "until": "2027-03-01"}})
+                                                      "access": {"mode": "free", "until": "2027-03-01"},
+                                                      "activation": {"state": "none", "tail": "", "until": ""}})
             (folder / "stats.json").write_text("{broken", encoding="utf-8")
             (folder / "access.json").write_text(json.dumps({"mode": "key"}), encoding="utf-8")
             status = pro_status.status(env)
             self.assertEqual((status["converted"], status["complete"], status["access"]), (0, 0, {"mode": "key", "until": ""}))
 
-    def test_check_for_updates_says_the_newest_or_why_not(self):
-        import time
-        answers = iter(['{"ok":true,"installed":true,"version":"0.1.1","latest":"0.1.2","update":true}\n',
-                        '{"ok":false,"code":"pro_github_login_required","message":"请先在终端运行 gh auth login 登录 GitHub"}\n',
-                        "not json"])
-        calls = []
-        checker = pro_status.ProCheck(command_of=lambda: ["paper-search"],
-                                      run=lambda argv: (calls.append(argv), next(answers))[1])
-
-        def checked():
-            self.assertEqual(checker.start(), {"state": "running"})
-            for _ in range(200):
-                if checker.state()["state"] != "running":
-                    return checker.state()
-                time.sleep(0.01)
-            self.fail("the check did not end")
-
-        self.assertEqual(checked(), {"state": "done", "latest": "0.1.2", "update": True})
-        self.assertEqual(calls[0], ["paper-search", "pro", "check"])
-        self.assertEqual(checked(), {"state": "failed", "message": "请先在终端运行 gh auth login 登录 GitHub"})
-        self.assertEqual(checked(), {"state": "failed", "message": "检查更新出错"})
-        self.assertEqual(pro_status.ProCheck(command_of=lambda: None).start(), {"state": "running"})
+    def test_whether_this_computer_is_activated_and_until_when(self):
+        # Pro's page (user, 2026-11-21): from pro/activation.json, which `paper-search pro activate` keeps;
+        # the code's last four characters only, whether Pro is installed or not.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"XDG_DATA_HOME": tmp}
+            folder = pro_status.data_home(env) / "pro"
+            folder.mkdir(parents=True)
+            record = folder / "activation.json"
+            record.write_text(json.dumps({"code": "PSPRO-7KQ2-M4XD", "until": "2099-03-01"}), encoding="utf-8")
+            self.assertEqual(pro_status.status(env), {"installed": False, "version": "",
+                                                      "activation": {"state": "active", "tail": "M4XD", "until": "2099-03-01"}})
+            record.write_text(json.dumps({"code": "PSPRO-7KQ2-M4XD", "until": "2001-01-31"}), encoding="utf-8")
+            self.assertEqual(pro_status.activation(env), {"state": "expired", "tail": "M4XD", "until": "2001-01-31"})
+            record.write_text(json.dumps({"code": "PSPRO-7KQ2-M4XD", "until": "soon"}), encoding="utf-8")
+            self.assertEqual(pro_status.activation(env), {"state": "active", "tail": "M4XD", "until": ""})
+            record.write_text("{broken", encoding="utf-8")
+            self.assertEqual(pro_status.activation(env), {"state": "none", "tail": "", "until": ""})
 
     def test_the_issue_page_is_the_public_trackers_with_its_title_begun(self):
         self.assertTrue(pro_status.ISSUE_URL.startswith("https://github.com/dr-dumpling/PaperSearch/issues/new?title="))
@@ -85,8 +82,9 @@ class ProInstallTests(unittest.TestCase):
         def wait(self, timeout=None):
             return 0
 
-    def install(self, lines, command=("paper-search",)):
+    def install(self, lines, command=("paper-search",), code=None, activated=None):
         import time
+        from types import SimpleNamespace
 
         calls = []
 
@@ -94,8 +92,12 @@ class ProInstallTests(unittest.TestCase):
             calls.append((argv, kwargs))
             return self.FakeProcess(lines)
 
-        installer = pro_status.ProInstall(command_of=lambda: list(command) if command else None, popen=popen)
-        self.assertEqual(installer.start()["state"], "running")
+        def run(argv, **kwargs):
+            calls.append((argv, kwargs))
+            return SimpleNamespace(stdout=activated or "")
+
+        installer = pro_status.ProInstall(command_of=lambda: list(command) if command else None, popen=popen, run=run)
+        self.assertEqual(installer.start(code)["state"], "running")
         deadline = time.time() + 5
         while installer.state()["state"] == "running" and time.time() < deadline:
             time.sleep(0.01)
@@ -113,9 +115,27 @@ class ProInstallTests(unittest.TestCase):
     def test_a_failed_install_says_why_in_the_commands_words(self):
         state, _ = self.install(['{"event":"progress","done":10,"total":100}\n',
                              '{"ok":false,"code":"pro_install_failed","message":"网络连接中断","exitCode":1}\n'])
-        self.assertEqual(state, {"state": "failed", "message": "网络连接中断"})
+        self.assertEqual(state, {"state": "failed", "step": "install", "message": "网络连接中断"})
         state, _ = self.install([], command=None)
-        self.assertEqual(state, {"state": "failed", "message": "找不到 paper-search 命令"})
+        self.assertEqual(state, {"state": "failed", "step": "install", "message": "找不到 paper-search 命令"})
+
+    def test_activate_and_install_hands_the_code_on_standard_input_then_installs(self):
+        # 激活并安装 (user, 2026-11-21): `pro activate` first, the code not on the command line.
+        installed = ['{"ok":true,"version":"0.3.0"}\n']
+        state, calls = self.install(installed, code="PSPRO-7KQ2-M4XD",
+                                    activated='{"ok":true,"state":"active","tail":"M4XD","until":""}\n')
+        self.assertEqual(state, {"state": "done", "version": "0.3.0"})
+        (argv, kwargs), (then, _) = calls
+        self.assertEqual(argv, ["paper-search", "pro", "activate"])
+        self.assertEqual(kwargs["input"], "PSPRO-7KQ2-M4XD")
+        self.assertEqual(then, ["paper-search", "pro", "install", "--progress"])
+        # Refused, or no server yet: why, and no install.
+        state, calls = self.install(installed, code="PSPRO-7KQ2-M4XD",
+                                    activated='{"ok":false,"code":"pro_activation_unavailable","message":"激活服务还没开放","exitCode":1}\n')
+        self.assertEqual(state, {"state": "failed", "step": "activate", "message": "激活服务还没开放"})
+        self.assertEqual(len(calls), 1)
+        state, _ = self.install(installed, code="PSPRO-7KQ2-M4XD", activated="not json")
+        self.assertEqual(state, {"state": "failed", "step": "activate", "message": "激活出错"})
 
     def test_a_second_click_while_it_runs_starts_nothing(self):
         import threading

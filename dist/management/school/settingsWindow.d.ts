@@ -7,6 +7,7 @@ export declare function settingsWindowEnv(paths: {
     configFile: string;
     cli: string;
     proEntry?: string;
+    version?: string;
 }, env?: Record<string, string | undefined>): Record<string, string>;
 export declare const SETTINGS_WINDOW_UNAVAILABLE: string;
 export interface SettingsWindowOptions {

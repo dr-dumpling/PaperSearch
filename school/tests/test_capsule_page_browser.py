@@ -100,6 +100,52 @@ class CapsulePageTests(unittest.TestCase):
             finally:
                 browser.close()
 
+    def test_the_running_card_keeps_its_height_whatever_the_paper(self):
+        """The running card is one height whatever the paper (user, 2026-11-21: it shook up and down as papers went by,
+        many times; each change of height resizes the window, whose edge moves): titles long and short, with symbols or
+        other scripts (drawn in fallback fonts, a line a pixel or two taller on Windows), a notice, a long journal, the
+        step's bar or the lane's line or neither, the counts going on. A routine check:
+        run on the Mac and on Windows; content new to the card goes into the cases."""
+        from patchright.sync_api import sync_playwright
+        long = ('Blockchain and PUF-based secure key establishment protocol for cross-domain authentication in the '
+                'industrial internet of things')
+        cases = [
+            {'title': long},
+            {'title': 'Short title'},
+            {'title': 'β-Catenin–dependent Wnt signalling in the 5′-UTR: ∑ ≥ 0.5 μm, “quoted” — αβγ ≤ ∞'},
+            {'title': '基于区块链与物理不可克隆函数的跨域密钥协商协议：设计、实现与评估'},
+            {'title': '한국어 제목과 日本語のタイトル — Ελληνικά ✓ 🧬 Ünïcødé'},
+            {'title': '', 'current': '10.1016/j.jare.2025.09.053'},
+            {'title': long, 'step': None, 'line': '开放下载：已查 870/1551 篇，找到 869 篇'},
+            {'title': long, 'step': None, 'line': '这篇文章只在 ScienceDirect 平台提供，暂不支持，当前路径已停止'},
+            {'title': long, 'step': None, 'line': ''},
+            {'title': long, 'notice': '已在浏览器打开这篇文章'},
+            {'title': long, 'where': 'The Journal of Clinical Endocrinology & Metabolism · Oxford University Press'},
+            {'title': long, 'browser': False},
+            {'title': long, 'done': 870, 'ok': 869, 'bad': 1, 'left': 681},
+        ]
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'darwin')
+            try:
+                page.evaluate("""() => { window.layouts = 0; const begin = pywebview.api.begin_layout;
+                    pywebview.api.begin_layout = (...args) => { layouts++; return begin(...args); };
+                    window.baseState = {...testState}; open = true; tick(); }""")
+                page.wait_for_selector('.paper')
+                page.wait_for_function("!root.classList.contains('animating')")
+                heights = []
+                for case in cases:
+                    page.evaluate("async c => { testState = {...baseState, ...c}; await tick(); }", case)
+                    page.wait_for_function("!root.classList.contains('animating')")
+                    heights.append(page.evaluate("root.querySelector('.card-body').getBoundingClientRect().height"))
+                self.assertEqual(heights, [heights[0]] * len(cases), list(zip(heights, cases)))
+                layouts = page.evaluate('layouts')
+                # Gone through again: the window not laid out once more.
+                for case in cases:
+                    page.evaluate("async c => { testState = {...baseState, ...c}; await tick(); }", case)
+                self.assertEqual(page.evaluate('layouts'), layouts)
+            finally:
+                browser.close()
+
     def test_expanded_attention_fits_and_keeps_browser_action(self):
         from patchright.sync_api import sync_playwright
         with sync_playwright() as p:
@@ -247,6 +293,55 @@ class CapsulePageTests(unittest.TestCase):
                 second.wait_for_function('lastCls === "pill"')
                 second.wait_for_timeout(400)
                 self.assertFalse(second.evaluate('open || pinned'))
+            finally:
+                browser.close()
+
+    def test_the_card_folds_to_the_capsule_before_it_minimizes(self):
+        """User, 2026-11-21 (Mac): minimized from the card and brought back from the Dock, the card showed a moment
+        before the capsule; the window had gone into the Dock while it still shrank. And 最小化 was hard to hit: the
+        header's buttons are 32 px targets, their icons where they were."""
+        from patchright.sync_api import sync_playwright
+        from paper_search_school.progress_view import view
+        import time
+        state = view(dict(status='running', current='10.1000/example', title='Test article', publisher='Test', total=3,
+                          done=0, success=0, failed=0, stage='fetching_pdf', started_at=time.time()), time.time())
+        # A native resize takes a while, as on a busy Mac.
+        script = '''state => {
+          window.calls=[];
+          window.pywebview={api:{platform:async()=> 'darwin', state:async()=>state,
+            hover_state:async()=>({x:0,y:0,inside:false}),
+            begin_layout:async(expanded,w,h)=>{calls.push(['begin', expanded]); return {vertical:'down',horizontal:'right',width:w,height:h,
+              from_width:parseFloat(root.style.width)+20, from_height:parseFloat(root.style.height)+20}},
+            finish_layout:async()=>{calls.push(['finish'])},
+            resize:async(w,h)=>{await new Promise((r)=>setTimeout(r, 15)); calls.push(['resize', w, h])},
+            minimize:async()=>{calls.push(['minimize', lastCls, Math.round(root.getBoundingClientRect().width)])}}};
+          window.dispatchEvent(new Event('pywebviewready'));
+        }'''
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel='chrome', headless=True)
+            try:
+                page = page_world(browser.new_page(viewport={'width': 800, 'height': 800}))
+                page.set_content(PAGE.read_text(encoding='utf-8'))
+                page.evaluate(script, state)
+                page.wait_for_function('lastCls === "pill"')
+                page.evaluate("() => { open = true; render(true); }")
+                page.wait_for_function("lastCls === 'card' && !root.classList.contains('animating')")
+                boxes = [page.locator(f'.tools [data-act={name}]').bounding_box() for name in ('pin', 'settings', 'minimize')]
+                for box in boxes:
+                    self.assertGreaterEqual(min(box['width'], box['height']), 32)
+                icons = [page.locator(f'.tools [data-act={name}] svg').bounding_box() for name in ('pin', 'settings', 'minimize')]
+                self.assertEqual([round(b['x'] - a['x']) for a, b in zip(icons, icons[1:])], [24, 24])
+                page.evaluate("() => { calls.length = 0; }")
+                page.locator('[data-act=minimize]').click()
+                page.wait_for_function("calls.some((c) => c[0] === 'minimize')")
+                calls = page.evaluate('calls')
+                at = next(i for i, c in enumerate(calls) if c[0] == 'minimize')
+                # Folded first: the collapse's last resize and its finish before the minimize, the window a capsule then.
+                self.assertEqual(calls[0], ['begin', False])
+                self.assertEqual(calls[at - 1], ['finish'])
+                self.assertEqual(calls[at][1], 'pill')
+                self.assertLess(calls[at][2], 300)
+                self.assertFalse(page.evaluate('open'))
             finally:
                 browser.close()
 
@@ -1354,10 +1449,10 @@ class CapsulePageTests(unittest.TestCase):
                 finally:
                     browser.close()
 
-    def test_the_pro_page_counts_lists_the_sites_and_checks_for_updates(self):
+    def test_the_markdown_page_counts_and_lists_the_sites(self):
         """The Markdown page drawn on 2026-11-19 (user): what a Markdown keeps, the Markdown saved on
-        this computer, the sites with rules (opened in place), whether Pro is free, and 检查更新,
-        whose newer version is installed with 更新到; in English too."""
+        this computer, the sites with rules (opened in place), whether Pro is free; in English too. Its version and
+        updates are on 关于 PaperSearch now (test_one_version_and_one_update_on_the_about_page)."""
         from patchright.sync_api import sync_playwright
         for english in (False, True):
             with self.subTest(english=english), sync_playwright() as p:
@@ -1371,15 +1466,13 @@ class CapsulePageTests(unittest.TestCase):
                           settings: async () => ({notify: true, download_dir: '/papers', language: english ? 'en' : 'zh', fields: []}),
                           api_keys: async () => ({ok: true, filled: 0, total: 0, groups: []}),
                           pro_status: async () => pro,
-                          check_pro: async () => ({state: 'running'}),
-                          pro_check_state: async () => checks.length > 1 ? checks.shift() : (checks[0] || {state: 'running'}),
                           install_pro: async () => { installs++; installing = true; return {state: 'running', done: 0, total: 0}; },
                           pro_install_state: async () => (installing ? {state: 'running', done: 0, total: 0} : {state: 'idle'})});
                         if (english) testState = {...testState, lang: 'en'}; }""", english)
                     page.evaluate("async () => { testState = {...testState, mode: 'idle'}; await tick(); await act('settings'); }")
-                    # Pro installed: its features on the home page (user, 2026-11-19: 铺开).
-                    page.wait_for_selector('.pro-group')
-                    self.assertIn('Beta' if english else '测试版', page.locator('.pro-group').inner_text())
+                    # Pro installed: its features on the home page, each marked Pro (user, 2026-11-19: 铺开; 2026-11-21: X1).
+                    page.wait_for_selector('[data-page=markdown]')
+                    self.assertEqual(page.locator('[data-page=markdown] .pro-pill').inner_text(), 'Pro')
                     self.assertIn('1,437 converted · 7 platforms' if english else '已转换 1,437 篇 · 7 个平台',
                                   page.locator('[data-page=markdown]').inner_text())
                     page.locator('[data-page=markdown]').click()
@@ -1388,6 +1481,20 @@ class CapsulePageTests(unittest.TestCase):
                     for said in ('1,437', '96%', '7'):
                         self.assertIn(said, stats)
                     self.assertEqual(page.locator('.pro-chip').count(), 4)
+                    # What sets it apart: a row like the platforms', its three names under it, each said in full once
+                    # opened (user, 2026-11-21).
+                    merits = page.locator('[data-act=pro_merits]')
+                    self.assertIn('Original text · Whole only · Traceable' if english else '出版社原文 · 完整才保存 · 来源可追溯',
+                                  merits.inner_text())
+                    self.assertEqual(page.locator('.pro-merit').count(), 0)
+                    merits.click()
+                    page.wait_for_selector('.pro-merit')
+                    self.assertEqual(page.locator('.pro-merit b').all_inner_texts(),
+                                     ['Original text', 'Whole only', 'Traceable'] if english
+                                     else ['出版社原文', '完整才保存', '来源可追溯'])
+                    self.assertIn('source list' if english else '来源清单', page.locator('.pro-merits').inner_text())
+                    merits.click()
+                    page.wait_for_function("!document.querySelector('.pro-merit')")
                     sites = page.locator('[data-act=pro_sites]')
                     # Platforms, each with its publisher's journals (user, 2026-11-19).
                     self.assertIn('7, with all their journals' if english else '共 7 个，平台下的期刊都适用', sites.inner_text())
@@ -1401,37 +1508,201 @@ class CapsulePageTests(unittest.TestCase):
                     self.assertEqual(groups, ['Multi-subject platforms · 2', 'General journals · 2', 'Medicine · 3']
                                      if english else ['多学科出版平台 · 2', '综合期刊 · 2', '医学 · 3'])
                     self.assertEqual(page.locator('.site-chip').count(), 7)
-                    # Back on the home page; 版本与更新 says whether Pro is free and until when (user, 2026-11-19).
+                    # Back on the home page; 关于 PaperSearch says until when Pro is free (user, 2026-11-19, -21).
                     page.locator('[data-act=back]').click()
-                    page.wait_for_selector('.pro-group')
-                    free = 'Free while in testing, until 2027-03-01' if english else '测试期间免费，至 2027-03-01'
-                    self.assertIn(free, page.locator('[data-page=pro]').inner_text())
-                    page.locator('[data-page=pro]').click()
-                    page.wait_for_selector('[data-act=check_pro]')
-                    self.assertIn(free, page.locator('.pro-row.static').inner_text())
-                    self.assertEqual(page.locator('[data-page=markdown]').count(), 0)  # on the home page instead
-                    # 检查更新: checking, then a newer version and 更新到 it.
-                    page.locator('[data-act=check_pro]').click()
-                    page.wait_for_function("document.querySelector('.pro-state')?.textContent.includes("
-                                           + ("'Checking'" if english else "'正在检查更新'") + ")")
-                    self.assertEqual(page.locator('[data-act=check_pro]').count(), 0)
-                    page.evaluate("() => { checks = [{state: 'done', latest: '0.1.2', update: true}]; }")
-                    page.wait_for_selector('[data-act=install_pro]')
+                    page.wait_for_selector('.version-link')
+                    page.locator('.version-link').click()
+                    page.wait_for_selector('.about-hero')
+                    rows = page.evaluate("[...document.querySelectorAll('.pro-use')].map((r) => [...r.children].map((c) => c.textContent).join('|'))")
+                    self.assertEqual(rows, ['Access|Free in beta', 'Ends|2027-03-01'] if english
+                                     else ['使用方式|测试期间免费', '截止日期|2027-03-01'])
                     if english:
-                        self.assertIn('Version 0.1.2 available', page.locator('.pro-state').inner_text())
-                        self.assertEqual(page.locator('[data-act=install_pro]').inner_text(), 'Update to 0.1.2')
                         self.assertIsNone(page.evaluate("root.innerText.replace('中文', '').match(/[一-鿿]+/g)"))
-                    else:
-                        self.assertEqual(page.locator('.pro-state').inner_text(), '已安装 · 0.1.1 · 有新版本 0.1.2')
-                        self.assertEqual(page.locator('[data-act=install_pro]').inner_text(), '更新到 0.1.2')
-                    page.locator('[data-act=install_pro]').click()
-                    page.wait_for_function('installs === 1')
-                    # Up to date: said so, no button.
-                    page.evaluate("async () => { proInstall = {state: 'idle'}; proCheck = {state: 'done', latest: '0.1.1', update: false}; render(true); }")
-                    self.assertIn('Up to date' if english else '已是最新', page.locator('.pro-state').inner_text())
-                    self.assertEqual(page.locator('[data-act=install_pro]').count(), 0)
                 finally:
                     browser.close()
+
+    def test_one_version_and_one_update_on_the_about_page(self):
+        """User, 2026-11-21: one version and one update, Pro with it. The home page's foot says PaperSearch's version;
+        a newer one there, the whole line in red, and a red dot on the card's settings button. 关于 PaperSearch: its
+        icon and name (Pro's icon and pill once bought, the line a little to the right), 更新到 X; its steps as it goes,
+        then the window opening again. An update made elsewhere: 重新打开 at the top of the settings."""
+        from patchright.sync_api import sync_playwright
+        for english in (False, True):
+            with self.subTest(english=english), sync_playwright() as p:
+                browser, page = self.drag_page(p, 'darwin', english=True)
+                try:
+                    page.evaluate("""english => { window.reopened = []; window.notes = 0; window.updates = 0;
+                        window.info = {running: '0.7.2', installed: '0.7.2'}; window.check = {state: 'running'}; window.run = {state: 'idle'};
+                        Object.assign(pywebview.api, {
+                          settings: async () => ({notify: true, download_dir: '/papers', language: english ? 'en' : 'zh', fields: []}),
+                          api_keys: async () => ({ok: true, filled: 0, total: 0, groups: []}),
+                          pro_status: async () => ({ok: true, installed: true, version: '0.3.3', access: {mode: 'free'}}),
+                          pro_install_state: async () => ({state: 'idle'}),
+                          versions: async () => info, check_versions: async () => check, versions_state: async () => check,
+                          update_all: async () => { updates++; run = {state: 'running', steps: ['paper_search', 'school', 'skills', 'pro'], step: 0,
+                                                                         target: '0.7.3'}; return run; },
+                          update_state: async () => run,
+                          reopen_window: async (page) => { reopened.push(page); return {ok: true}; },
+                          open_release_notes: async () => { notes++; return {ok: true}; }});
+                        lang = english ? 'en' : 'zh'; testState = {...testState, mode: 'idle', lang: lang}; }""", english)
+                    page.evaluate("async () => { await tick(); await act('settings'); await checkVersions(); }")
+                    page.wait_for_selector('.version-link')
+                    self.assertEqual(page.locator('.version-link').inner_text(), 'PaperSearch 0.7.2')
+                    # A newer one: the foot's whole line in red.
+                    page.evaluate("() => { check = {state: 'done', current: '0.7.2', latest: '0.7.3', update: true, notes: 'https://x', pro_update: true, pro_latest: '0.3.4'}; }")
+                    page.wait_for_selector('.version-link.new')
+                    self.assertEqual(page.locator('.version-link').inner_text(), 'New version 0.7.3: update' if english else '有新版本 0.7.3，点此更新')
+                    self.assertNotEqual(page.evaluate("getComputedStyle(document.querySelector('.version-link')).color"),
+                                        page.evaluate("getComputedStyle(document.querySelector('.lang-btn')).color"))  # red, not the grey beside it
+                    # The card: its settings button with a red dot.
+                    page.evaluate("() => { panel = ''; open = true; render(true); }")
+                    page.wait_for_selector('.iconbtn.has-dot[data-act=settings]')
+                    page.evaluate("async () => { await act('settings'); }")
+                    page.locator('.version-link').click()
+                    page.wait_for_selector('.about-hero')
+                    # Its head says 设置 alone, the name under the icon (user, 2026-11-21).
+                    self.assertEqual(page.locator('.head .title').inner_text(), 'Settings' if english else '设置')
+                    self.assertEqual(page.locator('.head .sub').count(), 0)
+                    self.assertEqual(page.evaluate("[...document.querySelector('.about-name').childNodes].map((n) => n.textContent.trim()).filter(Boolean)"),
+                                     ['PaperSearch', 'Pro'])
+                    self.assertEqual(page.locator('.about-hero .app-icon.pro').count(), 1)
+                    # The line with Pro's pill a little to the right of centre (user, 2026-11-21: 中间这档).
+                    self.assertEqual(page.evaluate("new DOMMatrix(getComputedStyle(document.querySelector('.about-name')).transform).m41"), 8)
+                    self.assertEqual(page.locator('.about-version').inner_text(), '0.7.2 · New version 0.7.3' if english else '0.7.2 · 有新版本 0.7.3')
+                    self.assertIn('new', page.locator('.about-version').get_attribute('class'))
+                    self.assertEqual(page.locator('[data-act=update_all]').inner_text(), 'Update to 0.7.3' if english else '更新到 0.7.3')
+                    page.locator('[data-act=release_notes]').click()
+                    page.wait_for_function('notes === 1')
+                    # 更新: its steps as they go, the window opening again once PaperSearch itself is updated.
+                    page.locator('[data-act=update_all]').click()
+                    page.wait_for_selector('.update-steps')
+                    self.assertEqual(page.locator('.update-steps li').all_inner_texts(),
+                                     ['PaperSearch 0.7.3', 'School extension', 'Skill', 'Pro'] if english
+                                     else ['PaperSearch 0.7.3', '学校订阅下载扩展', 'Skill', 'Pro'])
+                    self.assertEqual(page.locator('.about-version').inner_text(), 'Updating to 0.7.3…' if english else '正在更新到 0.7.3…')
+                    self.assertEqual(page.locator('.about-caption').first.inner_text(),
+                                     'The window reopens when done' if english else '完成后窗口会自动重新打开')
+                    page.evaluate("() => { run = {...run, step: 2}; }")
+                    page.wait_for_function("document.querySelectorAll('.update-steps li.done').length === 2")
+                    self.assertEqual(page.locator('.update-steps li.now').inner_text(), 'Skill')
+                    page.evaluate("() => { run = {...run, state: 'done', step: 4, reopen: true}; }")
+                    page.wait_for_function("reopened.length === 1")
+                    self.assertEqual(page.evaluate('reopened'), ['about'])
+                    # A download running: the update waits for it.
+                    page.evaluate("() => { updateRun = {state: 'idle'}; check = {state: 'done', current: '0.7.2', latest: '0.7.3', update: true, notes: ''};"
+                                  " versionCheck = check; V = {...V, mode: 'running'}; render(true); }")
+                    waiting = page.locator('.about-action .btn.primary')
+                    self.assertTrue(waiting.is_disabled())
+                    self.assertEqual(waiting.inner_text(), 'Update when done' if english else '下载结束后更新')
+                    self.assertEqual(page.locator('[data-act=release_notes]').count(), 0)  # no notes to show
+                    # Up to date: said so, and 检查更新.
+                    page.evaluate("() => { V = {...V, mode: 'idle'}; versionCheck = {state: 'done', current: '0.7.3', latest: '0.7.3', update: false};"
+                                  " info = {running: '0.7.3', installed: '0.7.3'}; versionInfo = info; render(true); }")
+                    self.assertEqual(page.locator('.about-version').inner_text(), '0.7.3 · Up to date' if english else '0.7.3 · 已是最新版本')
+                    self.assertEqual(page.locator('[data-act=check_versions]').inner_text(), 'Check for updates' if english else '检查更新')
+                    # Updated elsewhere since this window started: 重新打开 at the top of the settings pages.
+                    page.evaluate("async () => { info = {running: '0.7.3', installed: '0.7.4'}; await refreshVersions(); settingsPage = 'home'; render(true); }")
+                    page.wait_for_selector('.reopen-line')
+                    self.assertEqual(page.locator('.reopen-line').inner_text().split('\n'),
+                                     ['Updated to 0.7.4', 'Reopen'] if english else ['已更新到 0.7.4', '重新打开'])
+                    page.locator('.reopen-line').click()
+                    page.wait_for_function("reopened.length === 2")
+                    self.assertEqual(page.evaluate('reopened[1]'), 'home')
+                finally:
+                    browser.close()
+
+    def test_the_language_is_one_menu_at_the_home_pages_foot(self):
+        """The home page's last line (user, 2026-11-21): PaperSearch's version at its left, to 关于 PaperSearch; the
+        language at its right, one menu of the languages each in its own name, more to come. It opens over the page without
+        changing the window's size and closes on a choice, a click elsewhere or Esc."""
+        from patchright.sync_api import sync_playwright
+        for english in (False, True):
+            with self.subTest(english=english), sync_playwright() as p:
+                browser, page = self.drag_page(p, 'darwin', english=english)
+                try:
+                    page.evaluate("""english => { window.langs = [];
+                        Object.assign(pywebview.api, {
+                          settings: async () => ({notify: true, download_dir: '/papers', language: english ? 'en' : 'zh', fields: []}),
+                          api_keys: async () => ({ok: true, filled: 0, total: 0, groups: []}),
+                          pro_status: async () => ({ok: true, installed: false, version: ''}),
+                          pro_install_state: async () => ({state: 'idle'}),
+                          set_language: async (code) => { langs.push(code); return {ok: true, language: code}; }});
+                        if (english) testState = {...testState, lang: 'en'}; }""", english)
+                    page.evaluate("async () => { testState = {...testState, mode: 'idle'}; await tick(); await act('settings'); }")
+                    page.wait_for_function("lang === '%s' && !root.classList.contains('animating')" % ('en' if english else 'zh'))
+                    page.wait_for_selector('.lang-btn')
+                    own, other = ('English', '简体中文') if english else ('简体中文', 'English')
+                    self.assertEqual(page.locator('.version-link').inner_text(), 'PaperSearch')
+                    self.assertEqual(page.locator('.lang-btn').inner_text(), own)
+                    self.assertEqual(page.locator('.lang-btn').get_attribute('aria-expanded'), 'false')
+                    self.assertEqual(page.locator('.lang-menu').count(), 0)
+                    # One line: the version at the left, the language at the right, the two at one height.
+                    link, button, row = (page.locator(sel).bounding_box() for sel in ('.version-link', '.lang-btn', '.home-foot'))
+                    self.assertLess(link['x'] + link['width'], button['x'])
+                    self.assertAlmostEqual(link['x'], row['x'], delta=1)
+                    self.assertAlmostEqual(button['x'] + button['width'], row['x'] + row['width'], delta=1)
+                    self.assertAlmostEqual(link['y'] + link['height'] / 2, button['y'] + button['height'] / 2, delta=1)
+                    height = page.evaluate("root.getBoundingClientRect().height")
+
+                    # Opened: each language in its own name, the one in use ticked, more to come; inside the window.
+                    page.locator('.lang-btn').click()
+                    page.wait_for_selector('.lang-menu')
+                    self.assertEqual(page.locator('.lang-btn').get_attribute('aria-expanded'), 'true')
+                    self.assertEqual(page.locator('.lang-menu [data-act=language]').all_inner_texts(),
+                                     ['简体中文', '繁體中文', 'English', '日本語', '한국어', 'Français'])
+                    self.assertEqual(page.locator('.lang-menu [aria-checked=true]').inner_text(), own)
+                    self.assertEqual(page.locator('.lang-more').inner_text(), 'More languages coming' if english else '更多语言陆续加入')
+                    self.assertEqual(page.evaluate("root.getBoundingClientRect().height"), height)
+                    self.assertTrue(page.evaluate("""() => { const m = document.querySelector('.lang-menu').getBoundingClientRect(),
+                        r = root.getBoundingClientRect(); return m.top >= r.top && m.right <= r.right && m.left >= r.left; }"""))
+                    # Esc closes it, and only it.
+                    page.keyboard.press('Escape')
+                    page.wait_for_function("!document.querySelector('.lang-menu')")
+                    self.assertEqual(page.evaluate("[panel, settingsPage]"), ['settings', 'home'])
+                    # A click elsewhere closes it.
+                    page.locator('.lang-btn').click()
+                    page.wait_for_selector('.lang-menu')
+                    page.locator('.home-foot').click(position={'x': row['width'] / 2, 'y': row['height'] / 2})
+                    page.wait_for_function("!document.querySelector('.lang-menu')")
+                    self.assertEqual(page.evaluate('langs'), [])
+                    # Another language: saved, the menu closed, its name on the button.
+                    page.locator('.lang-btn').click()
+                    page.locator('.lang-menu [data-act=language]', has_text=other).click()
+                    page.wait_for_function("langs.length === 1 && !document.querySelector('.lang-menu')")
+                    self.assertEqual(page.evaluate('langs'), ['zh' if english else 'en'])
+                    page.wait_for_function("document.querySelector('.lang-btn')?.textContent === %r" % other)
+                finally:
+                    browser.close()
+
+    def test_the_settings_in_traditional_chinese(self):
+        """繁體中文 (user, 2026-11-21): the windows' texts in Taiwan's wording, anything else in its characters; no
+        character left that has a traditional form."""
+        from patchright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'darwin', english=True)  # the page with its tables
+            try:
+                page.evaluate("""() => { Object.assign(pywebview.api, {
+                      settings: async () => ({notify: true, download_dir: '/papers', language: 'zh-Hant', fields: [
+                        {name: 'hourly', label: '每家出版社每小时最多', unit: '篇', value: 500, default: 100, page: 'download'},
+                        {name: 'login', label: '学校登录页最多等', unit: '秒', value: 180, default: 180, page: 'wait'}]}),
+                      api_keys: async () => ({ok: true, filled: 4, total: 12, groups: []}),
+                      pro_status: async () => ({ok: true, installed: false, version: ''}),
+                      pro_install_state: async () => ({state: 'idle'})});
+                    testState = {...testState, lang: 'zh-Hant', mode: 'idle'}; }""")
+                page.evaluate("async () => { await tick(); await act('settings'); }")
+                page.wait_for_function("lang === 'zh-Hant' && document.querySelector('.lang-btn')")
+                left = "() => [...root.innerText].filter((c) => TABLES['zh-Hant'].chars[c]).join('')"
+                self.assertEqual(page.locator('.head .title').inner_text(), '設定')
+                self.assertEqual(page.locator('.lang-btn').inner_text(), '繁體中文')
+                self.assertIn('登入頁 180 秒', page.locator('[data-page=wait]').inner_text())
+                self.assertEqual(page.evaluate(left), '')
+                page.locator('.nav-row[data-page=about]').click()
+                page.wait_for_selector('[data-page=pro_activate]')
+                self.assertEqual(page.locator('[data-page=pro_activate]').inner_text(), '啟用 Pro')
+                self.assertEqual(page.locator('.head .title').inner_text(), '設定')  # its head says 设置 alone (user, 2026-11-21)
+                self.assertEqual(page.evaluate(left), '')
+            finally:
+                browser.close()
 
     def test_the_small_switch_beside_the_hourly_limit_says_what_it_does(self):
         """马上生效 (user, 2026-11-19): a small switch in the hourly limit's row, off by default,
@@ -1609,9 +1880,16 @@ class CapsulePageTests(unittest.TestCase):
                 row = page.locator('[data-page=markdown]')
                 row.wait_for()
                 self.assertIn('Markdown 全文', row.inner_text())
-                self.assertEqual(page.locator('.pro-group').inner_text(), 'PaperSearch Pro · 测试版')
+                # Its features rows of the home page, each marked Pro; PaperSearch's version at the left of the last line,
+                # the language at its right (user, 2026-11-21: one version, Pro with it).
+                self.assertEqual([page.locator(f'[data-page={name}] .pro-pill').inner_text() for name in ('markdown', 'login')], ['Pro', 'Pro'])
                 self.assertIn('学校自动登录', page.locator('[data-page=login]').inner_text())
-                self.assertIn('0.1.0 · 测试期间免费，截止日期待定', page.locator('[data-page=pro]').inner_text())
+                self.assertEqual(page.locator('.home-foot > *').count(), 2)
+                self.assertEqual(page.locator('.home-foot .version-link').count() + page.locator('.home-foot .lang-btn').count(), 2)
+                self.assertEqual(page.locator('.nav-row[data-page=about]').count(), 0)
+                self.assertTrue(page.evaluate("!!(document.querySelector('[data-page=login]').compareDocumentPosition("
+                                              "document.querySelector('.home-foot')) & Node.DOCUMENT_POSITION_FOLLOWING)"))
+                self.assertEqual(page.locator('.pro-entry').count() + page.locator('.pro-head').count(), 0)
                 row.click()
                 page.wait_for_selector('.pro-stats')
                 text = page.locator('.settings').inner_text()
@@ -1619,56 +1897,141 @@ class CapsulePageTests(unittest.TestCase):
                     self.assertIn(said, text)
                 page.locator('[data-act=pro_issue]').click()
                 page.wait_for_function('issues === 1')
+                # Pro's page by its old name is 关于 PaperSearch (user, 2026-11-21): bought, the icon Pro's and Pro beside the
+                # name, no title of Pro's own; its state, what is coming, 提交 issue.
                 page.evaluate("async () => { await act('back'); await act('settings_page', {dataset: {page: 'pro'}}); }")
-                page.wait_for_selector('.pro-head')
+                page.wait_for_selector('.about-hero')
                 text = page.locator('.settings').inner_text()
-                for said in ('版本与更新', 'PaperSearch Pro', '测试版', '已安装 · 0.1.0', '使用状态', '测试期间免费，截止日期待定', '用着有问题？'):
+                self.assertEqual(page.locator('.head .title').inner_text(), '设置')  # its head says 设置 alone (user, 2026-11-21)
+                self.assertEqual(page.evaluate("[...document.querySelector('.about-name').childNodes].map((n) => n.textContent.trim()).filter(Boolean)"), ['PaperSearch', 'Pro'])
+                self.assertEqual(page.locator('.about-hero .app-icon.pro').count(), 1)
+                self.assertEqual(page.locator('.about-sec').count(), 0)
+                for said in ('测试期间免费', '待定', '即将推出', 'Zotero 整合', '文献关系图', '用着有问题？'):
                     self.assertIn(said, text)
-                self.assertIn('ok', page.locator('.pro-state').get_attribute('class'))
                 self.assertEqual(page.locator('[data-act=install_pro]').count(), 0)
+                # Nothing of paying for it (the feature 文献订阅, a subscription to papers, is not that).
                 for word in ('订阅', 'key', '购买'):
-                    self.assertNotIn(word, text)
+                    self.assertNotIn(word, text.replace('文献订阅', ''))
                 page.locator('[data-act=pro_issue]').click()
                 page.wait_for_function('issues === 2')
 
-                # Not installed: one row on the home page; Pro's page has 安装 and what it brings.
+                # Not bought (user, 2026-11-21, 乙): no rows that cannot be used; one row of Pro's, last, 需要激活, to
+                # 关于 PaperSearch, which says what Pro does now and what is coming, then 激活 Pro.
                 page.evaluate("async () => { pro = {ok:true, installed:false, version:''}; await act('back'); await loadSettings(); render(true); }")
-                self.assertEqual(page.locator('[data-page=markdown]').count() + page.locator('.pro-group').count(), 0)
-                self.assertIn('未安装', page.locator('[data-page=pro]').inner_text())
-                page.locator('[data-page=pro]').click()
-                page.wait_for_selector('[data-act=install_pro]')
-                self.assertEqual(page.locator('.pro-state').inner_text(), '未安装')
-                self.assertEqual(page.locator('[data-act=install_pro]').inner_text(), '安装')
-                self.assertEqual(page.locator('.pro-hint').inner_text(), '约 4 MB · PDF 和补充材料不需要它')
-                self.assertIn('把论文全文转成 Markdown', page.locator('[data-page=markdown]').inner_text())
-                self.assertIn('学校自动登录', page.locator('[data-page=login]').inner_text())
-                # Not installed: nothing counted or listed yet, and nothing to check.
-                self.assertEqual(page.locator('.pro-stats').count() + page.locator('[data-act=check_pro]').count(), 0)
+                self.assertEqual(page.locator('[data-page=markdown]').count() + page.locator('[data-page=login]').count(), 0)
+                pro_row = page.locator('.nav-row[data-page=about]')
+                self.assertEqual(page.evaluate("[...document.querySelector('.nav-row[data-page=about] .nav-title').childNodes].map((n) => n.textContent.trim()).filter(Boolean)"), ['PaperSearch', 'Pro'])
+                self.assertEqual(pro_row.locator('.nav-sub').inner_text(), '需要激活')
+                self.assertEqual(pro_row.locator('.app-icon.pro').count(), 1)
+                self.assertEqual(page.locator('.version-link').inner_text(), 'PaperSearch')
+                # A feature's page (paper-search settings markdown) says it needs the activation, and leads to it;
+                # nothing converted to report.
+                page.evaluate("async () => { await act('settings_page', {dataset: {page: 'markdown'}}); }")
+                page.wait_for_selector('.pro-needed')
+                self.assertEqual(page.locator('.pro-needed span').inner_text(), '激活 PaperSearch Pro 后可用')
+                self.assertEqual(page.locator('[data-act=pro_issue]').count(), 0)
+                page.evaluate("() => { schoolLogin = {ok: true, pro: false}; settingsPage = 'login'; render(true); }")
+                self.assertIn('学校登录页自动填写账号和密码', page.locator('.settings').inner_text())
+                page.locator('.pro-needed [data-page=about]').click()
+                page.wait_for_selector('[data-page=pro_activate]')
+                # The plain icon and name at the top; Pro's part under it, its title with its icon and pill, its
+                # features and what is coming (计划中 after each name), 激活 Pro at the foot (user, 2026-11-21).
+                self.assertEqual(page.locator('.head .title').inner_text(), '设置')  # its head says 设置 alone (user, 2026-11-21)
+                self.assertEqual(page.locator('.about-name').inner_text(), 'PaperSearch')
+                self.assertEqual(page.locator('.about-hero .app-icon.pro').count(), 0)
+                self.assertEqual(page.evaluate("[...document.querySelector('.about-sec').childNodes].map((n) => n.textContent.trim()).filter(Boolean)"), ['PaperSearch', 'Pro'])
+                self.assertEqual(page.locator('.about-sec .app-icon.pro').count(), 1)
+                # Nothing to report before Pro is there (user, 2026-11-21).
+                self.assertEqual(page.locator('[data-act=pro_issue]').count() + page.locator('.pro-foot').count(), 0)
+                self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.about-hero')).alignItems"), 'center')
+                self.assertEqual(page.locator('[data-page=pro_activate]').inner_text(), '激活 Pro')
+                self.assertEqual(page.locator('.about-caption').inner_text(), '测试期间免费')
+                self.assertEqual(page.locator('[data-act=install_pro]').count() + page.locator('#pro-code').count(), 0)
+                self.assertEqual(page.locator('.about-feat b').all_inner_texts(), ['Markdown 全文', '学校自动登录', 'Zotero 整合', '文献关系图', '文献订阅'])
+                self.assertEqual(page.locator('.pro-tag').all_inner_texts(), ['计划中', '计划中', '计划中'])
+                self.assertTrue(page.evaluate("[...document.querySelectorAll('.about-feat')].slice(2).every((f) => f.firstElementChild.tagName === 'B'"
+                                              " && f.children[1].classList.contains('pro-tag'))"))  # the name first, 计划中 after it
+                self.assertEqual(page.locator('.pro-stats').count(), 0)
 
-                # 安装: its progress, in place; then installed.
-                page.evaluate("() => { installing = [{state:'running', done: 1258291, total: 2306867}]; }")
-                page.locator('[data-act=install_pro]').click()
+                # The activation's page: the code and 激活; back is Pro's page.
+                page.locator('[data-page=pro_activate]').click()
+                page.wait_for_selector('#pro-code')
+                self.assertEqual(page.locator('.head .title').inner_text(), '激活 Pro')
+                self.assertEqual(page.locator('[data-act=activate_pro]').inner_text(), '激活')
+                page.locator('[data-act=back]').click()
+                page.wait_for_selector('[data-page=pro_activate]')
+                self.assertEqual(page.evaluate('settingsPage'), 'about')
+                page.locator('[data-page=pro_activate]').click()
+                page.wait_for_selector('#pro-code')
+
+                # No code: asked for one, nothing sent.
+                page.locator('[data-act=activate_pro]').click()
+                page.wait_for_selector('.pro-code-err')
+                self.assertEqual(page.locator('.pro-code-err').inner_text(), '请输入激活码')
+                self.assertEqual(page.evaluate('installs'), 0)
+                # Refused (or no activation server yet): why, under the code, which stays; typing again clears it.
+                page.evaluate("""() => { pywebview.api.install_pro = async (code) => { installs++; window.sentCode = code;
+                                         return {state: 'running', step: 'activate'}; }; installing = [{state: 'running', step: 'activate'}]; }""")
+                page.locator('#pro-code').fill('PSPRO-7KQ2-M4XD')
+                self.assertEqual(page.locator('.pro-code-err').count(), 0)
+                page.locator('#pro-code').press('Enter')
+                page.wait_for_function("document.querySelector('[data-act=activate_pro]')?.textContent === '正在激活…'")
+                self.assertEqual(page.evaluate('sentCode'), 'PSPRO-7KQ2-M4XD')
+                self.assertTrue(page.locator('[data-act=activate_pro]').is_disabled())
+                page.evaluate("() => { installing = [{state: 'failed', step: 'activate', message: '激活服务还没开放'}]; }")
+                page.wait_for_selector('.pro-code-err')
+                self.assertEqual(page.locator('.pro-code-err').inner_text(), '激活服务还没开放')
+                self.assertEqual(page.locator('[data-act=activate_pro]').inner_text(), '激活')
+                self.assertEqual(page.locator('#pro-code').input_value(), 'PSPRO-7KQ2-M4XD')
+                page.locator('#pro-code').press('End')
+                page.keyboard.type('X')
+                self.assertEqual(page.locator('.pro-code-err').count(), 0)
+
+                # Taken: activated, then the install's progress, in place; installed, the home page with Pro's
+                # features, and the link saying so (user, 2026-11-21).
+                page.evaluate("() => { installing = [{state: 'running', step: 'activate'}, {state:'running', step: 'install', done: 1258291, total: 2306867}]; }")
+                page.locator('[data-act=activate_pro]').click()
                 page.wait_for_function("document.querySelector('#pro-progress')?.textContent === '正在下载 1.2 / 2.2 MB'")
-                self.assertEqual(page.evaluate('installs'), 1)
-                self.assertEqual(page.locator('.pro-state').inner_text(), '正在安装…')
-                self.assertEqual(page.locator('[data-act=install_pro]').count(), 0)
+                self.assertEqual(page.evaluate('installs'), 2)
+                self.assertEqual(page.locator('[data-act=install_pro]').count() + page.locator('#pro-code').count(), 0)
                 width = page.evaluate("parseFloat(document.querySelector('.pro-bar span').style.width)")
                 self.assertAlmostEqual(width, 54.5, delta=0.2)
                 page.evaluate("() => { pro = {ok:true, installed:true, version:'0.1.0'}; installing = [{state:'done', version:'0.1.0'}]; }")
-                page.wait_for_function("document.querySelector('.pro-state')?.textContent === '已安装 · 0.1.0'")
+                page.wait_for_selector('[data-page=markdown]')
+                self.assertEqual(page.evaluate('settingsPage'), 'home')
+                self.assertEqual(page.locator('.settings-note').inner_text(), 'PaperSearch Pro 已安装')
+                self.assertEqual(page.locator('.nav-row[data-page=about]').count(), 0)
                 self.assertEqual(page.locator('.pro-bar').count(), 0)
 
-                # A failed one: why, and 重试.
-                page.evaluate("""async () => { pro = {ok:true, installed:false, version:''}; installing = [{state:'running', done: 0, total: 0}];
-                                  await loadSettings(); render(true); }""")
+                # Activated, installed not: 安装; a failed one: why, and 重试; on the activation's page too.
+                page.evaluate("""async () => { pro = {ok:true, installed:false, version:'', activation: {state: 'active', tail: 'M4XD', until: ''}};
+                                  installing = []; await loadSettings(); settingsPage = 'home'; render(true); }""")
+                self.assertEqual(page.locator('.nav-row[data-page=about] .nav-sub').inner_text(), '已激活 · 未安装')
+                page.evaluate("() => { settingsPage = 'about'; render(true); }")
+                page.wait_for_selector('[data-act=install_pro]')
+                self.assertEqual(page.locator('[data-act=install_pro]').inner_text(), '安装')
+                self.assertEqual(page.locator('#pro-code').count(), 0)
+                page.evaluate("""async () => { installing = [{state:'running', done: 0, total: 0}]; await loadSettings(); render(true); }""")
                 page.wait_for_selector('#pro-progress')
                 self.assertEqual(page.locator('#pro-progress').inner_text(), '正在下载…')
                 page.evaluate("() => { installing = [{state:'failed', message:'网络连接中断'}]; }")
                 page.wait_for_selector('[data-act=install_pro]')
-                self.assertEqual(page.locator('.pro-state').inner_text(), '安装没有完成：网络连接中断')
-                self.assertIn('bad', page.locator('.pro-state').get_attribute('class'))
+                self.assertEqual(page.locator('.pro-code-err').inner_text(), '安装没有完成：网络连接中断')
                 self.assertEqual(page.locator('[data-act=install_pro]').inner_text(), '重试')
-                self.assertEqual(page.locator('.pro-hint').inner_text(), '已下载的部分不会留下')
+                self.assertEqual(page.locator('.pro-hint').count(), 0)
+                page.evaluate("() => { settingsPage = 'pro_activate'; render(true); }")
+                self.assertEqual(page.locator('.pro-code-err').inner_text(), '安装没有完成：网络连接中断')
+                self.assertEqual(page.locator('[data-act=install_pro]').inner_text(), '重试')
+                self.assertEqual(page.locator('#pro-code').count(), 0)
+
+                # An activation run out (once there is a server): said, and the code asked for again.
+                page.evaluate("""async () => { pro = {ok:true, installed:true, version:'0.1.0', activation: {state: 'expired', tail: 'M4XD', until: '2026-01-31'}};
+                                  installing = []; await loadSettings(); settingsPage = 'home'; render(true); }""")
+                page.locator('.version-link').click()
+                page.wait_for_selector('[data-act=activate_pro]')
+                self.assertEqual(page.locator('[data-act=activate_pro]').inner_text(), '重新激活')
+                rows = page.evaluate("[...document.querySelectorAll('.pro-use')].map((r) => [...r.children].map((c) => c.textContent).join('|'))")
+                self.assertEqual(rows, ['激活状态|已过期', '激活码|••••M4XD', '有效期|至 2026-01-31'])
             finally:
                 browser.close()
 
@@ -1794,31 +2157,388 @@ class CapsulePageTests(unittest.TestCase):
                 self.assertEqual(page.locator('[data-act=forget_school]').inner_text(), '确认移除')
                 page.locator('[data-act=forget_school]').click()
                 page.wait_for_function("document.querySelectorAll('.login-row[data-act=login_open]').length === 1")
-                # 支持哪些学校: a page of its own, how many of each kind, a mainland school by its province, any other by
-                # its country (user, 2026-11-20), narrowed by what is typed.
+                # 支持哪些学校: a page of its own, how many of each kind, in two pages: the world's regions, each opening in
+                # place to its countries (Asia first, China first in it), and a country's schools all together on a page of
+                # their own (user, 2026-11-20, 2026-11-21), narrowed by what is typed.
                 page.evaluate('''() => Object.assign(pywebview.api, {school_support_list: async () => ({ok: true, schools: [
                     {name: '红木兰大学', country: '中国', province: '广东', status: 'surveyed'},
                     {name: '蓝杉大学', country: '中国', province: '广东', status: 'check'},
                     {name: '白桦大学', country: '中国', province: '吉林', status: 'surveyed'},
-                    {name: '木兰大学', name_en: 'Mulan University', country: '日本', province: '', status: 'surveyed'}]})})''')
+                    {name: '香江大学', country: '香港', province: '', status: 'surveyed'},
+                    {name: '木兰大学', name_en: 'Mulan University', country: '日本', province: '', status: 'surveyed'},
+                    ...['樱', '枫', '松', '竹'].map((w) => ({name: w + '大学', country: '日本', province: '', status: 'surveyed'})),
+                    {name: '西沼大学', country: '英国', province: '', status: 'surveyed'}]})})''')
                 page.locator('[data-page=login_schools]').click()
                 page.wait_for_selector('#support-list')
-                self.assertEqual(page.locator('.stats b').all_inner_texts(), ['3', '1'])
-                self.assertIn('自动填写：打开学校登录页时', page.locator('body').inner_text())
+                self.assertEqual(page.locator('.stats b').all_inner_texts(), ['9', '1'])
+                # The numbers say what they count; no line explaining them (user, 2026-11-21).
+                self.assertNotIn('自动填写：打开学校登录页时', page.locator('body').inner_text())
+                self.assertEqual(page.get_attribute('#support-filter', 'placeholder'), '搜索学校或地区')
                 # In English (user, 2026-11-20): a school's English name (its country's and province's: test_i18n).
-                self.assertIn('Mulan University', page.evaluate("""() => { const kept = [lang, supportOpen]; lang = 'en';
-                    supportOpen = '日本'; const html = supportListHtml(); [lang, supportOpen] = kept; return html; }"""))
-                self.assertEqual(page.locator('.grp .reason').all_inner_texts(), ['广东', '吉林', '日本'])  # the most schools first
-                page.locator('[data-act=support_group]').first.click()
-                page.wait_for_function("document.querySelectorAll('#support-list .login-found').length === 2")
+                self.assertEqual(page.evaluate("""() => { const kept = [lang, supportOpen]; lang = 'en'; supportOpen = '日本';
+                    const html = supportListHtml(); [lang, supportOpen] = kept; return html.includes('Mulan University'); }"""), True)
+                # Each school's name in the window's language (user, 2026-11-21): in Chinese its Chinese name where Pro has
+                # one, else its own name, not a translation; in English its English name; found by any of them.
+                self.assertEqual(page.evaluate("""() => { const kept = [lang, supportList, supportOpen];
+                    supportList = {ok: true, schools: [
+                      {name: 'Linden-Universität Bergtal', name_en: 'University of Bergtal', country: '德国',
+                       names: {zh: '贝格塔尔大学', ja: 'ベルクタール大学'}, status: 'surveyed'},
+                      {name: 'Hochschule Tannenfeld', name_en: 'Tannenfeld University', country: '德国', names: {}, status: 'surveyed'}]};
+                    supportOpen = '德国'; const shown = {};
+                    for (const code of ['zh', 'en', 'ja']) { lang = code; shown[code] = [...new DOMParser().parseFromString(
+                      supportListHtml(), 'text/html').querySelectorAll('.ls-name')].map((n) => n.textContent).sort(); }
+                    lang = 'zh'; supportFilter = 'ベルクタール'; shown.found = supportListHtml().includes('贝格塔尔大学'); supportFilter = '';
+                    [lang, supportList, supportOpen] = kept; return shown; }"""),
+                    {'zh': sorted(['贝格塔尔大学', 'Hochschule Tannenfeld']), 'en': sorted(['University of Bergtal', 'Tannenfeld University']),
+                     'ja': sorted(['ベルクタール大学', 'Hochschule Tannenfeld']), 'found': True})
+                # A big country's schools in parts on its page, each opening in place (user, 2026-11-21, 甲): a US school's
+                # state, the most schools first, those without one last; a state's name finds its schools, each with its
+                # state beside it. Germany's by kind in their order (Pro names no German states); a smaller country whole.
+                self.assertEqual(page.evaluate("""() => { const kept = [supportList, supportOpen, supportParts];
+                    const many = (country, area, kind, n) => Array.from({length: n}, (_, i) => ({name: (area || kind) + i, country,
+                      province: '', area, kind, status: 'surveyed'}));
+                    const parts = () => [...new DOMParser().parseFromString(supportListHtml(), 'text/html')
+                      .querySelectorAll('[data-act=support_part]')].map((b) => [b.dataset.key, b.querySelector('.n').textContent]);
+                    const rows = () => (supportListHtml().match(/class="login-found"/g) || []).length;
+                    supportList = {ok: true, schools: [...many('美国', '纽约州', '大学', 100), ...many('美国', '加利福尼亚州', '大学', 150),
+                      ...many('美国', '', '医院', 1), ...many('德国', '', '其他', 60), ...many('德国', '', '大学', 250),
+                      ...many('德国', '', '研究机构', 45), ...many('法国', '', '大学', 300)]};
+                    supportParts = new Set(); supportOpen = '美国'; const shown = {us: parts(), usRows: rows()};
+                    supportParts = new Set(['纽约州']); shown.opened = rows();
+                    supportFilter = '加利福尼亚'; const found = new DOMParser().parseFromString(supportListHtml(), 'text/html')
+                      .querySelectorAll('.ls-name'); shown.found = [found.length, found[0].textContent]; supportFilter = '';
+                    supportParts = new Set(); supportOpen = '德国'; shown.de = parts();
+                    supportOpen = '法国'; shown.fr = [parts().length, rows()];
+                    [supportList, supportOpen, supportParts] = kept; return shown; }"""),
+                    {'us': [['加利福尼亚州', '150'], ['纽约州', '100'], ['未注明州', '1']], 'usRows': 0, 'opened': 100,
+                     'found': [150, '加利福尼亚州0 · 加利福尼亚州'],
+                     'de': [['大学', '250'], ['研究机构', '45'], ['其他', '60']], 'fr': [0, 300]})
+                # A school in two federations, listed once by its country and its name as shown, with the better of what Pro
+                # does for it; counted once (user, 2026-11-21: a university of Beijing's twice there).
+                self.assertEqual(page.evaluate("""() => { const kept = [supportList, lang];
+                    supportList = {ok: true, schools: [
+                      {name: '蓝杉大学', country: '中国', province: '广东', status: 'check'},
+                      {name: 'Lanshan University', name_en: 'Lanshan University', names: {zh: '蓝杉大学'}, country: '中国', province: '广东', status: 'surveyed'},
+                      {name: '蓝杉大学', country: '台湾', status: 'surveyed'},
+                      {name: 'Kirigaoka University', country: '日本', status: 'surveyed'}, {name: 'Kirigaoka University', country: '日本', status: 'surveyed'}]};
+                    const once = supportSchools().map((s) => [s.country, schoolName(s), s.status]);
+                    lang = 'en'; const english = supportSchools().length;
+                    [supportList, lang] = kept; return [once, english]; }"""),
+                    [[['中国', '蓝杉大学', 'surveyed'], ['台湾', '蓝杉大学', 'surveyed'], ['日本', 'Kirigaoka University', 'surveyed']], 4])
+                self.assertEqual(page.locator('#support-list .reason').all_inner_texts(), ['亚洲', '欧洲'])
+                # A region opens in place to its countries, the page and its title as they were; several may be open.
+                page.locator('[data-act=support_region][data-key=欧洲]').click()
+                page.wait_for_selector('[data-act=support_group][data-key=英国]')
+                self.assertEqual(page.locator('.head .title').inner_text(), '支持的学校')
+                self.assertEqual(page.get_attribute('[data-act=support_region][data-key=欧洲]', 'aria-expanded'), 'true')
+                page.locator('[data-act=support_region][data-key=亚洲]').click()
+                page.wait_for_selector('[data-act=support_group][data-key=中国]')
+                self.assertEqual(page.locator('#support-list .reason').all_inner_texts(), ['亚洲', '中国', '日本', '欧洲', '英国'])
+                self.assertEqual(page.locator('.stats').count(), 1)
+                # A country: a page of its own, its schools; the numbers on the first page only.
+                page.locator('[data-act=support_group][data-key=英国]').click()
+                page.wait_for_selector('#support-list .login-found')
+                self.assertEqual((page.locator('.head .title').inner_text(), page.locator('.head .sub').inner_text()), ('英国', '1 所'))
+                self.assertEqual(page.locator('#support-list .ls-name').all_inner_texts(), ['西沼大学'])
+                self.assertEqual(page.locator('.stats').count(), 0)
+                self.assertEqual(page.get_attribute('#support-filter', 'placeholder'), '搜索学校')
+                page.locator('[data-act=back]').click()
+                page.wait_for_selector('[data-act=support_group][data-key=英国]')
+                self.assertEqual(page.locator('.head .title').inner_text(), '支持的学校')
+                self.assertEqual(page.locator('#support-list .reason').all_inner_texts(), ['亚洲', '中国', '日本', '欧洲', '英国'])
+                # China: its provinces, the most schools first, then Hong Kong; each opens in place to its schools by name
+                # (pinyin), the page where it was. Its search narrows China only, a province's name finding its schools,
+                # each with its province beside it.
+                page.locator('[data-act=support_group][data-key=中国]').click()
+                page.wait_for_selector('[data-act=support_part]')
+                self.assertEqual(page.locator('.head .title').inner_text(), '中国')
+                self.assertEqual(page.locator('#support-list .reason').all_inner_texts(), ['广东', '吉林', '香港'])
+                self.assertEqual(page.locator('#support-list .login-found').count(), 0)
+                page.locator('[data-act=support_part][data-key=广东]').click()
+                page.wait_for_selector('#support-list .login-found')
+                self.assertEqual(page.locator('#support-list .ls-name').all_inner_texts(), ['红木兰大学', '蓝杉大学'])
                 self.assertIn('需自己登录', page.locator('#support-list').inner_text())
+                page.locator('[data-act=support_part][data-key=香港]').click()
+                page.wait_for_function("document.querySelectorAll('#support-list .login-found').length === 3")
+                page.locator('[data-act=support_part][data-key=广东]').click()
+                page.wait_for_function("document.querySelectorAll('#support-list .login-found').length === 1")
+                self.assertEqual(page.locator('#support-list .ls-name').all_inner_texts(), ['香江大学'])
+                page.fill('#support-filter', '广东')
+                self.assertEqual(page.locator('#support-list .ls-name').all_inner_texts(), ['红木兰大学 · 广东', '蓝杉大学 · 广东'])
+                page.locator('[data-act=back]').click()
+                page.wait_for_selector('[data-act=support_group][data-key=中国]')
+                self.assertEqual(page.input_value('#support-filter'), '')
+                self.assertEqual(page.evaluate('supportParts.size'), 0)  # closed again for the next country
+                # Pressed again, a region closes; the other stays open.
+                page.locator('[data-act=support_region][data-key=欧洲]').click()
+                page.wait_for_function("!document.querySelector('[data-act=support_group][data-key=英国]')")
+                self.assertEqual(page.locator('#support-list .reason').all_inner_texts(), ['亚洲', '中国', '日本', '欧洲'])
+                # A long list, the window held to the screen's height: a region opened or closed leaves the page where it
+                # was; a country's page starts at its top, and back finds the regions' page where it was; the head stays on
+                # top while the list scrolls, a long name wraps, not cut; a press in the list drags nothing and leaves it
+                # where it was, a redraw keeps its place (user, 2026-11-21).
+                page.evaluate("""async () => { window.keptList = supportList;
+                    pywebview.api.begin_layout = async (expanded, w, h) => ({vertical: 'down', horizontal: 'right', width: w,
+                      height: Math.min(h, 520), from_width: parseFloat(root.style.width) + 20, from_height: parseFloat(root.style.height) + 20});
+                    const every = SUPPORT_REGIONS.flatMap((region) => (SUPPORT_COUNTRIES[region] || '').split(' ').filter(Boolean));
+                    supportList = {ok: true, schools: [...every.map((c) => ({name: c + '大学', country: c, status: 'surveyed'})),
+                      ...Array.from({length: 120}, (_, i) => ({name: 'Hochschule für angewandte interdisziplinäre Wissenschaften und Künste Nummer ' + i,
+                        country: '德国', status: 'surveyed'}))]};
+                    supportRegions = new Set(); supportOpen = ''; supportBack = 0; render(true); }""")
+                page.wait_for_function("!root.classList.contains('animating')")
+                surface = "root.querySelector(':scope > .surface')"
+                page.locator('[data-act=support_region][data-key=欧洲]').click()
+                page.wait_for_function("supportRegions.has('欧洲') && !root.classList.contains('animating')")
+                page.evaluate("document.querySelector('[data-act=support_region][data-key=北美洲]').scrollIntoView({block: 'center'})")
+                region_top = page.evaluate(surface + '.scrollTop')
+                self.assertGreater(region_top, 0)
+                page.locator('[data-act=support_region][data-key=北美洲]').click()
+                page.wait_for_function("supportRegions.has('北美洲') && !root.classList.contains('animating')")
+                page.wait_for_timeout(200)
+                self.assertLess(abs(page.evaluate(surface + '.scrollTop') - region_top), 2)
+                key = page.locator('[data-act=support_group]').last.get_attribute('data-key')
+                page.evaluate("k => document.querySelector(`[data-act=support_group][data-key='${k}']`).scrollIntoView({block: 'center'})", key)
+                region_top = page.evaluate(surface + '.scrollTop')
+                self.assertGreater(region_top, 0)
+                page.locator(f'[data-act=support_group][data-key="{key}"]').click()
+                page.wait_for_function(f"supportOpen === '{key}' && !root.classList.contains('animating')")
+                self.assertEqual(page.evaluate(surface + '.scrollTop'), 0)
+                page.locator('[data-act=back]').click()
+                page.wait_for_function("supportOpen === '' && !root.classList.contains('animating')")
+                page.wait_for_timeout(200)
+                self.assertLess(abs(page.evaluate(surface + '.scrollTop') - region_top), 2)
+                self.assertEqual(page.evaluate("[...supportRegions]"), ['欧洲', '北美洲'])
+                page.locator('[data-act=support_group][data-key=德国]').click()
+                page.wait_for_function("supportOpen === '德国' && !root.classList.contains('animating')")
+                self.assertEqual(page.locator('#support-list .login-found').count(), 121)  # one of the countries' and 120
+                page.evaluate("document.querySelectorAll('#support-list .login-found')[80].scrollIntoView({block: 'center'})")
+                top = page.evaluate(surface + '.scrollTop')
+                self.assertGreater(top, 0)
+                self.assertLess(abs(page.evaluate("root.querySelector('.support-top').getBoundingClientRect().top - "
+                                                  + surface + ".getBoundingClientRect().top")), 1)
+                name = "document.querySelectorAll('#support-list .ls-name')[80]"
+                self.assertGreater(page.evaluate(name + ".getBoundingClientRect().height"), 25)
+                self.assertLessEqual(page.evaluate(name + ".scrollWidth - " + name + ".clientWidth"), 0)
+                drags = page.evaluate('dragLocks.length')
+                box = page.locator('#support-list .login-found').nth(80).bounding_box()
+                page.mouse.click(box['x'] + 4, box['y'] + box['height'] / 2)
+                page.wait_for_timeout(300)
+                self.assertEqual(page.evaluate('dragLocks.length'), drags)
+                self.assertLess(abs(page.evaluate(surface + '.scrollTop') - top), 2)
+                page.evaluate("render(true)")
+                page.wait_for_function("!root.classList.contains('animating')")
+                page.wait_for_timeout(200)
+                self.assertLess(abs(page.evaluate(surface + '.scrollTop') - top), 2)
+                page.evaluate("() => { supportList = window.keptList; supportRegions = new Set(); supportOpen = ''; supportBack = 0; render(true); }")
+                # Found across countries, each with its country.
                 page.fill('#support-filter', '白桦')
-                self.assertEqual(page.locator('#support-list .ls-name').all_inner_texts(), ['白桦大学'])
+                self.assertEqual(page.locator('#support-list .ls-name').all_inner_texts(), ['白桦大学 · 中国'])
                 self.assertEqual(page.evaluate('document.activeElement.id'), 'support-filter')  # still typing there
                 page.locator('[data-act=back]').click()
                 page.wait_for_selector('[data-act=login_add]')
             finally:
                 browser.close()
+
+    def test_the_next_school_when_no_access_one_row_and_the_schools_numbered(self):
+        # 没权限时换下一所学校 (user, 2026-11-21): with more than one school, the schools numbered in the order tried (1
+        # the default) and one row with its switch, on by default, no note under it; one school alone, neither.
+        from patchright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'darwin')
+            try:
+                page.evaluate("""() => {
+                    window.calls = []; window.switchOn = true;
+                    const one = {key: 'A', name: '红木兰大学', current: true, entity: true, saved: true, username: '2******4',
+                                 enabled: true, off: '', status: 'surveyed'};
+                    const two = {key: 'B', name: '白杨大学', current: false, entity: true, saved: true, username: '3******1',
+                                 enabled: true, off: '', status: 'surveyed'};
+                    window.schoolsNow = [one, two];
+                    const state = () => ({ok: true, pro: true, schools: schoolsNow, counts: {}, switch: switchOn});
+                    Object.assign(pywebview.api, {
+                        settings: async () => ({notify: true, download_dir: '/papers', language: 'zh', fields: []}),
+                        api_keys: async () => ({ok: true, filled: 0, total: 0, groups: []}),
+                        pro_status: async () => ({ok: true, installed: true, version: '0.3.3'}),
+                        pro_install_state: async () => ({state: 'idle'}),
+                        school_login_state: async () => state(),
+                        set_school_switch: async (on) => { calls.push(['switch', on]); switchOn = on; return state(); }});
+                }""")
+                page.evaluate("async () => { testState = {mode: 'idle'}; await tick(); await act('settings'); }")
+                page.locator('[data-page=login]').click()
+                page.wait_for_selector('.switch-row')
+                self.assertEqual(page.locator('.login-row .ls-n').all_inner_texts(), ['1', '2'])
+                self.assertEqual(page.locator('.switch-row > span').inner_text(), '没权限时换下一所学校')
+                self.assertEqual(page.get_attribute('[data-act=school_switch]', 'aria-checked'), 'true')
+                # One line, a switch of its usual size (the first drawing stretched it, user 2026-11-21).
+                size = page.evaluate("""() => { const row = document.querySelector('.switch-row'), sw = row.querySelector('.switch');
+                    const text = row.querySelector('span').getBoundingClientRect();
+                    return [sw.getBoundingClientRect().width, Math.round(text.height), row.children.length]; }""")
+                self.assertEqual(size[0], 34)
+                self.assertLess(size[1], 24)
+                self.assertEqual(size[2], 2)
+                # One line between it and the schools above, not two.
+                self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.switch-row')).borderTopStyle"), 'none')
+                page.locator('[data-act=school_switch]').click()
+                page.wait_for_function("document.querySelector('[data-act=school_switch]').getAttribute('aria-checked') === 'false'")
+                self.assertEqual(page.evaluate('calls'), [['switch', False]])
+                # One school: nothing to switch to.
+                page.evaluate("async () => { schoolsNow = schoolsNow.slice(0, 1); schoolLogin = await pywebview.api.school_login_state(); render(true); }")
+                page.wait_for_function("!document.querySelector('.switch-row')")
+                self.assertEqual(page.locator('.login-row .ls-n').count(), 0)
+            finally:
+                browser.close()
+
+    def test_a_schools_sign_in_tested_from_its_page(self):
+        # 测试登录 (user, 2026-11-21, as drawn): the article it opens, set by the user (乙: its DOI and 修改, a DOI or the
+        # article's address; none set for them, its box open), changed fields saved first, the steps while it runs in
+        # rows that do not move, 停止测试, then how it went.
+        from patchright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser, page = self.drag_page(p, 'darwin', english=True)
+            try:
+                page.evaluate("""() => {
+                    window.calls = []; window.testNow = {state: 'idle'};
+                    const school = {key: 'A', name: '红木兰大学', current: true, entity: true, saved: true, username: '2******4',
+                                    enabled: true, off: '', status: 'surveyed'};
+                    const state = () => ({ok: true, pro: true, schools: [school], counts: {}, ...school});
+                    Object.assign(pywebview.api, {
+                        settings: async () => ({notify: true, download_dir: '/papers', language: 'zh', fields: []}),
+                        api_keys: async () => ({ok: true, filled: 0, total: 0, groups: []}),
+                        pro_status: async () => ({ok: true, installed: true, version: '0.3.2'}),
+                        pro_install_state: async () => ({state: 'idle'}),
+                        school_login_state: async () => state(),
+                        school_login_saved: async () => ({username: '20261234', password: 'pw-a'}),
+                        save_school_login: async (u, pw, on, key) => { calls.push(['save', u, pw, key]); return state(); },
+                        school_test_article: async (key) => ({ok: true, doi: ''}),
+                        set_school_test_article: async (key, text) => { calls.push(['article', key, text]);
+                            return text.includes('wiley') ? {ok: true, doi: '10.1111/dom.15869'}
+                              : {ok: false, error: '认不出这篇文章：请填 DOI 或文章网址'}; },
+                        start_school_test: async (key, doi) => { calls.push(['start', key, doi]);
+                            testNow = {state: 'running', key, doi, step: 0, phase: ''}; return testNow; },
+                        school_test_state: async () => testNow,
+                        stop_school_test: async () => { calls.push(['stop']); testNow = {...testNow, stopping: true}; return testNow; }});
+                }""")
+                page.evaluate("async () => { testState = {mode: 'idle'}; await tick(); await act('settings'); }")
+                page.locator('[data-page=login]').click()
+                # None set: a short line saying what to do, 填写, and the test's button 测试 at the line's end, beside its
+                # article (甲); 测试 opens the box and asks for one. 账号, 密码 and 文章 end alike on the right, the eye inside
+                # the password's box (user, 2026-11-21).
+                page.wait_for_selector('.test-article .what.empty')
+                self.assertEqual(page.locator('.test-article .what').inner_text(), '填入学校订阅文章 DOI 或网址')
+                self.assertEqual(page.evaluate("document.querySelector('.test-article .what').scrollWidth <= document.querySelector('.test-article .what').clientWidth"), True)  # one line, whole
+                self.assertEqual(page.locator('[data-act=test_article_edit]').inner_text(), '填写')
+                self.assertEqual(page.locator('.test-article [data-act=school_test]').inner_text(), '测试')
+                self.assertEqual(page.locator('.login-form .key-actions .btn').all_inner_texts(), ['关闭自动登录', '保存'])
+                edges = "['#login-user', '#login-password', '[data-act=school_test]'].map((q) => Math.round(document.querySelector(q).getBoundingClientRect().right))"
+                self.assertEqual(len(set(page.evaluate(edges))), 1)
+                page.locator('[data-act=school_test]').click()
+                page.wait_for_selector('.test-err')
+                self.assertEqual(page.locator('.test-err').inner_text(), '先填测试文章')
+                self.assertEqual(page.evaluate('document.activeElement.id'), 'test-article')
+                self.assertEqual(page.input_value('#test-article'), '')
+                self.assertEqual(page.get_attribute('#test-article', 'placeholder'), 'DOI 或文章网址')
+                self.assertEqual(len(set(page.evaluate(edges))), 1)
+                page.press('#test-article', 'Escape')
+                page.wait_for_selector('.test-article .what.empty')
+                # One not recognised said so, the box kept open; one taken shown with 修改, which opens it again.
+                page.locator('[data-act=test_article_edit]').click()
+                page.fill('#test-article', '那篇')
+                page.press('#test-article', 'Enter')
+                page.wait_for_function("document.querySelector('.test-err')?.textContent === '认不出这篇文章：请填 DOI 或文章网址'")
+                # While it looks the article up, 查找中… beside the text, not over it (user, 2026-11-21).
+                page.fill('#test-article', 'https://linkinghub.elsevier.com/retrieve/pii/S0883540324006557')
+                page.evaluate("() => { testArticleText = document.querySelector('#test-article').value; testArticleSaving = true; render(true); }")
+                page.wait_for_function("document.querySelector('[data-act=test_article_save]').disabled")
+                gap = page.evaluate("""() => { const box = document.querySelector('.test-edit'), input = box.querySelector('input'),
+                    button = box.querySelector('[data-act=test_article_save]');
+                    return [button.getBoundingClientRect().left - input.getBoundingClientRect().right,
+                            box.getBoundingClientRect().right - button.getBoundingClientRect().right]; }""")
+                self.assertGreaterEqual(gap[0], 0)  # the text ends before the button
+                self.assertGreaterEqual(gap[1], 0)  # the button inside the box
+                self.assertEqual(page.locator('[data-act=test_article_save]').inner_text(), '查找中…')
+                page.evaluate("() => { testArticleSaving = false; render(true); }")
+                page.fill('#test-article', 'https://onlinelibrary.wiley.com/doi/full/10.1111/dom.15869')
+                page.locator('[data-act=test_article_save]').click()
+                page.wait_for_function("!document.querySelector('#test-article')")
+                self.assertEqual(page.locator('.test-article .what').inner_text(), '10.1111/dom.15869')
+                self.assertEqual(page.locator('[data-act=test_article_edit]').inner_text(), '修改')
+                page.locator('[data-act=test_article_edit]').click()
+                self.assertEqual(page.input_value('#test-article'), '10.1111/dom.15869')
+                page.press('#test-article', 'Escape')
+                page.wait_for_function("!document.querySelector('#test-article')")
+                self.assertEqual(page.locator('.head .title').inner_text(), '学校自动登录')  # Esc left the page where it was
+                # The test uses the account as saved: a password typed since is saved first.
+                page.fill('#login-password', 'pw-new')
+                page.locator('[data-act=school_test]').click()
+                page.wait_for_selector('.test-steps')
+                self.assertEqual(page.evaluate('calls.slice(2)'), [['save', '20261234', 'pw-new', 'A'], ['start', 'A', '10.1111/dom.15869']])
+                self.assertEqual(page.locator('#login-user').count(), 0)  # the steps in the form's place, as drawn
+                self.assertEqual(page.locator('.test-steps li').all_inner_texts(), ['打开文章页', '学校登录', '下载全文', '核对 PDF'])
+                self.assertEqual(page.locator('.test-steps li.now').inner_text(), '打开文章页')
+                height = page.evaluate("document.querySelector('.login-test').getBoundingClientRect().height")
+                page.evaluate("testNow = {...testNow, step: 1, phase: '等待在浏览器完成机构登录：学校的页面要你自己操作时，在下载浏览器里完成，完成后会继续下载'}")
+                page.wait_for_function("document.querySelector('.test-steps li.now')?.textContent === '学校登录'")
+                self.assertEqual(page.locator('.test-steps li.done').count(), 1)
+                self.assertTrue(page.locator('.test-phase').inner_text().startswith('等待在浏览器完成机构登录'))
+                self.assertEqual(page.evaluate("document.querySelector('.login-test').getBoundingClientRect().height"), height)
+                page.locator('[data-act=school_test_stop]').click()
+                page.wait_for_function("document.querySelector('.test-phase')?.textContent === '正在停止…'")
+                self.assertEqual(page.evaluate('calls.at(-1)'), ['stop'])
+                self.assertTrue(page.locator('[data-act=school_test_stop]').is_disabled())
+                # How it went: above the article, the form back.
+                page.evaluate("testNow = {state: 'done', key: 'A', doi: '10.1111/dom.15869', ok: true, title: '登录和下载都正常', detail: '自动填写了账号密码，全文已下载并核对', seconds: 38}")
+                page.wait_for_selector('.test-result.ok')
+                self.assertEqual(page.locator('.test-result').inner_text().split('\n'),
+                                 ['登录和下载都正常', '自动填写了账号密码，全文已下载并核对', '用时 38 秒 · 测试下的 PDF 已删掉'])
+                self.assertEqual(page.locator('#login-user').count(), 1)
+                page.evaluate("() => { testNow = {state: 'done', key: 'A', ok: false, title: '学校说密码不对', detail: '自动登录已关闭；改好密码后保存，再测一次', seconds: 20}; schoolTest = testNow; render(true); }")
+                page.wait_for_selector('.test-result.bad')
+                self.assertNotIn('用时', page.locator('.test-result').inner_text())
+                # In English, its words from the table.
+                page.evaluate("() => { lang = 'en'; render(true); }")
+                self.assertEqual(page.locator('.test-result .t').inner_text(), 'Password refused')
+                self.assertEqual(page.locator('[data-act=school_test]').inner_text(), 'Test')
+            finally:
+                browser.close()
+
+    def test_no_text_cut_short_on_any_settings_page_in_any_language(self):
+        # User, 2026-11-21: in English the home page's folder line and Pro's line ended in "…". Every settings page, in
+        # each language, with values as long as real ones: no line of text cut short (one meant to be, with its whole
+        # text in its title, aside). A text added to the windows must fit in every language.
+        from patchright.sync_api import sync_playwright
+        scan = """() => [...root.querySelectorAll('*')].filter((el) => {
+            const st = getComputedStyle(el);
+            return el.offsetParent && !el.title && el.children.length < 3 && !['INPUT', 'TEXTAREA'].includes(el.tagName)
+              && (st.textOverflow === 'ellipsis' || st.whiteSpace === 'nowrap') && el.scrollWidth > el.clientWidth + 1;
+          }).map((el) => el.textContent.trim().slice(0, 80))"""
+        with sync_playwright() as p:
+            for code in ('en', 'zh-Hant', 'zh', 'ja', 'ko', 'fr'):
+                browser, page = self.drag_page(p, 'darwin', english=True)
+                try:
+                    page.evaluate("""() => { Object.assign(pywebview.api, {
+                        settings: async () => ({notify: true, download_dir: '/Users/alexandria/Downloads', language: 'zh', fields: [
+                          {name: 'hourly', label: '每家出版社每小时最多', value: 200, default: 200, page: 'download'},
+                          {name: 'login', label: '学校登录最多等', value: 180, default: 180, page: 'wait'}]}),
+                        api_keys: async () => ({ok: true, filled: 12, total: 12, groups: []}),
+                        pro_status: async () => ({ok: true, installed: true, version: '0.13.12', access: {mode: 'free'}, converted: 12858,
+                          sites: Array.from({length: 40}, (_, i) => ({name: 'site' + i}))}),
+                        pro_install_state: async () => ({state: 'idle'}),
+                        school_login_state: async () => ({ok: true, pro: true, counts: {}, school: '红木兰大学', saved: true,
+                          username: 'x*****5', enabled: true, schools: [{key: 'A', name: '红木兰大学', current: true, entity: true,
+                          saved: true, username: 'x*****5', enabled: true, off: '', status: 'surveyed'}]}),
+                        school_login_saved: async () => ({username: '20261234', password: 'pw'}),
+                        school_test_article: async () => ({ok: true, doi: ''}), school_test_state: async () => ({state: 'idle'}),
+                        school_support_list: async () => ({ok: true, schools: [
+                          {key: 'B', name: '蓝杉大学', country: '中国', province: '广东', status: 'surveyed'}]})}); }""")
+                    page.evaluate("async () => { testState = {mode: 'idle'}; await tick(); await act('settings'); }")
+                    page.evaluate("code => { lang = code; render(true); }", code)
+                    for name in ('home', 'about', 'download', 'wait', 'keys', 'markdown', 'login', 'login_schools'):
+                        with self.subTest(language=code, page=name):
+                            if name != 'home':
+                                page.evaluate("async (name) => { settingsPage = 'home'; await act('settings_page', {dataset: {page: name}}); }", name)
+                            page.wait_for_timeout(150)
+                            self.assertEqual(page.evaluate(scan), [])
+                finally:
+                    browser.close()
 
     def test_without_pros_features_the_settings_have_no_markdown_page(self):
         # The public edition before 1.0.0 (edition.py, user 2026-11-19): no Markdown row, no page, Pro not asked.
@@ -1842,7 +2562,11 @@ class CapsulePageTests(unittest.TestCase):
                 self.assertNotIn('PaperSearch Pro', page.locator('.settings').inner_text())
                 page.evaluate("async () => { await openSettings({page: 'markdown', service: ''}); }")
                 self.assertEqual(page.evaluate('settingsPage'), 'home')
-                self.assertEqual(page.locator('.pro-head').count(), 0)
+                # Its version and updates, nothing of Pro's.
+                page.locator('.version-link').click()
+                page.wait_for_selector('.about-hero')
+                self.assertEqual(page.locator('.about-sec').count() + page.locator('.pro-pill').count()
+                                 + page.locator('.about-feat').count() + page.locator('.app-icon.pro').count(), 0)
                 self.assertEqual(page.evaluate('asked'), 0)
             finally:
                 browser.close()
@@ -1893,6 +2617,64 @@ class CapsulePageTests(unittest.TestCase):
                 self.assertEqual(page.locator('.settings-hold').count(), 0)
             finally:
                 browser.close()
+
+    def test_japanese_korean_and_french_leave_no_chinese(self):
+        # User, 2026-11-21: Japanese, Korean and French as well. Their cards and settings pages say nothing in Chinese:
+        # in Korean and French no Chinese character at all, in Japanese none that only simplified Chinese writes. (Its schools'
+        # own names are not Chinese: a school's own name is shown where it has none in the language.)
+        from patchright.sync_api import sync_playwright
+        from paper_search_school.progress_view import view
+        import time
+        now = time.time()
+        running = dict(status='running', run_id='r', current='10.1000/x', title='Test article', publisher='Test',
+                       journal='Spine', total=3, done=1, success=1, failed=0, content='both', part='main', stage='fetching_pdf')
+        cards = {'running': view(running, now),
+                 'switching': view({**running, 'stage': 'switching_school', 'phase': '没权限，换Hongmulan University'}, now),
+                 'done': view({**running, 'status': 'done', 'done': 3, 'failed': 1, 'results': {
+                     'content': 'both', 'main': 2, 'supplements': 1, 'sources': [['机构下载', 2]],
+                     'failures': [{'cls': 'no_access', 'reason': '2 所学校都没有权限', 'journal': 'Spine', 'title': 'Other', 'doi': '10.1000/y'}],
+                     'supplement_failures': []}}, now)}
+        simplified = ''.join(sorted(__import__('test_i18n').SIMPLIFIED_ONLY))
+        with sync_playwright() as p:
+            for code in ('ja', 'ko', 'fr'):
+                pattern = f'[{simplified}]+' if code == 'ja' else '[一-鿿]+'
+                leftover = """(pattern) => { const attributes = [...root.querySelectorAll('[aria-label], [title], [placeholder]')]
+                    .flatMap((e) => ['aria-label', 'title', 'placeholder'].map((n) => e.getAttribute(n) || ''));
+                    return [root.innerText, ...attributes].join('\\n').replace('简体中文', '').replace('繁體中文', '').match(new RegExp(pattern, 'g')); }"""
+                browser, page = self.drag_page(p, 'darwin', english=True)
+                try:
+                    for name, state in cards.items():
+                        with self.subTest(language=code, card=name):
+                            page.evaluate("async ([s, code]) => { clearInterval(pollTimer); testState = {...s, lang: code}; open = true; panel = '';"
+                                          " await tick(); render(true); }", [state, code])
+                            page.wait_for_function("!root.classList.contains('animating')")
+                            self.assertIsNone(page.evaluate(leftover, pattern))
+                    page.evaluate("""code => Object.assign(pywebview.api, {
+                        settings: async () => ({notify: true, download_dir: '/papers', language: code, fields: [
+                          {name: 'hourly', label: '每家出版社每小时最多', unit: '篇', value: 200, default: 200, page: 'download'},
+                          {name: 'login', label: '学校登录页最多等', unit: '秒', value: 180, default: 180, page: 'wait'}]}),
+                        api_keys: async () => ({ok: true, filled: 3, total: 12, groups: []}),
+                        pro_status: async () => ({ok: true, installed: true, version: '0.3.4', access: {mode: 'free'}, converted: 12,
+                          sites: [{name: 'site'}]}),
+                        pro_install_state: async () => ({state: 'idle'}),
+                        school_login_state: async () => ({ok: true, pro: true, counts: {}, switch: true, schools: [
+                          {key: 'A', name: 'Hongmulan University', name_en: 'Hongmulan University', current: true, entity: true, saved: true,
+                           username: 'x*****5', enabled: true, off: '', status: 'surveyed'},
+                          {key: 'B', name: 'Lanshan University', name_en: 'Lanshan University', current: false, entity: true, saved: true,
+                           username: 'y*****1', enabled: true, off: '', status: 'surveyed'}]}),
+                        school_login_saved: async () => ({username: '20261234', password: 'pw'}),
+                        school_test_article: async () => ({ok: true, doi: ''}), school_test_state: async () => ({state: 'idle'}),
+                        school_support_list: async () => ({ok: true, schools: [
+                          {key: 'B', name: 'Lanshan University', name_en: 'Lanshan University', country: '中国', province: '广东', status: 'surveyed'}]})})""", code)
+                    page.evaluate("async code => { testState = {mode: 'idle', lang: code}; await tick(); await act('settings'); lang = code; render(true); }", code)
+                    for name in ('home', 'about', 'download', 'wait', 'keys', 'markdown', 'login', 'login_schools'):
+                        with self.subTest(language=code, page=name):
+                            if name != 'home':
+                                page.evaluate("async (name) => { settingsPage = 'home'; await act('settings_page', {dataset: {page: name}}); }", name)
+                            page.wait_for_timeout(150)
+                            self.assertIsNone(page.evaluate(leftover, pattern))
+                finally:
+                    browser.close()
 
     def test_english_leaves_no_chinese_on_any_card_or_settings_page(self):
         from patchright.sync_api import sync_playwright
@@ -1957,7 +2739,7 @@ class CapsulePageTests(unittest.TestCase):
                             page.wait_for_function("document.querySelector('#key-error').textContent.includes('Rejected')")
                         page.wait_for_function("!root.classList.contains('animating')")
                         self.assertIsNone(page.evaluate(leftover))
-                # Pro's page while Pro is not here, installing, or failed to install.
+                # The about page's Pro while Pro is not here, installing, or failed to install.
                 for name, pro, installing in (
                         ('not installed', {'ok': True, 'installed': False, 'version': ''}, {'state': 'idle'}),
                         ('installing', {'ok': True, 'installed': False, 'version': ''}, {'state': 'running', 'done': 1258291, 'total': 2306867}),
@@ -1968,7 +2750,7 @@ class CapsulePageTests(unittest.TestCase):
                     with self.subTest(markdown=name):
                         page.evaluate("""([pro, installing]) => { Object.assign(pywebview.api, {pro_status: async () => pro,
                             pro_install_state: async () => installing}); }""", [pro, installing])
-                        page.evaluate("async () => { await loadSettings(); settingsPage = 'pro'; render(true); }")
+                        page.evaluate("async () => { await loadSettings(); settingsPage = 'about'; render(true); }")
                         page.wait_for_function("!root.classList.contains('animating')")
                         self.assertIsNone(page.evaluate(leftover))
                         if name == 'installing':

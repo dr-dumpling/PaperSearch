@@ -27,6 +27,12 @@ interface DoctorReportInput {
         error?: string;
         version?: string;
     };
+    /** The PaperSearch copies on the PATH (selfUpdate.installedCopies): more than one is said. */
+    copies?: Array<{
+        command: string;
+        version: string;
+        root?: string;
+    }>;
 }
 export declare function renderDoctorTextReport(report: DoctorReportInput): string;
 export declare function renderSkillDiffTextReport(report: SkillDiffResult): string;

@@ -89,7 +89,7 @@ class DiagnosticsMixin:
                 "institution_search_submitted", "institution_search_retyped",
                 "institution_list_submitted", "institution_continue",
                 "login_round_trip_returned", "redirect_page_passed",
-                "publisher_terms_accepted", "idp_confirmation_accepted",
+                "publisher_terms_accepted", "idp_confirmation_accepted", "personal_account_offer_skipped",
             }:
                 activity.progress()
             # Only publish fixed phase text; event details can contain signed URLs.

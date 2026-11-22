@@ -89,16 +89,30 @@ def school_status(entity_id: str, pro: Any | None = None) -> str:
     return status if status in {"verified", "surveyed", "trial", "check"} else ""
 
 
-def school_list(pro: Any | None = None) -> list[dict[str, str]]:
-    """The schools Pro knows, each with its name, English name, country, province (a mainland school's) and status,
-    for the settings page; [] from an older Pro (one without the English name or the country: "" there)."""
+# What the settings page reads of each school: the area (a US state, a UK nation) and kind (university, research
+# institute, hospital) split the big countries (Pro 0.3.1; an older Pro has neither, "" there).
+#: key: its entityID (添加学校 adds a school found in this list by it; "" from an older Pro).
+SCHOOL_FIELDS = ("key", "name", "name_en", "country", "province", "area", "kind", "status")
+
+
+def school_list(pro: Any | None = None) -> list[dict[str, Any]]:
+    """The schools Pro knows, each with its name, English name, country, province (a mainland school's), area,
+    kind, status and names in other languages, for the settings page; [] from an older Pro (one without a field: ""
+    there, {} for the names)."""
     pro = pro if pro is not None else module()
     try:
         listed = pro.school_list() if pro is not None and hasattr(pro, "school_list") else []
-        return [{key: str(school.get(key) or "") for key in ("name", "name_en", "country", "province", "status")}
+        return [{**{key: str(school.get(key) or "") for key in SCHOOL_FIELDS}, "names": _names(school.get("names"))}
                 for school in listed if isinstance(school, dict) and school.get("name")]
     except Exception:
         return []
+
+
+def _names(raw: Any) -> dict[str, str]:
+    """A school's names in other languages ({language code: name}), each text; {} from an older Pro."""
+    if not isinstance(raw, dict):
+        return {}
+    return {str(lang): str(name) for lang, name in raw.items() if isinstance(lang, str) and isinstance(name, str) and name}
 
 
 def school_counts(pro: Any | None = None) -> dict[str, int]:

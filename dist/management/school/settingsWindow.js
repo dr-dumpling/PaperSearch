@@ -15,6 +15,8 @@ export function settingsWindowEnv(paths, env = process.env) {
     return { ...getDefaultEnvironment(), ...passed, ...SCHOOL_BACKEND_UTF8_ENV,
         SCHOOL_DATA_DIR: paths.dataDir, PAPER_SEARCH_CONFIG_FILE: paths.configFile,
         ...(paths.cli ? { PAPER_SEARCH_CLI: paths.cli } : {}),
+        // The version the window runs: an update elsewhere makes it say so, and open again (updates.py).
+        ...(paths.version ? { PAPER_SEARCH_VERSION: paths.version } : {}),
         // Whether PaperSearch Pro is installed, for the Markdown page (pro_status.py), and whether
         // this command's edition has that page (config/edition.ts).
         ...(paths.proEntry ? { PAPER_SEARCH_PRO_PATH: paths.proEntry } : {}),

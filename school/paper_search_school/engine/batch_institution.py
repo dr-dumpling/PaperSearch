@@ -154,6 +154,7 @@ class InstitutionMixin:
             try:
                 inp = page.locator(selector).first
                 if inp.is_visible(timeout=5_000):
+                    self._clear_before_typing(page, result)
                     inp.fill(self._typed_school_name())
                     self._event(result, "institution_search", selector)
                     settle(page, 2_000)
@@ -835,6 +836,8 @@ class InstitutionMixin:
             if (not settled and not chosen and not getattr(result, "_institution_not_listed", False)
                     and time.time() - float(getattr(result, "_search_typed_at", 0) or 0) >= self.SEARCH_NOTHING_SEC
                     and (self._search_list_closed(page, result, url) or not self._entry_texts(page) - before)):
+                if self._retype_lost_search(page, result, url, tried[-1]):
+                    return True
                 result._institution_not_listed = True
                 self._event(result, "institution_search_found_nothing", f"{', '.join(tried)[:120]} @ {url[:200]}")
             return False
@@ -852,6 +855,7 @@ class InstitutionMixin:
                 if settled:
                     self._event(result, "institution_search_retry_skipped", f"box holds {value[:60]!r} @ {url[:200]}")
                 return False
+            self._clear_before_typing(page, result)
             box.fill("")
             box.press_sequentially(left[0], delay=40)
         except Exception as exc:
@@ -865,6 +869,41 @@ class InstitutionMixin:
         result._search_typed_at = time.time()
         result._search_miss = None
         self._event(result, "auto_institution_search", f"{left[0]} @ {url}")
+        return True
+
+    def _clear_before_typing(self, page: Any, result: DownloadResult | None) -> None:
+        """Before the school's name is typed into a page, wherever: a cookie banner over it answered first
+        (``_dismiss_cookie_banners``). One keeping the focus takes the keys typed behind it (Springer Nature's
+        chooser, 2026-11-22: the box stayed empty and the school was said not listed); the school's and the
+        federations' own pages stay as they are."""
+        if self._dismiss_cookie_banners(page, result):
+            settle(page, 1_000)
+
+    def _retype_lost_search(self, page: Any, result: DownloadResult, url: str, query: str) -> bool:
+        """Before the school is said not listed: the box typed in is empty, nothing chosen or
+        answered there, so the keys went elsewhere (a cookie banner over Springer Nature's chooser
+        took them, 2026-11-22). Any banner answered, the name is typed again, once per page. True
+        when typed; a box holding anything is left as it is."""
+        box_at = getattr(result, "_search_box", None)
+        if (not query or not isinstance(box_at, tuple)
+                or any(e["state"] == "institution_search_lost"
+                       and self._same_address(str(e.get("detail", "")).partition(" @ ")[2], url) for e in result.events)):
+            return False
+        try:
+            box = page.locator(f"[{self._SEARCH_BOX_MARK}]").first
+            if box.is_visible(timeout=500) is not True:
+                box = page.locator(box_at[1]).first
+            if box.is_visible(timeout=500) is not True or str(box.input_value(timeout=2_000) or "").strip():
+                return False
+            self._clear_before_typing(page, result)
+            box.fill("")
+            box.press_sequentially(query, delay=40)
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return False
+        result._search_typed_at = time.time()
+        self._event(result, "institution_search_lost", f"{query} @ {url}")
         return True
 
     def _search_list_closed(self, page: Any, result: DownloadResult, url: str) -> bool:
@@ -1229,6 +1268,7 @@ class InstitutionMixin:
                         continue
                     if str(box.input_value(timeout=2_000) or "").strip():
                         return False  # the user is typing; never replace it
+                    self._clear_before_typing(page, result)
                     # Marked before typing: a box found by its placeholder loses it once it holds a
                     # name, and the next name is typed into it again (Science, 2026-11-17).
                     box.evaluate(f"el => el.setAttribute('{self._SEARCH_BOX_MARK}', '')")
@@ -1351,6 +1391,7 @@ class InstitutionMixin:
                     continue
                 if (box.input_value(timeout=2_000) or "").strip():
                     return False  # the user already typed; never overwrite
+                self._clear_before_typing(page, result)
                 box.fill(self._typed_school_name())
                 self._event(result, "institution_search", f"{federation.code}:{selector}")
                 pump_until(page, lambda: self._any_visible(page, self._institution_result_selectors()), 2_000)

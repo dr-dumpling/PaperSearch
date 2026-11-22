@@ -90,7 +90,7 @@ export async function asWindowBatch(
 
 export function batchResults(result: DownloadBatchResult, startedAt: number, folder: string): SchoolBatchResults {
   const sources = new Map<string, number>();
-  const details = new Map<string, number>();
+  const details = new Map<string, Map<string, number>>();
   const summary: SchoolBatchResults = {
     // The Markdown alone is counted as Markdown (a backend before it shows it as the main text).
     content: result.content,
@@ -157,7 +157,11 @@ export function batchResults(result: DownloadBatchResult, startedAt: number, fol
       summary.main += 1;
       const [label, detail] = sourceLabel(item);
       sources.set(label, (sources.get(label) ?? 0) + 1);
-      if (detail) details.set(detail, (details.get(detail) ?? 0) + 1);
+      if (detail) {
+        const said = details.get(label) ?? new Map<string, number>();
+        said.set(detail, (said.get(detail) ?? 0) + 1);
+        details.set(label, said);
+      }
       continue;
     }
     // The Markdown alone from a site not yet supported: its note in place of the journal.
@@ -172,7 +176,10 @@ export function batchResults(result: DownloadBatchResult, startedAt: number, fol
     });
   }
   summary.sources = [...sources].sort((a, b) => b[1] - a[1]);
-  if (details.size) summary.source_details = [[OPEN_DOWNLOAD, [...details].map(([name, n]) => `${name} ${n}`).join("、")]];
+  // Each label's sources: the open ones (Unpaywall, PubMed Central), the schools a 机构下载 went through.
+  if (details.size) {
+    summary.source_details = [...details].map(([label, said]) => [label, [...said].map(([name, n]) => `${name} ${n}`).join("、")]);
+  }
   return summary;
 }
 
@@ -250,7 +257,10 @@ function sourceLabel(item: DownloadBatchItemResult): [string, string?] {
   // The PDF's own step: the Markdown's or the files' come after it (a PDF through the school and its
   // Markdown from PubMed Central were listed as 开放下载, JAMA Netw Open, Windows 2026-11-19).
   const saved = [...ok].reverse().find((attempt) => attempt.stage !== "markdown" && attempt.stage !== "supplements");
-  if (saved?.stage === "entitled_access") return [ENTITLED_DOWNLOAD];
+  // Through a saved school other than the default one (没权限时换下一所学校, user 2026-11-21): its name.
+  if (saved?.stage === "entitled_access") {
+    return saved.school ? [ENTITLED_DOWNLOAD, saved.school] : [ENTITLED_DOWNLOAD];
+  }
   if (saved) return [OPEN_DOWNLOAD, OPEN_DETAILS[saved.stage]];
   // The Markdown alone (content "markdown"): the school's page, or an open source or API.
   if (ok.some((attempt) => attempt.stage === "markdown")) {
@@ -274,7 +284,9 @@ export function failure(
   }
   const entitled = [...item.attempts].reverse().find((attempt) => attempt.stage === "entitled_access");
   if (entitled && (entitled.status === "error" || entitled.code === "batch_stopped")) {
-    return { cls: classifyFailureCode(entitled.code), reason: schoolShortReason(entitled.code) };
+    // No access with every saved school tried (没权限时换下一所学校, user 2026-11-21).
+    const reason = entitled.schools ? `${entitled.schools} 所学校都没有权限` : schoolShortReason(entitled.code);
+    return { cls: classifyFailureCode(entitled.code), reason };
   }
   // Institutional access never ran for this item.
   return item.doi && sanitizeDoi(item.doi).valid

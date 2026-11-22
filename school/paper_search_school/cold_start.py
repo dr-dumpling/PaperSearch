@@ -12,7 +12,8 @@ start forgets:
   thelancet.com, ...) and their trackers.
 
 It keeps bot-verification records (Cloudflare), personal publisher accounts
-and cookie-consent choices. Besides the profile's own cookie store it filters
+and cookie-consent choices; before a sign-in with another school (``before_sign_in``)
+the personal accounts go too: Elsevier's keeps the school's access with it. Besides the profile's own cookie store it filters
 the files that put cookies back: the session cookies saved for the next
 launch and the saved publisher cookies. IndexedDB goes per site. Chrome keeps
 every site's local storage in one database, which goes whole when it holds a
@@ -65,17 +66,23 @@ def _publisher_domains() -> tuple[str, ...]:
 
 
 class Classifier:
-    """Sorts a cookie (host, name) or a site's data (host) into the categories above."""
+    """Sorts a cookie (host, name) or a site's data (host) into the categories above. ``accounts``: the personal
+    publisher accounts are forgotten as a school's login (another school to sign in with)."""
 
-    def __init__(self, config: dict[str, Any]):
+    def __init__(self, config: dict[str, Any], accounts: bool = False):
         self.school_tokens = tuple(t.lower() for t in _school_auth_patterns(config) if t)
         self.publishers = _publisher_domains()
+        self.accounts = accounts
 
     def __call__(self, host: str, name: str = "") -> str:
         host = (host or "").lower().lstrip(".").split(":")[0]
         if name and (name in _CLOUDFLARE_COOKIE_NAMES or name.startswith(("cf_chl", "__cf"))):
             return "verification"
         if _under(host, PERSONAL_ACCOUNT_HOSTS):
+            # Elsevier's account keeps the school it was signed in through (remember.me signs the next visit in with
+            # it, the school's access and all: a test of another school passed with the last one's, user 2026-11-21).
+            if self.accounts:
+                return "consent" if name and _CONSENT_NAME.search(name) else "school_login"
             return "school_login" if name and _REMEMBERED_SCHOOL_NAME.search(name) else "personal_account"
         if name and _CONSENT_NAME.search(name):
             return "consent"
@@ -103,10 +110,10 @@ def _netscape_rows(path: Path) -> list[list[str]]:
 
 
 class ColdStart:
-    def __init__(self, profile: Path, cache_dir: Path | None, config: dict[str, Any]):
+    def __init__(self, profile: Path, cache_dir: Path | None, config: dict[str, Any], accounts: bool = False):
         self.profile = profile
         self.cache_dir = cache_dir  # None: the profile only, no saved cookie files
-        self.classify = Classifier(config)
+        self.classify = Classifier(config, accounts)
 
     # -- reading ------------------------------------------------------------
 
@@ -257,7 +264,8 @@ def _write_json(path: Path, data: Any) -> None:
     tmp.replace(path)
 
 
-def for_config(config: dict[str, Any], profile: str | None = None, cache_dir: str | None = None) -> ColdStart:
+def for_config(config: dict[str, Any], profile: str | None = None, cache_dir: str | None = None,
+               accounts: bool = False) -> ColdStart:
     """The cold start for the configured download profile (Chrome's own directory)
     and the configured cache. Another profile comes with only the cache named for
     it: the configured cache belongs to the configured profile."""
@@ -265,6 +273,60 @@ def for_config(config: dict[str, Any], profile: str | None = None, cache_dir: st
     from .engine.batch_common import _resolve_profile_dir
 
     if profile:
-        return ColdStart(Path(profile), Path(cache_dir) if cache_dir else None, config)
+        return ColdStart(Path(profile), Path(cache_dir) if cache_dir else None, config, accounts)
     cache = cache_dir or config.get("cache_dir", str(DATA_DIR / "cache"))
-    return ColdStart(chrome_profile_dir(_resolve_profile_dir(config)), Path(cache), config)
+    return ColdStart(chrome_profile_dir(_resolve_profile_dir(config)), Path(cache), config, accounts)
+
+
+# -- another school's sign-in --------------------------------------------------------------------
+# Switched to another school, the download browser stayed signed in with the last one: the publisher's page opened
+# through it, and the new school's account was never used (user, 2026-11-21). The school the browser last signed in
+# with is kept; a download with another forgets that sign-in first, as a cold start does (the publishers' sessions and
+# remembered schools with it; verification records, personal accounts and consent choices kept).
+
+def _signed_in_path() -> Path:
+    from .data_home import default_data_dir
+
+    return default_data_dir() / "browser_school.json"
+
+
+def signed_in_school() -> str:
+    """The school the download browser last signed in with ("" not known)."""
+    try:
+        data = json.loads(_signed_in_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return str(data.get("school") or "") if isinstance(data, dict) else ""
+
+
+def before_sign_in(config: dict[str, Any], *, always: bool = False) -> str:
+    """Before a download signs in with ``config``'s school: the browser last signed in with another forgets that
+    sign-in (``always``, the settings' 测试登录: whatever it was, so that the account is what the test tries).
+    "cleared"; "" when there was nothing to forget (the same school, or none known yet: kept from now on); "busy"
+    when the download browser is open (nothing changed)."""
+    entity = str(config.get("idp_entity_id") or "").strip()
+    if not entity:
+        return ""
+    last = signed_in_school()
+    if not always and (not last or last == entity):
+        if not last:
+            _signed_in_path().parent.mkdir(parents=True, exist_ok=True)
+            _write_json(_signed_in_path(), {"school": entity})
+        return ""
+    # The personal publisher accounts too: Elsevier's signs the next visit in with the last school's access.
+    run = for_config(config, accounts=True)
+    try:
+        run.apply()
+    except RuntimeError:
+        # A browser just closed (a batch's, for the next school) takes a few seconds to let go of the profile.
+        from .browser.profiles import wait_for_profile_release
+
+        if not wait_for_profile_release(str(run.profile), timeout=10):
+            return "busy"
+        try:
+            run.apply()
+        except RuntimeError:
+            return "busy"
+    _signed_in_path().parent.mkdir(parents=True, exist_ok=True)
+    _write_json(_signed_in_path(), {"school": entity})
+    return "cleared"

@@ -182,5 +182,9 @@ export interface DownloadWithFallbackResult {
     retryAfterSec?: number;
     /** rate_limited: whose hourly limit it is, as the school backend counts it. */
     hourlyPublisher?: string;
+    /** entitled_access: the saved school it was got through, when not the default one (没权限时换下一所学校). */
+    school?: string;
+    /** entitled_access: no access with any of this many saved schools (没权限时换下一所学校). */
+    schools?: number;
   }>;
 }

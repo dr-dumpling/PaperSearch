@@ -14,6 +14,7 @@ import {
 } from "../content/pdf/OpenAccessFallbackService.js";
 import { schoolAttemptDetails, schoolShortReason } from "../../../infrastructure/school/index.js";
 import type { SchoolBackend, SchoolHeldPublisher } from "../../../infrastructure/school/index.js";
+import { journalOfDoi, takeNext } from "./journalKey.js";
 import { downloadSupplementsOnly, filesPastNetworkLoss } from "../content/supplements/fetch.js";
 import { supplementShortfall } from "../content/supplements/shortfall.js";
 import { fulltextPageVisit } from "../content/markdown/pageVisit.js";
@@ -1052,11 +1053,21 @@ async function downloadTwoPhase(
     } };
   };
 
+  // One journal's papers one after another when the backend says so (PaperSearch Pro's 没权限时换下一所学校, user
+  // 2026-11-21): a school switched to for a journal is not switched away from and back. Asked until the backend has
+  // run a paper and can say.
+  let groupJournals: boolean | undefined;
+  let lastJournal = "";
   const entitledLane = async () => {
     for (;;) {
       while (!queue.length && openRunning && !stopped) await new Promise<void>((resume) => { wake = resume; });
-      const offset = stopped ? undefined : queue.shift();
+      if (groupJournals === undefined && backend?.schoolSwitch) {
+        groupJournals = (await backend.schoolSwitch().catch(() => undefined))?.group;
+      }
+      const offset = stopped ? undefined
+        : takeNext(queue, (at) => journalOfDoi(requests[at].doi), lastJournal, groupJournals === true);
       if (offset === undefined) return;
+      lastJournal = journalOfDoi(requests[offset].doi);
       if (held.has(publisherOf(offset))) {
         held.get(publisherOf(offset))!.push(offset);
         continue;

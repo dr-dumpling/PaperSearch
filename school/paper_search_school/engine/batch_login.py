@@ -729,7 +729,8 @@ class LoginMixin:
                     continue
                 if self._return_from_login_site(page, result):
                     continue
-                if self._accept_publisher_terms(page, result) or self._accept_idp_confirmation(page, result):
+                if (self._accept_publisher_terms(page, result) or self._accept_idp_confirmation(page, result)
+                        or self._skip_personal_account_offer(page, result)):
                     continue
                 if manual_selection:
                     if self._is_challenge_page(page):
@@ -903,6 +904,69 @@ class LoginMixin:
             return False
         self._event(result, "publisher_terms_accepted", f"{terms} @ {url[:160]}")
         settle(page, 2_000)
+        return True
+
+    # After the school's sign-in, the publisher's offer of an account of the user's own (Elsevier ID's
+    # "Personalize your experience. We now know you're from <school>. … enter your email to sign in or
+    # create an Elsevier account", 2026-11-22, once the browser kept no Elsevier account's sign-in): the
+    # school's access needs none, so it is skipped (user, 2026-11-22). Its empty email field, and a
+    # "Skip", "Not now" or "No thanks", else its close (×), marked for the click.
+    _ACCOUNT_OFFER_JS = r"""() => {
+        const shown = el => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+        const words = el => [el.innerText || el.value || '', el.getAttribute('aria-label') || '', el.getAttribute('title') || '']
+            .join(' ').replace(/\s+/g, ' ').trim();
+        const body = ((document.body && document.body.innerText) || '').replace(/\s+/g, ' ').slice(0, 4000);
+        const OFFER = /personali[sz]e your experience|\b(?:sign|log) in or (?:create|register)\b|\bcreate (?:an?|your)(?: free)?(?: [\w-]+)? account\b|\bregister for (?:an?|your)(?: free)? account\b|创建(?:个人)?账[号户]|注册(?:个人)?账[号户]/i;
+        if (!OFFER.test(body)) return null;
+        const email = [...document.querySelectorAll('input')].filter(el => shown(el) && !el.disabled && !el.readOnly
+            && (el.type === 'email' || /e-?mail|邮箱/i.test([el.name, el.id, el.autocomplete, el.placeholder,
+                el.getAttribute('aria-label'), el.labels && [...el.labels].map(l => l.innerText).join(' ')].join(' '))));
+        if (!email.length || email.some(el => String(el.value || '').length > 0)) return null;  // someone typing: theirs
+        const controls = [...document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"]')]
+            .filter(el => shown(el) && !el.disabled);
+        const SKIP = /^(?:skip(?: for now| this step)?|not now|no,? thanks?|maybe later|remind me later|later|continue without(?: an?)?(?: account| signing in| sign-?in| registering)|continue as (?:a )?guest|跳过|暂不|以后再说|稍后再说)$/i;
+        const named = el => `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''}`;
+        let kind = 'skip', pick = controls.find(el => SKIP.test(words(el)));
+        if (!pick) {
+            kind = 'close';
+            pick = controls.find(el => /^(?:close|dismiss|关闭|[×✕✖xX])$/i.test((el.innerText || el.value || '').trim())
+                || /\bclose\b|\bdismiss\b|关闭/i.test(named(el))
+                || (!(el.innerText || '').trim() && /(?:^|[-_ ])close(?:$|[-_ ])/i.test(`${el.id} ${el.getAttribute('class') || ''}`)));
+        }
+        if (pick) pick.setAttribute('data-papersearch-offer', '1');
+        const heading = ((document.querySelector('h1, h2') || {}).innerText || '').replace(/\s+/g, ' ').trim();
+        return {kind: pick ? kind : '', label: pick ? words(pick).slice(0, 60) : '', heading: heading.slice(0, 80)};
+    }"""
+    ACCOUNT_OFFER_SKIPS = 2
+
+    def _skip_personal_account_offer(self, page: Any, result: DownloadResult) -> bool:
+        """After the school's sign-in, on the publisher's site or its sign-in service: skip its offer
+        of a personal account (``_ACCOUNT_OFFER_JS``). Still offered after ``ACCOUNT_OFFER_SKIPS``
+        clicks, or with nothing to skip it by, the article is opened again, once. True when done."""
+        url = str(getattr(page, "url", "") or "")
+        if (not self._school_login_done() or not (self._on_publisher_host(url) or self._is_auth_page(url))
+                or self._is_idp_host(urlparse(url).netloc) or self._on_school_login_page(url)):
+            return False
+        try:
+            offer = page.evaluate(self._ACCOUNT_OFFER_JS)
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return False
+        if not isinstance(offer, dict):
+            return False
+        where = f"{offer.get('heading') or ''} @ {url[:160]}"
+        skips = sum(e["state"] == "personal_account_offer_skipped" for e in result.events)
+        if offer.get("kind") and skips < self.ACCOUNT_OFFER_SKIPS and self._click_control(
+                page, page.locator('[data-papersearch-offer="1"]').first, result, "skip the publisher's account offer"):
+            self._event(result, "personal_account_offer_skipped", f"{offer['kind']} \"{offer.get('label') or ''}\" | {where}")
+            settle(page, 3_000)
+            return True
+        if not result.article_url or any(e["state"] == "personal_account_offer_left" for e in result.events):
+            return False
+        open_page(page, result.article_url, timeout_ms=60_000)
+        self._event(result, "personal_account_offer_left", where)
+        settle(page, 3_000)
         return True
 
     # The school's IdP asking to agree before it goes on (Shibboleth's attribute

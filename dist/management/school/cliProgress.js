@@ -12,6 +12,7 @@ export function withCliSchoolProgress(backend) {
         reportBatchPapers: async (update, last) => (await backend.reportBatchPapers?.(update, last)) ?? false,
         keepSession: async (signal) => (await backend.keepSession?.(signal)) ?? false,
         hourlyWait: async (publisher, signal) => backend.hourlyWait?.(publisher, signal),
+        schoolSwitch: async (signal) => backend.schoolSwitch?.(signal),
         holdSupported: async () => (await backend.holdSupported?.()) ?? false,
         takeBatchRequests: (batchId) => backend.takeBatchRequests?.(batchId) ?? { resume: [], stop: false },
         downloadLegalDoi: async (request) => {

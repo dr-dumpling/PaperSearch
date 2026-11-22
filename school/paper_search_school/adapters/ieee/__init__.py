@@ -344,6 +344,7 @@ class IEEEAdapter(PublisherAdapter):
         if input_box is None:
             return False
         try:
+            d._clear_before_typing(page, result)
             input_box.fill("")
             try:
                 input_box.type(d._typed_school_name(), timeout=5_000)

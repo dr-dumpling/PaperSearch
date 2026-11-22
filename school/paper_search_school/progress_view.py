@@ -311,8 +311,9 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
             if paper.get("detail"):
                 details[paper["detail"]] = details.get(paper["detail"], 0) + 1
         label = way + ("（" + "、".join(f"{name} {n}" for name, n in details.items()) + "）" if details else "")
-        saved.append(group(label, [row(p, p.get("journal"), (p.get("detail") or "开放获取") if way == OPEN_DOWNLOAD else "")
-                                   for p in items]))
+        # 机构下载's detail: the saved school it went through, when not the default one (没权限时换下一所学校).
+        saved.append(group(label, [row(p, p.get("journal"), (p.get("detail") or "开放获取") if way == OPEN_DOWNLOAD
+                                       else str(p.get("detail") or "")) for p in items]))
 
     # A batch of the Markdown alone fails a paper for its Markdown: a site not yet supported's
     # note stands in for the journal, as on the finished card (user, 2026-11-16).

@@ -43,7 +43,7 @@ class ServerContractTests(unittest.TestCase):
             set(self.out["tools"]),
             {"school_download", "school_cache_clear", "school_list_publishers",
              "school_batch_progress", "school_batch_papers", "school_close_batch_browser", "school_keep_session",
-             "school_hourly_wait"},
+             "school_hourly_wait", "school_switch_state"},
         )
 
     def test_batch_papers_takes_the_list_and_its_folder(self):

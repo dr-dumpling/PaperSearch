@@ -84,6 +84,7 @@ async function tryEntitledAccess(
         ...schoolAttemptDetails(outcome.code, outcome.trace),
         ...(outcome.retryAfterSec ? { retryAfterSec: outcome.retryAfterSec } : {}),
         ...(outcome.hourlyPublisher ? { hourlyPublisher: outcome.hourlyPublisher } : {}),
+        ...(outcome.schoolsTried ? { schools: outcome.schoolsTried } : {}),
         ...(outcome.trace ? { trace: { ...outcome.trace } } : {}),
         ...supplements,
       };
@@ -116,6 +117,7 @@ async function tryEntitledAccess(
       verified: true,
       message: "Entitled access PDF downloaded.",
       ...(outcome.trace?.state === "batch_stopped" ? { code: "batch_stopped" } : {}),
+      ...(outcome.school ? { school: outcome.school } : {}),
       trace,
       ...supplements,
       ...(outcome.fulltextNotShown ? { fulltextNotShown: true } : {}),

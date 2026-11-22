@@ -19,6 +19,8 @@ interface DoctorReportInput {
   school?: { installed: boolean; complete: boolean; enabled: boolean; notes: string[] };
   /** ``version``: this command's, which a newer Skill copy is told apart from. */
   skills?: { autoUpdate: boolean; locations: SkillLocation[]; error?: string; version?: string };
+  /** The PaperSearch copies on the PATH (selfUpdate.installedCopies): more than one is said. */
+  copies?: Array<{ command: string; version: string; root?: string }>;
 }
 
 export function renderDoctorTextReport(report: DoctorReportInput): string {
@@ -42,6 +44,17 @@ export function renderDoctorTextReport(report: DoctorReportInput): string {
 
   if (report.skills) {
     lines.push(...renderSkillLines(report.skills), "");
+  }
+
+  // Two copies update apart, and the older one takes the school extension back to its version (2026-11-21).
+  if (report.copies && report.copies.length > 1) {
+    lines.push(
+      `PaperSearch copies on the PATH: ${report.copies.length} (keep one; the first is the one run)`,
+      // Where each is installed (fnm's shells find theirs through a link of their own).
+      ...report.copies.map((copy) => `  ${copy.version || "?"}  ${copy.root || copy.command}`),
+      "  Remove the others with their own npm: npm uninstall -g papersearch",
+      "",
+    );
   }
 
   const configuredEntries = report.config.entries.filter(

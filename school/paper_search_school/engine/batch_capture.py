@@ -1268,10 +1268,42 @@ class CaptureMixin:
             self._event(result, "pdf_attempt",
                         f"{entry['how']} {entry['url'][:160]} -> {outcome}; {entry['status'] or '-'} "
                         f"{entry['type'] or '-'} {entry['size'] or '-'} bytes; ended at {final[:160]}; {entry['seconds']} s")
+            if outcome != "pdf ok":
+                self._note_download_limit(page, result)
             if outcome != "pdf ok" and not any(s["why"] == "pdf attempt failed" for s in result.snapshots):
                 self._snapshot(page, result, "pdf attempt failed")
         except Exception as exc:  # the record never ends the capture
             self._event(result, "pdf_attempt_record_error", f"{type(exc).__name__}: {str(exc)[:160]}")
+
+    # The text of the dialogs over the page (a react-modal's content is role="dialog").
+    _DIALOG_TEXT_JS = """() => [...document.querySelectorAll(
+        '[role="dialog"], [role="alertdialog"], [aria-modal="true"], dialog[open], .ReactModal__Content')]
+        .filter(el => el.getClientRects().length > 0)
+        .map(el => el.innerText || '').join(' ').slice(0, 2000)"""
+    # A site's notice that the reader has used up its downloads for now.
+    _DOWNLOAD_LIMIT = re.compile(
+        r"download limit|(?:exceeded|reached)\b.{0,60}\bdownloads?\b|too many (?:pdf )?downloads"
+        r"|下载.{0,8}(?:达到|超过|超出).{0,4}(?:上限|限额|限制)", re.I | re.S)
+
+    def _note_download_limit(self, page: Any, result: DownloadResult) -> None:
+        """A PDF attempt that got no PDF, with a dialog over the page saying the downloads
+        are used up (ScienceDirect's "You have reached the daily bulk download limit" after
+        its View PDF, 2026-11-21: 381 articles of one journal that day). Kept on the result:
+        if the article ends without its PDF, that is why (bridge ``_failure_reason_code``).
+        Read only from dialogs, not the article's own text."""
+        if getattr(result, "_download_limit", ""):
+            return
+        try:
+            said = " ".join(str(page.evaluate(self._DIALOG_TEXT_JS) or "").split())
+        except Exception:
+            return
+        found = self._DOWNLOAD_LIMIT.search(said)
+        if not found:
+            return
+        quoted = said[max(0, found.start() - 80):found.end() + 40]
+        result._download_limit = quoted
+        host = urlparse(str(getattr(page, "url", "") or "")).hostname or ""
+        self._event(result, "publisher_download_limit", f'{host}: "{quoted[:200]}"')
 
     # Every link's address, label and visibility in one round trip: asking per
     # link took ~25 s on a Nature page with hundreds of links.
@@ -1750,7 +1782,9 @@ class CaptureMixin:
                 # not use up the PDF step, and once the check clears the PDF
                 # gets its full time again.
                 challenge_deadline = time.time() + max(self.page_wait_sec, timeout_sec)
-                if not self._wait_for_challenge_with_deadline(page, result, challenge_deadline):
+                # The PDF's answer can arrive while the tab still shows the check.
+                arrived = (lambda: bool(captured.get("bytes"))) if captured is not None else None
+                if not self._wait_for_challenge_with_deadline(page, result, challenge_deadline, until=arrived):
                     return None, str(getattr(page, "url", "") or "")
                 deadline = time.time() + timeout_sec
                 attempted.clear()

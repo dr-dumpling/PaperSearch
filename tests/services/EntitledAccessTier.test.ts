@@ -47,6 +47,16 @@ describe("Entitled PDF acceptance", () => {
     expect(existsSync(path)).toBe(true);
   });
 
+  it("passes on the saved school it came through, and how many had no access (没权限时换下一所学校)", async () => {
+    const path = join(directory, "paper.pdf");
+    writeFileSync(path, textPdf([["Nutrition and health", "doi:10.1000/target"]]));
+    const got = { downloadLegalDoi: async () => ({ kind: "success", identifier: context.paperId, path, school: "乙大学" }) } as unknown as SchoolBackend;
+    expect(await createEntitledAccessTier(got).run(context)).toMatchObject({ status: "ok", school: "乙大学" });
+    const none = { downloadLegalDoi: async () => ({ kind: "attempt_error", identifier: context.paperId, code: "entitlement_missing",
+      message: "", schoolsTried: 2 }) } as unknown as SchoolBackend;
+    expect(await createEntitledAccessTier(none).run(context)).toMatchObject({ status: "error", code: "entitlement_missing", schools: 2 });
+  });
+
   it("keeps an empty list of supplementary files: the page was checked and listed none", async () => {
     // A resume asked for them all again when it was dropped (Windows, 2026-11-16).
     const path = join(directory, "paper.pdf");

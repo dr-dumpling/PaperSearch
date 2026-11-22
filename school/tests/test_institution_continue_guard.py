@@ -150,6 +150,101 @@ class BackendBrowserChooserTests(unittest.TestCase):
         self.assertFalse(d._accept_publisher_terms(page, school))
         self.assertEqual(page.title(), "SAML Login")
 
+    def test_a_cookie_banner_over_the_chooser_is_answered_before_the_school_is_typed(self):
+        """Springer Nature's chooser, 2026-11-22: its cookie banner kept the focus, the keys typed behind
+        it were lost, the box stayed empty and the school was said not listed (the real page checked in a
+        throwaway browser: answered, the name typed lists the school)."""
+        from paper_search_school.browser.backend import launch
+        browser = launch(headless=True, humanize=False, config={})
+        self.addCleanup(browser.close)
+        page = browser.new_page(service_workers="block")
+        chooser = '''<title>Find your institution</title><h1>Find your institution</h1>
+            <input type="search" aria-label="Search for your institution" placeholder="Search for your institution"
+                oninput="document.getElementById('results').innerHTML = /example/i.test(this.value)
+                    ? '<li><a href=&quot;/idp-login&quot;>Example University</a></li>' : ''">
+            <ul id="results"></ul><button>Access through your institution</button>
+            <section class="cc-banner" role="dialog" aria-modal="true" style="position:fixed;inset:0;background:rgba(0,0,0,.4)">
+              <div class="cc-banner__content" tabindex="-1"><h2>Your privacy, your choice</h2>
+              <p>We use essential cookies to make sure the site can function. We also use optional cookies.</p></div>
+              <div class="cc-banner__footer"><button onclick="this.closest('section').remove()">Accept all cookies</button>
+              <button onclick="this.closest('section').remove()">Reject optional cookies</button></div></section>
+            <script>document.addEventListener('keydown', (e) => {  // the banner keeps the keys (as Springer's did)
+              const banner = document.querySelector('.cc-banner');
+              if (banner && !banner.contains(e.target)) { e.preventDefault(); banner.querySelector('div').focus(); }
+            }, true);</script>'''
+        page.route("**/*", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=(
+            "<title>School login</title>" if route.request.url.endswith("/idp-login") else chooser)))
+        d = PublisherBatchDownloader({"publisher_institution_federation": "carsi"},
+                                     profile=get_publisher_profile("springer nature"), institution_query="Example University")
+        page.goto("https://wayf.springernature.com/?redirect_uri=https%3A%2F%2Flink.springer.com%2Farticle%2Fx")
+        result = DownloadResult(doi="10.1007/example", status="failed")
+        d._item_result = result
+        self.assertTrue(d._assist_configured_institution(page, result))
+        page.wait_for_url("**/idp-login")
+        states = [e["state"] for e in result.events]
+        self.assertLess(states.index("cookie_banner_dismissed"), states.index("auto_institution_search"))
+
+    def test_the_publishers_account_offer_after_the_school_is_skipped(self):
+        """Elsevier ID's "Personalize your experience" after the school's sign-in (2026-11-22): skipped
+        by its "Not now", else its close (×); with nothing to skip it by, the article is opened again,
+        once. Not before the school's sign-in, not while an email is typed, not on the school's site."""
+        from paper_search_school.browser.backend import launch
+        browser = launch(headless=True, humanize=False, config={})
+        self.addCleanup(browser.close)
+        page = browser.new_page(service_workers="block")
+        controls = {"close": '<button class="els-close" aria-label="Close" onclick="location.href=\'/resumed\'">×</button>',
+                    "skip": '<button class="els-close" aria-label="Close" onclick="location.href=\'/closed\'">×</button>'
+                            '<a href="/resumed">Not now</a>', "none": ""}
+        shown = ["close"]
+        offer = lambda: ('<title>Personalize your experience</title><div class="modal">' + controls[shown[0]]
+                         + "<h1>Personalize your experience</h1><p>We now know you're from Example University.</p>"
+                         "<p>For a more personalized experience, enter your email to sign in or create an Elsevier account.</p>"
+                         '<label for="bdd-email">Email</label><input id="bdd-email" type="text"><button disabled>Continue</button></div>')
+        page.route("**/*", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=(
+            "<title>Article</title>" if "/science/article/" in route.request.url
+            else f"<title>{route.request.url.rsplit('/', 1)[1]}</title>" if route.request.url.endswith(("/resumed", "/closed"))
+            else offer())))
+        d = PublisherBatchDownloader({"publisher_institution_federation": "carsi",
+                                      "idp_entity_id": "https://idp.example.edu.cn/idp/shibboleth"},
+                                     profile=get_publisher_profile("elsevier"), institution_query="Example University")
+        offer_url = "https://id.elsevier.com/as/abc/resume/as/authorization.ping"
+        result = DownloadResult(doi="10.1016/example", status="failed",
+                                article_url="https://www.sciencedirect.com/science/article/pii/S0000000000000000")
+        d._item_result = result
+        page.goto(offer_url)
+        self.assertFalse(d._skip_personal_account_offer(page, result))  # the school not signed in yet
+        result._visited_idp = True
+        page.fill("#bdd-email", "someone@example.org")
+        self.assertFalse(d._skip_personal_account_offer(page, result))  # someone typing: theirs
+        self.assertEqual(page.title(), "Personalize your experience")
+
+        page.fill("#bdd-email", "")
+        self.assertTrue(d._skip_personal_account_offer(page, result))
+        page.wait_for_url("**/resumed")
+        self.assertEqual(result.events[-1]["state"], "personal_account_offer_skipped")
+        self.assertTrue(result.events[-1]["detail"].startswith('close "× Close" | Personalize your experience @ '))
+
+        shown[0] = "skip"
+        page.goto(offer_url)
+        self.assertTrue(d._skip_personal_account_offer(page, result))
+        page.wait_for_url("**/resumed")
+        self.assertTrue(result.events[-1]["detail"].startswith('skip "Not now"'))
+
+        shown[0] = "none"
+        page.goto(offer_url)
+        self.assertTrue(d._skip_personal_account_offer(page, result))
+        self.assertEqual((page.title(), result.events[-1]["state"]), ("Article", "personal_account_offer_left"))
+        page.goto(offer_url)
+        self.assertFalse(d._skip_personal_account_offer(page, result))  # once
+
+        shown[0] = "close"
+        page.goto("https://idp.example.edu.cn/idp/profile/offer")
+        school = DownloadResult(doi="10.1016/example", status="failed", article_url=result.article_url)
+        school._visited_idp = True
+        d._item_result = school
+        self.assertFalse(d._skip_personal_account_offer(page, school))  # the school's own site
+        self.assertEqual(page.title(), "Personalize your experience")
+
     def test_the_schools_release_and_terms_are_accepted_but_not_a_second_factor(self):
         """Shibboleth's attribute release and terms of use, accepted for the user as
         they asked (2026-11-08); the school's preselected choice is kept, Duo is theirs."""

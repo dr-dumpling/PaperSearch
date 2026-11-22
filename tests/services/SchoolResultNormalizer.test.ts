@@ -23,6 +23,20 @@ describe("SchoolResultNormalizer", () => {
     expect(other).not.toHaveProperty("retryAfterSec");
   });
 
+  it("says which saved school got it, and how many had no access (没权限时换下一所学校)", () => {
+    const pdf = textResult({ success: true, file: "/out/a.pdf", school: " 乙大学 " });
+    expect(normalizeDownloadResult(pdf, "10.1000/x", "/out")).toEqual(expect.objectContaining({ kind: "success", school: "乙大学" }));
+    expect(normalizeDownloadResult(textResult({ success: true, file: "/out/a.pdf", school: 3 }), "10.1000/x", "/out"))
+      .not.toHaveProperty("school");
+    const none = textResult({ success: false, error_type: "paywall", reason_code: "institution_pdf_entitlement_missing",
+      action: "review_entitlement", schools_tried: 2 });
+    expect(normalizeDownloadResult(none, "10.1000/x")).toEqual(expect.objectContaining({ code: "entitlement_missing", schoolsTried: 2 }));
+    for (const tried of [1, 2.5, "2", 99]) {
+      expect(normalizeDownloadResult(textResult({ success: false, error_type: "paywall", schools_tried: tried }), "10.1000/x"))
+        .not.toHaveProperty("schoolsTried");
+    }
+  });
+
   it.each([
     [
       "paywall",

@@ -410,8 +410,14 @@ class TheSettingsPage(TempConfig):
         statuses = {ENTITY: "surveyed", other_entity: "check"}
         pro = SimpleNamespace(school_status=lambda entity: statuses.get(entity, ""),
                               school_counts=lambda: {"filled": 461, "check": 287},
-                              school_list=lambda: [{"name": "红木兰大学", "name_en": "Mulan University", "country": "中国",
-                                                    "province": "广东", "status": "surveyed"}, {"x": 1}])
+                              school_list=lambda: [{"key": ENTITY, "name": "红木兰大学", "name_en": "Mulan University", "country": "中国",
+                                                    "province": "广东", "status": "surveyed"},
+                                                   {"key": "https://idp.westmarsh.example/idp", "name": "Westmarsh University",
+                                                    "country": "美国", "area": "马萨诸塞州", "kind": "大学", "status": "surveyed",
+                                                    "names": {"zh": "西沼大学", "ja": "", "ko": 3}},
+                                                   {"key": "https://idp.hualian.example/idp", "name": "華蓮大學",
+                                                    "name_en": "Hualian University", "country": "台湾", "status": "surveyed"},
+                                                   {"x": 1}])
 
         def find(query, config, data_dir, also=()):
             hit = query in ("Lanshan University", "蓝杉大学", other_entity)
@@ -421,9 +427,23 @@ class TheSettingsPage(TempConfig):
         with patch("paper_search_school.progress_capsule.pro_features", return_value=True), \
              patch.object(school_login, "module", return_value=pro), patch.object(lookup, "find", side_effect=find) as finder:
             self.assertEqual(api.school_login_state()["counts"], {"filled": 461, "check": 287})
-            # 支持哪些学校 (user, 2026-11-20): the schools Pro knows; an entry without a name left out.
+            # 支持哪些学校 (user, 2026-11-20): the schools Pro knows; an entry without a name left out. The area and
+            # kind handed on, which split the big countries (2026-11-21: left out, the US was not split by state).
+            # Its names in other languages too (Wikidata's, 2026-11-21), only those given as text.
             self.assertEqual(api.school_support_list(), {"ok": True, "schools": [
-                {"name": "红木兰大学", "name_en": "Mulan University", "country": "中国", "province": "广东", "status": "surveyed"}]})
+                {"key": ENTITY, "name": "红木兰大学", "name_en": "Mulan University", "country": "中国", "province": "广东", "area": "",
+                 "kind": "", "status": "surveyed", "names": {}},
+                {"key": "https://idp.westmarsh.example/idp", "name": "Westmarsh University", "name_en": "", "country": "美国",
+                 "province": "", "area": "马萨诸塞州", "kind": "大学", "status": "surveyed", "names": {"zh": "西沼大学"}},
+                {"key": "https://idp.hualian.example/idp", "name": "華蓮大學", "name_en": "Hualian University", "country": "台湾",
+                 "province": "", "area": "", "kind": "", "status": "surveyed", "names": {}}]})
+            # 添加学校 searches 支持哪些学校's way too (user, 2026-11-21: 台湾 found nothing there): by a name Pro has (its
+            # Chinese one), a country (in Chinese or English), a state; with its names for the page.
+            self.assertEqual([(r["key"], r["federation"]) for r in api.find_school("台湾")["results"]],
+                             [("https://idp.hualian.example/idp", "台湾")])
+            self.assertEqual([r["key"] for r in api.find_school("taiwan")["results"]], ["https://idp.hualian.example/idp"])
+            self.assertEqual([r["names"] for r in api.find_school("西沼")["results"]], [{"zh": "西沼大学"}])
+            self.assertEqual(len(api.find_school("马萨诸塞")["results"]), 1)
             self.assertIn("没有找到", api.find_school("Nowhere College")["note"])
             self.assertFalse(api.find_school(" ")["ok"])
             self.assertFalse(api.add_school("https://idp.unknown.example/idp")["ok"])

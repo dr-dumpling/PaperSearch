@@ -35,7 +35,7 @@
 - `paper-search skills update [--targets CSV] [--pretty]`
 - `paper-search setup [--all] [--keys CSV] [--install-skills CSV] [--skip-skills]`
 - `paper-search config test [KEY] [--stdin] [--format text]`：用一次小请求测试 key 能不能用（有效、被拒绝、限流、连不上）；不带 KEY 时测试所有已填的 key。
-- `paper-search settings [download|wait|keys|<KEY>] [--format text]`：装了学校订阅下载时打开设置窗口（下载文件夹、等待和提醒、API key）；没装或没有图形界面时返回错误，并给出终端命令。
+- `paper-search settings [about|download|wait|keys|<KEY>] [--format text]`：装了学校订阅下载时打开设置窗口（下载文件夹、等待和提醒、API key；about 是版本和更新）；没装或没有图形界面时返回错误，并给出终端命令。
 - `paper-search tools [--pretty]`
 - `paper-search diagnostics [--pretty]`
 - `paper-search requirements [--pretty]` 是 `diagnostics` 的别名。

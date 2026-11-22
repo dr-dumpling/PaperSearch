@@ -256,6 +256,10 @@ class ViewTests(unittest.TestCase):
         self.assertEqual(pv.status_text(running(), True), "PDF · 正在下载")
         self.assertEqual(pv.status_text(running(part="supplements", supplements_total=5, supplements_saved=2), True),
                          "补充材料 · 已保存 2/5")
+        # 没权限时换下一所学校: the line in place of the steps says which school is next.
+        switching = running(stage="switching_school", phase="没权限，换乙大学")
+        self.assertEqual(pv.status_text(switching, True), "PDF · 没权限，换乙大学")
+        self.assertEqual((pv.view(switching, NOW)["step"], pv.view(switching, NOW)["line"]), (None, "PDF · 没权限，换乙大学"))
 
 
 class AutoCloseRuleTests(unittest.TestCase):

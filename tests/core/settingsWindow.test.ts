@@ -109,12 +109,13 @@ describe("paper-search settings after an upgrade", () => {
 
 describe("the settings window's environment", () => {
   it("carries UTF-8 pipes, its screen, proxy and paths, and none of PaperSearch's keys", () => {
-    const env = settingsWindowEnv({ dataDir: "/data", configFile: "/cfg.json", cli: '["node","cli.js"]', proEntry: "/data/pro/index.js" },
+    const env = settingsWindowEnv({ dataDir: "/data", configFile: "/cfg.json", cli: '["node","cli.js"]', proEntry: "/data/pro/index.js",
+      version: "0.7.2" },
       { EASYSCHOLAR_KEY: "secret", ELSEVIER_API_KEY: "secret", DISPLAY: ":0", HTTPS_PROXY: "http://proxy:7890",
         PAPER_SEARCH_PRO_FEATURES: "1" });
     // Where PaperSearch Pro is, for the Markdown page (the same path the CLI loads it from).
     expect(env).toMatchObject({ SCHOOL_DATA_DIR: "/data", PAPER_SEARCH_CONFIG_FILE: "/cfg.json", PAPER_SEARCH_CLI: '["node","cli.js"]',
-      PAPER_SEARCH_PRO_PATH: "/data/pro/index.js",
+      PAPER_SEARCH_PRO_PATH: "/data/pro/index.js", PAPER_SEARCH_VERSION: "0.7.2",
       DISPLAY: ":0", HTTPS_PROXY: "http://proxy:7890", PYTHONIOENCODING: "utf-8" });
     expect(Object.values(env)).not.toContain("secret");
   });

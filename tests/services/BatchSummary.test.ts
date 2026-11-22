@@ -253,6 +253,23 @@ describe("main text and supplementary files apart", () => {
       .toEqual([["机构下载", 1], ["开放下载", 1]]);
   });
 
+  it("names the saved school a paper came through when not the default one, and how many had no access", () => {
+    // 没权限时换下一所学校 (user, 2026-11-21): 机构下载（乙大学 2）, each paper's row naming it; open sources kept apart.
+    const viaB = { ...ok, school: "乙大学" };
+    const summary = batchResults(batch([
+      item(1, { attempts: [viaB] }), item(2, { attempts: [viaB] }), item(3, { attempts: [ok] }),
+      item(4, { attempts: [{ stage: "publisher_api", status: "ok", message: "" }] }),
+      item(5, { status: "error", path: undefined,
+        attempts: [{ stage: "entitled_access", status: "error", code: "entitlement_missing", message: "", schools: 3 }] }),
+    ], "main"), 0, "/out");
+    expect(summary.sources).toEqual([["机构下载", 3], ["开放下载", 1]]);
+    expect(summary.source_details).toEqual([["机构下载", "乙大学 2"], ["开放下载", "出版社 API 1"]]);
+    expect(summary.failures).toEqual([{ cls: "no_access", reason: "3 所学校都没有权限", title: "Paper 5", journal: "APL", doi: "10.1000/5" }]);
+    const request = { doi: "10.1000/1" } as Parameters<typeof batchPaper>[0];
+    expect(batchPaper(request, item(1, { attempts: [viaB] }), undefined, "main")).toMatchObject({ via: "机构下载", detail: "乙大学" });
+    expect(batchPaper(request, item(3, { attempts: [ok] }), undefined, "main")).not.toHaveProperty("detail");
+  });
+
   it("tells the window's 失败 list while the batch runs, in the finished card's words", () => {
     const missing = item(1, { supplements: [{ label: "SM.pdf", status: "failed", reason: "verification_page" }] });
     const request = { doi: "10.1000/1" } as Parameters<typeof batchPaper>[0];

@@ -61,6 +61,7 @@ import {
   renderSkillDiffTextReport,
 } from "./management/reports/index.js";
 import { beginUpdateNotification, checkForUpdate, renderUpdateNotice } from "./management/updates/index.js";
+import { checkSelf, globalPrefixOf, installedCopies, installSelf, updateSourceOf } from "./management/updates/selfUpdate.js";
 import { exportFailureReport } from "./management/failures/exportReport.js";
 import { exportMarkdownReport, markdownPages, markdownSites, renderMarkdownSitesText } from "./management/failures/markdownReport.js";
 import { prepareProSchoolLogin } from "./capabilities/download/content/markdown/pro.js";
@@ -79,6 +80,7 @@ import { markdownProEntry, resolveDefaultSchoolProfileDir, takeDownloadLock } fr
 import { autoUpdateSchool, withAutoUpdate } from "./management/school/autoUpdate.js";
 import { withCliSchoolProgress } from "./management/school/cliProgress.js";
 import { openSettingsWindow, settingsWindowEnv as windowEnv } from "./management/school/settingsWindow.js";
+import { activatePro, activationStatus } from "./management/pro/activate.js";
 import { checkPro, installPro, proStatus } from "./management/pro/install.js";
 import { schoolLogin } from "./management/school/login.js";
 import { moveLegacyDataDir } from "./management/school/legacy.js";
@@ -158,6 +160,7 @@ Usage:
   paper-search journal-metrics <journal...> [--include-raw]
   paper-search run <tool-name> --json-args '{"query":"machine learning","maxResults":5}'
   paper-search update check [--format text]
+  paper-search update install
   paper-search status [--validate]
   paper-search doctor [--validate]
   paper-search failures [--run <id>|latest] [--since 2026-11-01] [--runs 5] [--doi <DOI>] [--export <file.zip>] [--all]
@@ -172,7 +175,7 @@ ${pro ? `  paper-search failures --markdown [--run <id>|latest] [--export [<file
   paper-search tools
   paper-search diagnostics
   paper-search config <init|set|get|unset|list|doctor|path|import-env|keys|test>
-  paper-search settings [download|wait|keys|${pro ? "markdown|" : ""}<API_KEY_NAME>]
+  paper-search settings [about|download|wait|keys|${pro ? "markdown|" : ""}<API_KEY_NAME>]
 ${pro ? `  paper-search pro <status|check|install> [--from <folder|address|github:owner/repo>] [--progress]
 ` : ""}  paper-search setup [--all] [--install-skills agents,codex] [--skip-skills] [--skip-school|--install-school]
   paper-search download <paper-id> --platform pmc [--save-path ./downloads]${pro ? " [--content pdf|markdown|pdf,markdown] [--markdown]" : ""}
@@ -537,8 +540,20 @@ async function run(parsed: ParsedCli): Promise<unknown> {
   }
 
   if (command === "update") {
-    if (positionals.length !== 1 || positionals[0] !== "check") {
-      throw new CliError("Usage: paper-search update check (check only; does not install updates).");
+    if (positionals.length !== 1 || !["check", "install"].includes(positionals[0])) {
+      throw new CliError("Usage: paper-search update check | paper-search update install");
+    }
+    // Where this install updates itself from (package.json's paperSearch.updateFrom): the private install from its
+    // repository on GitHub, any other from npm (selfUpdate.ts; the settings window's 更新, user 2026-11-21).
+    const source = updateSourceOf(packageJson());
+    if (positionals[0] === "install" || source.kind === "github") {
+      const checked = await checkSelf({ current: packageVersion(), source });
+      if (positionals[0] === "check" || !checked.ok || !checked.update) {
+        return { ...checked, ...(checked.ok ? {} : { exitCode: 1 }), ...(positionals[0] === "install" && checked.ok ? { installed: false } : {}) };
+      }
+      // Over this copy, wherever it is installed: not a second one where another node's npm would put it.
+      const done = await installSelf(checked, { source, prefix: globalPrefixOf(fileURLToPath(new URL("..", import.meta.url))) });
+      return { ...done, ...(done.ok ? { installed: true } : { exitCode: 1 }) };
     }
     const result = await checkForUpdate({ current: packageVersion(), packageRoot: fileURLToPath(new URL("..", import.meta.url)) });
     if (flags.format === "text") {
@@ -1086,13 +1101,20 @@ async function testConfiguredKeys(key: string | undefined, flags: Record<string,
 }
 
 /**
- * `paper-search pro <status|install>`: PaperSearch Pro (the Markdown) on this computer. install
- * takes `--from <folder|address>` (else Pro's release address) and, with `--progress`, writes a
- * line of progress as it downloads (the settings window's 安装 reads them).
+ * `paper-search pro <status|check|activate|install>`: PaperSearch Pro (the Markdown) on this
+ * computer. activate takes the code, or reads it from standard input (the settings window's
+ * 激活并安装 hands it so, out of the process list). install takes `--from <folder|address>` (else
+ * Pro's release address) and, with `--progress`, writes a line of progress as it downloads (the
+ * settings window's 安装 reads them).
  */
 async function handleProCommand(positionals: string[], flags: Record<string, FlagValue>) {
   const action = positionals[0] || "status";
-  if (action === "status") return proStatus();
+  if (action === "status") return { ...proStatus(), activation: activationStatus() };
+  if (action === "activate") {
+    const code = positionals[1] ?? (process.stdin.isTTY ? "" : readFileSync(0, "utf8"));
+    const result = await activatePro({ code });
+    return result.ok ? result : { ...result, exitCode: 1 };
+  }
   if (action === "check") {
     const from = typeof flags.from === "string" ? flags.from : undefined;
     const result = await checkPro(from ? { from } : {});
@@ -1105,13 +1127,13 @@ async function handleProCommand(positionals: string[], flags: Record<string, Fla
         process.stdout.write(`${JSON.stringify({ event: "progress", done, total })}\n`) } : {}) });
     return result.ok ? result : { ...result, exitCode: 1 };
   }
-  return { ok: false, error: `没有这个命令：paper-search pro ${action}（可用 status、check、install）`, exitCode: 2 };
+  return { ok: false, error: `没有这个命令：paper-search pro ${action}（可用 status、check、activate、install）`, exitCode: 2 };
 }
 
 /** What the settings window needs: the backend's data directory, this config, and this CLI for key tests. */
 function settingsWindowEnv(): Record<string, string> {
   return windowEnv({ dataDir: resolveDefaultSchoolProfileDir(), configFile: getConfigPath(), cli: paperSearchCommand(),
-    proEntry: markdownProEntry() });
+    proEntry: markdownProEntry(), version: packageVersion() });
 }
 
 /**
@@ -1352,6 +1374,7 @@ async function handleDoctorCommand(
   const report = {
     ok: true,
     skills: skillReport(),
+    copies: installedCopies(),
     school: {
       installed: extension.installed,
       complete: extension.complete,

@@ -110,6 +110,20 @@ class ColdStartTests(unittest.TestCase):
         self.assertEqual(list((self.profile / "Default" / "Sessions").iterdir()), [])
         self.assertFalse((self.profile / "Default" / "Session Storage").exists())
 
+    def test_before_another_school_the_publishers_personal_account_goes_too(self):
+        # User, 2026-11-21: a test of another school passed with the last one's access, Elsevier's remember.me (kept as
+        # a personal account) signing the visit in through it. Verification records and consent still stay.
+        classify = cold_start.Classifier(CONFIG, accounts=True)
+        self.assertEqual([classify("id.elsevier.com", n) for n in ("remember.me", "quickstart", "PF", "OptanonConsent", "__cf_bm")],
+                         ["school_login", "school_login", "school_login", "consent", "verification"])
+        self.assertEqual(cold_start.Classifier(CONFIG)("id.elsevier.com", "remember.me"), "personal_account")
+        done = cold_start.ColdStart(self.profile, self.cache, CONFIG, accounts=True).apply()
+        self.assertEqual(done["cookies"], 8)
+        with closing(sqlite3.connect(self.profile / "Default" / "Cookies")) as db:
+            left = set(db.execute("SELECT host_key, name FROM cookies"))
+        self.assertEqual(left, {(".sciencedirect.com", "cf_clearance"), ("www.sciencedirect.com", "OptanonConsent")})
+        self.assertNotIn("ELS_SESSION", (self.cache / "publisher_cookies.json").read_text())
+
     def test_another_profile_leaves_the_configured_cache_alone(self):
         before = (self.cache / "publisher_cookies.json").read_text()
         run = cold_start.for_config({**CONFIG, "cache_dir": str(self.cache)}, str(self.profile))
@@ -147,6 +161,58 @@ class ColdStartTests(unittest.TestCase):
         for db in opened:
             with self.assertRaises(sqlite3.ProgrammingError):  # "Cannot operate on a closed database."
                 db.execute("SELECT 1")
+
+
+
+
+class AnotherSchoolTests(unittest.TestCase):
+    """User, 2026-11-21: switched to another school, the download browser stayed signed in with the last one."""
+
+    def setUp(self):
+        cold_start._signed_in_path().unlink(missing_ok=True)
+
+    def test_a_sign_in_of_another_school_forgotten_first_a_test_always_signed_out(self):
+        from unittest.mock import patch
+
+        applied = []
+
+        class Run:
+            profile = "/tmp/profile"
+
+            def __init__(self, busy=False):
+                self.busy = busy
+
+            def apply(self):
+                if self.busy:
+                    raise RuntimeError("the download browser is using this profile; close it first")
+                applied.append(True)
+                return {}
+
+        a, b = {"idp_entity_id": "https://idp.a.edu/idp"}, {"idp_entity_id": "https://idp.b.edu/idp"}
+        with patch.object(cold_start, "for_config", return_value=Run()) as made:
+            self.assertEqual(cold_start.before_sign_in(a), "")  # none known yet: kept, nothing forgotten
+            self.assertEqual(cold_start.signed_in_school(), "https://idp.a.edu/idp")
+            self.assertEqual(cold_start.before_sign_in(a), "")
+            self.assertEqual(applied, [])
+            self.assertEqual(cold_start.before_sign_in(b), "cleared")
+            self.assertEqual((len(applied), cold_start.signed_in_school()), (1, "https://idp.b.edu/idp"))
+            # The personal publisher accounts with it (they keep the last school's access).
+            self.assertEqual(made.call_args.kwargs, {"accounts": True})
+            self.assertEqual(cold_start.before_sign_in(b, always=True), "cleared")  # a test: signed out whatever it was
+            self.assertEqual(len(applied), 2)
+        with patch.object(cold_start, "for_config", return_value=Run(busy=True)), \
+                patch("paper_search_school.browser.profiles.wait_for_profile_release", return_value=False) as waited:
+            self.assertEqual(cold_start.before_sign_in(a), "busy")
+            self.assertEqual(cold_start.signed_in_school(), "https://idp.b.edu/idp")  # nothing changed
+            waited.assert_called_once_with("/tmp/profile", timeout=10)
+        # A browser just closed (the batch's, switching to the next school) lets go of the profile within the wait.
+        letting_go = Run(busy=True)
+        with patch.object(cold_start, "for_config", return_value=letting_go), \
+                patch("paper_search_school.browser.profiles.wait_for_profile_release",
+                      side_effect=lambda path, timeout: setattr(letting_go, "busy", False) or True):
+            self.assertEqual(cold_start.before_sign_in(a), "cleared")
+            self.assertEqual(cold_start.signed_in_school(), "https://idp.a.edu/idp")
+        self.assertEqual(cold_start.before_sign_in({}), "")
 
 
 if __name__ == "__main__":

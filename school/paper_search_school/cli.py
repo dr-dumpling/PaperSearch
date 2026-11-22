@@ -4,6 +4,8 @@ Commands:
   run                          start the MCP stdio server (what PaperSearch spawns)
   setup [...]                  show or change institutional access settings; --check for an environment check
   login --doi DOI              sign in to the school as a download does (no PDF); success only once confirmed
+  school-test --school ENTITY --doi DOI   the settings' 测试登录: one download with a saved school, its PDF deleted,
+                               the verdict in progress/school-test.json (school_test.py)
   config get|set|list          read or write the backend config in SCHOOL_DATA_DIR
   list-publishers              print publisher profiles and their platform labels
   publisher-check --doi DOI    run one institutional download and print a sanitized report
@@ -392,6 +394,12 @@ def _cmd_login(args: argparse.Namespace) -> int:
     return 0 if reply["success"] else 1
 
 
+def _cmd_school_test(args: argparse.Namespace) -> int:
+    from .school_test import run
+
+    return run(args.school, args.doi)
+
+
 # ---------------------------------------------------------------------------
 # other commands
 # ---------------------------------------------------------------------------
@@ -619,7 +627,8 @@ def _cmd_issues(args: argparse.Namespace) -> int:
     return 0
 
 
-SETTINGS_PAGES = ("home", "download", "wait", "keys", "pro", "markdown", "login")
+# about: PaperSearch's version and its update, Pro's with it (user, 2026-11-21); pro opens it too, by its old name.
+SETTINGS_PAGES = ("home", "about", "download", "wait", "keys", "pro", "markdown", "login")
 # PaperSearch Pro's pages (edition.py): Pro itself, its Markdown, the school's sign-in (school_login.py).
 PRO_PAGES = ("pro", "markdown", "login")
 
@@ -728,6 +737,11 @@ def main(argv: list[str] | None = None) -> int:
     lg.add_argument("--max-wait", type=int, default=None,
                     help="seconds to wait on the school's login page (default: the setting browser_login_timeout)")
     lg.set_defaults(func=_cmd_login)
+
+    stt = sub.add_parser("school-test", help="the settings' 测试登录: one download with a saved school, its PDF deleted")
+    stt.add_argument("--school", required=True, help="the saved school's entityID")
+    stt.add_argument("--doi", required=True)
+    stt.set_defaults(func=_cmd_school_test)
 
     cfg = sub.add_parser("config", help="read or write backend config")
     cfg.add_argument("action", choices=["get", "set", "list"])

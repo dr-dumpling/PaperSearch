@@ -9,7 +9,7 @@ import { withCliSchoolProgress } from "../../src/management/school/cliProgress.j
  * until an integration test missed its calls (2026-11-10).
  */
 const METHODS = ["probe", "downloadLegalDoi", "withBatchSession", "reportBatchProgress", "reportBatchPapers", "keepSession",
-  "hourlyWait", "holdSupported", "takeBatchRequests"] as const;
+  "hourlyWait", "holdSupported", "takeBatchRequests", "schoolSwitch"] as const;
 // Fails to compile when SchoolBackend gains a method this list does not name.
 const unlisted: Record<Exclude<keyof SchoolBackend, (typeof METHODS)[number]>, never> = {};
 
@@ -51,6 +51,10 @@ function backend(calls: string[]): SchoolBackend {
       calls.push("takeBatchRequests");
       return { resume: [], stop: false };
     },
+    schoolSwitch: async () => {
+      calls.push("schoolSwitch");
+      return { group: true };
+    },
   };
 }
 
@@ -67,6 +71,7 @@ async function callEach(wrapped: SchoolBackend, methods: readonly (typeof METHOD
     if (method === "hourlyWait") await wrapped.hourlyWait!("Elsevier");
     if (method === "holdSupported") await wrapped.holdSupported!();
     if (method === "takeBatchRequests") wrapped.takeBatchRequests!("b");
+    if (method === "schoolSwitch") await wrapped.schoolSwitch!();
   }
 }
 

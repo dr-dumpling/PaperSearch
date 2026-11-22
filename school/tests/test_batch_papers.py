@@ -135,6 +135,14 @@ class PaperListsTests(unittest.TestCase):
                          [(1, "Nature · 开放获取"), (2, "Nature · 出版社 API"), (4, "开放获取"), (6, "Nature · 出版社 API")])
         self.assertEqual(ok["groups"][1]["papers"][0]["where"], "Nature")
 
+    def test_a_paper_another_saved_school_got_names_it(self):
+        # 没权限时换下一所学校 (user, 2026-11-21): the group says how many each school got, the row which one.
+        lists = self.lists(paper(1, "ok", via="机构下载"), paper(2, "ok", via="机构下载", detail="乙大学"),
+                           paper(3, "ok", via="机构下载", detail="乙大学"))
+        group = lists["ok"]["groups"][0]
+        self.assertEqual((group["label"], group["count"]), ("机构下载（乙大学 2）", 3))
+        self.assertEqual([p["where"] for p in group["papers"]], ["Nature", "Nature · 乙大学", "Nature · 乙大学"])
+
     def test_failed_papers_by_reason_like_the_finished_card(self):
         lists = self.lists(paper(1, "failed", cls="no_access", reason="本校没有订阅"),
                            paper(2, "failed", cls="user_side", reason="等学校登录到时限"),

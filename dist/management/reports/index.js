@@ -15,6 +15,12 @@ export function renderDoctorTextReport(report) {
     if (report.skills) {
         lines.push(...renderSkillLines(report.skills), "");
     }
+    // Two copies update apart, and the older one takes the school extension back to its version (2026-11-21).
+    if (report.copies && report.copies.length > 1) {
+        lines.push(`PaperSearch copies on the PATH: ${report.copies.length} (keep one; the first is the one run)`, 
+        // Where each is installed (fnm's shells find theirs through a link of their own).
+        ...report.copies.map((copy) => `  ${copy.version || "?"}  ${copy.root || copy.command}`), "  Remove the others with their own npm: npm uninstall -g papersearch", "");
+    }
     const configuredEntries = report.config.entries.filter((entry) => entry.configured);
     if (configuredEntries.length > 0) {
         lines.push("Configured:");

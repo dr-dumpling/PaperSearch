@@ -173,6 +173,65 @@ class BatchProgressTests(unittest.TestCase):
         self.assertEqual((snap["status"], snap["done"], snap["success"], snap["failed"]), ("done", 3, 2, 1))
         self.assertFalse(pr.sync_batch("b2", 3, 4, 4, 0))
 
+    def test_a_batch_of_more_than_a_thousand_papers_lists_them_all(self):
+        """User, 2026-11-21 (Windows, 1551 papers): 失败 1 on the card, its list empty. The lists took papers 1 to 1000
+        only, the batch's old limit; the failed one was the 1211th."""
+        pr.papers_path().unlink(missing_ok=True)
+        folder = str(pr.papers_path().parent)
+        papers = [{"index": i, "doi": f"10.1016/j.jare.{i}", "title": f"Paper {i}", "journal": "J Adv Res", "state": "ok",
+                   "via": "开放下载"} for i in range(1, 1552)]
+        papers[1210] = {"index": 1211, "doi": "10.1016/j.jare.1211", "title": "Paper 1211", "journal": "J Adv Res",
+                        "state": "failed", "cls": "no_access", "reason": "学校没有订阅"}
+        self.assertTrue(pr.sync_papers("b-big", folder, papers))
+        listed = pr.read_papers()["papers"]
+        self.assertEqual(len(listed), 1551)
+        self.assertEqual(listed["1211"]["state"], "failed")
+        # One sent alone later, past the thousandth, too.
+        self.assertTrue(pr.sync_papers("b-big", folder, [{"index": 1551, "doi": "10.1016/j.jare.1551", "title": "Paper 1551",
+                                                          "journal": "J Adv Res", "state": "failed", "cls": "no_access",
+                                                          "reason": "学校没有订阅"}]))
+        self.assertEqual(pr.read_papers()["papers"]["1551"]["state"], "failed")
+        # The finished card's reasons, past a thousand failures.
+        results = {"content": "main", "main": 0, "failures": [{"cls": "no_access", "reason": "学校没有订阅", "doi": f"10.1/{i}"}
+                                                           for i in range(1200)]}
+        self.assertEqual(len(pr._batch_results(results)["failures"]), 1200)
+
+    def test_another_paper_does_not_keep_the_last_ones_title(self):
+        """User, 2026-11-21 (Windows, 1551 papers): the card kept one paper's title and its publisher while the open-access
+        lane reported other DOIs (.031, .033, .052, .053 under one title), and a paper through the school showed the last
+        one's until its page opened. Another paper drops the last one's title, journal, publisher and notice."""
+        from paper_search_school import progress_view
+
+        self.new_process()
+        with pr.tracked_download("10.1016/j.jare.2025.09.031", None, pr.BatchContext.from_args("b9", 1, 40, 0, 0, 0)) as outcome:
+            pr.update(title="Blockchain and PUF-based secure key establishment", journal="J Adv Res", publisher="Elsevier",
+                      notice={"text": "已在浏览器打开这篇文章", "current": "10.1016/j.jare.2025.09.031", "at": 0})
+            outcome["result"] = {"success": True}
+        data = self.state(); data["owner_pid"] = DEAD_PID
+        pr.progress_path().write_text(json.dumps(data), encoding="utf-8")
+        self.new_process()
+        self.assertTrue(pr.sync_batch("b9", 40, 2, 2, 0, current="10.1016/j.jare.2025.09.052",
+                                      phase="开放下载：已查 2/40 篇，找到 1 篇", channel="开放下载"))
+        snap, _ = pr.read_snapshot()
+        for field in ("title", "journal", "publisher", "notice"):
+            self.assertNotIn(field, snap)
+        shown = progress_view.view(snap, 0)
+        self.assertEqual((shown["title"], shown["current"], shown["publisher"], shown["where"]),
+                         ("", "10.1016/j.jare.2025.09.052", "开放下载", "开放下载"))
+        # The same paper reported again keeps what it has.
+        pr.update(title="Its own title")
+        pr._write_state()
+        self.assertTrue(pr.sync_batch("b9", 40, 2, 2, 0, current="10.1016/J.JARE.2025.09.052", channel="开放下载"))
+        self.assertEqual(pr.read_snapshot()[0]["title"], "Its own title")
+        # A paper through the school: none of the last one's until its own page says.
+        data = self.state(); data["owner_pid"] = DEAD_PID
+        pr.progress_path().write_text(json.dumps(data), encoding="utf-8")
+        self.new_process()
+        with pr.tracked_download("10.1016/j.jare.2025.09.053", None, pr.BatchContext.from_args("b9", 3, 40, 2, 2, 0)) as outcome:
+            snap, _ = pr.read_snapshot()
+            self.assertEqual((snap.get("title"), snap["current"]), (None, "10.1016/j.jare.2025.09.053"))
+            outcome["result"] = {"success": True}
+
     def test_open_access_stretch_shows_its_phase_and_channel(self):
         from paper_search_school import progress_view
 
@@ -406,6 +465,23 @@ class BatchProgressTests(unittest.TestCase):
         self.assertEqual(json.loads(server.school_batch_progress(
             "b6", 10, 3, 3, 0, current="10.1000/4", lanes="开放下载 3 篇 · 机构下载 0 篇")), {"updated": True, "resume": [], "stop": False})
         self.assertEqual(pr.read_snapshot()[0]["lanes"], "开放下载 3 篇 · 机构下载 0 篇")
+
+
+class JournalNameTests(unittest.TestCase):
+    def test_the_cards_journal_looked_up_when_none_was_given(self):
+        # User, 2026-11-21: a list of DOIs, the card said Elsevier (the publisher) for a paper of Metabolism.
+        pr.start_task("机构 PDF 下载", total=2, current="10.1016/j.metabol.2026.156850", phase="")
+        pr.update(publisher="Elsevier")
+        thread = pr.name_journal("10.1016/j.metabol.2026.156850", look_up=lambda doi: {"journal": "Metabolism"})
+        thread.join(2)
+        self.assertEqual(pr.read_state()["journal"], "Metabolism")
+        # Given already, or another paper on the card by then: left as it is.
+        self.assertIsNone(pr.name_journal("10.1016/j.metabol.2026.156850", look_up=lambda doi: {"journal": "X"}))
+        pr.update(current="10.1016/j.metabol.2026.000001", journal="")
+        late = pr.name_journal("10.1016/j.metabol.2026.000001", look_up=lambda doi: (pr.update(current="10.9/other"), {"journal": "Late"})[1])
+        late.join(2)
+        self.assertEqual(pr.read_state()["journal"], "")
+        pr.finish()
 
 
 if __name__ == "__main__":

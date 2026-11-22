@@ -102,6 +102,7 @@ export function withAutoUpdate(backend, update) {
         // Only on a backend the batch already has, which the update ran before.
         ...(inner.keepSession ? { keepSession: (signal) => inner.keepSession(signal) } : {}),
         ...(inner.hourlyWait ? { hourlyWait: (publisher, signal) => inner.hourlyWait(publisher, signal) } : {}),
+        ...(inner.schoolSwitch ? { schoolSwitch: (signal) => inner.schoolSwitch(signal) } : {}),
         ...(inner.holdSupported
             ? { holdSupported: async () => {
                     await ready();

@@ -40,6 +40,8 @@ export interface SchoolBatchSupport {
     keepSessionTool?: boolean;
     /** school_hourly_wait exists (a batch's wait for the hourly limit follows the setting as it changes). */
     hourlyWaitTool?: boolean;
+    /** school_switch_state exists (a batch may take one journal's papers one after another). */
+    switchStateTool?: boolean;
 }
 export declare function selectSchoolBatchSupport(tools: readonly SchoolToolDefinition[], strategy: SchoolDownloadStrategy): SchoolBatchSupport;
 export declare function validateSchoolContract(serverName: string | undefined, tools: readonly SchoolToolDefinition[]): SchoolReadiness;

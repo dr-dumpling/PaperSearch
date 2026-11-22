@@ -40,7 +40,9 @@ _STAGE_LISTENER: ContextVar[tuple[str, Callable[[str], None]] | None] = ContextV
 
 STAGES = frozenset({
     "starting", "opening_article", "waiting_login", "waiting_verification",
-    "checking_access", "fetching_pdf", "pdf_captured",
+    # switching_school (没权限时换下一所学校): no step of its own, the card's line says "没权限，换××" (a school's name can
+    # be long: the step bar's label would squeeze the bars; the line ends in … and says it all on hover).
+    "checking_access", "fetching_pdf", "pdf_captured", "switching_school",
     "saved_pending_verification", "access_ready", "supplements_checked", "route_failed", "failed", "cancelled", "interrupted", "unknown",
 })
 _IDENTITY_FIELDS = frozenset({"schema_version", "run_id", "revision", "owner_pid"})
@@ -270,6 +272,10 @@ def _batch_state(batch_id: str) -> dict[str, Any] | None:
     return None
 
 
+#: What the card says of the paper it shows, which another paper does not keep (_adopt_batch).
+PAPER_FIELDS = ("title", "journal", "publisher", "notice")
+
+
 def _adopt_batch(batch_id: str, total: int, counts: tuple[int | None, int | None, int | None],
                  *, beside_download: bool = False, **fields: Any) -> bool | None:
     """Continue this batch's report in the current process, or start it (True).
@@ -307,6 +313,10 @@ def _adopt_batch(batch_id: str, total: int, counts: tuple[int | None, int | None
                     and isinstance(owner, int) and owner != os.getpid() and _pid_alive(owner)):
                 return None
         _STARTED_MONO = time.monotonic()
+        if previous is not None and fields.get("current") and str(fields["current"]).lower() != str(previous.get("current") or "").lower():
+            # Another paper: the last one's title, journal, publisher and notice go with it (user, 2026-11-21: the card kept
+            # one paper's title, and its publisher in place of 开放下载, while the open-access lane went through others).
+            previous = {key: value for key, value in previous.items() if key not in PAPER_FIELDS}
         if previous is None:
             previous = {
                 # A lone download comes as a batch of one (its finished card gets the reason).
@@ -422,7 +432,10 @@ def _short_line(value: Any, limit: int = 80) -> str:
 
 FAILURE_CLASSES = ("no_access", "user_side", "school_side", "publisher_or_network", "article_or_site", "unsupported", "unexplained")
 _RESULT_CONTENTS = ("main", "supplements", "both", "markdown")
-_MAX_RESULT_FAILURES = 1000  # the caller's batch limit
+# A bound against malformed input only: a batch has no limit since 7a38a068 (user, 2026-11-17). Left at its old 1000,
+# a batch's papers after the 1000th were left out of the lists (user, 2026-11-21: 失败 1 on the card, the list empty,
+# the failed paper the 1211th of 1551; 成功 and 剩余 stopped at 1000 too).
+_MAX_BATCH_PAPERS = 100_000
 _MAX_RESULT_TEXT = 300
 
 
@@ -479,7 +492,7 @@ def _batch_results(raw: Any) -> dict[str, Any] | None:
     }
     for key in ("failures", "supplement_failures", "markdown_failures"):
         listed = raw.get(key)
-        for item in (listed if isinstance(listed, list) else [])[:_MAX_RESULT_FAILURES]:
+        for item in (listed if isinstance(listed, list) else [])[:_MAX_BATCH_PAPERS]:
             if not isinstance(item, dict) or not text(item.get("reason")):
                 continue
             summary[key].append({
@@ -517,7 +530,7 @@ def _paper(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict) or raw.get("state") not in PAPER_STATES:
         return None
     index = raw.get("index")
-    if not isinstance(index, int) or isinstance(index, bool) or not 1 <= index <= _MAX_RESULT_FAILURES:
+    if not isinstance(index, int) or isinstance(index, bool) or not 1 <= index <= _MAX_BATCH_PAPERS:
         return None
     paper = {"index": index, "state": raw["state"],
              **{field: _display_text(raw.get(field)) for field in ("doi", "title", "journal")}}
@@ -590,7 +603,7 @@ def sync_papers(batch_id: str, folder: str, papers: Any) -> bool:
         if isinstance(folder, str) and 0 < len(folder) <= 4096 and os.path.isabs(folder):
             listed["folder"] = folder
         known = listed["papers"]
-        for raw in papers[:_MAX_RESULT_FAILURES]:
+        for raw in papers[:_MAX_BATCH_PAPERS]:
             paper = _paper(raw)
             if paper is None:
                 continue
@@ -667,6 +680,7 @@ def tracked_download(current: str, output_dir: Any = None, batch: BatchContext |
            markdown=bool(markdown), page_reading=False)
     if output_dir:
         set_output_dir(output_dir)
+    name_journal(current)
     outcome: dict[str, Any] = {}
     try:
         yield outcome
@@ -715,6 +729,38 @@ def _finish_download(outcome: dict[str, Any], current: str, batch: BatchContext 
                 _write_state()
     else:
         finish()
+
+
+def name_journal(current: str, look_up: Callable[[str], dict[str, Any]] | None = None) -> threading.Thread | None:
+    """The paper's journal on the card, where PaperSearch gave none (a list of DOIs; user, 2026-11-21: the card said
+    Elsevier, the publisher, for a paper of Metabolism): looked up beside the download (Crossref, kept by
+    entitlements.journal_identity), said once known, while the card is still on that paper."""
+    if look_up is None and os.environ.get("SCHOOL_PROGRESS_BAR") == "0":
+        return None  # no card to say it on (and no lookups from the tests)
+    with _LOCK:
+        if not _STATE or _STATE.get("journal") or str(_STATE.get("current") or "") != current or not current:
+            return None
+
+    def look() -> None:
+        try:
+            if look_up is None:
+                from .entitlements import journal_identity
+
+                name = str(journal_identity(current).get("journal") or "").strip()
+            else:
+                name = str(look_up(current).get("journal") or "").strip()
+        except Exception:
+            return  # the card keeps the publisher
+        if not name:
+            return
+        with _LOCK:
+            if _STATE and str(_STATE.get("current") or "") == current and not _STATE.get("journal"):
+                _STATE["journal"] = name
+                _write_state()
+
+    thread = threading.Thread(target=look, name="journal-name", daemon=True)
+    thread.start()
+    return thread
 
 
 def _write_state() -> None:
