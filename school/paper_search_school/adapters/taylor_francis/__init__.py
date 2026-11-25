@@ -33,9 +33,6 @@ class TaylorFrancisAdapter(AtyponAdapter):
     entry_event = "tandf-institution-link"
     # A viewer's first range can start with %PDF yet contain no usable pages.
     requires_complete_pdf = True
-    # Scand J Rheumatol 2013 (10.3109), Windows 2026-11-22: signed in, the PDF address answered with the article's
-    # page, "Purchase options" on it, and the item ended as pdf_not_captured.
-    pdf_address_shows_article_page = True
 
     # --fulltext: Atypon's older template (platforms/atypon).
     fulltext_shown_js = CLASSIC_TEMPLATE_FULLTEXT_SHOWN_JS

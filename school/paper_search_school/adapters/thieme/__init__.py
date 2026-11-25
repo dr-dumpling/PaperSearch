@@ -17,7 +17,7 @@ import time
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse
 
-from ...engine.fulltext_page import MATHJAX_SOURCES_JS
+from ...engine.fulltext_page import MATHJAX_SOURCES_JS, paragraph_text_js
 from ...engine.router import is_thieme_article_pdf_url
 from ...engine.batch_common import _is_browser_error, open_page
 from ..base import PublisherAdapter, SupplementLink, register
@@ -35,14 +35,7 @@ _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href]')].map(a =
 # one is taken, as the converter does; the general sample rules had the thumbnails. The
 # references are in the page (Endoscopy International Open, pages saved after a school
 # login, 2026-11-14).
-FULLTEXT_SHOWN_JS = """() => {
-  const body = document.querySelector('#sections > section#htmlfulltext');
-  if (!body) return false;
-  const text = [...body.querySelectorAll('p')]
-    .filter((p) => !p.closest('ul.literaturliste, .articleBox'))
-    .reduce((total, p) => total + (p.textContent || '').length, 0);
-  return text > 500;
-}"""
+FULLTEXT_SHOWN_JS = paragraph_text_js("p", "ul.literaturliste, .articleBox", "> 500", root="#sections > section#htmlfulltext")
 FULLTEXT_IMAGES_JS = """() => {
   const body = document.querySelector('#sections > section#htmlfulltext');
   if (!body) return [];

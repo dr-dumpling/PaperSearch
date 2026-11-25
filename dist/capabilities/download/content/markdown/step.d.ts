@@ -42,6 +42,15 @@ export declare function markdownBeside(result: DownloadWithFallbackResult, mainP
  */
 export declare function fulltextForItem(result: DownloadWithFallbackResult, request: DownloadWithFallbackOptions, searchers?: Searchers, visitPage?: FulltextPageVisit): Promise<FulltextSummary | undefined>;
 export declare function fulltextForItem(result: DownloadWithFallbackResult, request: DownloadWithFallbackOptions, searchers: Searchers | undefined, visitPage: "later"): Promise<FulltextSummary | "later" | undefined>;
+/** A Markdown saved without some figures (each marked in it): a batch tries them once more at its end. */
+export declare function figuresMissing(result: Pick<DownloadWithFallbackResult, "markdown"> | undefined): boolean;
+/**
+ * A batch's end (user, 2026-11-23: "批量最后再试一次图片，仍缺的保留 Markdown 并标明缺哪张图"): the
+ * figures the paper's saved Markdown lacks, downloaded once more by Pro, each that comes put in
+ * its place. The Markdown stays saved either way; its new state is a "markdown" stage of its
+ * own (the run's records and the batch's list say what is still missing).
+ */
+export declare function figuresOnceMore(result: DownloadWithFallbackResult, request: DownloadWithFallbackOptions): Promise<void>;
 /**
  * fulltextForItem, asked again after a network loss: the Markdown's attempt the lost network
  * failed is taken back and the Markdown fetched anew once it is back.

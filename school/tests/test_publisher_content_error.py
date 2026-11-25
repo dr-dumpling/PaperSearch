@@ -102,6 +102,60 @@ class PublisherContentErrorTests(unittest.TestCase):
         page.evaluate = Mock(return_value=None)
         self.assertIsNone(downloader.adapter.unsupported_platform(page))
 
+    def test_em_consulte_is_an_unsupported_platform(self):
+        """La Revue de Santé Scolaire et Universitaire (10.1016/j.revssu.2025.09.004, Windows 2026-11-23):
+        doi.org -> linkinghub -> em-consulte.com, an abstract there and no school login; the PII has no
+        ScienceDirect page."""
+        downloader, page = self.make(url='https://www.em-consulte.com/article/1771436/alertePM', text='')
+        downloader._title = Mock(return_value='Agir pour réduire les inégalités de santé en milieu d’apprentissage - EM consulte')
+        with self.assertRaises(PublisherPlatformUnsupported) as raised:
+            downloader._raise_on_publisher_content_error(page)
+        self.assertEqual(str(raised.exception), 'EM-Consulte')
+        page.url = 'https://em-consulte.com.example.test/article/1771436'
+        self.assertIsNone(downloader.adapter.unsupported_platform(page))
+        from paper_search_school.publishers.site import site_profile
+        self.assertIsNone(site_profile('10.1234/x', 'https://www.em-consulte.com/article/1771436/alertePM'))
+
+    def test_linkinghubs_article_locator_offering_other_platforms(self):
+        """La Revue de l'Infirmière (10.1016/j.revinf.2025.10.026) and Soins Cadres (Windows 2026-11-23):
+        linkinghub stayed on its "Elsevier: Article Locator", which offers the article on EM-Consulte; the
+        PII's ScienceDirect page was "Page not found", taken as the publisher's error after 100 s."""
+        locator = 'https://linkinghub.elsevier.com/retrieve/pii/S1293850525004142'
+        em_consulte = 'http://www.em-consulte.com/retrieve/pii/S1293850525004142'
+        downloader, page = self.make(url=locator, text='')
+        downloader._title = Mock(return_value='Elsevier: Article Locator')
+        page.evaluate = Mock(return_value=[em_consulte])
+        with self.assertRaises(PublisherPlatformUnsupported) as raised:
+            downloader._raise_on_publisher_content_error(page)
+        self.assertEqual(str(raised.exception), 'EM-Consulte')
+        page.evaluate.return_value = [em_consulte, 'https://www.clinicalkey.fr/#!/content/playContent/1-s2.0-S1293850525004142',
+                                      'https://www.elsevier.com', locator]
+        self.assertEqual(downloader.adapter.unsupported_platform(page), 'EM-Consulte / ClinicalKey')
+        # A site with rules among the offered ones, or none offered: no opinion (the flow goes on as before).
+        for offered in ([em_consulte, 'https://www.sciencedirect.com/science/article/pii/S1293850525004142'], [], None):
+            with self.subTest(offered=offered):
+                page.evaluate.return_value = offered
+                self.assertIsNone(downloader.adapter.unsupported_platform(page))
+        # linkinghub's "Redirecting" page is not the locator: the engine waits for it to move on.
+        downloader._title.return_value = 'Redirecting'
+        page.evaluate.return_value = [em_consulte]
+        downloader._raise_on_publisher_content_error(page)
+
+    def test_linkinghubs_article_not_available_is_the_publishers_error_page(self):
+        """EMC - Podologie (10.1016/s0292-062x(25)50176-9) and Anais Brasileiros de Dermatologia (Versão em
+        Português) (10.1016/j.abdp.2025.501239, Windows 2026-11-23): no site of Elsevier's has the article; the
+        second ended as pdf_not_captured after a ScienceDirect PDF address and a login with no entry."""
+        downloader, page = self.make(url='https://linkinghub.elsevier.com/retrieve/pii/S2666275225002000', text='')
+        downloader._title = Mock(return_value='Elsevier: Article Locator Error - Article Not Available')
+        page.evaluate = Mock(return_value=[])
+        with self.assertRaises(PublisherContentError) as raised:
+            downloader._raise_on_publisher_content_error(page)
+        self.assertEqual(str(raised.exception), 'Elsevier: Article Locator Error - Article Not Available')
+        self.assertIsNone(downloader.adapter.unsupported_platform(page))
+        downloader._title.return_value = 'Elsevier: Article Locator Error - Article Not Available'
+        page.url = 'https://www.cell.com/cell/fulltext/S0092-8674(24)00001-1'
+        downloader._raise_on_publisher_content_error(page)  # another host: the journal site's own rules
+
     def test_an_accepted_article_without_its_full_text_yet_stops_at_once(self):
         """Optica's early posting page (2026-11-08): no full text to fetch yet."""
         from paper_search_school.engine.batch_common import ArticleNotYetPublished

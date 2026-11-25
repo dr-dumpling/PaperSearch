@@ -8,7 +8,10 @@ import { SETTINGS_WINDOW_UNAVAILABLE, openSettingsWindow, settingsWindowEnv } fr
 const catalog = JSON.parse(readFileSync("school/paper_search_school/assets/api_keys.json", "utf8")) as {
   groups: Array<{ services: Array<{ id: string; url: string; keys: Array<{ key: string }> }> }>;
 };
-const services = catalog.groups.flatMap((group) => group.services);
+// The captcha service's key is kept in the school backend's config (api_keys.py: captcha_key), not the CLI's;
+// YesCaptcha took Bright Data's row, whose token and zone were kept there too (2026-11-25).
+const BACKEND_SERVICES = new Set(["yescaptcha"]);
+const services = catalog.groups.flatMap((group) => group.services).filter((service) => !BACKEND_SERVICES.has(service.id));
 
 describe("the settings window's API keys", () => {
   it("are the CLI's keys and contact emails, each once, with the CLI's sign-up or about page", () => {

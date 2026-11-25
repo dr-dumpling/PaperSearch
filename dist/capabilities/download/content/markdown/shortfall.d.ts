@@ -8,9 +8,10 @@ import type { DownloadBatchItemResult } from "../../batch/batch.js";
  * Why a paper has no Markdown, in a few words and a class, named as a PDF's or the files'
  * failure is (user, 2026-11-16): a full text missing figures goes to the institutional
  * download, and its reason is the institutional download's (the site blocked the network,
- * the login timed out, it never ran), or that the page's figures did not download. A page
- * that shows only the abstract, a site without page rules and an article with no full text
- * are what can be had (暂不支持); an older extension is the user's to update.
+ * the login timed out, it never ran), or that the page's figures did not download. A site
+ * without page rules is PaperSearch's to cover (待适配); a page that shows only the abstract and
+ * an article whose page has no full text are the site's (外部原因, user 2026-11-25: they were
+ * 暂不支持, as if PaperSearch could not convert them); an older extension is the user's to update.
  */
 export declare function markdownMissing(markdown: NonNullable<DownloadBatchItemResult["markdown"]>): {
     cls: FailureClass;
@@ -25,9 +26,11 @@ export declare function unverifiedNote(markdown: NonNullable<DownloadBatchItemRe
 /**
  * A Markdown saved from a registered site's page whose checks found something short (user,
  * 2026-11-17): the group it is listed in by the first thing short (参考文献可能不全) and the
- * note on all of it (可能缺：参考文献少 2 条，正文缺约 12%); undefined when nothing was.
+ * note on all of it (可能缺：参考文献少 2 条，正文缺约 12%); undefined when nothing was. One saved
+ * without figures that did not download (user, 2026-11-23) is listed by them first: 图片没下载成功,
+ * its note naming them (图片没下载成功：Figure 3).
  */
-export declare function markdownDoubt(markdown: NonNullable<DownloadBatchItemResult["markdown"]> | undefined): {
+export declare function markdownDoubt(markdown: Pick<NonNullable<DownloadBatchItemResult["markdown"]>, "status" | "possiblyMissing" | "missingFigures"> | undefined): {
     reason: string;
     note: string;
 } | undefined;

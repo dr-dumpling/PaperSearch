@@ -6,14 +6,16 @@
       "10.1212"
     ],
     "base_domains": [
-      "neurology.org"
+      "neurology.org",
+      "continuum.aan.com"
     ],
     "article_url_template": "https://doi.org/{doi}",
     "pdf_url_templates": [
       "https://www.neurology.org/doi/pdf/{doi}"
     ],
     "success_url_markers": [
-      "neurology.org/doi/"
+      "neurology.org/doi/",
+      "continuum.aan.com/doi/"
     ],
     "auth_url_markers": [
       "/login",

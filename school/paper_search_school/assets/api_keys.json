@@ -60,6 +60,20 @@
               "kind": "email"
             }
           ]
+        },
+        {
+          "id": "yescaptcha",
+          "name": "YesCaptcha",
+          "use": "验证码增强，支持图片、数字等",
+          "url": "https://yescaptcha.com/i/E9n1T5/",
+          "guide": "https://docs.qq.com/aio/DTUhYbkVjektKeHdV",
+          "guide_label": "申请教程",
+          "keys": [
+            {
+              "key": "YESCAPTCHA_KEY",
+              "label": "ClientKey"
+            }
+          ]
         }
       ]
     },

@@ -48,7 +48,10 @@ _FAILURE_KINDS = {
     "publisher_unreachable": ("publisher_unreachable", "review_publisher_error"),
     "sso_required": ("paywall", "login_required"),
     "institution_pdf_entitlement_missing": ("paywall", "review_entitlement"),
-    "challenge_or_viewer_timeout": ("download_timeout", "review_browser"),
+    # The site's human verification stayed up until the wait ran out: not passed, the site's block
+    # (被网站拦截), not a page that hung (JAMA's crawl-prevention reCAPTCHA, gut.bmj.com's Cloudflare
+    # check after ten articles in a row; reported as download_timeout, 原因不明, until 2026-11-23).
+    "challenge_or_viewer_timeout": ("captcha_required", "review_access"),
     "ip_blocked": ("access_blocked", "review_access"),
     "unexpected_error": ("source_exception", ""),
     # The user closed the download browser (or it quit) before the article was done.
@@ -80,6 +83,9 @@ _FAILURE_KINDS = {
     # The site's page shows no way to any school's login (an open-access site, one with personal
     # accounts only): no school login was started (user, 2026-11-18).
     "no_institution_entry": ("no_institution_entry", ""),
+    # An article open to all whose page names no PDF anywhere: its site gives it as a web page only
+    # (CAA Reviews, 2026-11-24; 原因不明 · 没取到 PDF before).
+    "pdf_not_offered": ("pdf_not_offered", ""),
     **{code: (code, "review_browser") for code in _LOGIN_FAILURE_CODES},
 }
 
@@ -127,7 +133,13 @@ def _failure_reason_code(result: Any) -> str:
         # A timeout is the user's only where the user had a step to take
         # (ADR 0012); a wait that ended on the publisher's pages means the
         # program never reached the login.
-        reason_code = "login_timeout" if wait_page in ("school_login", "school_choice") else "login_not_reached"
+        if wait_page == "institution_chooser":
+            # The chooser opened and never named the school: had it been there,
+            # the program would have picked it (Glasgow Caledonian, 2026-11-24).
+            # No route at this publisher, not a wait the user missed.
+            reason_code = "institution_federation_unavailable"
+        else:
+            reason_code = "login_timeout" if wait_page in ("school_login", "school_choice") else "login_not_reached"
     elif reason_code == "sso_required" and getattr(result, "_user_wait_expired", False):
         reason_code = "login_timeout"  # the login waited on the user until its time was up
     if getattr(result, "_download_limit", "") and reason_code in _PDF_NOT_ARRIVED:
@@ -319,6 +331,7 @@ def _try_builtin_institutional(
         # Without a profile there is no site to build one for.
         return _failure(doi, "doi_not_resolved") if profile else _unsupported_publisher(doi)
 
+    from ..adapters.base import adapter_class_for as _adapter_class_for
     from ..publishers.profiles import infer_publisher_profile_from_url, journal_platform
     hosted = (infer_publisher_profile_from_url(resolved_url, profiles=profiles)
               if profiles is not None else infer_publisher_profile_from_url(resolved_url))
@@ -330,6 +343,12 @@ def _try_builtin_institutional(
         # Academic, 2026-11-14). A journal listed in _JOURNAL_PLATFORMS keeps its entry.
         log.info("   [Institutional] DOI resolves to %s's site: its rules, not %s's", hosted.name, profile.name)
         profile = hosted
+    elif hosted is None and _adapter_class_for(profile).covers_site(resolved_url) is False:
+        # Another site under the publisher's DOI prefix that its rules were not written for
+        # (the AMA Journal of Ethics beside JAMA Network, 2026-11-23): the shared rules of a
+        # site without a profile, below.
+        log.info("   [Institutional] DOI resolves to a site %s's rules do not cover", profile.name)
+        profile = None
     if not profile:
         # No profile names the site: the publisher driver with the shared rules
         # only, on the site the DOI resolves to.
@@ -437,8 +456,8 @@ def _try_builtin_institutional(
         primary = next((f for code in ("source_exception", "unsupported_platform", "article_not_yet_published",
                                       "generic_institution_entry_missing", "publisher_institution_entry_missing",
                                       "no_institution_entry",
-                                      "publisher_content_error", "access_blocked", *_LOGIN_FAILURE_CODES,
-                                      "download_timeout")
+                                      "publisher_content_error", "access_blocked", "captcha_required",
+                                      *_LOGIN_FAILURE_CODES, "download_timeout")
                         for f in failures if f["error_type"] == code), denial or failures[-1])
         result = {"success": False, "identifier": doi, "doi": doi, "source": "institutional",
                   "error_type": primary["error_type"], "reason": primary["reason"],
@@ -1005,6 +1024,11 @@ def _browser_artifacts(result: Any, profile: Any) -> dict[str, str]:
     wait_page = str(getattr(result, "login_wait_page", "") or "")
     if wait_page in LOGIN_WAIT_PAGES:
         artifacts["login_wait_page"] = wait_page
+    # The kind of verification the item last waited on: a fixed word (``kinds.LABELS``).
+    from ..browser.challenge.kinds import LABELS as CHALLENGE_TYPES
+    challenge_type = str(getattr(result, "challenge_type", "") or "")
+    if challenge_type in CHALLENGE_TYPES:
+        artifacts["challenge_type"] = challenge_type
     # The school's site the login stopped on: a host name only, for the message.
     host = str(getattr(result, "_stopped_host", "") or "").lower()
     if state == "idp_no_return_to_publisher" and re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+", host) and len(host) <= 253:

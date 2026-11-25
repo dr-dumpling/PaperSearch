@@ -32,7 +32,7 @@ _OBSERVE_SCRIPT = """() => {
 
 def observe_checkbox(page: Any) -> None:
     """Observe readiness only; never read or write the verification response."""
-    from ..driver import main_world
+    from ...driver import main_world
 
     page.evaluate(_OBSERVE_SCRIPT, **main_world(page))  # where the init script observes
 
@@ -45,8 +45,8 @@ def interaction_events(page: Any) -> list[dict[str, Any]]:
     observed, or one that navigated away while it was read, reports nothing.
     For diagnosis only — no caller may treat an event as proof of a pass.
     """
-    from ..driver import Error, main_world
-    from ..watchdog import CallAbandoned, call_limit
+    from ...driver import Error, main_world
+    from ...watchdog import CallAbandoned, call_limit
 
     try:
         with call_limit(READ_LIMIT_SEC):
@@ -108,12 +108,13 @@ _NAVIGATED = ("frame was detached", "frame has been detached", "element is not a
 # can hang between two documents: one read waited 48 s and the article's page budget
 # ran out before the page it led to opened (BMJ on Windows, 2026-11-11).
 READ_LIMIT_SEC = 5
+FRIENDLY_CAPTCHA = "Friendly Captcha"
 
 
 def is_image_verification(page: Any) -> bool:
     """Image puzzles expose controls but may have no readable instructions."""
-    from ..driver import Error
-    from ..watchdog import CallAbandoned, call_limit
+    from ...driver import Error
+    from ...watchdog import CallAbandoned, call_limit
 
     try:
         with call_limit(READ_LIMIT_SEC):
@@ -158,8 +159,11 @@ _WIDGET_FRAMES: tuple[tuple[str, Callable[[str], bool]], ...] = (
     ("Tencent", re.compile(r"^https://(?:turing\.captcha\.qcloud\.com|t\.captcha\.qq\.com|"
                            r"ssl\.captcha\.qq\.com)/").search),
     ("Turnstile", lambda url: is_turnstile_frame(url)),
+    (FRIENDLY_CAPTCHA, lambda url: "frcapi.com/api/v2/captcha/widget" in url),
 )
 _WIDGET_ELEMENTS = (
+    ("Turnstile", ".cf-turnstile[data-sitekey]"),
+    (FRIENDLY_CAPTCHA, ".frc-captcha"),
     ("GeeTest", ".geetest_holder, .geetest_panel, .geetest_box, .geetest_captcha"),
     ("Aliyun", "[id^='aliyunCaptcha-'], #nc_1_wrapper"),
     ("Tencent", "#tcaptcha_iframe, #tcaptcha_transform"),
@@ -167,11 +171,13 @@ _WIDGET_ELEMENTS = (
 )
 # Longer than this, the page is more than a verification interstitial.
 _WIDGET_PAGE_TEXT = 2500
-_WIDGET_PAGE_JS = r"""([groups, longest]) => {
+_WIDGET_PAGE_JS = r"""([groups, longest, friendlyCaptcha]) => {
     if (document.querySelector('meta[name="citation_doi"], meta[name="citation_title"]')) return '#page';
-    if ((document.body?.innerText || '').trim().length > longest) return '#page';
+    const text = (document.body?.innerText || '').trim();
+    if (text.length > longest) return '#page';
     const shown = el => { const r = el.getBoundingClientRect(), s = getComputedStyle(el);
         return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+    if (/^verification required!?$/im.test(text) && /\bfriendly captcha\b/i.test(text)) return friendlyCaptcha;
     for (const [name, selector] of groups)
         if ([...document.querySelectorAll(selector)].some(shown)) return name;
     if ([...document.scripts].some(s => /^https:\/\/[^/]*\.captcha\.awswaf\.com\//.test(s.src || ''))) return 'AWS WAF';
@@ -182,12 +188,12 @@ _WIDGET_PAGE_JS = r"""([groups, longest]) => {
 def verification_widget(page: Any, *, manual_only: bool = False) -> str:
     """The provider of a visible verification widget making up ``page``, or "".
     ``manual_only``: leave out Turnstile, which the program may click itself."""
-    from ..driver import Error
-    from ..watchdog import CallAbandoned, call_limit
+    from ...driver import Error
+    from ...watchdog import CallAbandoned, call_limit
 
     try:
         with call_limit(READ_LIMIT_SEC):
-            found = page.evaluate(_WIDGET_PAGE_JS, [[list(group) for group in _WIDGET_ELEMENTS], _WIDGET_PAGE_TEXT])
+            found = page.evaluate(_WIDGET_PAGE_JS, [list(_WIDGET_ELEMENTS), _WIDGET_PAGE_TEXT, FRIENDLY_CAPTCHA])
     except CallAbandoned:
         return ""
     except Error as exc:
@@ -197,6 +203,8 @@ def verification_widget(page: Any, *, manual_only: bool = False) -> str:
     found = found if isinstance(found, str) else ""
     if found == "#page":
         return ""
+    if found == "Turnstile" and manual_only:
+        found = ""
     if found:
         return found
     frames = getattr(page, "frames", ())
@@ -223,8 +231,8 @@ def verification_widget(page: Any, *, manual_only: bool = False) -> str:
 
 def has_visible_recaptcha(page: Any) -> bool:
     """Detect a reCAPTCHA prompt that remains after the outer page changes."""
-    from ..driver import Error
-    from ..watchdog import CallAbandoned, call_limit
+    from ...driver import Error
+    from ...watchdog import CallAbandoned, call_limit
 
     for frame in page.frames:
         parsed = urlsplit(str(frame.url or ""))
@@ -273,7 +281,7 @@ def click_checkbox(page: Any, *, timeout_ms: int, checkpoint: Callable[[], None]
     use its standard checkbox position. Expanded puzzles are left alone.
     """
     from . import pointer
-    from ..driver import Error, TimeoutError, main_world
+    from ...driver import Error, TimeoutError, main_world
 
     def note(reason: str) -> None:
         if observation is not None:
@@ -392,3 +400,76 @@ def click_checkbox(page: Any, *, timeout_ms: int, checkpoint: Callable[[], None]
                 continue
             raise
     return "unavailable" if unavailable else "absent"
+
+
+_CLOUDFLARE_FRAME = ("challenges.cloudflare.com", "/cdn-cgi/challenge-platform", "turnstile")
+_RECAPTCHA_FRAME = ("/recaptcha/api2/", "/recaptcha/enterprise/")
+_HCAPTCHA_FRAME = ("hcaptcha.com/captcha/",)
+_AWS_FRAME = ("captcha.awswaf.com/",)
+_CLOUDFLARE_TITLES = ("just a moment", "attention required", "verifying you are human",
+                     "checking your browser", "verification required")
+
+
+_AWS_WAF_SCRIPT = "/^https:\\/\\/[^/]*\\.captcha\\.awswaf\\.com\\//"
+
+
+def _aws_waf_armed(page: Any) -> bool:
+    """AWS WAF's own script on the outer page. Its button lives there, not in a
+    provider frame, so the iframe addresses above never show it; without this a
+    page carrying AWS WAF falls through to ``other``."""
+    from ...driver import Error
+    from ...watchdog import CallAbandoned, call_limit
+
+    js = ("() => [...document.scripts].some(s => "
+          + _AWS_WAF_SCRIPT + ".test(s.src || ''))")
+    try:
+        with call_limit(READ_LIMIT_SEC):
+            return page.evaluate(js) is True
+    except CallAbandoned:
+        return False
+    except Error as exc:
+        if any(text in str(exc).lower() for text in _NAVIGATED):
+            return False  # the page went on: the next check reads the new one
+        raise
+
+
+def challenge_kind(page: Any) -> str:
+    """Identify the provider for the verification handoff decision."""
+
+    from .. import detection
+
+    try:
+        url = str(getattr(page, "url", "") or "").lower()
+    except Exception:  # noqa: BLE001
+        url = ""
+    try:
+        title = str(getattr(page, "title", lambda: "")() or "")
+    except Exception:  # noqa: BLE001
+        title = ""
+    frames: list[str] = []
+    try:
+        frames = [str(getattr(frame, "url", "") or "").lower() for frame in page.frames]
+    except Exception:  # noqa: BLE001
+        frames = []
+    joined = " ".join(frames)
+
+    if detection.looks_like_challenge(url, title):
+        return "cloudflare"
+    if any(is_turnstile_frame(frame) for frame in frames) or verification_widget(page) == "Turnstile":
+        return "turnstile"
+    if any(marker in joined for marker in _CLOUDFLARE_FRAME):
+        return "cloudflare"
+    if not detection.looks_like_challenge(url, title) and verification_widget(page) == FRIENDLY_CAPTCHA:
+        return "friendlycaptcha"
+    if any(marker in joined for marker in _RECAPTCHA_FRAME) or has_visible_recaptcha(page):
+        return "recaptcha"
+    if any(marker in joined for marker in _HCAPTCHA_FRAME):
+        return "hcaptcha"
+    if any(marker in joined for marker in _AWS_FRAME) or _aws_waf_armed(page):
+        return "awswaf"
+    lowered = title.lower()
+    if any(signal in lowered for signal in _CLOUDFLARE_TITLES):
+        return "cloudflare"
+    if detection.looks_like_challenge(url, title):
+        return "other"   # 认得出是验证页、但不是 Cloudflare（AMS 的 Human Verification 就是这一类）
+    return "other" if (url or title) else "unknown"

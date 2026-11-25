@@ -9,7 +9,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-from paper_search_school.browser.challenge.interaction import click_checkbox, observe_checkbox, prepare_context
+from paper_search_school.browser.challenge.local.interaction import click_checkbox, observe_checkbox, prepare_context
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_school.publishers.profiles import SPRINGER_PROFILE
 from test_pdf_after_check import article_pdf
@@ -213,7 +213,7 @@ class InteractionFixture:
             return outcome
         d = PublisherBatchDownloader({}, profile=SPRINGER_PROFILE, require_interactive_browser=True)
         result = DownloadResult(doi=DOI, status="failed", state="article_loaded")
-        with patch("paper_search_school.browser.challenge.interaction.click_checkbox", side_effect=tracked_click), \
+        with patch("paper_search_school.browser.challenge.local.interaction.click_checkbox", side_effect=tracked_click), \
                 patch("paper_search_school.progress_reporter.set_attention") as attention:
             self.assertTrue(d._wait_for_challenge(self.page, result))
         self.assertEqual(len(times), 2)

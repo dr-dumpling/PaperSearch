@@ -52,6 +52,40 @@ export interface SchoolBatchUpdate {
    * (登录并继续 or 终止): the window says so, collapsed too. Only to a backend that declares it.
    */
   heldWait?: boolean;
+  /**
+   * The papers whose first try failed and that the batch tries again later, by why: the window's ring shows them beside
+   * the papers done, and pointed at, how many of each. Only to a backend that declares it.
+   */
+  later?: SchoolBatchLater;
+  /**
+   * The batch now tries its papers without access with this saved school (its name): the window says so for a moment.
+   * Only to a backend that declares it.
+   */
+  switchTo?: string;
+  /**
+   * The report says nothing but ``later`` and ``switchTo``: a backend that does not declare them is not sent it, nor is
+   * a backend process started for it.
+   */
+  laterOnly?: boolean;
+}
+
+/** A batch's papers held for a later try (``SchoolBatchUpdate.later``). */
+export interface SchoolBatchLater {
+  /** 没权限: they go to the next saved school at the end. */
+  noAccess: number;
+  /** 原因不明: tried once more at the end. */
+  unexplained: number;
+  /** 被网站拦截: their publisher paused, tried again at ``blockedAt``. */
+  blocked: number;
+  /** While some are blocked: when the first paused publisher's papers are tried again (epoch ms). */
+  blockedAt?: number;
+  /** 学校登录中途失效: waiting for 登录并继续. */
+  login: number;
+  /**
+   * Each kind's papers by DOI: the window's 重试 list names them, and 剩余 lists those not started without them (user,
+   * 2026-11-24). None from a caller that does not know them.
+   */
+  papers?: { noAccess: string[]; unexplained: string[]; blocked: string[]; login: string[] };
 }
 
 /** A publisher a batch holds: its DOI prefix, its name, how many papers wait. */
@@ -253,6 +287,8 @@ export interface SchoolTrace {
    * also school_choice, institution_chooser, authentication_redirect, publisher, other, closed).
    */
   loginWaitPage?: string;
+  /** The kind of the last verification page the paper waited on (a key of CHALLENGE_TYPE_LABELS). */
+  challengeType?: string;
   /**
    * The backend's watchdog ended its browser calls during this download, also when its PDF was
    * saved: every later call of that backend fails at once, so the next download starts another.
@@ -361,8 +397,9 @@ export interface SchoolBackend {
    * without access (没权限) are tried with at its end, one after another, the default one first (none while the switch
    * is off), and whether the batch takes one journal's papers one after another (``group``: more than one school
    * taking part). Only on a backend the batch already has; undefined when there is none or it cannot say. Never throws.
+   * ``retry``: 失败后自动重试 on (the settings' 等待和提醒 page, off by default).
    */
-  schoolSwitch?(signal?: AbortSignal): Promise<{ schools: SchoolTurn[]; group: boolean } | undefined>;
+  schoolSwitch?(signal?: AbortSignal): Promise<{ schools: SchoolTurn[]; group: boolean; retry?: boolean } | undefined>;
 }
 
 export interface SchoolMcpClientOptions {

@@ -32,14 +32,14 @@ function table(heading: string): string[][] {
   it("gives each code the class and the phrasing the code gives it, and lists every code with a phrasing", () => {
     const listed = new Set<string>();
     for (const [name, phrasing, codes] of table("每种原因")) {
-      for (const code of [...codes.matchAll(/`([a-z_]+)`/g)].map((m) => m[1])) {
+      for (const code of [...codes.matchAll(/`([a-z][a-z0-9_]*)`/g)].map((m) => m[1])) {
         listed.add(code);
         expect([code, FAILURE_CLASS_NAMES[classifyFailureCode(code)], schoolShortReason(code)]).toEqual([code, name, phrasing]);
       }
     }
     const source = readFileSync("src/infrastructure/school/SchoolAttempt.ts", "utf8");
     const shortReasons = source.slice(source.indexOf("const SHORT_REASONS"), source.indexOf("};", source.indexOf("const SHORT_REASONS")));
-    const codes = [...shortReasons.matchAll(/^\s+([a-z_]+):/gm)].map((m) => m[1]);
+    const codes = [...shortReasons.matchAll(/^\s+([a-z][a-z0-9_]*):/gm)].map((m) => m[1]);
     expect(codes.length).toBeGreaterThan(40);
     expect(codes.filter((code) => !listed.has(code))).toEqual([]);
   });

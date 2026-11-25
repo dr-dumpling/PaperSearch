@@ -61,6 +61,10 @@ class ChromiumPDFCaptureTests(unittest.TestCase):
             downloader._citation_title = Mock(return_value=title)
         page = self.page = Mock()
         page.context.browser.browser_type.name = "chromium"
+        # An ordinary page, not a verification page: its title and text are read as a browser gives them, strings
+        # (the PDF step looks for a verification page of its own since 2026-11-23, 0df29dbf).
+        page.title.return_value = ""
+        page.locator.return_value.inner_text.return_value = ""
         session = page.context.new_cdp_session.return_value
 
         stream = {"at": 0}

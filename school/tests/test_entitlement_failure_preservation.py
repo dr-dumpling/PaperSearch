@@ -113,7 +113,7 @@ class EntitlementPreservationTests(unittest.TestCase):
 
     def test_browser_stale_reason_does_not_override_terminal_state(self):
         for state, code in [("unexpected_error", "source_exception"),
-                            ("challenge_or_viewer_timeout", "download_timeout"),
+                            ("challenge_or_viewer_timeout", "captcha_required"),
                             ("sso_required", "paywall"), ("spinner", "download_failed"),
                             ("pdf_not_captured", "download_failed")]:
             with self.subTest(state=state):

@@ -31,9 +31,25 @@ export interface FailureGroup {
     publisher: string;
     site: string;
     code: string;
+    /** The kind of verification that stopped these papers (a key of CHALLENGE_TYPE_LABELS), when recorded. */
+    challengeType?: string;
     count: number;
     /** no_access: the evidence of the first item. */
     evidence?: string;
+    items: FailureItem[];
+}
+/**
+ * Papers saved (the batch counts them succeeded) with some supplementary files missing: not
+ * failures, told apart as the batch's last line does ("附录未下全"), each reason phrased as the
+ * window's list phrases it (附录没下载成功 for a code without a phrasing of its own).
+ */
+export interface SupplementShortfallGroup {
+    failureClass: FailureClass;
+    publisher: string;
+    site: string;
+    code: string;
+    reason: string;
+    count: number;
     items: FailureItem[];
 }
 export interface FailureSummary {
@@ -45,13 +61,20 @@ export interface FailureSummary {
     notAttempted: number;
     classes: Record<FailureClass, number>;
     groups: FailureGroup[];
+    /** Papers saved without all their supplementary files (not in ``failed``). */
+    supplementsMissing: number;
+    supplementGroups: SupplementShortfallGroup[];
 }
 export interface ExportFailure extends FailureItem {
     publisher: string;
     site: string;
     code: string;
+    /** The kind of the last verification page the paper waited on (trace.challengeType), when recorded. */
+    challengeType?: string;
     failureClass: FailureClass;
     record?: string;
+    /** part "supplements": the paper itself was saved (the batch counts it succeeded). */
+    paperSaved?: true;
     detail: Record<string, unknown>;
     outcome: Record<string, unknown>;
 }

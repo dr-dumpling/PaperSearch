@@ -126,6 +126,13 @@ if (
       return { content: [{ type: "text", text: '{"closed":true}' }] };
     });
   }
+  if (scenario.startsWith("batch")) {
+    // 失败后自动重试 on (off by default since 2026-11-24): the batches these scenarios check try 原因不明 again at the end.
+    server.registerTool("school_switch_state", { description: "Schools to switch to, and the retry setting", inputSchema: {} }, async () => {
+      log("call", { tool: "school_switch_state" });
+      return { content: [{ type: "text", text: JSON.stringify({ on: false, schools: [], group: false, retry: true }) }] };
+    });
+  }
   if (scenario === "batch_browser_keep") {
     server.registerTool("school_keep_session", { description: "Keep the publisher's session", inputSchema: {} }, async () => {
       log("call", { tool: "school_keep_session" });
@@ -340,6 +347,9 @@ if (
           ...(scenario.endsWith("_phase") || scenario.endsWith("_lanes")
             ? { phase: z.string().optional(), channel: z.string().optional() } : {}),
           ...(scenario.endsWith("_lanes") ? { lanes: z.string().optional() } : {}),
+          ...(scenario.endsWith("_later")
+            ? { later: z.record(z.string(), z.union([z.number(), z.record(z.string(), z.array(z.string()))])).optional(),
+              switch_to: z.string().optional() } : {}),
         },
       },
       async (args) => {

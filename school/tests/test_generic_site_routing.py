@@ -71,6 +71,22 @@ class GenericSiteRoutingTests(unittest.TestCase):
         self.factory.assert_not_called()
         self.assertEqual(result["reason"], "user_marked_no_entitlement")
 
+    def test_another_site_under_a_publishers_prefix_its_rules_do_not_cover_takes_the_site_rules(self):
+        # The AMA Journal of Ethics shares JAMA's 10.1001 on a site of its own: JAMA Network's rules
+        # took its page for no article page and tried no PDF (2026-11-23).
+        self.run_bridge(doi="10.1001/amajethics.2025.821",
+                        landing="https://journalofethics.ama-assn.org/article/comic-rbcs-and-other-ehr-tmi/2025-11")
+        profile = self.factory.call_args.kwargs["profile"]
+        self.assertEqual(profile.name, "site:ama-assn.org")
+        self.assertTrue(profile.generic)
+        self.run_bridge(doi="10.1001/jamanetworkopen.2025.34985",
+                        landing="https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2839739")
+        self.assertEqual(self.factory.call_args.kwargs["profile"].name, "JAMA")
+        # A publisher whose rules say nothing of other sites keeps them there (Frontiers Partnerships).
+        self.run_bridge(doi="10.3389/jaws.2025.15230",
+                        landing="https://www.frontierspartnerships.org/articles/10.3389/jaws.2025.15230/full")
+        self.assertEqual(self.factory.call_args.kwargs["profile"].name, "Frontiers")
+
     def test_a_doi_resolving_to_no_site_ends_as_unsupported_publisher(self):
         for landing in (None, "https://journals.fixture.example/blood/article-pdf/148/16/2029/x/main.pdf",
                         "https://www.clinicalkey.com/#!/content/journal/1-s2.0-S0"):

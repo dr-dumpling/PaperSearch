@@ -135,6 +135,7 @@ describe("Entitled PDF acceptance", () => {
     ["institution_not_registered", "登录入口和这家出版社之间没有开通"],
     ["generic_institution_entry_missing", "按通用规则没有找到机构登录入口"],
     ["no_institution_entry", "这个网站没有学校登录入口"],
+    ["pdf_not_offered", "只有网页全文，文章页上没有任何 PDF"],
     ["unsupported_publisher", "没有指向 PaperSearch 能登录的出版社网站"],
   ])(
     "preserves %s from MCP JSON through normalization and the tier",
@@ -207,6 +208,30 @@ describe("Entitled PDF acceptance", () => {
     expect(result.message).toContain(shown);
     expect(result.message).toContain("没有回到出版社");
     expect(JSON.stringify(result)).not.toMatch(/token|private/);
+  });
+
+  it.each([
+    ["hcaptcha_image", "hcaptcha_image", "验证类型：hCaptcha 图像识别。"],
+    ["cloudflare", "cloudflare", "验证类型：Cloudflare 5 秒盾。"],
+    ["not-a-kind<script>", undefined, ""],
+  ])("names the kind of verification that stopped the paper (user, 2026-11-25): %s", async (kind, kept, said) => {
+    const payload = {
+      success: false,
+      error_type: "captcha_required",
+      action: "review_access",
+      artifacts: { driver: "publisher", state: "challenge_or_viewer_timeout", challenge_type: kind },
+    };
+    const backend = {
+      downloadLegalDoi: jest.fn(async () =>
+        normalizeDownloadResult({ content: [{ type: "text", text: JSON.stringify(payload) }] }, context.paperId),
+      ),
+    } as unknown as SchoolBackend;
+    const result = await createEntitledAccessTier(backend).run(context);
+    expect(result).toMatchObject({ status: "error", code: "captcha_required" });
+    expect(result.trace?.challengeType).toBe(kept);
+    if (said) expect(result.message).toContain(said);
+    else expect(result.message).not.toContain("验证类型");
+    expect(JSON.stringify(result)).not.toContain("<script>");
   });
 
   it.each([

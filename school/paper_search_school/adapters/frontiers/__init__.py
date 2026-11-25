@@ -1,10 +1,11 @@
-"""Frontiers: open-access journals on www.frontiersin.org; supplementary files on the article's own download panel."""
+"""Frontiers: open-access journals on www.frontiersin.org (Frontiers for Young Minds on kids.frontiersin.org); supplementary files on the article's own download panel."""
 from __future__ import annotations
 
 import re
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from ...engine.fulltext_page import paragraph_text_js
 from ..base import PublisherAdapter, SupplementLink, register
 
 _SUPPLEMENT_ROWS_JS = """() => ({
@@ -14,6 +15,10 @@ _SUPPLEMENT_ROWS_JS = """() => ({
         label: (a.closest('li')?.innerText || a.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 240)
     }))
 })"""
+
+# The original of an image the site's resizer serves (/api/ipx/w=287&f=webp&v=7/<original>), as
+# the converter takes it back (sites/publishers/frontiers/template.ts's original()).
+_ORIGINAL_JS = "const original = (url) => (/\\/api\\/ipx\\/[^/]*\\/(https?:\\/\\/.+)$/.exec(url) || [])[1] || url;"
 
 # --fulltext (PaperSearch Pro's sites/publishers/frontiers/template.ts). The article page
 # (/journals/<journal>/articles/<DOI>/full, open access) holds the article in
@@ -42,7 +47,7 @@ FULLTEXT_SHOWN_JS = """() => {
 FULLTEXT_IMAGES_JS = """() => {
   const content = document.querySelector('div.ArticleContent');
   if (!content) return [];
-  const original = (url) => (/\\/api\\/ipx\\/[^/]*\\/(https?:\\/\\/.+)$/.exec(url) || [])[1] || url;
+  """ + _ORIGINAL_JS + """
   const caption = 'figcaption, .ArticleTable__description, .ArticleTable__foot';
   const image = (float) => {
     const img = [...float.querySelectorAll('img')].find((node) => !node.closest(caption));
@@ -56,6 +61,31 @@ FULLTEXT_IMAGES_JS = """() => {
   const figures = [...content.querySelectorAll('div.ArticleFigure')].map(image);
   const tables = [...content.querySelectorAll('div.ArticleTable')].filter((table) => !table.querySelector('table')).map(image);
   return [...figures, ...tables].filter(Boolean);
+}"""
+
+
+# --fulltext for Frontiers for Young Minds (PaperSearch Pro's
+# sites/publishers/frontiers/templateYoungMinds.ts). kids.frontiersin.org is another page than
+# www.frontiersin.org's: no div.ArticleContent, which the scripts above wait for, so its two papers
+# of the publisher sweep were said to show no full text when their PDFs were taken (2026-11-22).
+# The server renders the article in div.fulltext-content, flat: div.abstract, the paragraphs and
+# h2/h3 headings, the exercise boxes, the glossary, then section#full-text-references. A figure is
+# a <figure>: its <img> lazy (src empty, data-src the resizer's address of the original,
+# /api/ipx/w=1200&f=webp/<files/Articles/…/image_m/figure-1.jpg>), taken back to the original as
+# the converter does; the main illustration and the people's photos are not in the article.
+YOUNG_MINDS_FULLTEXT_SHOWN_JS = paragraph_text_js("p", "div.abstract, section#full-text-references, figure", "> 500",
+                                                  root="div.fulltext div.fulltext-content")
+YOUNG_MINDS_FULLTEXT_IMAGES_JS = """() => {
+  const content = document.querySelector('div.fulltext div.fulltext-content');
+  if (!content) return [];
+  """ + _ORIGINAL_JS + """
+  return [...content.querySelectorAll('figure')].map((figure) => {
+    const img = figure.querySelector('img');
+    return [img?.getAttribute('data-src'), img?.getAttribute('src')]
+      .filter((value) => value && !value.startsWith('data:'))
+      .map((value) => { try { return new URL(original(value), location.href).href; } catch (error) { return ''; } })
+      .find((url) => /^https?:/i.test(url)) || '';
+  }).filter(Boolean);
 }"""
 
 
@@ -88,3 +118,12 @@ class FrontiersAdapter(PublisherAdapter):
 
     def supplement_links(self, page: Any, doi: str) -> list[SupplementLink]:
         return supplement_links_from_page(page.evaluate(_SUPPLEMENT_ROWS_JS), doi)
+
+
+@register
+class FrontiersForYoungMindsAdapter(FrontiersAdapter):
+    """Frontiers for Young Minds on kids.frontiersin.org: its article page's own scripts, the rest Frontiers'."""
+
+    hosts = ("kids.frontiersin.org",)
+    fulltext_shown_js = YOUNG_MINDS_FULLTEXT_SHOWN_JS
+    fulltext_images_js = YOUNG_MINDS_FULLTEXT_IMAGES_JS

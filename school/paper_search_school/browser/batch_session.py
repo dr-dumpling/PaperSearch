@@ -177,7 +177,7 @@ def _settle(page, site: str) -> str:
     after KEEP_SESSION_SETTLE_SECONDS, "verification" or "signin" (another site: the
     publisher's sign-in, a school's login). A check's checkbox is clicked as in a
     download (at most three times, three seconds apart)."""
-    from .challenge.interaction import click_checkbox
+    from .challenge.local.interaction import click_checkbox
     until = time.monotonic() + KEEP_SESSION_SETTLE_SECONDS
     clicks, next_click = 0, 0.0
     page.wait_for_timeout(2000)  # a redirect the page makes once loaded

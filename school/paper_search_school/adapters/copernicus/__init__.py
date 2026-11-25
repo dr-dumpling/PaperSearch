@@ -9,6 +9,7 @@ import re
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from ...engine.fulltext_page import paragraph_text_js
 from ...engine.router import _append_copernicus_candidates
 from ..base import PublisherAdapter, SupplementLink, register
 
@@ -25,13 +26,7 @@ _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href]')].map(a =
 # is only an image (div.table-wrap > a.table-link). MathJax 2 keeps each formula's MathML in
 # a script beside its output, so nothing is prepared (Atmospheric Chemistry and Physics,
 # 2026-11-15).
-FULLTEXT_SHOWN_JS = """() => {
-  const sections = document.querySelectorAll('div.article > div.sec[id^="section"]:not(.ref-list)');
-  const text = [...sections].flatMap((section) => [...section.querySelectorAll('p')])
-    .filter((p) => !p.closest('.downloads, .caption'))
-    .reduce((total, p) => total + (p.textContent || '').length, 0);
-  return text > 500;
-}"""
+FULLTEXT_SHOWN_JS = paragraph_text_js('div.article > div.sec[id^="section"]:not(.ref-list) p', ".downloads, .caption", "> 500")
 FULLTEXT_IMAGES_JS = """() => {
   const article = document.querySelector('div.article');
   if (!article) return [];

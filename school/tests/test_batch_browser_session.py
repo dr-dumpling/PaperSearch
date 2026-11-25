@@ -140,7 +140,7 @@ def test_keep_session_clears_a_cloudflare_check_or_leaves_it(monkeypatch):
     from types import SimpleNamespace
 
     from paper_search_school.browser import batch_session
-    from paper_search_school.browser.challenge import interaction as challenge_interaction
+    from paper_search_school.browser.challenge.local import interaction as challenge_interaction
 
     clicks = []
 

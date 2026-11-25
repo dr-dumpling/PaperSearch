@@ -28,6 +28,22 @@ class OvidPdfUrlTests(unittest.TestCase):
                 self.assertFalse(adapter.is_article_pdf_url(wrong, doi))
 
 
+    def test_a_journal_still_on_journals_lww_has_its_own_pdf_there(self):
+        # Critical Care Medicine (Windows, 2026-11-25): the article stays on
+        # journals.lww.com and its PDF, 200 application/pdf, was passed over.
+        from paper_search_school.adapters.lww import LWWAdapter
+        adapter = LWWAdapter(Mock(_is_supplementary_url=Mock(return_value=False)))
+        doi = '10.1097/CCM.0000000000006917'
+        url = ('https://journals.lww.com/ccmjournal/pdf/10.1097/ccm.0000000000006917'
+               '~the-association-between-frailty')
+        self.assertTrue(adapter.is_article_pdf_url(url, doi))
+        for wrong in (url.replace('6917', '6993'), url.replace('/pdf/', '/fulltext/'),
+                      url.replace('journals.lww.com', 'journals.lww.com.evil.example'),
+                      url.replace('https:', 'http:'),
+                      'https://journals.lww.com/ccmjournal/pdf/00003246-202510000-00001'):
+            with self.subTest(url=wrong):
+                self.assertFalse(adapter.is_article_pdf_url(wrong, doi))
+
 @unittest.skipUnless(os.environ.get('SCHOOL_LOCAL_BROWSER_TEST') == '1', 'local Chrome fixture opt-in')
 class OvidAccessTests(unittest.TestCase):
     @classmethod

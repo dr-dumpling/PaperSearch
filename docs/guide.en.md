@@ -65,7 +65,7 @@ A literature request
 
 Both use the same download command: open downloading first, and when it finds nothing, the institutional download if it is installed.
 
-- For dozens to hundreds of papers, use one `download_batch`: each paper tries the open channels first, and one they miss goes straight on to the institutional download while the open channels go on with the rest; the school login comes within seconds. Afterwards `paper-search failures` sorts the papers not downloaded into four classes: no access (with the evidence, such as the page's own words), needs you (login, verification, waiting), site not supported yet, and cause unknown.
+- For dozens to hundreds of papers, use one `download_batch`: each paper tries the open channels first, and one they miss goes straight on to the institutional download while the open channels go on with the rest; the school login comes within seconds. Afterwards `paper-search failures` sorts the papers not downloaded into five classes: no access (with the evidence, such as the page's own words), needs you (login, verification, waiting), external (the site's, the school's or the network's problem), unsupported (rules PaperSearch has yet to add, with where the screenshots are) and unclear.
 - For arXiv papers the published version is tried first; the preprint is downloaded only when none was found. The result says `version: "preprint"` and, when known, gives the published DOI.
 - To leave out Sci-Hub, set `"useSciHub": false` in `download_with_fallback` / `download_batch`.
 - Every PDF is checked against the DOI and title on its first page; a file that does not match is not counted as a success and is kept aside for review.
@@ -94,7 +94,7 @@ Each download gets its own `<YYYYMMDD-HHmmss>_PaperSearchDownload` folder inside
 
 ## Agent Skill
 
-The Skill ships in the npm package (`skills/paper-search/`). It is written in Chinese, opens with the same overall diagram, and points the AI to focused references as needed: routing and the open download channels, the command contract, installing and using the institutional download, the [publisher support table](../skills/paper-search/references/publisher-support.md), and troubleshooting. It only tells the AI how to call `paper-search`; it keeps no keys, cookies or accounts.
+The Skill ships in the npm package (`skills/paper-search/`). It is written in English, opens with the same overall diagram, and points the AI to focused references as needed: routing and the open download channels, the command contract, installing and using the institutional download, the [publisher support table](../skills/paper-search/references/publisher-support.md), and troubleshooting. It only tells the AI how to call `paper-search`; it keeps no keys, cookies or accounts.
 
 To install the Skill on its own (Node.js 22 or later), run this and pick the AI tools you use:
 
@@ -142,7 +142,7 @@ Without `--targets`, these check and update only the places where the Skill is a
 | `paper-search smoke` | Offline or live self-check |
 | `paper-search tools` | All tool names and their arguments |
 
-Commands print JSON by default; `--pretty` formats it and `--format text` prints a report for people. All commands: `paper-search tools --pretty`, or the [command contract](../skills/paper-search/references/cli-contract.md) (Chinese).
+Commands print JSON by default; `--pretty` formats it and `--format text` prints a report for people. All commands: `paper-search tools --pretty`, or the [command contract](../skills/paper-search/references/cli-contract.md).
 
 ## Other settings
 

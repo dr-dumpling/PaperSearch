@@ -29,24 +29,24 @@ describe("paper-search bundled skill contract", () => {
       expect(existsSync(join(SKILL_ROOT, file))).toBe(true);
       expect(skill).toContain(file);
     }
-    expect(skill).toContain("路由 Skill");
-    expect(skill).toContain("开放式的文献任务分两步");
-    expect(skill).toContain("直接下载请求");
+    expect(skill).toContain("This is a routing Skill");
+    expect(skill).toContain("Open-ended literature tasks take two steps");
+    expect(skill).toContain("Direct download requests");
     expect(skill).toContain("paper-search doctor --pretty");
     // Setup lives in its own reference; the main file must always point to it.
     const setup = readSkillFile("references/setup.md");
-    expect(skill).toContain("“请开始配置”");
-    expect(skill).toMatch(/\| 配置（“请开始配置”）[^\n]*\| `references\/setup\.md` \|/);
-    expect(skill).toContain("**先读 `references/setup.md`，按里面固定的流程做**");
-    expect(setup).toContain("用户说“请开始配置”");
-    expect(setup).toContain("直接运行 `paper-search settings` 打开设置窗口");
+    expect(skill).toContain('"请开始配置"');
+    expect(skill).toMatch(/\| Setup \("start setup", "请开始配置"\)[^\n]*\| `references\/setup\.md` \|/);
+    expect(skill).toContain("**read `references/setup.md` first and follow its fixed flow**");
+    expect(setup).toContain('When the user says "start setup" (or "请开始配置"');
+    expect(setup).toContain("run `paper-search settings` directly to open the settings window");
     // Setup asks one thing at a time, and first whether to use school subscription downloads; the two routes differ.
-    expect(setup).toContain("一次只问一个问题");
-    expect(setup).toContain("A. 机构配置");
-    expect(setup).toContain("B. 不用机构配置");
+    expect(setup).toContain("Ask one question at a time");
+    expect(setup).toContain("A. School setup");
+    expect(setup).toContain("B. No school setup");
     // Agents' skill vetting rejects a Skill that asks for API keys in the chat (Codex skill-vetter, 2026-11-10).
     for (const text of [setup, readSkillFile("references/management-layer.md")]) {
-      expect(text).not.toMatch(/发给你|直接发给 Agent|key 是直接发给/);
+      expect(text).not.toMatch(/发给你|直接发给 Agent|key 是直接发给|send (?:it|them|the keys?|your keys?) (?:directly )?to (?:you|me|the agent|the AI)|paste (?:the|your) keys?/i);
     }
     expect(setup).toContain("paper-search setup --skip-school");
     expect(skill).toContain("Sci-Hub");
@@ -57,16 +57,16 @@ describe("paper-search bundled skill contract", () => {
     const management = readSkillFile("references/management-layer.md");
 
     expect(skill).toContain("references/management-layer.md");
-    expect(management).toContain("## 管理命令");
+    expect(management).toContain("## Management commands");
     expect(management).toMatch(
-      /\|\s*命令\s*\|\s*作用\s*\|\s*何时用\s*\|/,
+      /\|\s*Command\s*\|\s*What it does\s*\|\s*When to use\s*\|/,
     );
     expect(management).toContain("`paper-search doctor --pretty`");
-    expect(management).toContain("完整健康报告");
+    expect(management).toContain("Full health report");
     expect(management).toContain("`paper-search smoke --mock --pretty`");
-    expect(management).toContain("离线检查命令接线");
+    expect(management).toContain("Offline check of the command wiring");
     expect(management).toContain("`paper-search skills status --pretty`");
-    expect(management).toContain("已安装的 Skill 是否与包内 Skill 一致");
+    expect(management).toContain("whether the installed Skill matches the bundled Skill");
     expect(management).toContain("`paper-search tools --pretty`");
   });
 
@@ -74,15 +74,15 @@ describe("paper-search bundled skill contract", () => {
     const skill = readSkillFile("SKILL.md");
     const management = readSkillFile("references/management-layer.md");
 
-    expect(skill).toContain("先区分包本体更新和 Skill 同步");
-    expect(skill).toContain("不要只运行 `skills update`");
-    expect(skill).toContain("包更新与功能配置");
+    expect(skill).toContain("first tell apart updating the package itself and syncing the Skill");
+    expect(skill).toContain("do not just run `skills update`");
+    expect(skill).toContain("Package update and capability setup");
     // The commands themselves live in the reference, not on the Skill's main path.
-    expect(management).toContain("## 包更新与功能配置");
+    expect(management).toContain("## Package update and capability setup");
     expect(management).toContain(
-      "不更新 npm 包、GitHub 检出、编译后的命令文件或数据源配置",
+      "it does not update the npm package, a GitHub checkout, compiled command files or data source configuration",
     );
-    expect(management).toContain("不更新包本体");
+    expect(management).toContain("it does not update the package itself");
     expect(management).toContain("npm install -g papersearch@latest");
     expect(management).toContain("paper-search skills update --pretty");
     expect(management).toContain("paper-search doctor --pretty");
@@ -90,32 +90,32 @@ describe("paper-search bundled skill contract", () => {
     expect(management).toContain("git pull");
     expect(management).toContain("npm run build");
     expect(management).toContain("npm install -g .");
-    expect(management).toContain("能力概况");
+    expect(management).toContain("capability summary");
   });
 
   it("installs the command only with the user's yes when only the Skill is installed", () => {
     const skill = readSkillFile("SKILL.md");
     const management = readSkillFile("references/management-layer.md");
-    const first = management.slice(management.indexOf("## 只装了 Skill 时"), management.indexOf("## 管理命令"));
+    const first = management.slice(management.indexOf("## When only the Skill is installed"), management.indexOf("## Management commands"));
 
-    expect(skill).toContain("“只装了 Skill 时”，征得用户同意后安装命令");
-    expect(first).toContain("同意后才装");
+    expect(skill).toContain('"When only the Skill is installed" in `references/management-layer.md`, and install the command only after the user agrees');
+    expect(first).toContain("install only after they agree");
     expect(first).toContain("npm install -g papersearch@latest");
     // The Skill came first (npx skills add): installing it again would leave two copies of one name.
-    expect(first).toContain("不运行 `paper-search skills update`");
-    expect(first).toContain("不加 `sudo`");
+    expect(first).toContain("Do not run `paper-search skills update`");
+    expect(first).toContain("do not add `sudo`");
     // Codex, told nothing, searched ~/.npmrc and shell files for the command and printed a token (2026-11-10).
-    expect(first).toContain("不要到别的目录翻找命令，也不要读 `~/.npmrc`");
-    expect(first).toContain("接着做用户原来的请求");
+    expect(first).toContain("Do not search other directories for the command, and do not read `~/.npmrc`");
+    expect(first).toContain("carry on with the user's original request");
     // README's first sentence after installing the Skill is "/paper-search 请开始配置".
-    expect(readSkillFile("references/setup.md")).toContain("“只装了 Skill 时”征得同意装好");
+    expect(readSkillFile("references/setup.md")).toContain('install it with the user\'s consent as "When only the Skill is installed"');
   });
 
   it("names the PaperSearch version it goes with, the package's own", () => {
     // An older command no longer puts its Skill back over a newer one (user, 2026-11-11).
     const pkg = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { version: string };
     expect(skillVersion(join(process.cwd(), "skills", "paper-search"))).toBe(pkg.version);
-    expect(readSkillFile("SKILL.md")).toContain("`paper-search --version` 比本 Skill 开头 `metadata.version` 写的版本旧时");
+    expect(readSkillFile("SKILL.md")).toContain("When `paper-search --version` is older than the version in `metadata.version` at the top of this Skill");
   });
 
   it("keeps what the AI shows and says short", () => {
@@ -123,13 +123,18 @@ describe("paper-search bundled skill contract", () => {
     // characters with tables of paths and versions, and the PowerShell execution policy changed unasked.
     const skill = readSkillFile("SKILL.md");
     const description = skill.split("---")[1].split("description:")[1].split("metadata:")[0];
-    expect(description.replace(/\s/g, "").length).toBeLessThan(220);
+    // In English since 2026-11-24 (the Chinese one stayed under 220): short, with the phrases users type in Chinese too.
+    expect(description.replace(/\s/g, "").length).toBeLessThan(240);
     expect(description).toContain("请开始配置");
-    expect(skill).toContain("## 回复用户");
-    expect(skill).toContain("安装、配置的汇报不用表格");
-    expect(readSkillFile("references/setup.md")).toContain("只推荐两个 key");
+    expect(description).toContain('"start setup"');
+    expect(skill).toContain("## Reply to the user");
+    // Written in English and read in every language: replies, and the program's Chinese output, in the user's language.
+    expect(skill).toContain("Reply in the language the user writes in. This Skill is written in English");
+    expect(skill).toContain("The program's own messages and output may be in Chinese: say them in the user's language");
+    expect(skill).toContain("no tables when reporting installation or setup");
+    expect(readSkillFile("references/setup.md")).toContain("Recommend only two keys");
     for (const file of ["references/management-layer.md", "references/troubleshooting.md"]) {
-      expect(readSkillFile(file)).toContain("不改执行策略");
+      expect(readSkillFile(file)).toContain("do not change the execution policy");
     }
   });
 
@@ -137,29 +142,29 @@ describe("paper-search bundled skill contract", () => {
     const skill = readSkillFile("SKILL.md");
     const routing = readSkillFile("references/capability-routing.md");
 
-    expect(skill).toContain("## 功能地图");
+    expect(skill).toContain("## Capability map");
     expect(skill).toMatch(
-      /\|\s*用户意图\s*\|\s*能力名\s*\|\s*首选入口\s*\|\s*关键边界\s*\|/,
+      /\|\s*User intent\s*\|\s*Capability\s*\|\s*Preferred entry\s*\|\s*Key boundary\s*\|/,
     );
-    expect(skill).toContain("`paper-search search` 集成入口");
+    expect(skill).toContain("`paper-search search` integrated entry");
     expect(skill).toContain("`metadata_search`");
     expect(skill).toContain("`citation_expansion`");
     expect(skill).toContain("`journal_metrics`");
     expect(skill).toContain("`pdf_discovery`");
     expect(skill).toContain("`body_snippet_search`");
-    expect(skill).toContain("Sci-Hub 不属于搜索源");
-    expect(routing).toContain("## 功能地图");
-    expect(routing).toContain("## 元数据检索");
-    expect(routing).toContain("## 施引扩展");
-    expect(routing).toContain("## 期刊指标");
-    expect(routing).toContain("## PDF 获取");
-    expect(routing).toContain("## 正文片段检索");
+    expect(skill).toContain("Sci-Hub is not a search source");
+    expect(routing).toContain("## Capability map");
+    expect(routing).toContain("## Metadata search");
+    expect(routing).toContain("## Citation expansion");
+    expect(routing).toContain("## Journal metrics");
+    expect(routing).toContain("## PDF retrieval");
+    expect(routing).toContain("## Body snippet search");
     expect(routing).toContain(
-      "它不调用 `citation_expansion`、`journal_metrics`、`pdf_discovery` 或 `body_snippet_search`",
+      "It does not call `citation_expansion`, `journal_metrics`, `pdf_discovery` or `body_snippet_search`",
     );
-    expect(routing).toContain("Sci-Hub 兜底默认开启");
+    expect(routing).toContain("The Sci-Hub fallback is on by default");
     expect(routing).toContain('"useSciHub":false');
-    expect(skill).not.toContain("友好入口：");
+    expect(skill).not.toMatch(/友好入口：|friendly entry/i);
   });
 
   it("documents the optional school backend as the current stable entitled-access boundary", () => {
@@ -187,12 +192,12 @@ describe("paper-search bundled skill contract", () => {
       expect(bundledText).not.toContain(phrase);
     }
 
-    expect(bundledText).toContain("机构下载后端（学校订阅下载）是唯一可选的授权下载后端");
+    expect(bundledText).toContain("The school download backend (school subscription downloads) is the only optional authorized download backend");
     expect(bundledText).toContain("PAPER_SEARCH_SCHOOL_ENABLED");
     // Signing in first goes through the download's own steps (2026-11-09); the programme manages the browser.
     expect(bundledText).toContain("paper-search school login --doi");
-    expect(bundledText).toContain("下载浏览器和它的资料目录由程序管理");
-    expect(bundledText).toContain("不要翻源码另找登录办法");
+    expect(bundledText).toContain("The program manages the download browser and its profile directory");
+    expect(bundledText).toContain("do not dig through the source code for another way to sign in");
     expect(bundledText).toContain("useEntitledAccess");
     expect(bundledText).toContain(
       "primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access",
@@ -203,16 +208,16 @@ describe("paper-search bundled skill contract", () => {
     expect(bundledText).toContain("available");
     expect(bundledText).toContain("not_evaluated");
     expect(bundledText).toContain("publisher_api");
-    expect(bundledText).toContain("不能当作本机的授权 PDF 后端");
+    expect(bundledText).toContain("cannot serve as a local authorized PDF backend");
     expect(bundledText).toContain(
-      "除机构下载后端外，没有浏览器、WebVPN 或 EZProxy 兜底",
+      "Apart from the school download backend, there is no browser, WebVPN or EZProxy fallback",
     );
   });
 
   it("keeps direct run tool names synchronized with the source tool registry", () => {
     const contract = readSkillFile("references/cli-contract.md");
     const section = contract.match(
-      /## 可直接调用的工具\n\n[\s\S]*?\n\n## 输出格式/,
+      /## Tools for direct calls\n\n[\s\S]*?\n\n## Output formats/,
     );
     expect(section).not.toBeNull();
 
@@ -231,24 +236,24 @@ describe("paper-search bundled skill contract", () => {
     const support = readSkillFile("references/publisher-support.md");
 
     // Open downloading always works; the institutional download is installed only after the user agrees.
-    expect(skill).toContain("## 两种下载方式");
-    expect(skill).toContain("## 整体逻辑");
-    expect(skill).toContain("装好 `paper-search` 就能用开放下载");
+    expect(skill).toContain("## Two ways to download");
+    expect(skill).toContain("## Overall flow");
+    expect(skill).toContain("Open download works as soon as `paper-search` is installed");
     expect(skill).toContain("paper-search school install --yes --skip-school");
-    expect(readSkillFile("references/setup.md")).toContain("问一次要不要装");
-    expect(skill).not.toContain("不用先问");
-    expect(skill).toMatch(/\|\s*\|\s*开放下载\s*\|\s*机构下载（学校订阅下载）\s*\|/);
+    expect(readSkillFile("references/setup.md")).toContain("ask once whether to install it");
+    expect(skill).not.toMatch(/不用先问|without asking|no need to ask/i);
+    expect(skill).toMatch(/\|\s*\|\s*Open download\s*\|\s*School download \(school subscription downloads\)\s*\|/);
     // The agent asks once, before downloading, which kinds are wanted: with PaperSearch Pro's features
     // (package.json's paperSearch.proFeatures) the Markdown too; the public export takes its words out
     // by their marks (maintainer/release-public.py), and then none is left.
     const PRO_FEATURES = proFeatures();
-    expect(skill).toContain("下载前问清要什么");
-    for (const choice of ["`pdf`：正文 PDF", "`supplements`：补充材料", ...(PRO_FEATURES ? ["`markdown`：论文的 Markdown", "任意组合"] : [])]) {
+    expect(skill).toContain("Ask what is wanted before downloading");
+    for (const choice of ["`pdf`: the full-text PDF", "`supplements`: supplementary files", ...(PRO_FEATURES ? ["`markdown`: the paper's Markdown", "in any combination"] : [])]) {
       expect(skill).toContain(choice);
     }
     expect(support).toMatch(PRO_FEATURES
-      ? /\|\s*出版社\s*\|\s*网站\s*\|\s*常见 DOI 前缀\s*\|\s*正文\s*\|\s*补充材料\s*\|\s*Markdown <!-- pro-column -->\s*\|\s*\n/
-      : /\|\s*出版社\s*\|\s*网站\s*\|\s*常见 DOI 前缀\s*\|\s*正文\s*\|\s*补充材料\s*\|\s*\n/);
+      ? /\|\s*Publisher\s*\|\s*Site\s*\|\s*Common DOI prefixes\s*\|\s*Full text\s*\|\s*Supplementary files\s*\|\s*Markdown <!-- pro-column -->\s*\|\s*\n/
+      : /\|\s*Publisher\s*\|\s*Site\s*\|\s*Common DOI prefixes\s*\|\s*Full text\s*\|\s*Supplementary files\s*\|\s*\n/);
     if (!PRO_FEATURES) {
       for (const file of ["SKILL.md", ...REFERENCE_FILES]) expect(readSkillFile(file)).not.toMatch(/markdown|PaperSearch Pro\b|<!-- \/?(pro|public)/i);
     }
@@ -265,9 +270,9 @@ describe("paper-search bundled skill contract", () => {
   it("documents only accepted compatibility command aliases", () => {
     const contract = readSkillFile("references/cli-contract.md");
 
-    expect(contract).toContain("`paper-search metrics ...` 是 `journal-metrics` 的别名");
+    expect(contract).toContain("`paper-search metrics ...` is an alias of `journal-metrics`");
     expect(contract).toContain(
-      "`paper-search requirements [--pretty]` 是 `diagnostics` 的别名",
+      "`paper-search requirements [--pretty]` is an alias of `diagnostics`",
     );
     expect(contract).not.toContain("paper-search config setup");
   });

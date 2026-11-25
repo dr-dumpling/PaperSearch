@@ -78,6 +78,8 @@ describe("two lanes at once", () => {
       const listed: Array<SchoolBatchPapers & { delivered: boolean }> = [];
       const backend: SchoolBackend = {
         ...backendRecording(updates),
+        // Written with the end's retry of 原因不明 on (失败后自动重试, off by default since 2026-11-24).
+        schoolSwitch: async () => ({ schools: [], group: false, retry: true }),
         reportBatchPapers: async (update) => {
           const delivered = active === 0 || random() < 0.5;
           listed.push({ ...structuredClone(update), delivered });

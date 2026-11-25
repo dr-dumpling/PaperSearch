@@ -29,6 +29,9 @@ class VerdictTests(unittest.TestCase):
         self.assertIn("下载浏览器", judge({"error_type": "paywall"}, filled=False, refused=False)["detail"])
         self.assertEqual(judge({"error_type": "batch_stopped"}, filled=False, refused=False)["title"], "已停止测试")
         self.assertEqual(judge({"error_type": "idp_account_locked"}, filled=True, refused=False)["title"], "学校说账号被锁定")
+        # The publisher's human verification not passed in time (captcha_required since 2026-11-23).
+        self.assertEqual(judge({"error_type": "captcha_required"}, filled=False, refused=False),
+                         {"ok": False, "title": "没有拿到全文", "detail": "页面或安全验证一直没有完成，换一篇或稍后再测"})
         self.assertEqual(judge({"error_type": "weird_new_kind"}, filled=False, refused=False),
                          {"ok": False, "title": "没有下载成功", "detail": "原因代码：weird_new_kind"})
 

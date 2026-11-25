@@ -40,9 +40,12 @@ class WhoTakesPartTests(unittest.TestCase):
             with patch.object(server, "load_config", return_value=config):
                 self.assertEqual(json.loads(server.school_switch_state()), {"on": True, "schools": [
                     {"name": "甲大学", "entity_id": A["idp_entity_id"]}, {"name": "乙大学", "entity_id": B["idp_entity_id"]}],
-                    "group": True})
+                    "group": True, "retry": False})
             with patch.object(server, "load_config", return_value={**config, "school_switch": False}):
-                self.assertEqual(json.loads(server.school_switch_state()), {"on": False, "schools": [], "group": False})
+                self.assertEqual(json.loads(server.school_switch_state()), {"on": False, "schools": [], "group": False, "retry": False})
+            # 失败后自动重试 (user, 2026-11-24): off unless turned on, whatever the school switch.
+            with patch.object(server, "load_config", return_value={**config, "school_switch": False, "batch_retry_failed": True}):
+                self.assertIs(json.loads(server.school_switch_state())["retry"], True)
         with patch("paper_search_school.school_login.module", return_value=None):
             self.assertEqual(school_switch.schools(config), [])  # no Pro, no switching
             self.assertFalse(school_switch.grouping(config))

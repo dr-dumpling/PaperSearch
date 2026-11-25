@@ -15,11 +15,11 @@
 
 ## 验证框自动交互
 
-支持通过浏览器自动定位并点击 Cloudflare/Turnstile 验证复选框，网站放行后继续下载。新适配器复用 `browser/challenge/detection.py` 的验证识别和 `browser/challenge/interaction.py` 的原生点击，由 `engine/batch_waits.py` 统一调度：每次验证等待最多尝试 2 次，两次至少间隔 3 秒，沿用原等待时限（2026-11-20：第三次点击容易把风险分推高、并可能锁账号）；自动阶段结束后仍未放行时提示人工接管。
+支持通过浏览器自动定位并点击 Cloudflare/Turnstile 验证复选框，网站放行后继续下载。新适配器复用 `browser/challenge/detection.py` 的验证识别和 `browser/challenge/local/interaction.py` 的原生点击，由 `engine/batch_waits.py` 统一调度：每次验证等待最多尝试 2 次，两次至少间隔 3 秒，沿用原等待时限（2026-11-20：第三次点击容易把风险分推高、并可能锁账号）；自动阶段结束后仍未放行时提示人工接管。
 
-点击前的指针接近路径与按压时长在 `browser/challenge/pointer.py`：先沿一条曲线把指针移进控件、停一下，再用 `mouse.down()` → 停 50-120 ms → `mouse.up()` 完成按压。按压前先问主文档 `elementFromPoint` 该点是不是控件所在的 iframe，被弹层挡住就退回 Playwright 自带的命中检查，不硬点。`PAPER_SEARCH_POINTER_PATH=off` 回到只用 `click()`。 第二次点击在框内偏开约 2 像素。控件报 `fail` / `tokenExpired` 时刷新一次页面，新的验证框重新算 2 次；每个验证页只刷新这一次（`engine/batch_waits.py` 的 `_recover_stuck_widget`）。
+点击前的指针接近路径与按压时长在 `browser/challenge/local/pointer.py`：先沿一条曲线把指针移进控件、停一下，再用 `mouse.down()` → 停 50-120 ms → `mouse.up()` 完成按压。按压前先问主文档 `elementFromPoint` 该点是不是控件所在的 iframe，被弹层挡住就退回 Playwright 自带的命中检查，不硬点。`PAPER_SEARCH_POINTER_PATH=off` 回到只用 `click()`。 第二次点击在框内偏开约 2 像素。控件报 `fail` / `tokenExpired` 时刷新一次页面，新的验证框重新算 2 次；每个验证页只刷新这一次（`engine/batch_waits.py` 的 `_recover_stuck_widget`）。
 
-Cloudflare 之外的确认控件在 `browser/challenge/prompt.py`（用户 2026-11-18 定：这些确认控件也由程序按一次）：reCAPTCHA v2 的 “I'm not a robot”、hCaptcha 的 `#checkbox`、AWS WAF 的 “Verify you are human”。只按确认控件，不猜图、不拖滑块；谜题出现仍交人工。`PAPER_SEARCH_AUTO_CONFIRM=0` 关闭。
+验证代码按职责放在 `browser/challenge/`：`local/` 管本机控件操作（CF/Turnstile 在 `interaction.py`，指针在 `pointer.py`，其他勾选框与外层表单提交在 `prompt.py`）；`services/solver.py` 只管图片识别请求和答案解析；`handlers/` 中的 `aws_waf.py`、`recaptcha_hcaptcha.py`、`text_captcha.py` 分别处理 AWS WAF、reCAPTCHA/hCaptcha 网格题和独立字符题，读取题目并在本机应用答案。`continuation.py` 分派题型，`detection.py` 与 `warmup.py` 保留在根目录。题型处理器可以同时调用服务和本机动作，不能按“是否有click”判断它属于哪一层。验证码控件确认后由公共等待继续外层提交，最终由引擎检查出版社是否放行。
 
 站点首次访问前先开一次它的首页（`browser/challenge/warmup.py`，由 `engine/batch.py` 的 `_warm_session` 调用）：让站点在文章地址之前先读到第一方文档。每个站点每个进程一次，独立标签页，开完就关；失败只记录，不影响这一篇。`browser_session_warmup: false` 关闭。
 

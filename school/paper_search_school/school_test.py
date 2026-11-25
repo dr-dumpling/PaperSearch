@@ -188,7 +188,7 @@ def judge(result: dict[str, Any], *, filled: bool, refused: bool) -> dict[str, A
                 else "卡在学校登录这一步；学校的登录页要你自己操作时，在下载浏览器里完成"}
     if kind == "access_blocked":
         return {"ok": False, "title": "出版社网站拦住了访问", "detail": "稍后再测，或换一篇"}
-    if kind == "download_timeout":
+    if kind in ("download_timeout", "captcha_required"):
         return {"ok": False, "title": "没有拿到全文", "detail": "页面或安全验证一直没有完成，换一篇或稍后再测"}
     if kind == "network_unavailable":
         return {"ok": False, "title": "网络不通", "detail": "检查网络后再测"}

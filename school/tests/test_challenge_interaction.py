@@ -6,7 +6,7 @@ import pytest
 from patchright.sync_api import Error, TimeoutError
 
 from paper_search_school.browser import watchdog
-from paper_search_school.browser.challenge import interaction
+from paper_search_school.browser.challenge.local import interaction
 from paper_search_school.engine import batch_waits
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 from paper_search_school.entitlements import UserStoppedBatch

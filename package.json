@@ -1,6 +1,6 @@
 {
   "name": "papersearch",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "description": "PaperSearch: an agent-friendly command for searching and downloading academic papers from multiple sources.",
   "main": "dist/cli.js",
   "type": "module",
@@ -24,12 +24,17 @@
   "files": [
     "dist/",
     "README.md",
+    "README.zh-Hant.md",
     "README.en.md",
+    "README.ja.md",
+    "README.ko.md",
+    "README.fr.md",
     "assets/",
     "!assets/*.gif",
     "!assets/*.webp",
     "skills/",
     "LICENSE",
+    "LICENSE-paper-search-mcp-nodejs",
     "NOTICE",
     ".env.example",
     "school/pyproject.toml",
@@ -50,7 +55,7 @@
     "nodejs",
     "typescript"
   ],
-  "author": "dr-dumpling",
+  "author": "Yu Xie",
   "license": "AGPL-3.0-only",
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",

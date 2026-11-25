@@ -123,6 +123,14 @@ class IOPAdapter(PublisherAdapter):
     fulltext_images_js = FULLTEXT_IMAGES_JS
     fulltext_prepare_js = FULLTEXT_PREPARE_JS
 
+    def server_error_page(self, page: Any) -> str:
+        # In place of the article, a page with only the site's header and footer, titled
+        # "IOPscience::.. Error!": five subscription articles of a resumed batch, each then went
+        # through the PDF and the login to 没取到 PDF; the same pages opened normally later
+        # (Windows, 2026-11-25).
+        title = self.d._title(page)
+        return title if title.lower() == "iopscience::.. error!" else ""
+
     def supplements_page_urls(self, doi: str) -> list[str]:
         return [f"https://iopscience.iop.org/article/{doi}/data"]
 

@@ -18,6 +18,8 @@ export interface ResumePlan {
     retry: DownloadBatchItem[];
     /** Of ``retry``, the papers of the batch's list no run recorded (a batch killed outright). */
     unreached?: number;
+    /** Papers not saved and not downloaded again, by why (``notAgain``): 没权限 3, 暂不支持 2 … */
+    notRetried?: Record<string, number>;
     /** Papers saved without all their supplementary files: those only, beside ``mainPath``. */
     files: DownloadBatchItem[];
     /** Papers saved without their Markdown: it only, beside ``mainPath`` (some are in ``files`` too). */
@@ -45,6 +47,8 @@ export interface LedgerPaper {
             text?: number;
             tables?: boolean;
         };
+        /** Saved without these figures (marked in it). */
+        missingFigures?: string[];
     };
     /** Its PDF came from the institutional visit, which also checks the supplementary files. */
     byVisit?: boolean;
@@ -52,6 +56,8 @@ export interface LedgerPaper {
     source?: string;
     /** A paper not saved: the code of its last failed stage. */
     reason?: string;
+    /** The PaperSearch version of the run that recorded it (run.json; none before 2026-11-24). */
+    version?: string;
     /** Its article.md, when its Markdown was saved. */
     markdownFile?: string;
 }
@@ -72,5 +78,6 @@ export declare function latestPapers(dirs: string[]): Map<string, LedgerPaper>;
  */
 export declare function planResume(which: string, env?: Record<string, string | undefined>, options?: {
     markdownAgain?: "possibly_short";
+    school?: string;
 }): ResumePlan | string;
 //# sourceMappingURL=resume.d.ts.map

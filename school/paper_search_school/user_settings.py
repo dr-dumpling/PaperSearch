@@ -81,6 +81,19 @@ def set_hourly_now(on: bool) -> None:
     _config.update_config(HOURLY_NOW_KEY, "true" if on else "false")
 
 
+RETRY_KEY = "batch_retry_failed"
+
+
+def retry_enabled() -> bool:
+    """失败后自动重试 (the 等待和提醒 page; user, 2026-11-24: off by default): a batch tries its 原因不明 papers once more at
+    its end, and a publisher whose site blocked it once more after a pause (download/batch/batch.ts)."""
+    return _config.load_config().get(RETRY_KEY) is True
+
+
+def set_retry(on: bool) -> None:
+    _config.update_config(RETRY_KEY, "true" if on else "false")
+
+
 LANGUAGE_KEY = "progress_language"
 
 

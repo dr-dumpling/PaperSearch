@@ -1,5 +1,6 @@
 import { isAbsolute, resolve } from "node:path";
 import { isInside } from "../../capabilities/download/outputLayout.js";
+import { CHALLENGE_TYPE_LABELS } from "./SchoolAttempt.js";
 export class SchoolToolResultError extends Error {
     code;
     constructor(code) {
@@ -213,6 +214,9 @@ function backendTrace(value, outputDir, diagnosticsDir) {
         trace.stoppedHost = stoppedHost;
     if (typeof artifacts.login_wait_page === "string" && LOGIN_WAIT_PAGES.has(artifacts.login_wait_page)) {
         trace.loginWaitPage = artifacts.login_wait_page;
+    }
+    if (typeof artifacts.challenge_type === "string" && Object.hasOwn(CHALLENGE_TYPE_LABELS, artifacts.challenge_type)) {
+        trace.challengeType = artifacts.challenge_type;
     }
     if (artifacts.browser_stopped === true)
         trace.browserStopped = true;

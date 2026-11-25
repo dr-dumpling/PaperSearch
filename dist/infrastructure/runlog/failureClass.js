@@ -4,7 +4,7 @@ export const FAILURE_CLASS_NAMES = {
     no_access: "没权限",
     user_side: "要你处理",
     external: "外部原因",
-    unsupported: "暂不支持",
+    unsupported: "待适配",
     unexplained: "原因不明",
 };
 /** The name with what it means, for the failures list's headings. */
@@ -12,7 +12,7 @@ export const FAILURE_CLASS_LABELS = {
     no_access: "没权限（学校用不了这篇，批量最后换下一所学校再试）",
     user_side: "要你处理（你的操作、设置或学校账号）",
     external: "外部原因（网站、学校或网络的问题，过会儿再试）",
-    unsupported: "暂不支持（PaperSearch 要补规则）",
+    unsupported: "待适配（PaperSearch 的规则还没覆盖这个网站，我们来补）",
     unexplained: "原因不明（批量最后再试一次，留诊断记录）",
 };
 /** The classes before 2026-11-22, as old run records keep them. */
@@ -72,10 +72,29 @@ const CLASS_OF_CODE = {
     // PaperSearch Pro's server not reached for its weekly check.
     access_blocked: "external",
     cloudflare_blocked: "external",
+    // The site's human verification not passed within the wait (the backend's
+    // challenge_or_viewer_timeout; download_timeout, unexplained, until 2026-11-23: JAMA, BMJ).
     captcha_required: "external",
     verification_page: "external",
+    // A batch paused the paper when its publisher's site blocked another of its papers, and did not
+    // try it (its one retry after the pause blocked again, or the user stopped the batch first;
+    // user, 2026-11-23).
+    blocked_paused: "external",
+    // Supplementary files the site refused: too many requests (BMJ Open's files page, 2026-11-23),
+    // its verification not passed, its block.
+    http_429: "external",
+    // Figshare's public API refusing the files of a paper (AIP's figshare deposits): open data, so a
+    // 403 is a refusal of this network, not a subscription the school lacks; the same API answered
+    // from another network (Windows, 2026-11-25: 44 files).
+    figshare_http_403: "external",
+    challenge_timeout: "external",
+    publisher_access_blocked: "external",
     publisher_content_error: "external",
     publisher_unreachable: "external",
+    // A supplementary file its page links that the site answers 404 for: the links are the page's
+    // own (every site's rules read them from the page), so the site lists a file it does not have
+    // (AHA's circoutcomes.125.012945 linked ".../circcqo-2025-012945-supplemental", 2026-11-22).
+    http_404: "external",
     network_unavailable: "external",
     rate_limited: "external",
     pmc_failed: "external",
@@ -91,8 +110,12 @@ const CLASS_OF_CODE = {
     doi_not_resolved: "external",
     doi_not_registered: "external",
     no_institution_entry: "external",
-    // Content only on another platform (ClinicalKey); a DOI leading to no site to
-    // sign in on; a site without a profile where the shared rules found no
+    // An article open to all that its site gives as a web page only: nothing on its page names a PDF
+    // (CAA Reviews, 2026-11-24).
+    pdf_not_offered: "external",
+    // The article only on a platform PaperSearch has no rules for (EM-Consulte, ClinicalKey): the school's access
+    // there never tried, so not no access (user, 2026-11-25: it was external for a day, "需单独订阅" read as no access);
+    // a DOI leading to no site to sign in on; a site without a profile where the shared rules found no
     // institution entry: no rules for that site yet.
     unsupported_platform: "unsupported",
     unsupported_publisher: "unsupported",

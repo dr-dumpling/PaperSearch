@@ -38,13 +38,18 @@ def update(changes: dict[str, str | None]) -> None:
             data.pop(key, None)
         else:
             data[key] = value
-    target = config_path()
+    write_private_json(config_path(), data)
+
+
+def write_private_json(target: Path, data: dict) -> None:
+    """Atomically replace a local JSON file that can contain credentials."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=target.parent, delete=False) as fh:
-        temporary = Path(fh.name)
-        json.dump(data, fh, ensure_ascii=False, indent=2)
-        fh.write("\n")
+    fh = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=target.parent, delete=False)
+    temporary = Path(fh.name)
     try:
+        with fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
         os.chmod(temporary, 0o600)
         temporary.replace(target)
     finally:

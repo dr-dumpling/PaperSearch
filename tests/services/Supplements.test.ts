@@ -56,9 +56,10 @@ describe("supplementary files", () => {
       expect(sequence).toEqual(["visit:10.1000/a", "visit:10.1000/b", "visit:10.1000/c", "finished", "finished"]);
       expect(updates.at(-2)).toEqual(expect.objectContaining({ total: 3, done: 3, finished: true,
         succeeded: content === "both" ? 3 : 2, failed: content === "both" ? 0 : 1 }));
+      // A file its page lists that the site answers 404 for: the site's error (外部原因, 2026-11-23).
       expect(updates.at(-1)?.results).toEqual(content === "supplements"
         ? expect.objectContaining({ content, main: 0, supplements: 0, no_supplements: 2,
-            failures: [{ cls: "unexplained", reason: "附录没下载成功", doi: "10.1000/b" }] })
+            failures: [{ cls: "external", reason: "出版社网站出错", doi: "10.1000/b" }] })
         : expect.objectContaining({ content, main: 3, failures: [] }));
     } finally {
       rmSync(root, { recursive: true, force: true });

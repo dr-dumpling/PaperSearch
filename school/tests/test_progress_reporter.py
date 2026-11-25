@@ -43,8 +43,7 @@ def test_widget_absence_stays_automatic_and_obeys_the_original_operation_budget(
     monkeypatch.setattr(batch_waits.time, "time", lambda: clock[0])
     monkeypatch.setattr(watchdog.time, "monotonic", lambda: clock[0])
 
-    downloader = PublisherBatchDownloader.__new__(PublisherBatchDownloader)
-    downloader.config = {}
+    downloader = PublisherBatchDownloader({})
     events = []
     downloader.login_timeout_sec = 60
     downloader._event = lambda result, kind, detail: events.append(kind)

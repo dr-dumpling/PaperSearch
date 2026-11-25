@@ -26,7 +26,7 @@ Please help us confirm that you are not a robot and we will take you to your con
 
 
 def test_image_only_human_verification_is_recognized_and_left_to_the_user(browser_page):
-    from paper_search_school.browser.challenge import interaction as challenge_interaction
+    from paper_search_school.browser.challenge.local import interaction as challenge_interaction
     page = browser_page
     page.set_content('<title>Human Verification</title><button><img alt="begin"></button>')
     d = PublisherBatchDownloader({})
@@ -51,7 +51,8 @@ def test_multistep_image_verification_does_not_finish_after_begin(browser_page, 
         };
     }""")
     clock = [1000.0]
-    monkeypatch.setattr(batch_waits, "time", SimpleNamespace(time=lambda: clock[0]))
+    # monotonic too: the captcha service's wait limit counts on it (the continuation, 2026-11-25).
+    monkeypatch.setattr(batch_waits, "time", SimpleNamespace(time=lambda: clock[0], monotonic=lambda: clock[0]))
     pump = page.wait_for_timeout
     monkeypatch.setattr(page, "wait_for_timeout", lambda ms: (clock.__setitem__(0, clock[0] + ms / 1000), pump(1)))
     # The user's input pauses the 10 s budget for at most login_timeout_sec of no new input
@@ -78,7 +79,7 @@ def test_multistep_image_verification_does_not_finish_after_begin(browser_page, 
 
 @pytest.mark.parametrize("step", ["article", "pdf"])
 def test_checkbox_then_second_prompt_hands_off_once(browser_page, monkeypatch, step):
-    from paper_search_school.browser.challenge import interaction as challenge_interaction
+    from paper_search_school.browser.challenge.local import interaction as challenge_interaction
     from test_challenge_interaction_browser import FRAME as CHECKBOX_FRAME
 
     page = browser_page

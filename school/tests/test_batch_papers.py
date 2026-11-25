@@ -123,6 +123,29 @@ class PaperListsTests(unittest.TestCase):
         return pv.paper_lists({"batch_id": "b1", "folder": "/papers",
                                "papers": {str(p["index"]): p for p in papers}}, state or self.state)
 
+    def test_the_papers_held_for_a_later_try_are_behind_retry_not_failed_or_left(self):
+        # 重试 (user, 2026-11-24): by why, each paper opening its article page; 失败 and 剩余 without them.
+        state = {**self.state, "later": {"no_access": 1, "unexplained": 1, "blocked": 1, "blocked_at": 1_800_000_000, "login": 0,
+                                         "papers": {"no_access": ["10.1000/2"], "unexplained": ["10.1000/3"], "blocked": ["10.1000/4"]}}}
+        lists = self.lists(paper(1, "failed", cls="no_access", reason="本校没有订阅"), paper(2, "school"),
+                           paper(3, "failed", cls="unexplained", reason="没取到 PDF"), paper(4, "school"), paper(5, "school"),
+                           paper(6, "school"), state=state)
+        retry = lists["retry"]
+        import time
+        at = time.strftime("%H:%M", time.localtime(1_800_000_000))
+        self.assertEqual([(g["label"], g["count"], g["open"]) for g in retry["groups"]],
+                         [("换学校再试 · 没权限", 1, True), ("最后再试一次 · 原因不明", 1, False), (at + " 再试 · 被网站拦截", 1, False)])
+        self.assertEqual((retry["count"], retry["groups"][0]["papers"][0]["doi"]), (3, "10.1000/2"))
+        self.assertEqual(lists["failed"]["count"], 1)
+        self.assertEqual(sorted(p["index"] for g in lists["left"]["groups"] for p in g["papers"]), [5, 6])
+        # A finished batch holds none.
+        self.assertEqual(self.lists(paper(2, "school"), state={**state, "status": "done"})["retry"]["count"], 0)
+        # Neither 失败后自动重试 nor 没权限时换下一所学校 on (the card without 重试, user 2026-11-24): each where its state puts it.
+        off = pv.paper_lists({"batch_id": "b1", "folder": "/papers", "papers": {"2": paper(2, "school"), "5": paper(5, "school")}},
+                             state, holds=False)
+        self.assertEqual(off["retry"]["count"], 0)
+        self.assertEqual(sorted(p["index"] for g in off["left"]["groups"] for p in g["papers"]), [2, 5])
+
     def test_saved_papers_by_the_way_they_came(self):
         lists = self.lists(paper(1, "ok", via="开放下载"), paper(2, "ok", via="开放下载", detail="出版社 API"),
                            paper(3, "ok", via="机构下载"), paper(4, "ok", via="开放下载", journal=""),
@@ -194,6 +217,11 @@ class PaperListsTests(unittest.TestCase):
             lists = self.lists(paper(1, "failed", cls="no_access", reason="本校没有订阅"), state={**self.state, "content": content})
             self.assertEqual(lists["failed"]["failed_title"], title, content)
             self.assertEqual(pv.summary_view({"content": content, "failures": []})["failed_title"], title, content)
+        # The batch's own content, not the running article's: its end asks for the Markdown alone of those short of
+        # figures, and the heading said "Markdown 未生成" a while (Windows, 2026-11-24).
+        state = {**self.state, "content": "markdown", "batch_content": "both"}
+        self.assertEqual(self.lists(paper(1, "failed", cls="no_access", reason="本校没有订阅"), state=state)["failed"]["failed_title"],
+                         "PDF 未下到")
 
     def test_saved_markdown_its_checks_found_short_is_listed_last_to_look_over(self):
         # A registered site's page whose checks against it found something short (user, 2026-11-17).
@@ -229,25 +257,6 @@ class PaperListsTests(unittest.TestCase):
         both = self.lists(paper(1, "failed", cls="no_access", reason="本校没有订阅", markdown_host="journals.example.org",
                                 markdown_note=note))["failed"]["groups"]
         self.assertEqual((both[0]["papers"][0]["where"], bool(both[0].get("unverified"))), ("Nature", False))
-
-    def test_the_sites_not_yet_supported_for_the_running_cards_line(self):
-        listed = {"batch_id": "b1", "papers": {str(p["index"]): p for p in (
-            paper(1, "ok", markdown_host="ard.eular.org", markdown_saved=True),
-            paper(2, "ok", markdown_host="ard.eular.org", markdown_saved=True),
-            paper(3, "ok", markdown_host="ard.eular.org", markdown_saved=False),
-            paper(4, "failed", markdown_host="b.example.org", markdown_skipped=True),
-            paper(5, "ok"))}}
-        self.assertEqual(pv.unverified_sites(listed, self.state),
-                         {"hosts": ["ard.eular.org", "b.example.org"], "saved": 2, "unsaved": 1, "skipped": 1})
-        self.assertIsNone(pv.unverified_sites({"batch_id": "b1", "papers": {"1": paper(1, "ok")}}, self.state))
-        # Whose rules were borrowed, most papers first; a page no rules read names none (2026-11-17).
-        jacc = {"batch_id": "b1", "papers": {str(i): paper(i, "ok", markdown_host="www.jacc.org", markdown_saved=True,
-                                                            markdown_rules="Atypon") for i in (1, 2)}}
-        self.assertEqual(pv.unverified_sites(jacc, self.state)["rules"], ["Atypon"])
-        jacc["papers"]["3"] = paper(3, "ok", markdown_host="b.example.org", markdown_saved=False, markdown_rules="Silverchair")
-        jacc["papers"]["4"] = paper(4, "ok", markdown_host="c.example.org", markdown_saved=False)
-        self.assertEqual(pv.unverified_sites(jacc, self.state)["rules"], ["Atypon", "Silverchair"])
-        self.assertIsNone(pv.unverified_sites({**listed, "batch_id": "b0"}, self.state))
 
     def test_the_rest_by_lane_with_the_paper_being_downloaded_first(self):
         lists = self.lists(paper(4, "open"), paper(5, "school", journal="Digestion"), paper(6, "school"), paper(7, "open"),
@@ -390,17 +399,6 @@ class OpenPaperTests(unittest.TestCase):
         with self.listed(paper(1, "ok", path=str(self.pdf)), batch="b0"), self.opening() as shown:
             self.assertEqual(self.api.show_paper(1), "打开失败：这篇没有保存的文件")
             shown.assert_not_called()
-
-    def test_the_running_card_says_which_sites_are_not_yet_supported(self):
-        pr.papers_path().unlink(missing_ok=True)
-        with patch.object(capsule.progress_view, "view", side_effect=lambda *_: {"mode": "running"}):
-            pr.sync_papers("b1", str(self.folder), [paper(1, "open")])
-            self.assertNotIn("sites", self.api.state())
-            pr.sync_papers("b1", str(self.folder), [paper(1, "ok", markdown_host="ard.eular.org", markdown_saved=True)])
-            os.utime(pr.papers_path(), ns=(2, 2))
-            self.assertEqual(self.api.state()["sites"], {"hosts": ["ard.eular.org"], "saved": 1, "unsaved": 0, "skipped": 0})
-        with patch.object(capsule.progress_view, "view", side_effect=lambda *_: {"mode": "done"}):
-            self.assertNotIn("sites", self.api.state())
 
     def test_the_counts_open_lists_only_for_this_batchs_papers(self):
         pr.papers_path().unlink(missing_ok=True)

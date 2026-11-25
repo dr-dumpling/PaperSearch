@@ -42,6 +42,14 @@ class JAMAAdapter(PublisherAdapter):
     fulltext_images_js = SILVERCHAIR_FULLTEXT_IMAGES_JS
 
     @classmethod
+    def covers_site(cls, url: str) -> bool | None:
+        # JAMA Network only. The AMA Journal of Ethics (journalofethics.ama-assn.org) shares the
+        # 10.1001 prefix on a site of its own, which these rules took for no article page: its
+        # open articles ended with no PDF tried (10.1001/amajethics.2025.821, Windows 2026-11-23).
+        host = (urlparse(url).hostname or "").lower()
+        return host == "jamanetwork.com" or host.endswith(".jamanetwork.com")
+
+    @classmethod
     def names_supplement(cls, url: str) -> bool:
         return bool(re.search(r"supp\d+(?:[_\W]|$)", url))  # JAMA's supplement files: supp1, supp2, ...
 

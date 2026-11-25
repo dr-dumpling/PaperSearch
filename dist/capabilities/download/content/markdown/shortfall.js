@@ -8,9 +8,10 @@ import { schoolShortReason } from "../../../../infrastructure/school/index.js";
  * Why a paper has no Markdown, in a few words and a class, named as a PDF's or the files'
  * failure is (user, 2026-11-16): a full text missing figures goes to the institutional
  * download, and its reason is the institutional download's (the site blocked the network,
- * the login timed out, it never ran), or that the page's figures did not download. A page
- * that shows only the abstract, a site without page rules and an article with no full text
- * are what can be had (暂不支持); an older extension is the user's to update.
+ * the login timed out, it never ran), or that the page's figures did not download. A site
+ * without page rules is PaperSearch's to cover (待适配); a page that shows only the abstract and
+ * an article whose page has no full text are the site's (外部原因, user 2026-11-25: they were
+ * 暂不支持, as if PaperSearch could not convert them); an older extension is the user's to update.
  */
 export function markdownMissing(markdown) {
     const code = markdown.code ?? "";
@@ -31,7 +32,7 @@ export function markdownMissing(markdown) {
         return { cls: classifyFailureCode("entitlement_missing"), reason: schoolShortReason("entitlement_missing") };
     // The PDF came through the school; the page has no full text of it (not yet online, or none at all).
     if (code === "page_no_fulltext")
-        return { cls: "unsupported", reason: "文章页没有正文" };
+        return { cls: "external", reason: "文章页没有正文" };
     if (code === "figures_missing")
         return { cls: classifyFailureCode(code), reason: "图片没下载成功" };
     if (code === "tables_missing")
@@ -44,7 +45,7 @@ export function markdownMissing(markdown) {
     if (code === "pmc_failed")
         return { cls: classifyFailureCode(code), reason: "PMC 没响应" };
     if (markdown.status === "abstract_only" || code === "abstract_only")
-        return { cls: "unsupported", reason: "网页只有摘要" };
+        return { cls: "external", reason: "网页只有摘要" };
     if (code === "no_doi")
         return { cls: "unsupported", reason: "没有有效 DOI" };
     if (markdown.status === "error")
@@ -86,14 +87,25 @@ function lackParts(lack) {
 /**
  * A Markdown saved from a registered site's page whose checks found something short (user,
  * 2026-11-17): the group it is listed in by the first thing short (参考文献可能不全) and the
- * note on all of it (可能缺：参考文献少 2 条，正文缺约 12%); undefined when nothing was.
+ * note on all of it (可能缺：参考文献少 2 条，正文缺约 12%); undefined when nothing was. One saved
+ * without figures that did not download (user, 2026-11-23) is listed by them first: 图片没下载成功,
+ * its note naming them (图片没下载成功：Figure 3).
  */
 export function markdownDoubt(markdown) {
-    const lack = markdown?.status === "ok" ? markdown.possiblyMissing : undefined;
-    const parts = lack ? lackParts(lack) : [];
-    if (!lack || !parts.length)
+    if (markdown?.status !== "ok")
         return undefined;
-    const reason = lack.references ? "参考文献可能不全" : lack.figures ? "图片可能不全" : lack.tables ? "可能缺表" : "正文可能不全";
-    return { reason, note: `可能缺：${parts.join("，")}` };
+    const figures = markdown.missingFigures ?? [];
+    const lack = markdown.possiblyMissing;
+    const parts = lack ? lackParts(lack) : [];
+    // Up to three named; more, counted (少 N 张图: a phrase the window's tables know).
+    const notes = [
+        figures.length ? `图片没下载成功：${figures.length > 3 ? `少 ${figures.length} 张图` : figures.join("，")}` : "",
+        parts.length ? `可能缺：${parts.join("，")}` : "",
+    ].filter(Boolean);
+    if (!notes.length)
+        return undefined;
+    const reason = figures.length ? "图片没下载成功" : lack.references ? "参考文献可能不全" : lack.figures ? "图片可能不全"
+        : lack.tables ? "可能缺表" : "正文可能不全";
+    return { reason, note: notes.join(" · ") };
 }
 //# sourceMappingURL=shortfall.js.map

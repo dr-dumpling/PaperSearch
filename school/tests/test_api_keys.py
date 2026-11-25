@@ -1,15 +1,20 @@
 """API keys entered in the progress window's settings: saved in PaperSearch's CLI
 config like `paper-search setup` does, and never shown back in full."""
+import argparse
+import io
 import json
 import os
 import stat
 import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
-from paper_search_school import api_keys, cli
+import requests
+
+from paper_search_school import api_keys, cli, config as school_config
 from paper_search_school.progress_capsule import Api
 
 SECRET = "sk-" + "0123456789abcdef9f3c"  # a made-up key, joined at run time so secret scanners do not flag it
@@ -21,6 +26,10 @@ class ApiKeyTests(unittest.TestCase):
         self.config = Path(tmp.name) / "config.json"
         self.config.write_text(json.dumps({"DEFAULT_DOWNLOAD_PATH": "/papers", "PUBMED_API_KEY": "abcd1234efgh"}))
         env = patch.dict(os.environ, {"PAPER_SEARCH_CONFIG_FILE": str(self.config)}); env.start(); self.addCleanup(env.stop)
+        self.school_dir = Path(tmp.name) / "school"
+        self.school_file = self.school_dir / "config.json"
+        self.enterContext(patch.object(school_config, "DATA_DIR", self.school_dir))
+        self.enterContext(patch.object(school_config, "CONFIG_FILE", self.school_file))
 
     def saved(self):
         return json.loads(self.config.read_text())
@@ -28,13 +37,46 @@ class ApiKeyTests(unittest.TestCase):
     def service(self, listing, service_id):
         return next(s for g in listing["groups"] for s in g["services"] if s["id"] == service_id)
 
+    def test_yescaptcha_saves_the_key_and_fixes_its_address(self):
+        school_config.update_config("output_dir", "/existing")
+        api = Api(MagicMock(), MagicMock(), MagicMock())
+        values = api.api_key_values("yescaptcha")["values"]
+        self.assertEqual(values, {api_keys.YESCAPTCHA_KEY: ""})
+        self.assertFalse(self.service(api.api_keys(), "yescaptcha")["set"])
+        saved = api.save_api_key("yescaptcha", {api_keys.YESCAPTCHA_KEY: " key-fixture "})
+        self.assertTrue(saved["ok"])
+        self.assertTrue(self.service(saved, "yescaptcha")["set"])
+        self.assertNotIn("key-fixture", json.dumps(saved))
+        self.assertEqual(api.api_key_values("yescaptcha")["values"], {api_keys.YESCAPTCHA_KEY: "key-fixture"})
+        config = school_config.load_config()
+        self.assertEqual((config["captcha_service"], config["captcha_key"], config["captcha_service_url"]),
+                         ("yescaptcha", "key-fixture", "https://cn.yescaptcha.com"))
+        self.assertEqual(config["output_dir"], "/existing")
+        self.assertEqual(stat.S_IMODE(self.school_file.stat().st_mode), 0o600)
+
+        self.assertTrue(api.clear_api_key("yescaptcha")["ok"])
+        self.assertEqual(api.api_key_values("yescaptcha")["values"], {api_keys.YESCAPTCHA_KEY: ""})
+        self.assertEqual(school_config.load_config()["captcha_key"], "")
+
+    def test_a_save_failure_keeps_the_original_config(self):
+        values = {api_keys.YESCAPTCHA_KEY: "key-fixture"}
+        api_keys.save("yescaptcha", values)
+        original = self.school_file.read_bytes()
+        api = Api(MagicMock(), MagicMock(), MagicMock())
+        with patch.object(Path, "replace", side_effect=OSError):
+            result = api.save_api_key("yescaptcha", {**values, api_keys.YESCAPTCHA_KEY: "replacement"})
+        self.assertFalse(result["ok"])
+        self.assertEqual(self.school_file.read_bytes(), original)
+        self.assertEqual(list(self.school_dir.iterdir()), [self.school_file])
+
     def test_the_list_shows_whether_each_key_is_set_and_only_its_last_four_characters(self):
         listing = api_keys.listing()
-        self.assertEqual((listing["filled"], listing["total"]), (1, 12))
+        self.assertEqual((listing["filled"], listing["total"]), (1, 13))
         # What to fill first in one group at the top, the rest by what they are for (user, 2026-11-11).
         self.assertEqual([g["title"] for g in listing["groups"]], ["推荐配置", "下载订阅全文（非必须）",
                                                                  "增加检索来源（非必须）", "检索更快、更稳定（非必须）"])
-        self.assertEqual([s["id"] for s in listing["groups"][0]["services"]], ["easyscholar", "semantic_scholar", "unpaywall", "crossref"])
+        self.assertEqual([s["id"] for s in listing["groups"][0]["services"]],
+                         ["easyscholar", "semantic_scholar", "unpaywall", "crossref", "yescaptcha"])
         self.assertEqual(listing["groups"][-1]["services"][0]["id"], "pubmed")
         pubmed = self.service(listing, "pubmed")
         self.assertEqual((pubmed["set"], pubmed["masked"]), (True, "••••efgh"))
@@ -122,9 +164,59 @@ class ApiKeyTests(unittest.TestCase):
             self.assertEqual(a.open_signup("openalex"), {"ok": True})
             self.assertEqual(a.open_signup("https://example.com")["ok"], False)
             self.assertEqual(a.open_signup("semantic_scholar", True), {"ok": True})
+            self.assertEqual(a.open_signup("yescaptcha", True), {"ok": True})
             self.assertEqual(a.open_signup("pubmed", True)["ok"], False)  # no guide listed
         self.assertEqual([c.args[0] for c in opened.call_args_list],
-                         ["https://openalex.org/settings/api", api_keys.find("semantic_scholar")["guide"]])
+                         ["https://openalex.org/settings/api", api_keys.find("semantic_scholar")["guide"],
+                          "https://docs.qq.com/aio/DTUhYbkVjektKeHdV"])
+
+
+class YesCaptchaTestButtonTests(unittest.TestCase):
+    """The settings page's test asks for the balance: no task, no point (user, 2026-11-25)."""
+
+    def test_yescaptcha_asks_for_the_balance_without_creating_a_task(self):
+        from paper_search_school.browser.challenge.services import solver
+
+        asked = []
+        with patch.object(solver, "get_balance", lambda config, **kwargs: asked.append(config) or 1500.0):
+            reply = api_keys.test("yescaptcha", {api_keys.YESCAPTCHA_KEY: "key-fixture"})
+        self.assertEqual(reply["status"], "valid")
+        self.assertEqual(reply["message"], "ClientKey 有效，余额 1,500 点")
+        self.assertEqual(asked, [{"captcha_service": "yescaptcha",
+                                  "captcha_service_url": "https://cn.yescaptcha.com", "captcha_key": "key-fixture"}])
+
+    def test_the_balance_reads_as_a_number_of_points_in_every_language(self):
+        """User, 2026-11-25: "ClientKey is valid; 1110" was not understood; 1.23457e+06 was not translated at all."""
+        from paper_search_school import i18n
+        from paper_search_school.browser.challenge.services import solver
+
+        said = {}
+        for balance, shown in ((1110.0, "1,110"), (1234567.0, "1,234,567"), (12.5, "12.5"), (0.0, "0")):
+            with patch.object(solver, "get_balance", lambda config, **kwargs: balance):
+                message = api_keys.test("yescaptcha", {api_keys.YESCAPTCHA_KEY: "key-fixture"})["message"]
+            self.assertEqual(message, f"ClientKey 有效，余额 {shown} 点")
+            said = {lang: i18n.translate(message, lang) for lang in ("en", "fr", "ja", "ko", "zh-Hant")}
+            for lang, text in said.items():
+                self.assertIn(shown, text, lang)
+                self.assertNotIn("余额", text, lang)
+        self.assertEqual(said["en"], "ClientKey is valid; balance: 0 points")
+
+    def test_yescaptcha_rejects_a_missing_key_without_requesting_anything(self):
+        from paper_search_school.browser.challenge.services import solver
+
+        asked = []
+        with patch.object(solver, "get_balance", lambda *args, **kwargs: asked.append(1)):
+            reply = api_keys.test("yescaptcha", {api_keys.YESCAPTCHA_KEY: ""})
+        self.assertEqual(reply["status"], "missing")
+        self.assertEqual(asked, [])
+
+    def test_yescaptcha_reports_a_refused_key(self):
+        from paper_search_school.browser.challenge.services import solver
+
+        with patch.object(solver, "get_balance", lambda *args, **kwargs: None):
+            reply = api_keys.test("yescaptcha", {api_keys.YESCAPTCHA_KEY: "bad-fixture"})
+        self.assertEqual(reply["status"], "invalid")
+        self.assertNotIn("bad-fixture", reply["message"])
 
 
 class ApiKeyTestButtonTests(unittest.TestCase):

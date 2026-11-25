@@ -308,3 +308,118 @@ class ManualSchoolTests(unittest.TestCase):
                 self.assertFalse(self.downloader._institution_pdf_entitlement_missing(self.page))
             else:  # the shared denial line counts wherever the page shows it
                 self.assertTrue(self.downloader._institution_pdf_entitlement_missing(self.page))
+
+
+@unittest.skipUnless(os.environ.get('SCHOOL_LOCAL_BROWSER_TEST') == '1', 'local Chrome fixture opt-in')
+class DeniedToAnInstitutionTests(unittest.TestCase):
+    """nature.com's "Access to this article via <consortium> is not available" with "Change institution" (Nature
+    Cities, Windows 2026-11-24): read as a denial, not the school's until its login; the entry opens the chooser."""
+    ARTICLE = 'https://www.openjournals.example/articles/a-2026-101'
+    CHOOSER = 'https://wayf.openjournals.example/?redirect_uri=' + ARTICLE
+
+    @classmethod
+    def setUpClass(cls):
+        from patchright.sync_api import sync_playwright
+        cls.driver = sync_playwright().start()
+        cls.browser = cls.driver.chromium.launch(channel='chrome', headless=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.browser.close()
+        cls.driver.stop()
+
+    def test_the_denial_is_read_and_change_institution_opens_the_chooser(self):
+        context = self.browser.new_context(service_workers='block')
+        self.addCleanup(context.close)
+        article = ('<title>Target article</title><h2 id="access-options">Access options</h2>'
+                   '<div class="c-nature-box"><p class="c-nature-box__text">Access to this article via'
+                   '<strong>Example Consortium Academic</strong>is not available.</p>'
+                   f'<a href="{self.CHOOSER}">Change institution</a></div>'
+                   '<p>Buy this article</p>')
+        context.route('**/*', lambda route: route.fulfill(status=200, content_type='text/html',
+                      body=article if route.request.url == self.ARTICLE else '<title>Find your institution</title>'))
+        page = context.new_page()
+        profile = PublisherProfile(name='Open Fixture Press', article_url_template='https://doi.org/{doi}',
+            pdf_url_templates=(), success_url_markers=('openjournals.example/articles/',), auth_url_markers=('wayf.',),
+            auth_title_markers=('Find your institution',), sso_text_markers=(), base_domains=('openjournals.example',))
+        d = PublisherBatchDownloader({'publisher_institution_federation': 'carsi'}, profile=profile,
+                                     institution_query='Synthetic University A', login_timeout_sec=10)
+        result = DownloadResult(doi='10.9999/a.2026.101', status='failed', article_url=self.ARTICLE)
+        d._item_result = result
+        page.goto(self.ARTICLE)
+        self.assertFalse(d._institution_pdf_entitlement_missing(page))  # a consortium's name: the login decides
+        result._visited_idp = True
+        self.assertTrue(d._institution_pdf_entitlement_missing(page))   # after the school's login: no access
+        result._visited_idp = False
+        self.assertTrue(d._click_sso_entry(page, result))
+        page.wait_for_url(self.CHOOSER, timeout=5_000)  # the flow settles the page after an entry, as here
+        self.assertIn("sso_entry_clicked", [e["state"] for e in result.events])
+
+
+@unittest.skipUnless(os.environ.get('SCHOOL_LOCAL_BROWSER_TEST') == '1', 'local Chrome fixture opt-in')
+class EmptySuggestionListTests(unittest.TestCase):
+    """Sage's institution search (Windows 2026-11-24): the box names its list of suggestions (aria-controls), the list
+    open and empty, the school not listed; buttons the page drew meanwhile are no results of the search."""
+    URL = 'https://journals.example/action/ssostart'
+
+    def test_an_empty_list_the_box_names_is_no_results_whatever_else_the_page_shows(self):
+        from patchright.sync_api import sync_playwright
+        page_html = ('<input id="q" role="combobox" aria-controls="ac_3" aria-expanded="true">'
+                     '<div id="ac_3" role="listbox" class="autocomplete dropdown-menu show"></div>'
+                     '<div id="later"></div>')
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel='chrome', headless=True)
+            try:
+                context = browser.new_context(service_workers='block')
+                context.route('**/*', lambda route: route.fulfill(status=200, content_type='text/html', body=page_html))
+                page = context.new_page()
+                page.goto(self.URL)
+                d = PublisherBatchDownloader({'publisher_institution_federation': 'carsi'},
+                    profile=PublisherProfile(name='Fixture', article_url_template='https://doi.org/{doi}', pdf_url_templates=(),
+                        success_url_markers=(), auth_url_markers=(), auth_title_markers=(), sso_text_markers=(),
+                        base_domains=('journals.example',)), institution_query='Synthetic University A', login_timeout_sec=10)
+                result = DownloadResult(doi='10.9999/x', status='failed', article_url=self.URL)
+                result._search_box = (self.URL, '#q')
+                page.evaluate("() => { document.getElementById('later').innerHTML = '<button>Accept cookies</button>'; }")
+                self.assertTrue(d._search_list_empty(page, result, self.URL))
+                page.evaluate("() => { document.getElementById('ac_3').innerHTML = '<div role=option>Synthetic University B</div>'; }")
+                self.assertFalse(d._search_list_empty(page, result, self.URL))
+                # A box naming no list: nothing concluded from it.
+                result._search_box = (self.URL, '#later')
+                self.assertFalse(d._search_list_empty(page, result, self.URL))
+            finally:
+                browser.close()
+
+
+@unittest.skipUnless(os.environ.get('SCHOOL_LOCAL_BROWSER_TEST') == '1', 'local Chrome fixture opt-in')
+class FormPdfAddressTests(unittest.TestCase):
+    """Brepols (Centaurus, Windows 2026-11-24): its PDF button a link to "#" in a form sent by the page's script, the
+    form's address the article's PDF; it is one of the page's PDF addresses, a form elsewhere on the page is not."""
+    ARTICLE = 'https://www.journals.example/content/journals/10.1484/J.CNT.5.154847'
+
+    def test_a_shown_forms_pdf_address_is_a_candidate(self):
+        from patchright.sync_api import sync_playwright
+        page_html = ('<div class="download-pdf"><form action="/deliver/fulltext/cnt/67/4/J.CNT.5.154847.pdf" '
+                     'class="js-ft-download-form"><a href="#" class="fa fa-file-pdf-o"><span>file format pdf download</span>'
+                     '</a><span>PDF</span></form></div>'
+                     '<form action="/search" method="get"><input name="q" value="x"><button>Search</button></form>'
+                     '<form action="/deliver/fulltext/other/1/1/OTHER.5.1.pdf" hidden><button>PDF</button></form>')
+        with sync_playwright() as p:
+            browser = p.chromium.launch(channel='chrome', headless=True)
+            try:
+                context = browser.new_context(service_workers='block')
+                context.route('**/*', lambda route: route.fulfill(status=200, content_type='text/html', body=page_html))
+                page = context.new_page()
+                page.goto(self.ARTICLE)
+                d = PublisherBatchDownloader({}, profile=PublisherProfile(name='Fixture', article_url_template='https://doi.org/{doi}',
+                    pdf_url_templates=(), success_url_markers=('journals.example/content/',), auth_url_markers=(),
+                    auth_title_markers=(), sso_text_markers=(), base_domains=('journals.example',)), login_timeout_sec=10)
+                links = d._page_pdf_links(page)['links']
+                self.assertIn('https://www.journals.example/deliver/fulltext/cnt/67/4/J.CNT.5.154847.pdf', links)
+                self.assertIn('https://www.journals.example/search?q=x', links)  # a GET form with its fields
+                self.assertNotIn('https://www.journals.example/deliver/fulltext/other/1/1/OTHER.5.1.pdf', links)  # none shown
+                self.assertIn('https://www.journals.example/deliver/fulltext/cnt/67/4/J.CNT.5.154847.pdf',
+                              d._pdf_candidates(page, '10.1484/j.cnt.5.154847'))
+                self.assertNotIn('https://www.journals.example/search?q=x', d._pdf_candidates(page, '10.1484/j.cnt.5.154847'))
+            finally:
+                browser.close()

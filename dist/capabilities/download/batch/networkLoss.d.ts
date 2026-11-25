@@ -8,13 +8,22 @@ import type { DownloadWithFallbackResult } from "../types.js";
 export declare const NETWORK_LOST_CODE = "network_unavailable";
 /** How often a batch without network looks again. */
 export declare const NETWORK_POLL_MS = 15000;
+/**
+ * The backend's word that the publisher's site did not answer (the connection dropped, or opening it timed out) while
+ * the network is up: the paper is done once more after ``SITE_AGAIN_MS``, whatever 失败后自动重试 says (user,
+ * 2026-11-24: 2 of some 1300 papers of the publisher sweep, Springer Publishing's and Cambridge's, a few seconds' trouble).
+ * Only the paper's own stages: a supplementary file not answered is not worth the paper again.
+ */
+export declare const SITE_UNREACHABLE_CODE = "publisher_unreachable";
+export declare const SITE_AGAIN_MS = 15000;
 /** doi.org or PubMed's E-utilities answering anything, any status: the network is up. */
 export declare function networkReachable(): Promise<boolean>;
 /**
  * "lost": the backend found neither doi.org nor PubMed; "suspect": a stage could not
- * reach its host (one site's trouble or the network's, the network to be looked at).
+ * reach its host (one site's trouble or the network's, the network to be looked at);
+ * "site": the publisher's site did not answer the paper's own stage (``SITE_UNREACHABLE_CODE``).
  */
-export declare function networkSigns(result: DownloadWithFallbackResult): "lost" | "suspect" | undefined;
+export declare function networkSigns(result: DownloadWithFallbackResult): "lost" | "suspect" | "site" | undefined;
 export interface NetworkWatch {
     log: (line: string) => void;
     pause: (ms: number) => Promise<void>;

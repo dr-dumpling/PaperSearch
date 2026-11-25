@@ -66,6 +66,28 @@ class CandidateTests(unittest.TestCase):
         p.evaluate.return_value = {"dois": ["10.2147/copd.s999999"], "pdfs": [pdf]}
         self.assertEqual(d._citation_pdf_urls(p, doi), [])
 
+    def test_an_open_journal_systems_galley_file_is_the_pdf_and_its_view_page_is_not(self):
+        # Via Medica's journal on Open Journal Systems, a site without rules: the click on
+        # "View PDF" ended on the page around the PDF and nothing was tried after it (2026-11-23).
+        from paper_search_school.publishers.site import site_profile
+        doi = "10.5603/rpor.107741"
+        article = "https://journals.viamedica.pl/rpor/article/view/107741"
+        view = article + "/85203"
+        download = "https://journals.viamedica.pl/rpor/article/download/107741/85203"
+        d = PublisherBatchDownloader({}, profile=site_profile(doi, view))
+        self.assertTrue(d._is_pdf_candidate_url(download))
+        self.assertTrue(d._is_pdf_candidate_url(download + "/1234"))  # newer versions add the file's id
+        self.assertFalse(d._is_pdf_candidate_url(view))
+        self.assertEqual(d._citation_pdf_urls(page(article, dois=[doi], pdfs=[download]), doi), [download])
+        self.assertEqual(d._pdf_candidates(page(article, dois=[doi], pdfs=[download], links=[view, download]), doi),
+                         [download])
+        # The page around the PDF: its Download link names the article.
+        self.assertEqual(d._pdf_candidates(page(view, dois=[], pdfs=[], links=[download]), doi), [download])
+        # Another article's galley, or the citation PDF of a page naming another DOI, is not.
+        other = "https://journals.viamedica.pl/rpor/article/download/109516/86964"
+        self.assertEqual(d._pdf_candidates(page(article, dois=["10.5603/rpor.109516"], pdfs=[other], links=[other]),
+                                           doi), [])
+
     def test_copernicus_figure_pdf_is_neither_clicked_nor_downloaded_as_article(self):
         d = PublisherBatchDownloader({}, profile=get_publisher_profile("copernicus"))
         doi = "10.5194/acp-25-5857-2025"

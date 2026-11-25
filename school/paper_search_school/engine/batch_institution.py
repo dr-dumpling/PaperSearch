@@ -891,13 +891,15 @@ class InstitutionMixin:
                          and self._same_address(str(e.get("detail", "")).partition(" @ ")[2], url) for e in result.events)
             if (not settled and not chosen and not getattr(result, "_institution_not_listed", False)
                     and time.time() - float(getattr(result, "_search_typed_at", 0) or 0) >= self.SEARCH_NOTHING_SEC
-                    and (self._search_list_closed(page, result, url) or not self._entry_texts(page) - before)):
+                    and (self._search_list_closed(page, result, url) or self._search_list_empty(page, result, url)
+                         or not self._entry_texts(page) - before)):
                 if self._retype_lost_search(page, result, url, tried[-1]):
                     return True
                 result._institution_not_listed = True
                 self._event(result, "institution_search_found_nothing", f"{', '.join(tried)[:120]} @ {url[:200]}")
             return False
-        if not settled and not self._search_list_closed(page, result, url) and self._entry_texts(page) - before:
+        if (not settled and not self._search_list_closed(page, result, url) and not self._search_list_empty(page, result, url)
+                and self._entry_texts(page) - before):
             return False  # results shown: they decide
         box = page.locator(box_at[1]).first
         try:
@@ -978,6 +980,29 @@ class InstitutionMixin:
             if not _is_browser_error(exc):
                 raise
             return True  # not readable now: nothing concluded from it
+
+    def _search_list_empty(self, page: Any, result: DownloadResult, url: str) -> bool:
+        """The search box typed in names its own list of suggestions (``aria-controls`` or ``aria-owns``, as a combobox
+        does) and that list shows none: no results, whatever else appeared on the page meanwhile. Sage's institution
+        search (Windows 2026-11-24): its list open and empty, the school not listed; the page's other controls drawn
+        after the name was typed (its first visit, past a verification) were taken for results and the login waited
+        its whole page wait, 原因不明; the next visit said 没权限 in 10 s. False when the box names no list."""
+        box = getattr(result, "_search_box", None)
+        if not isinstance(box, tuple) or not self._same_address(box[0], url):
+            return False
+        try:
+            return page.evaluate("""(selector) => {
+                const el = document.querySelector(selector);
+                const id = el && (el.getAttribute('aria-controls') || el.getAttribute('aria-owns'));
+                const list = id && document.getElementById(id.trim().split(' ')[0]);
+                if (!list) return false;
+                const shown = (o) => o.getClientRects().length > 0 && (o.textContent || '').trim();
+                return ![...list.querySelectorAll('[role=option], li, a, button')].some(shown) && !(list.textContent || '').trim();
+            }""", box[1]) is True
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return False
 
     # The site's own line naming the institution it serves the reader for ("brought to
     # you by <school>" in Science's header, 2026-11-15) is no entry of a list.
@@ -1658,6 +1683,7 @@ class InstitutionMixin:
         self._route_hosts: set[str] = set()
         self._publisher_hosts: set[str] = set()
         self._route_away = False
+        self._route_reached_school = False
         self._route_last_host = ""
         self._school_unreachable = ""
 
@@ -1692,17 +1718,26 @@ class InstitutionMixin:
         host = (urlparse(url).hostname or "").lower()
         if kind == "school":
             self._note_login_host(host)
+            self._route_reached_school = True
         if kind in ("school", "route"):
             self._route_away = True
             if kind == "route" and self._names_identity_provider(url) and not self._login_service_host(host):
                 # A publisher's or its platform's sign-in hub: its later pages are not the school's.
                 self._route_hosts.add(host)
         elif kind == "publisher":
-            self._route_away = False
+            if self._route_away and self._route_reached_school:
+                # The login went to the school's side and came back to the publisher before the wait could see it:
+                # it went round, as one the wait saw (_login_round_trip). Springer (Windows, 2026-11-24): the chosen
+                # school, its federated sign-on, straight back to the article, still a preview; the wait ran out on
+                # the article, 原因不明 · 没进入学校登录页 (login_not_reached), for 8 papers of journals not subscribed.
+                result._login_round_trip = result._route_round_trip = True
+                self._event(result, "login_round_trip_returned", f"{host} (by its route)")
+            self._route_away = self._route_reached_school = False
             # Its other pages too (a journal site's sign-in step after its article).
             self._publisher_hosts.add(host)
         elif self._route_away and host not in self._route_hosts and host not in self._school_side_hosts:
             self._school_side_hosts.add(host)
+            self._route_reached_school = True
             self._note_login_host(host)
             self._event(result, "school_side_host", f"{host} after {self._route_last_host}")
         self._route_last_host = host

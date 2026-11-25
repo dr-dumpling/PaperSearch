@@ -34,6 +34,24 @@ from .sciencedirect import ScienceDirectSite
 # ClinicalKey (clinicalkey.com, .fr, .es, .com.au, ...): EMC titles are served
 # only there, a separate subscription with its own sign-in and reader.
 _CLINICALKEY = re.compile(r"(?:www\.)?clinicalkey\.[a-z]{2,3}(?:\.[a-z]{2})?")
+# EM-Consulte (em-consulte.com), Elsevier Masson's French platform: as ClinicalKey, a
+# subscription with its own sign-in and reader, its titles without a ScienceDirect page.
+# La Revue de Santé Scolaire et Universitaire (10.1016/j.revssu.2025.09.004, Windows
+# 2026-11-23): an abstract there, no school login found, its PDF control an HTML answer,
+# the PII's ScienceDirect page "Page not found"; it ended as pdf_not_captured.
+_EM_CONSULTE = re.compile(r"(?:www\.)?em-consulte\.com")
+# linkinghub's own page when it has no site to send the DOI to by itself (doi.org's
+# address for every Elsevier DOI is linkinghub's /retrieve/pii/<PII>): "Elsevier: Article
+# Locator", offering the article on Elsevier's other platforms (La Revue de l'Infirmière and
+# Soins Cadres: EM-Consulte), or "Elsevier: Article Locator Error - Article Not Available"
+# (EMC - Podologie; Anais Brasileiros de Dermatologia (Versão em Português)). ScienceDirect has
+# no page for the PII either: its "Page not found" was taken as the publisher's error, or the
+# item ended as pdf_not_captured, 100-160 s each (Windows, 2026-11-23).
+_LINKINGHUB = "linkinghub.elsevier.com"
+_LOCATOR_TITLE = "elsevier: article locator"
+# The sites the locator offers: each choice carries its address as its value.
+_LOCATOR_SITES_JS = """() => [...document.querySelectorAll('[value]')]
+  .map((el) => (el.getAttribute('value') || '').trim()).filter((value) => /^https?:\\/\\//i.test(value))"""
 _ASH_DOI = re.compile(r"10\.1182/(?:blood|bloodadvances)\.[^/?#\s]+", re.I)
 _ASH_HOSTS = frozenset({"ashpublications.org", "www.ashpublications.org"})
 
@@ -385,7 +403,35 @@ class ElsevierAdapter(PublisherAdapter):
         host = (urlparse(url).hostname or "").lower()
         if _CLINICALKEY.fullmatch(host) or (sciencedirect.is_page(url) and self.sciencedirect.clinicalkey_only(page)):
             return "ClinicalKey"
-        return None
+        if _EM_CONSULTE.fullmatch(host):
+            return "EM-Consulte"
+        return self._locator_platforms(page) if host == _LINKINGHUB else None
+
+    def _locator_platforms(self, page: Any) -> str | None:
+        """linkinghub's Article Locator offering the article on platforms without rules
+        only: their names ("EM-Consulte", "ClinicalKey"); None for its other pages
+        ("Redirecting", the locator's error), and for a locator offering a site with
+        rules (ScienceDirect, a journal's own) or none."""
+        if self.d._title(page).strip().lower() != _LOCATOR_TITLE:
+            return None
+        try:
+            offered = page.evaluate(_LOCATOR_SITES_JS)
+        except Exception as exc:
+            if not is_driver_error(exc):
+                raise
+            return None  # the page moved on while it was read
+        names: list[str] = []
+        for value in offered if isinstance(offered, list) else []:
+            host = (urlparse(str(value)).hostname or "").lower()
+            if host == "elsevier.com" or host.endswith(".elsevier.com"):
+                continue  # Elsevier's own pages (its home, linkinghub itself): no site to read the article on
+            name = ("ClinicalKey" if _CLINICALKEY.fullmatch(host)
+                    else "EM-Consulte" if _EM_CONSULTE.fullmatch(host) else "")
+            if not name:
+                return None
+            if name not in names:
+                names.append(name)
+        return " / ".join(names) or None
 
     def supplements_page_urls(self, doi: str) -> list[str]:
         """ScienceDirect first; journals on their own Elsevier site (Cell Press,
@@ -423,6 +469,9 @@ class ElsevierAdapter(PublisherAdapter):
 
     def content_error(self, page: Any) -> bool:
         url = str(getattr(page, "url", "") or "")
+        if (urlparse(url).hostname or "").lower() == _LINKINGHUB:
+            # The locator's "Article Not Available": no site of Elsevier's has the article.
+            return self.d._title(page).strip().lower().startswith(_LOCATOR_TITLE + " error")
         return self.sciencedirect.content_error(page) if sciencedirect.is_page(url) else False
 
     def open_pdf_entry(self, page: Any, result: Any) -> bool | None:

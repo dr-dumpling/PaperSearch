@@ -1,39 +1,39 @@
-# 功能路由
+# Capability routing
 
-用这一篇把用户的文献请求对应到 `paper-search` 的五个文献功能之一。
+Use this file to map the user's literature request to one of the five literature capabilities of `paper-search`.
 
-## 功能地图
+## Capability map
 
-| 用户意图 | 能力名 | 首选入口 | 边界 |
+| User intent | Capability | Preferred entry | Boundary |
 |---|---|---|---|
-| 搜论文、找相关研究、核验 DOI/PMID、文献初筛 | `metadata_search` | `paper-search search` 集成入口 / `paper-search run search_*` 精确工具入口 | 只返回和核验论文元数据；Sci-Hub 不是检索来源 |
-| 扩展已知论文的引用网络 | `citation_expansion` | `paper-search run get_paper_citations` / `paper-search run get_paper_references` | 需要已知的 `paperId`、DOI 或 arXiv ID；返回施引文献或参考文献，不是关键词检索 |
-| 查影响因子、JCR/SSCI/中科院分区、JCI、ESI、预警、期刊等级 | `journal_metrics` | `paper-search journal-metrics` / `paper-search run query_journal_metrics` | 查期刊，不查论文；需要 `EASYSCHOLAR_KEY` |
-| 获取或下载已核验论文的 PDF 和补充材料 | `pdf_discovery` | `paper-search download` / `paper-search run download_with_fallback` / `download_batch` | 下载前先核验身份；开放渠道之后依次是 Sci-Hub（启用时）和学校订阅下载（启用时） |
-| 在正文片段里找 Methods 写法、参数、软件、模型或统计表述 | `body_snippet_search` | `paper-search run search_semantic_snippets` | 查 Semantic Scholar 开放获取片段索引；需要 `SEMANTIC_SCHOLAR_API_KEY`；不是全文解析 |
+| Search papers, find related studies, verify DOI/PMID, first screening | `metadata_search` | `paper-search search` integrated entry / `paper-search run search_*` exact tool entry | Returns and verifies paper metadata only; Sci-Hub is not a search source |
+| Expand the citation network of a known paper | `citation_expansion` | `paper-search run get_paper_citations` / `paper-search run get_paper_references` | Needs a known `paperId`, DOI or arXiv ID; returns citing papers or references; not a keyword search |
+| Impact factor, JCR/SSCI/CAS zones, JCI, ESI, warning lists, journal grades | `journal_metrics` | `paper-search journal-metrics` / `paper-search run query_journal_metrics` | Looks up journals, not papers; needs `EASYSCHOLAR_KEY` |
+| Get or download the PDF and supplementary files of a verified paper | `pdf_discovery` | `paper-search download` / `paper-search run download_with_fallback` / `download_batch` | Verify identity before downloading; after the open channels come Sci-Hub (when on) and school subscription downloads (when enabled) |
+| Find how Methods are written, parameters, software, models or statistical wording in body snippets | `body_snippet_search` | `paper-search run search_semantic_snippets` | Searches the Semantic Scholar open-access snippet index; needs `SEMANTIC_SCHOLAR_API_KEY`; not full-text parsing |
 
-## 工作流边界
+## Workflow boundaries
 
-开放式的文献任务分两步：
+Open-ended literature tasks take two steps:
 
-1. 做 `metadata_search`：整理并核验论文清单，包括题名、作者、年份、期刊或来源、DOI、PMID/PMCID、网址、摘要线索和相关性。
-2. 用户确认选中的论文，或任务明确需要 PDF 后，才做 `pdf_discovery`。下载失败的条目记下原因，不阻塞其他条目。
+1. Do `metadata_search`: put together and verify the list of papers, with title, authors, year, journal or source, DOI, PMID/PMCID, URL, abstract clues and relevance.
+2. Do `pdf_discovery` only after the user confirms the chosen papers, or the task clearly needs PDFs. Record the reason for each failed download and do not let it block the others.
 
-用户给出 DOI、PMID、PMCID 或已核验的清单时，可以跳过广泛检索，但下载前仍要核验目标身份。
+When the user gives a DOI, PMID, PMCID or a verified list, the broad search can be skipped, but the target's identity is still verified before downloading.
 
-不凭模型记忆编造 PMID、DOI、题名、作者、期刊或年份。重要引用写明它支持的论点、题名、作者、期刊或来源、年份，有 DOI 或 PMID 时一并给出，再加一个稳定网址。
+Do not make up PMIDs, DOIs, titles, authors, journals or years from model memory. For an important citation, give the point it supports, the title, authors, journal or source and year, the DOI or PMID when there is one, and a stable URL.
 
-## 元数据检索
+## Metadata search
 
-`metadata_search` 用于找论文、扩展关键词、文献初筛和核验 DOI/PMID/PMCID。
+`metadata_search` is for finding papers, expanding keywords, first screening, and verifying DOI/PMID/PMCID.
 
-`paper-search search` 是集成的元数据检索入口：
+`paper-search search` is the integrated metadata search entry:
 
-- `--platform NAME`：只查一个来源；
-- `--sources a,b,c`：明确指定多个来源；
-- `--platform all` 或 `--sources all`：只在查全比查准更重要时使用。
+- `--platform NAME`: one source only;
+- `--sources a,b,c`: several named sources;
+- `--platform all` or `--sources all`: only when recall matters more than precision.
 
-它不调用 `citation_expansion`、`journal_metrics`、`pdf_discovery` 或 `body_snippet_search`。
+It does not call `citation_expansion`, `journal_metrics`, `pdf_discovery` or `body_snippet_search`.
 
 ```bash
 paper-search search "machine learning" --platform crossref --max-results 5 --pretty
@@ -42,7 +42,7 @@ paper-search search "transformer attention mechanism" --sources semantic,crossre
 paper-search search "causal inference target trial emulation" --sources all --max-results 5 --pretty
 ```
 
-精确工具入口：
+Exact tool entry:
 
 ```bash
 paper-search run search_pubmed --arg query="osteoarthritis occupational exposure" --arg maxResults=10 --pretty
@@ -50,22 +50,22 @@ paper-search run search_openalex --arg query="causal inference target trial emul
 paper-search run get_paper_by_doi --arg doi="10.xxxx/xxxxx" --pretty
 ```
 
-不要把 `search_scihub` 当检索来源：它按 DOI 或网址定向查找，不属于 `metadata_search`。
+Do not use `search_scihub` as a search source: it looks up by DOI or URL and is not part of `metadata_search`.
 
-## 施引扩展
+## Citation expansion
 
-`citation_expansion` 用于用户有一篇已知论文，问哪些论文引用了它，或它引用了哪些文献。
+`citation_expansion` is for when the user has a known paper and asks which papers cite it, or what it cites.
 
 ```bash
 paper-search run get_paper_citations --arg doi="10.1038/nature12373" --pretty
 paper-search run get_paper_references --arg doi="10.1038/nature12373" --pretty
 ```
 
-标识的优先级是 `paperId` > `doi` > `arxivId`。这项功能用 Semantic Scholar Graph API，与按关键词的 `metadata_search` 分开。
+The identifier priority is `paperId` > `doi` > `arxivId`. Citing papers come from OpenAlex, reference lists from the publisher's Crossref deposit or else OpenAlex (`cli-contract.md`); a Semantic Scholar `paperId` is first turned into its DOI through the Semantic Scholar Graph API. This is separate from the keyword-based `metadata_search`.
 
-## 期刊指标
+## Journal metrics
 
-`journal_metrics` 查期刊层面的指标：影响因子、JCR/SSCI 分区、中科院分区、JCI、ESI、预警和等级。
+`journal_metrics` looks up journal-level metrics: impact factor, JCR/SSCI quartiles, CAS zones, JCI, ESI, warning lists and grades.
 
 ```bash
 paper-search journal-metrics "Nature" "BMJ" --pretty
@@ -73,19 +73,19 @@ paper-search journal-metrics --file journals.txt --include-raw --pretty
 paper-search run query_journal_metrics --json-args '{"journals":["Nature"],"includeRaw":true}' --pretty
 ```
 
-需要 `EASYSCHOLAR_KEY`。没有时，把报错里的申请网址告诉用户，请用户在自己的终端配置：
+Needs `EASYSCHOLAR_KEY`. Without it, give the user the sign-up address from the error, and ask the user to configure it in their own terminal:
 
 ```bash
 paper-search setup EASYSCHOLAR_KEY
 ```
 
-装了学校订阅下载、用户就在这台电脑前时，也可以运行 `paper-search settings EASYSCHOLAR_KEY` 打开设置窗口让用户填。
+When school subscription downloads are installed and the user is at this computer, you can also run `paper-search settings EASYSCHOLAR_KEY` to open the settings window for the user to fill in.
 
-批量查期刊时，用一次 `journal-metrics` 带多个期刊名或 `--file`；不要并行发 EasyScholar 请求。
+For many journals, use one `journal-metrics` with several journal names or `--file`; do not send EasyScholar requests in parallel.
 
-## PDF 获取
+## PDF retrieval
 
-`pdf_discovery` 用于获取已核验论文的 PDF。开放式的文献任务不要一开始就批量下载。
+`pdf_discovery` gets the PDFs of verified papers. Do not start an open-ended literature task with a batch download.
 
 ```bash
 paper-search download PMC11466435 --platform pmc --pretty
@@ -93,47 +93,47 @@ paper-search run download_paper --arg paperId="10.xxxx/xxxxx" --arg platform=spr
 paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"10.xxxx/xxxxx","doi":"10.xxxx/xxxxx","title":"Paper title"}' --pretty
 ```
 
-不传 `savePath` 时存到 `DEFAULT_DOWNLOAD_PATH`（见 SKILL.md 的“默认下载文件夹”）；用户这一次指定了别的文件夹才传 `savePath` / `--save-path`。
+Without `savePath`, files go to `DEFAULT_DOWNLOAD_PATH` (see "Default download folder" in SKILL.md); pass `savePath` / `--save-path` only when the user names another folder for this download.
 
-下载分两种：第 1–6 步是开放下载（默认就有），第 7 步是机构下载（学校订阅下载，`entitled_access`，电脑上经用户同意后安装）。`download_with_fallback` 的顺序：
+Downloads come in two kinds: steps 1–6 are open download (available by default), step 7 is the school download (school subscription downloads, `entitled_access`, installed on a computer with the user's consent). The order of `download_with_fallback`:
 
-1. 来源自带的下载；
-2. 元数据里的 PDF 地址；
-3. PubMed Central 的官方渠道：DOI → PMCID（NCBI ID 转换）→ PMC Article Datasets 的 PDF（S3），不行再用 Europe PMC 的 `getPdf`；CORE、OpenAIRE 只作检索来源；
-4. Unpaywall：所有开放获取位置，出版版本优先；放在拒绝普通 HTTP 下载的网站（Wiley、ScienceDirect、Springer、MDPI、PMC 等）上的副本记为 `browser_only`，留给 `entitled_access`；arXiv 副本留到最后的 `preprint` 阶段；
-5. `publisher_api`：用户自己的 `ELSEVIER_API_KEY`（PDF）或 `SPRINGER_API_KEY`（JATS XML 全文），走普通 HTTPS；没有 key 时跳过，网络或 key 没有订阅时为 `not_entitled`；
-6. PaperSearch 的 Sci-Hub，除非 `useSciHub=false`；
-7. 可选的机构下载后端（`entitled_access`）；
-8. arXiv 预印本（`preprint`）：正式版路线均未取得正文时才尝试；成功必须向用户说明 `version: "preprint"`。
+1. The source's own download;
+2. The PDF address in the metadata;
+3. PubMed Central's official channels: DOI → PMCID (NCBI ID conversion) → the PDF in PMC Article Datasets (S3), otherwise Europe PMC's `getPdf`; CORE and OpenAIRE are search sources only;
+4. Unpaywall: all open-access locations, the published version first; copies on sites that refuse plain HTTP downloads (Wiley, ScienceDirect, Springer, MDPI, PMC, etc.) are marked `browser_only` and left to `entitled_access`; arXiv copies are left to the final `preprint` stage;
+5. `publisher_api`: the user's own `ELSEVIER_API_KEY` (PDF) or `SPRINGER_API_KEY` (JATS XML full text), over plain HTTPS; skipped without a key; `not_entitled` when the network or the key has no subscription;
+6. PaperSearch's Sci-Hub, unless `useSciHub=false`;
+7. The optional school download backend (`entitled_access`);
+8. arXiv preprint (`preprint`): tried only when no published-version route got the full text; on success you must tell the user `version: "preprint"`.
 
-固定顺序：`primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access -> preprint`。`download_paper` 也进入同一个漏斗，来源自带的下载最多试一次。Sci-Hub 成功就不再调用机构下载后端；Sci-Hub 失败或被跳过时，才进入 `entitled_access`。
+Fixed order: `primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access -> preprint`. `download_paper` enters the same funnel, and the source's own download is tried at most once. When Sci-Hub succeeds, the school download backend is not called; only when Sci-Hub fails or is skipped does it go on to `entitled_access`.
 
-机构下载后端（学校订阅下载）是唯一可选的授权下载后端。除非 `PAPER_SEARCH_SCHOOL_ENABLED` 恰好是 `true`，它全局关闭；请求里的 `useEntitledAccess` 默认是 `true`，只能关掉这一层，不能绕过全局关闭。单次请求关掉它：
+The school download backend (school subscription downloads) is the only optional authorized download backend. It is off globally unless `PAPER_SEARCH_SCHOOL_ENABLED` is exactly `true`; the request's `useEntitledAccess` defaults to `true` and can only turn off this layer, never bypass the global switch. To turn it off for one request:
 
 ```bash
 paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"10.xxxx/xxxxx","doi":"10.xxxx/xxxxx","title":"Paper title","useEntitledAccess":false}' --pretty
 ```
 
-Sci-Hub 兜底默认开启。单次请求跳过 Sci-Hub、直接进入可选的机构下载：
+The Sci-Hub fallback is on by default. To skip Sci-Hub for one request and go straight on to the optional school download:
 
 ```bash
 paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"10.xxxx/xxxxx","doi":"10.xxxx/xxxxx","title":"Paper title","useSciHub":false}' --pretty
 ```
 
-下载内容用 `content` 选择：`pdf`（正文 PDF，默认）、`supplements`（补充材料，只经机构下载后端获取，哪些出版社能取见 `publisher-support.md`），可以都要（`"pdf,supplements"`）；细节见 `browser-download.md`。
+What to download is chosen with `content`: `pdf` (the full-text PDF, default), `supplements` (supplementary files, fetched only through the school download backend; which publishers: see `publisher-support.md`); both can be wanted (`"pdf,supplements"`); details in `browser-download.md`.
 
-PDF 来源分组：
+PDF source groups:
 
-- `open_access_sources`：bioRxiv、medRxiv、PMC、Europe PMC、CORE、OpenAIRE、Unpaywall、OpenAlex 的开放获取元数据、Semantic Scholar 的 openAccessPdf、出版社开放获取模式、IACR；
-- `scihub_sources`：Sci-Hub，单独标出，是开放渠道之后、机构下载之前默认开启的一层；它既不是开放获取，也不是机构授权。
+- `open_access_sources`: bioRxiv, medRxiv, PMC, Europe PMC, CORE, OpenAIRE, Unpaywall, OpenAlex's open-access metadata, Semantic Scholar's openAccessPdf, publishers' open-access modes, IACR;
+- `scihub_sources`: Sci-Hub, marked separately: a layer on by default after the open channels and before the school download; it is neither open access nor institutional authorization.
 
-`metadata_entitled` 是给带 key 的数据库和出版社的元数据分类，不能当作本机的授权 PDF 后端。机构下载后端只通过 PaperSearch 固定的 `SchoolBackend` 接口调用；它由用户要求时用 `paper-search school install` 安装（见 `school-setup.md`），自带 MCP stdio 服务，不需要另装 MCP 包、全局 MCP 配置、常驻进程或端口。
+`metadata_entitled` is the metadata class for databases and publishers with keys; it cannot serve as a local authorized PDF backend. The school download backend is called only through PaperSearch's fixed `SchoolBackend` interface; it is installed with `paper-search school install` when the user asks (see `school-setup.md`), and has its own MCP stdio service; no separate MCP package, global MCP configuration, resident process or port is needed.
 
-调用机构下载后端时固定用 `legal_only`（后端声明支持 `institutional_only` 时用它，跳过后端自己的公开来源竞速），并关闭后端内部的 Sci-Hub 和 Tor。`legal_only` 不等于 `entitled_only`：成功的结果也可能来自开放获取，不能当作学校授权的证明。除机构下载后端外，没有浏览器、WebVPN 或 EZProxy 兜底。
+When calling the school download backend, always use `legal_only` (or `institutional_only` when the backend declares support for it, skipping the backend's own race among public sources), and turn off the backend's internal Sci-Hub and Tor. `legal_only` is not `entitled_only`: a successful result may also come from open access, and cannot prove school authorization. Apart from the school download backend, there is no browser, WebVPN or EZProxy fallback.
 
-## 核验论文
+## Verify papers
 
-报告关键论文前先核验：
+Verify key papers before reporting them:
 
 ```bash
 paper-search run search_pubmed --arg query="37654321[PMID]" --arg maxResults=1 --pretty
@@ -141,57 +141,57 @@ paper-search run get_paper_by_doi --arg dois="10.xxxx/aaaaa,10.xxxx/bbbbb,10.xxx
 paper-search run search_crossref --arg query="full paper title" --arg maxResults=3 --pretty
 ```
 
-核对多个 DOI 时用 `dois` 一次传入（逗号分隔，最多 100 个），不要逐个调用；只有一个时也可以用 `--arg doi=...`。结果的结构固定：
-- `data.papers`：找到的论文，每个 DOI 一条，按传入顺序；
-- `data.not_found`：各来源都查过、没有这篇的 DOI，可能写错或不存在；
-- `data.lookup_failed`：所有来源都出错、没能核对的 DOI，稍后重试，不要当成不存在；
-- `data.warnings`：出错的来源。
+To check several DOIs, pass them at once with `dois` (comma-separated, up to 100); do not call them one by one; with only one, `--arg doi=...` works too. The result has a fixed structure:
+- `data.papers`: the papers found, one per DOI, in the order given;
+- `data.not_found`: DOIs that every source checked and none had; they may be mistyped or not exist;
+- `data.lookup_failed`: DOIs that could not be checked because every source erred; retry later; do not treat them as nonexistent;
+- `data.warnings`: the sources that erred.
 
-默认先查 Crossref，它没有的 DOI 才问其他来源；要看每个来源各自的记录时加 `--arg platform=all`。`paper-search search` 返回的 `data` 本身就是论文列表。
+Crossref is checked first by default; only the DOIs it lacks go to other sources; to see each source's own record, add `--arg platform=all`. The `data` returned by `paper-search search` is itself the list of papers.
 
-PMID 要由 PubMed 确认；DOI 由 DOI 查询或 Crossref、OpenAlex、Semantic Scholar 的结果确认。同一篇论文的 PMID、DOI、题名、第一作者和年份应一致，不一致时标为可疑。
+A PMID is confirmed by PubMed; a DOI by a DOI lookup or the results of Crossref, OpenAlex or Semantic Scholar. The PMID, DOI, title, first author and year of one paper should agree; when they do not, mark it as doubtful.
 
-## 正文片段检索
+## Body snippet search
 
-`body_snippet_search` 用来找 Methods 写法、参数、软件名、模型描述、统计分析表述等正文片段线索。
+`body_snippet_search` finds body-snippet clues such as how Methods are written, parameters, software names, model descriptions and statistical wording.
 
 ```bash
 paper-search run search_semantic_snippets --arg query="comparative risk assessment methods uncertainty propagation" --arg limit=5 --arg fieldsOfStudy=Medicine --pretty
 ```
 
-`search_semantic_snippets` 需要 `SEMANTIC_SCHOLAR_API_KEY`，数量参数是 `limit`，不是 `maxResults`。没有 key 时，把报错里的申请网址和 `paper-search setup SEMANTIC_SCHOLAR_API_KEY` 告诉用户（有设置窗口时也可运行 `paper-search settings SEMANTIC_SCHOLAR_API_KEY`）。
+`search_semantic_snippets` needs `SEMANTIC_SCHOLAR_API_KEY`, and its count parameter is `limit`, not `maxResults`. Without the key, give the user the sign-up address from the error and `paper-search setup SEMANTIC_SCHOLAR_API_KEY` (with a settings window, `paper-search settings SEMANTIC_SCHOLAR_API_KEY` also works).
 
-只有 `snippetKind="body"` 的结果能作为正文片段证据；来自 `title` 或 `abstract` 的只是线索。引用或依赖某个片段前，核验题名、作者、年份、期刊或来源、DOI 或 PMID。
+Only results with `snippetKind="body"` can serve as body-snippet evidence; those from `title` or `abstract` are only clues. Before citing or relying on a snippet, verify the title, authors, year, journal or source, DOI or PMID.
 
-回答里给出正文片段时，英文原句原样引用（不翻译、不改写、不拼接几句），下一行写出处，直接用这条结果的 `source`（第一作者 et al.、年份、期刊 · 章节 · DOI · 许可证）；要中文解释时另起一段：
+When giving a body snippet in an answer, quote the original English sentence as it is (no translation, no rewording, no joining of sentences), and on the next line give the source, using this result's `source` directly (first author et al., year, journal · section · DOI · license); when an explanation in another language (such as Chinese) is wanted, put it in a separate paragraph:
 
 ```text
 > "The primary outcome in the DAPA-HF trial was the composite of … whichever occurred first."
 > —— M. Kosiborod et al., 2019, Circulation · Clinical outcomes · DOI 10.1161/CIRCULATIONAHA.119.044138 · CC BY
 ```
 
-- `title`、`abstract` 命中的结果不用这个样式，列出时标“线索（摘要）”或“线索（题名）”。
-- `paper.metadataStatus` 不是 `found` 时，出处里没有年份、期刊和 DOI：写“DOI 待核验”，引用前按上面的核验步骤补查；`lookup_failed` 时命令第一行会写明。
+- Results matched in `title` or `abstract` do not use this format; when listing them, mark them "clue (abstract)" or "clue (title)", in the user's language.
+- When `paper.metadataStatus` is not `found`, the source has no year, journal or DOI: write "DOI to be verified", and look it up with the verification steps above before citing it; for `lookup_failed`, the command's first line says so.
 
-## 选择来源
+## Choose sources
 
-| 任务 | 首选 | 补充 |
+| Task | Preferred | Also |
 |---|---|---|
-| 生物医学、临床、药学、公共卫生 | `pubmed` | `pmc`、`europepmc`、`semantic`、`crossref` |
-| Methods、正文片段线索 | `search_semantic_snippets` | 先用 `pubmed`、`semantic` 找题名和同义词 |
-| 引用网络扩展 | `get_paper_citations`、`get_paper_references` | 只在已知目标论文标识后使用 |
-| 计算机、人工智能、数学、物理 | `semantic`、`dblp` | `crossref`、`openalex`、`openreview` |
-| 计算机文献目录和会议元数据 | `dblp` | `acm`、`usenix`、`openreview`；`ieee` 需要 key |
-| 跨学科覆盖 | `crossref` | `openalex`、`semantic` |
-| 找开放获取全文 | `download_with_fallback` 的各层（PMC 官方渠道、Unpaywall） | `download_with_fallback` |
-| 期刊影响因子、分区、等级 | `journal-metrics` | `query_journal_metrics` |
-| 密码学 | `iacr` | `dblp` |
-| 按被引次数排序 | `semantic`、`crossref`、`openalex` | `webofscience`、`scopus` 需要 key |
-| 出版社或付费数据库的元数据 | `webofscience`、`ieee`、`scopus`、`sciencedirect`、`springer` / `springerlink` | 只在配置了对应的元数据 key 时使用；这不授权下载 PDF |
+| Biomedicine, clinical medicine, pharmacy, public health | `pubmed` | `pmc`, `europepmc`, `semantic`, `crossref` |
+| Methods, body-snippet clues | `search_semantic_snippets` | first use `pubmed`, `semantic` to find titles and synonyms |
+| Citation network expansion | `get_paper_citations`, `get_paper_references` | only after the target paper's identifier is known |
+| Computer science, AI, mathematics, physics | `semantic`, `dblp` | `crossref`, `openalex`, `openreview` |
+| Computer science bibliography and conference metadata | `dblp` | `acm`, `usenix`, `openreview`; `ieee` needs a key |
+| Cross-disciplinary coverage | `crossref` | `openalex`, `semantic` |
+| Find open-access full text | the layers of `download_with_fallback` (PMC official channels, Unpaywall) | `download_with_fallback` |
+| Journal impact factor, quartiles, grades | `journal-metrics` | `query_journal_metrics` |
+| Cryptography | `iacr` | `dblp` |
+| Sort by citation count | `semantic`, `crossref`, `openalex` | `webofscience`, `scopus` need keys |
+| Metadata of publishers or paid databases | `webofscience`, `ieee`, `scopus`, `sciencedirect`, `springer` / `springerlink` | only with the matching metadata key configured; this does not authorize PDF downloads |
 
-## 构造检索词
+## Build search terms
 
-- 中文研究问题默认翻译成英文关键词。
-- 用 3–8 个核心概念词，不用长句。
-- 医学主题需要时加 MeSH 或标准术语。
-- 找方法细节时加软件名、参数名、模型名，或 `methods`、`statistical analysis`、`adjusted for`、`bootstrap`、`sensitivity analysis` 这类章节用词。
+- Research questions in Chinese (or another language) are translated into English keywords by default.
+- Use 3–8 core concept words, not long sentences.
+- Add MeSH or standard terms for medical topics when needed.
+- For method details, add software names, parameter names, model names, or section words such as `methods`, `statistical analysis`, `adjusted for`, `bootstrap`, `sensitivity analysis`.

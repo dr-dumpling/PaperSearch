@@ -27,7 +27,15 @@ from .batch_common import (
 # not answer: Envoy, nginx and similar. Nothing else is on such a page.
 # A publisher's own page for a blocked address: "Your IP has been blocked.", "Your IP
 # 69.63.193.18 has been blocked." (Science, 2026-11-16), "your IP address … has been blocked".
-_IP_BLOCKED = re.compile(r"\byour ip(?: address)?(?: [0-9a-f.:]+)? (?:has been|is) blocked\b")
+# Taylor & Francis (2026-11-25), a page titled "Error" for the article, its PDF and its institution entry alike:
+# "The IP address of 203.0.113.7 has not been recognised to access this page. Please contact … quoting the IP address".
+# Not recognised, the driver took its sign-in button for the school's login and waited on the user each paper,
+# then wrote 没权限. A web firewall's page in Chinese, under that line as the title (Sage's sage.cnpereading.com, HTTP
+# 592, 2026-11-25: "您的访问请求可能对网站造成安全威胁，请求已被阻断"): taken for an article page without a login entry,
+# each paper written 待适配.
+_IP_BLOCKED = re.compile(r"\byour ip(?: address)?(?: [0-9a-f.:]+)? (?:has been|is) blocked\b"
+                         r"|\bthe ip address (?:of )?[0-9a-f.:]+ has not been recogni[sz]ed to access\b"
+                         r"|访问请求可能对网站造成安全威胁")
 _GATEWAY_ERROR_MARKERS = (
     "upstream connect error or disconnect/reset before headers",
     "502 bad gateway", "503 service unavailable", "503 service temporarily unavailable",
@@ -171,7 +179,8 @@ class AccessMixin:
         """The publisher's own page for a blocked address, under its usual title (Science,
         2026-11-16: "Your IP 69.63.193.18 has been blocked."): no login can open it. Read
         from the article page's text the access check reads anyway (``_access_snapshot``)."""
-        return bool(_IP_BLOCKED.search(" ".join(text[:4000].lower().split())))
+        # Its start, and its end: Taylor & Francis writes it after the site's whole header.
+        return bool(_IP_BLOCKED.search(" ".join((text[:4000] + "\n" + text[-2000:]).lower().split())))
 
     def _raise_on_publisher_access_blocked(self, page: Any) -> None:
         if self._publisher_access_blocked(page):
@@ -264,7 +273,12 @@ class AccessMixin:
     def _article_access_available(self, page: Any) -> bool:
         """The article page no longer says the reader is signed out: the PDF
         decides. In the login that follows a failed PDF, only the institution's
-        session or a completed login round trip count."""
+        session or a completed login round trip count, and on the site the adapter
+        sent the login to (``_on_login_site``) also access every reader has there
+        (``access_rules.OPEN_TO_ALL``: an open-access badge or licence): that page is
+        not the one whose PDF failed. Not "Full text access" alone: ScienceDirect
+        shows it for full text through ClinicalKey or a personal account, with no PDF
+        (J Hepatol, 2026-10-31), and the school's login there is still to be done."""
         # A verification/error page can retain the exact article URL. Its
         # lack of a sign-in button is not evidence of full-text access.
         if page.is_closed() is True:
@@ -274,15 +288,26 @@ class AccessMixin:
             return False
         if self._institution_pdf_entitlement_missing(page):
             return False
-        if not self._is_success_article_url(getattr(page, "url", "")):
+        url = str(getattr(page, "url", "") or "")
+        if not self._is_success_article_url(url):
             return False
-        verdict, basis, _ = self._access_decision(page)
+        verdict, basis, evidence = self._access_decision(page)
         if verdict == access_rules.OUT:
             return False
         if basis == "session" or self._school_login_done():
             return True
         # The login that follows a failed PDF waits for the school's login itself.
-        return not getattr(getattr(self, "_item_result", None), "_pdf_retry_login", False)
+        result = getattr(self, "_item_result", None)
+        if not getattr(result, "_pdf_retry_login", False):
+            return True
+        # Its sign-in sent to this article on another site, open to every reader there:
+        # the PDF is taken there (ScienceDirect's "Open access" for jacc.org's 403, 2026-11-23).
+        if (verdict != access_rules.IN or not access_rules.OPEN_TO_ALL.search(evidence.split("badge: ", 1)[-1])
+                or not self._on_login_site(page, result)):
+            return False
+        if not any(e["state"] == "login_site_article_readable" for e in result.events):
+            self._event(result, "login_site_article_readable", f"{url[:160]} | {verdict} ({basis}): {evidence[:160]}")
+        return True
 
     def _school_login_done(self) -> bool:
         """This item reached its IdP; selecting a school is only an attempt."""
@@ -311,17 +336,18 @@ class AccessMixin:
             return True
         return bool(named) and self._names_configured_school(named)
 
-    def _no_access_after_login(self, page: Any, result: DownloadResult) -> str:
-        """Evidence that the article page, after this item's school login, still
-        denies the article, shows only its abstract, offers it for sale or is the
-        site's signed-out page type; "" otherwise, and while the site's own login
-        pages remain to be opened (an Elsevier journal's site signs in on itself,
+    def _no_access_after_login(self, page: Any, result: DownloadResult, *, session_shown: bool = False) -> str:
+        """Evidence that the article page, after this item's school login (or with
+        the school's session shown on it, ``session_shown``: signed in by an earlier
+        item), still denies the article, shows only its abstract, offers it for sale
+        or is the site's signed-out page type; "" otherwise, and while the site's own
+        login pages remain to be opened (an Elsevier journal's site signs in on itself,
         then on ScienceDirect) or the login site's own article remains to be tried
         (``_return_from_login_site``). Not the "Access through <school>" gate: that
         is a remembered school not signed in on this site."""
         url = str(getattr(page, "url", "") or "")
         if (not self._is_success_article_url(url) or self._is_auth_page(url)
-                or self._is_challenge_page(page) or not self._school_login_done()):
+                or self._is_challenge_page(page) or not (session_shown or self._school_login_done())):
             return ""
         opened = {e.get("detail") for e in result.events if e["state"] == "login_page_opened"}
         if any(target not in opened for target in self.adapter.login_page_urls(page)):

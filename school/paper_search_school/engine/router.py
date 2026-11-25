@@ -18,6 +18,20 @@ from ..publishers.profiles import PublisherProfile
 
 PDF_LINK_TEXT_MARKERS = ("pdf", "download pdf", "full text pdf", "view pdf")
 PDF_URL_MARKERS = (".pdf", "/pdf", "/epdf", "/pdfdirect", "/pdfft", "download=true")
+# Open Journal Systems' galley file: /<journal>/article/download/<article>/<galley>[/<file>],
+# an address with no "pdf" in it. Its citation_pdf_url and the galley's Download link are this
+# address; the article's "View PDF" (/article/view/<article>/<galley>) is a page around the PDF
+# (Via Medica's Reports of Practical Oncology and Radiotherapy: the click ended on that page and
+# nothing was tried after it, 2026-11-23). The article part can be the article's name instead of
+# its number (Fringe Global's JSIHS: /article/download/ai-and-edge-analytics-.../239/1341, 2026-11-24).
+GALLEY_DOWNLOAD_PATH = re.compile(r"/article/download/[^/]+/\d+(?:/\d+)?/?$")
+# An Open Journal Systems article page or its galley's page: /article/view/<article>[/<galley>].
+OJS_VIEW_PATH = re.compile(r"/article/view/([^/]+)(?:/\d+)?/?$")
+# bepress Digital Commons' file: /cgi/viewcontent.cgi?article=<n>&context=<journal>, its
+# bepress_citation_pdf_url (Osgoode Hall Law Journal: not taken as a PDF address, 2026-11-24).
+VIEWCONTENT_PATH = re.compile(r"/cgi/viewcontent\.cgi$")
+# Platform paths that serve the article's file with no "pdf" in them.
+PLATFORM_FILE_PATH = re.compile(f"{GALLEY_DOWNLOAD_PATH.pattern}|{VIEWCONTENT_PATH.pattern}")
 PDF_JS_DEFAULT_URL_RE = re.compile(
     r"PDFViewerApplicationOptions\.set\(\s*['\"]defaultUrl['\"]\s*,\s*['\"]([^'\"]+)['\"]",
     flags=re.IGNORECASE,
@@ -209,7 +223,8 @@ def is_pdf_candidate_url(profile: PublisherProfile, url: str) -> bool:
     if verdict is not None:
         return verdict
     lower = url.lower()
-    return lower.endswith(".pdf") or any(marker.lower() in lower for marker in profile.pdf_url_markers)
+    return (lower.endswith(".pdf") or any(marker.lower() in lower for marker in profile.pdf_url_markers)
+            or bool(PLATFORM_FILE_PATH.search(urlparse(url).path)))
 
 
 def is_thieme_article_pdf_url(url: str, doi: str = "") -> bool:

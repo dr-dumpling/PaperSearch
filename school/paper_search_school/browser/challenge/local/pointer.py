@@ -103,7 +103,7 @@ def press(page: Any, rect: dict[str, Any], *, point: dict[str, float] | None = N
     if not all(math.isfinite(value) for value in target):
         return False
 
-    from ..driver import Error
+    from ...driver import Error
 
     try:
         hit = page.evaluate("""([x, y]) => {
@@ -203,7 +203,7 @@ def approach(page: Any, rect: dict[str, Any], *, point: dict[str, float] | None 
     c2 = (start[0] + dx * random_source.uniform(0.60, 0.80) + normal[0] * bend * 0.4,
           start[1] + dy * random_source.uniform(0.60, 0.80) + normal[1] * bend * 0.4)
 
-    from ..driver import Error  # late: the module imports the driver's error classes
+    from ...driver import Error  # late: the module imports the driver's error classes
 
     try:
         move(start[0], start[1], steps=1)

@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from paper_search_school.browser.challenge import interaction, pointer as human_pointer
+from paper_search_school.browser.challenge.local import interaction, pointer as human_pointer
 
 FRAME = "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/if/fixture"
 

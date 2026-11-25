@@ -172,7 +172,7 @@ class Api:
         self._mac_drag: _MacDrag | None = None  # macOS: presses tracked natively (main)
         self._native_drag = False  # this drag follows the mouse natively, not the page
         # papers.json: when read, its batch, the sites not yet supported its pages came from.
-        self._papers_seen: tuple[int, str, dict[str, Any] | None] = (0, "", None)
+        self._papers_seen: tuple[int, str] = (0, "")
         self._hovering = False
         self._layout: tuple[int, bool, Rect, Rect] | None = None
         self._closed = False
@@ -195,14 +195,33 @@ class Api:
             # 成功, 失败 and 剩余 open their lists once the caller has sent this batch's papers.
             if snapshot and snapshot.get("batch_id") and self._papers_batch() == snapshot["batch_id"]:
                 shown["lists"] = True
-                # The sites not yet supported its pages came from: a line while it runs (2026-11-16).
-                if shown.get("mode") in ("running", "attention") and self._papers_seen[2]:
-                    shown["sites"] = self._papers_seen[2]
         except Exception:
             shown = {"mode": "idle"}
+        if shown.get("mode") in ("running", "attention"):
+            shown["holds"] = self._holds()
         shown["lang"] = self._lang
         request = take_settings_request()  # `paper-search-school settings`: show the settings
         return {**shown, "open_settings": request} if request else shown
+
+    # Read again at most this often: the settings change by hand, the page asks every second.
+    _HOLDS_EVERY_SEC = 5.0
+
+    def _holds(self) -> bool:
+        """Whether a batch may hold papers for a later try, and the card shows 重试 (user, 2026-11-24): 失败后自动重试 on
+        (原因不明 at the end, a blocking site after its pause), or 没权限时换下一所学校 on with another saved school. Each
+        switch its own; both off, none waits and the card has no 重试, its papers failed at once."""
+        cached = getattr(self, "_holds_cache", None)
+        if cached and time.time() - cached[0] < self._HOLDS_EVERY_SEC:
+            return cached[1]
+        try:
+            from . import config as _config, school_switch
+            loaded = _config.load_config()
+            holds = (user_settings.retry_enabled()
+                     or (school_switch.enabled(loaded) and len(school_switch.schools(loaded)) > 1))
+        except Exception:
+            holds = True  # not known: as before, 重试 shown
+        self._holds_cache = (time.time(), bool(holds))
+        return bool(holds)
 
     # --- watching the task, also while the capsule is minimized ------------
     def watch(self) -> None:
@@ -336,11 +355,11 @@ class Api:
         if changed != self._papers_seen[0]:
             listed = read_papers() or {}
             batch = str(listed.get("batch_id") or "")
-            self._papers_seen = (changed, batch, progress_view.unverified_sites(listed, {"batch_id": batch}))
+            self._papers_seen = (changed, batch)
         return self._papers_seen[1]
 
     def paper_lists(self) -> dict[str, Any]:
-        return progress_view.paper_lists(read_papers(), read_state())
+        return progress_view.paper_lists(read_papers(), read_state(), self._holds())
 
     # --- pages from sites not yet supported (user, 2026-11-16) -------------
     def _batch_papers(self) -> list[dict[str, Any]]:
@@ -422,6 +441,7 @@ class Api:
                         "default": f.default, "page": f.page} for f in user_settings.FIELDS],
             "notify": user_settings.notify_enabled(),
             "hourly_now": user_settings.hourly_now(),
+            "retry": user_settings.retry_enabled(),
             "download_dir": download_directory.current(),
             "language": self._lang,
             # Whether the settings have the Markdown page (PaperSearch Pro's, edition.py).
@@ -459,6 +479,16 @@ class Api:
         except (OSError, ValueError) as exc:
             return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
         return {"ok": True, "hourly_now": enabled}
+
+    def set_retry(self, enabled: bool) -> dict[str, Any]:
+        """失败后自动重试 saves immediately, like the notification switch (the next batch reads it)."""
+        if not isinstance(enabled, bool):
+            return {"ok": False, "error": "开关必须为开启或关闭"}
+        try:
+            user_settings.set_retry(enabled)
+        except (OSError, ValueError) as exc:
+            return {"ok": False, "error": f"保存失败：{type(exc).__name__}"}
+        return {"ok": True, "retry": enabled}
 
     # The settings' check of system notifications (user, 2026-11-10): a switch turned on,
     # or a test notification, says when the system keeps them from showing.

@@ -9,6 +9,7 @@
   "正文已保存": "main text saved",
   "没权限": "No access",
   "暂不支持": "Unsupported",
+  "待适配": "Pending support",
   "原因不明": "Unclear",
   "待核对": "Check",
   "PDF 未下到": "No PDF",
@@ -67,7 +68,7 @@
   "显示 key": "Show key",
   "正在测试…": "Testing…",
   "读取配置失败": "Couldn't read settings",
-  "返回进度 ›": "Back to progress ›",
+  "返回进度": "Back to progress",
   "去处理 ›": "Handle ›",
   "正文": "Main",
   "附录": "Supp.",
@@ -308,9 +309,6 @@
   "已在浏览器打开": "Opened in your browser",
   "只读到摘要": "only the abstract read",
   "网页显示没有权限": "page shows no access",
-  "Markdown：借用其他网站的规则转换": "Markdown: rules borrowed from other sites",
-  "没有适用的规则": "no rules fit",
-  "提 issue 纳入已登记网站": "Open an issue to list it",
   "钉住": "Pin",
   "取消钉住": "Unpin",
   "已钉住，点一下取消": "Pinned; click to unpin",
@@ -335,6 +333,9 @@
   "请先在终端运行 gh auth login 登录 GitHub": "Run gh auth login in a terminal first",
   "测试版": "Beta",
   "马上生效": "Apply now",
+  "失败后自动重试": "Auto-retry failures",
+  "原因不明的失败，最后再重试": "Unclear: retried at the end",
+  "被网站拦截的，10 分钟后再重试": "Blocked by site: retried in 10 min",
   "开": "On",
   "关": "Off",
   "立即按新上限继续下载": "New limit applies now",
@@ -487,7 +488,7 @@
   "哥伦比亚特区": "District of Columbia",
   "哥斯达黎加": "Costa Rica",
   "国家未注明": "Country not given",
-  "图片或表格有缺失就不生成，记为失败并说明原因，后续重试。": "Not made if a figure or table is missing; marked failed, retried later.",
+  "表格有缺失就不生成；图片没下到的在批量最后再取一次，仍缺就在原位置标明，清单里写明缺哪张图。": "Not made if a table is missing; missing figures retried at the batch's end, those still missing marked and listed.",
   "土耳其": "Türkiye",
   "坦桑尼亚": "Tanzania",
   "埃及": "Egypt",
@@ -506,7 +507,7 @@
   "孟加拉国": "Bangladesh",
   "安哥拉": "Angola",
   "安圭拉": "Anguilla",
-  "完整才保存": "Whole only",
+  "缺失会标明": "Gaps marked",
   "宾夕法尼亚州": "Pennsylvania",
   "密克罗尼西亚": "Micronesia",
   "密歇根州": "Michigan",
@@ -818,7 +819,8 @@
   "被网站拦截": "Blocked by site",
   "出版社网站出错": "Publisher site error",
   "达到每小时下载上限": "Hourly limit reached",
-  "网站没有学校登录": "Site has no school login",
+  "网站不提供学校登录": "No school login offered",
+  "网站没有 PDF": "No PDF on the site",
   "网站暂未适配": "Site not adapted yet",
   "附录暂未适配": "Files not adapted yet",
   "拿错 PDF": "Wrong PDF",
@@ -826,7 +828,32 @@
   "扩展需要更新": "Extension needs update",
   "需要 Pro": "Needs Pro",
   "Pro 暂不可用": "Pro unavailable",
-  "PMC 没响应": "PMC not responding"
+  "PMC 没响应": "PMC not responding",
+  "补全": "Complete",
+  "待补全": "Incomplete",
+  "Zone 名称": "Zone name",
+  "填入“我的API”中的“名称”": "Enter the Name from My APIs",
+  "验证码增强，支持图片、数字等": "Image and numeric CAPTCHA support",
+  "请先填写 API Token": "Enter an API token first",
+  "请先填写 Zone 名称": "Enter a zone name first",
+  "Zone 名称格式不正确": "Invalid zone name",
+  "连接 Bright Data 超时": "Bright Data timed out",
+  "连不上 Bright Data，请检查网络或代理": "Can't reach Bright Data. Check network or proxy.",
+  "Bright Data 拒绝了 Token（HTTP 401）": "Bright Data rejected the token (HTTP 401)",
+  "Bright Data 拒绝读取活动 zone（HTTP 403），请检查 Token 权限": "Zone list denied (HTTP 403). Check token permissions.",
+  "Bright Data 限流，请稍后重试": "Bright Data rate limit. Try again later.",
+  "Bright Data 未返回可读取的活动 zone 列表": "Bright Data returned no readable active zone list",
+  "Bright Data 活动 zone 列表格式有误": "Invalid Bright Data active zone list",
+  "Token 有效，所填 Zone 已启用": "Token accepted. Zone is active.",
+  "Token 有效，所填 Zone 不在活动列表中": "Token accepted. Zone isn't in the active list.",
+  "换学校再试": "Other school",
+  "最后再试一次": "One last try",
+  "登录后继续": "After sign-in",
+  "请先填写 ClientKey": "Enter the ClientKey first",
+  "服务地址": "Service address",
+  "服务地址要写成 https://…": "The service address must be https://…",
+  "YesCaptcha 拒绝了 ClientKey，或连不上它的服务": "YesCaptcha refused the ClientKey, or it cannot be reached",
+  "请先填写服务地址": "Enter the address first"
  },
  "patterns": [
   [
@@ -982,8 +1009,8 @@
    "Paper $1/$2: school access"
   ],
   [
-   "^这篇文章只在 (.+) 平台提供，暂不支持，当前路径已停止$",
-   "Only on $1, not supported yet; route stopped"
+   "^这篇文章只在 (.+) 平台提供，PaperSearch 还没有这个平台的规则，当前路径已停止$",
+   "Only on $1, which PaperSearch has no rules for yet; route stopped"
   ],
   [
    "^被拒绝：key 不对，或已失效（(.+)）$",
@@ -1048,6 +1075,10 @@
   [
    "^剩余 (\\d+) 篇$",
    "Left $1"
+  ],
+  [
+   "^重试 (\\d+) 篇$",
+   "Retry $1"
   ],
   [
    "^第 (\\d+) 篇$",
@@ -1146,20 +1177,8 @@
    "$1 paused resume next"
   ],
   [
-   "^(\\d+) 个网站暂未正式支持 Markdown$",
-   "$1 sites not yet officially supported for Markdown"
-  ],
-  [
    "^(.+) 暂未正式支持 Markdown$",
    "$1 not yet officially supported for Markdown"
-  ],
-  [
-   "^已尝试转换：(\\d+) 篇完整已保存，(\\d+) 篇不完整未保存，(\\d+) 篇未再尝试$",
-   "Tried: $1 complete, saved; $2 incomplete, not saved; $3 not tried again"
-  ],
-  [
-   "^已尝试转换：(\\d+) 篇完整已保存，(\\d+) 篇不完整未保存$",
-   "Tried: $1 complete, saved; $2 incomplete, not saved"
   ],
   [
    "^参考文献少 (\\d+) 条$",
@@ -1194,32 +1213,8 @@
    "Could not open the issue page: $1"
   ],
   [
-   "^采用 (.+) 规则$",
-   "$1 rules"
-  ],
-  [
    "^(.+) 按 (.+) 的规则转换$",
    "$1 converted by $2's rules"
-  ],
-  [
-   "^(\\d+) 个网站$",
-   "$1 sites"
-  ],
-  [
-   "^(.+) 规则$",
-   "$1 rules"
-  ],
-  [
-   "^完整已保存 (\\d+) 篇$",
-   "$1 complete, saved"
-  ],
-  [
-   "^不完整未保存 (\\d+) 篇$",
-   "$1 incomplete, not saved"
-  ],
-  [
-   "^未再尝试 (\\d+) 篇$",
-   "$1 not tried again"
   ],
   [
    "^正在下载 ([\\d.]+) / ([\\d.]+) MB$",
@@ -1304,6 +1299,34 @@
   [
    "^(\\d+) 所学校都没有权限$",
    "No access at $1 schools"
+  ],
+  [
+   "^被网站拦截，(\\d{1,2}:\\d{2}) 再试暂停的 (\\d+) 篇$",
+   "Blocked by site; retrying $2 at $1"
+  ],
+  [
+   "^Bright Data 返回 HTTP (\\d+)，未能校验 Token$",
+   "Bright Data returned HTTP $1. Token check failed."
+  ],
+  [
+   "^成功 (\\d+)$",
+   "Saved $1"
+  ],
+  [
+   "^失败 (\\d+)$",
+   "Failed $1"
+  ],
+  [
+   "^(\\d{1,2}:\\d{2}) 再试$",
+   "Retry at $1"
+  ],
+  [
+   "^换(.+)再试$",
+   "Retrying with $1"
+  ],
+  [
+   "^ClientKey 有效，余额 ([-0-9.,]+) 点$",
+   "ClientKey is valid; balance: $1 points"
   ]
  ]
 }

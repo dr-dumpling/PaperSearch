@@ -116,16 +116,18 @@ FULLTEXT_IMAGES_JS = """() => {
 # /rest/document/<number>/references when opened. Before the page is read they are fetched
 # from the article page (same origin, the session's cookies), 30 at a time (a later page
 # starts at its start= entry, the previous page's last one again: entries are kept once),
-# up to the page's referenceCount, 5 s a request and 10 s in all (the page read has 50 s,
-# batch_capture.FULLTEXT_READ_SEC), and written into the page as
+# up to the page's referenceCount, 5 s a request and 18 s in all (the page read has 50 s,
+# batch_capture.FULLTEXT_READ_SEC, its body's wait at most 31 s), and written into the page as
 # script#papersearch-ieee-references (JSON), which the converter reads. Without them it
-# reports the references as incomplete.
+# reports the references as incomplete. 10 s in all gave 7 pages, 204 of an article's 261
+# entries (IEEE Open Journal of the Communications Society, Windows 2026-11-25: 30 a page, then
+# 29 new each, about 1.4 s a request).
 FULLTEXT_PREPARE_JS = r"""async () => {
   const metadata = window.xplGlobal?.document?.metadata || {};
   const number = String(metadata.articleNumber || (location.pathname.match(/^\/document\/(\d+)/) || [])[1] || '');
   const expected = Number(metadata.referenceCount) || 0;
   if (!/^\d+$/.test(number) || metadata.referenceCount === 0) return 0;
-  const deadline = Date.now() + 10000;
+  const deadline = Date.now() + 18000;
   const references = [];
   const seen = new Set();
   for (let page = 0; page < 40; page += 1) {

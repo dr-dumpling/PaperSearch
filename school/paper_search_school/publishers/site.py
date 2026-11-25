@@ -16,7 +16,7 @@ from typing import ClassVar
 from urllib.parse import urlparse
 
 from ..engine.access_rules import registrable_domain
-from .model import PublisherProfile
+from .model import PdfSourcePathTemplate, PublisherProfile
 
 #: Name prefix of a run-time site profile: ``site:<registrable domain>``.
 SITE_PREFIX = "site:"
@@ -34,11 +34,17 @@ GENERIC_SUPPLEMENTARY_URL_MARKERS = ("supplementary", "suppl_file", "supporting-
 # Where a DOI can land that is no publisher's site: doi.org itself, Crossref's
 # multiple-resolution chooser, the Handle resolver.
 _NOT_A_SITE = frozenset({"doi.org", "crossref.org", "handle.net"})
-# Platforms the engine does not sign in on, whatever DOI leads there: ClinicalKey
-# (the Elsevier adapter's unsupported platform) and the databases dropped on
+# Platforms the engine does not sign in on, whatever DOI leads there: ClinicalKey and
+# EM-Consulte (the Elsevier adapter's unsupported platforms) and the databases dropped on
 # 2026-11-02 (CNKI, Wanfang, VIP).
-_UNSUPPORTED_SITES = re.compile(r"clinicalkey\.[a-z]{2,3}(?:\.[a-z]{2})?|cnki\.net|wanfangdata\.com\.cn|cqvip\.com")
+_UNSUPPORTED_SITES = re.compile(
+    r"clinicalkey\.[a-z]{2,3}(?:\.[a-z]{2})?|em-consulte\.com|cnki\.net|wanfangdata\.com\.cn|cqvip\.com")
 _DOI_PREFIX = re.compile(r"10\.\d{4,9}")
+# A platform's PDF address made from the article page's address, by DOI prefix. F1000's open research
+# platforms (F1000Research, Wellcome, Gates, Bioethics Open Research and the others, all 10.12688): the
+# page /articles/<n>-<n>/v<k> plus /pdf, a redirect to the file. The page names no PDF anywhere (its
+# Download button opens a menu), and nothing was tried there (Bioethics Open Research, 2026-11-24).
+_PAGE_PDF_PATHS = {"10.12688": ("/articles/", "{source_path}/pdf")}
 
 
 @dataclass(frozen=True)
@@ -73,6 +79,7 @@ def site_profile(doi: str, landing_url: str) -> SiteProfile | None:
     domain = registrable_domain(host)
     if not domain or domain in _NOT_A_SITE or _UNSUPPORTED_SITES.fullmatch(domain):
         return None
+    page_pdf = _PAGE_PDF_PATHS.get(prefix)
     return SiteProfile(
         name=SITE_PREFIX + domain,
         article_url_template="https://doi.org/{doi}",
@@ -82,5 +89,6 @@ def site_profile(doi: str, landing_url: str) -> SiteProfile | None:
         sso_text_markers=GENERIC_SSO_TEXT_MARKERS,
         doi_prefixes=(prefix,),
         base_domains=(domain,),
+        pdf_source_path_templates=(PdfSourcePathTemplate(domain, *page_pdf),) if page_pdf else (),
         supplementary_url_markers=GENERIC_SUPPLEMENTARY_URL_MARKERS,
     )

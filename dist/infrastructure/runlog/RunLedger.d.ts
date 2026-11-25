@@ -19,6 +19,13 @@ export declare function resolveRunLogRoot(env?: Record<string, string | undefine
 export declare const RUN_KEEP_DAYS = 30;
 /** Remove the run folders started more than RUN_KEEP_DAYS ago; only run folders, nothing else in ``root``. */
 export declare function pruneOldRuns(root: string, now?: Date): string[];
+/**
+ * The PaperSearch version this run ran with, kept in run.json: 接着下 downloads again a paper not supported then only
+ * once PaperSearch has been updated since (resume.ts, user 2026-11-24). The command line sets it from its package.json
+ * as it starts (cli.ts, as it does the edition); unset (tests), runs say none.
+ */
+export declare function setPaperSearchVersion(value: string): void;
+export declare function paperSearchVersion(): string;
 export interface RunLedgerStart {
     kind: "download" | "download_batch";
     total: number;

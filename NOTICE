@@ -1,5 +1,5 @@
 PaperSearch
-Copyright (C) 2026 dr-dumpling
+Copyright (C) 2026 Yu Xie
 https://github.com/dr-dumpling/PaperSearch
 
 PaperSearch is licensed under the GNU Affero General Public License, version 3 only
@@ -8,44 +8,15 @@ under that license: whoever distributes a modified version, or lets others use o
 network, must publish its complete source code under the same license, keep this NOTICE,
 and state what they changed.
 
+PaperSearch is provided by Yu Xie "AS IS", without warranty of any kind, express or
+implied; Yu Xie is not liable for any damages arising from its use (sections 15 and 16
+of LICENSE).
+
 A commercial license is also available, for use that cannot follow the AGPL, such as a
-closed-source product or service built on PaperSearch. To ask for one, open an issue at
-https://github.com/dr-dumpling/PaperSearch/issues titled "Commercial license".
+closed-source product or service built on PaperSearch. To ask for one, email
+mr.rainstse@gmail.com.
 
 PaperSearch 采用 GNU Affero 通用公共许可证第 3 版（仅第 3 版，AGPL-3.0-only，全文见
 LICENSE）。任何人都可以按这个许可证使用、研究、修改和分享；分发修改版、或通过网络让他人
 使用修改版的，必须按同一许可证公开全部源代码，保留本 NOTICE，并注明改了哪些地方。不能按
-AGPL 使用的情况（如基于 PaperSearch 的闭源产品或服务），可以申请商业授权：在上面的 GitHub
-地址开一个标题为“Commercial license”的 issue。
-
-Third-party code
-================
-
-The command line was first adapted from paper-search-mcp-nodejs
-(https://github.com/Dianel555/paper-search-mcp-nodejs), under the MIT License:
-
-MIT License
-
-Copyright (c) 2025 Dianel555
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-The school subscription download backend (school/) draws on scansci-pdf
-(https://github.com/Rimagination/scansci-pdf), under the MIT License: its copyright and
-license notice are in school/LICENSE-scansci-pdf.
+AGPL 使用的情况（如基于 PaperSearch 的闭源产品或服务），可以申请商业授权，请联系邮箱：mr.rainstse@gmail.com。

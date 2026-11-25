@@ -96,6 +96,7 @@ class LoginMixin:
         # or looking for an institution entry that cannot exist on it.
         if not self._wait_for_challenge(page, result):
             return False
+        self._note_article_host(page)
         self._raise_on_publisher_content_error(page)
         self._dismiss_cookie_banners(page, result)
         snapshot = self._access_snapshot(page) if not self._is_auth_page(str(page.url)) else None
@@ -237,9 +238,11 @@ class LoginMixin:
 
     def _reopen_after_gateway_error(self, page: Any, result: DownloadResult) -> None:
         """Open the article again, once, when the publisher's front proxy answered
-        with its bare error page instead (its server did not answer in time). The
-        same page again is the publisher's error, reported as such."""
-        error = self._gateway_error_text(page)
+        with its bare error page instead (its server did not answer in time), or the
+        site with its own page for a fault on its side (the adapter's
+        ``server_error_page``). The same page again is the publisher's error,
+        reported as such."""
+        error = self._server_error_text(page)
         if not error:
             return
         self._event(result, "gateway_error_page", error[:160])
@@ -247,9 +250,12 @@ class LoginMixin:
         open_page(page, result.article_url, timeout_ms=60_000)
         settle(page, 3_000)
         self._wait_past_redirect_page(page, result)
-        error = self._gateway_error_text(page)
+        error = self._server_error_text(page)
         if error:
             raise PublisherContentError(f"publisher_gateway_error: {error[:120]}")
+
+    def _server_error_text(self, page: Any) -> str:
+        return self._gateway_error_text(page) or self.adapter.server_error_page(page)
 
     def _complete_login_from_current_page(self, page: Any, result: DownloadResult) -> bool:
         """The school's login from the current page (``_complete_login_steps``), then
@@ -557,12 +563,19 @@ class LoginMixin:
         if not entry_opened and self.profile.generic and self._may_offer_entry(page):
             # A site without rules of its own: the shared rules found no way to the
             # school's login on its page, and there is nothing for the user to do here.
-            result.reason = GENERIC_ENTRY_MISSING
+            # A page whose only sign-in is the site's own account (a password field, no sign
+            # of a school route) has no school login: mathnet.ru's Sbornik: Mathematics, only
+            # "Personal entry: Login, Password", ended as 暂未适配 (Windows, 2026-11-25). Not in
+            # the login after a failed PDF, whose ending is the PDF's.
+            personal = "" if getattr(result, "_pdf_retry_login", False) else self._personal_sign_in_only(page, result)
+            result.reason = NO_INSTITUTION_ENTRY if personal else GENERIC_ENTRY_MISSING
             looked_for, controls = self._entry_lookup_evidence(page)
+            if personal:
+                self._event(result, NO_INSTITUTION_ENTRY, personal)
             self._event(result, "login_entry_missing", looked_for)
             self._event(result, "login_entry_controls", controls)
-            self._snapshot(page, result, "login entry missing")
-            self._remember_no_entry(page, result, GENERIC_ENTRY_MISSING)
+            self._snapshot(page, result, "personal account sign-in only" if personal else "login entry missing")
+            self._remember_no_entry(page, result, result.reason)
             return False
         if (manual_selection and self.adapter.requires_institution_entry and not entry_opened
                 and not self._is_human_login_page(page)):
@@ -578,12 +591,18 @@ class LoginMixin:
             self._event(result, "login_entry_missing",
                         f"{str(page.url)[:160]} | no institution entry, access menu entry or institution sign-in link")
             self._snapshot(page, result, "login entry missing")
+            self._no_login_off_publisher(page, result)
             return False
         settle(page, 5_000)
         self._dismiss_cookie_banners(page, result)
         if self._click_openathens_entry(page, result):
             settle(page, 2_000)
-        self._select_institution(page, result)
+        if not (self._on_login_site(page, result) and self._article_access_available(page)):
+            # On the login site's article, already given to the reader, there is no school to
+            # choose: the wait's first pass ends there. ScienceDirect's open article for
+            # jacc.org was taken as a page to choose the school on (institution_selection_required,
+            # then a page wait), Windows 2026-11-23.
+            self._select_institution(page, result)
         if not entry_opened and self._no_school_route(page, result, sites_opened):
             return False
 
@@ -597,6 +616,7 @@ class LoginMixin:
             outside_since = time.time()  # last seen on the user's own login step
             article_returns = 0
             session_returns = 0
+            no_entry_since = 0.0  # since when the page has stood as the article's own, nothing to open on it
             away_from_publisher = False  # on an IdP, federation or chooser page since the last probe
             returned = False  # back on the publisher's site after such a page: try the PDF
             last_probe = time.time()
@@ -628,6 +648,15 @@ class LoginMixin:
                                 f"{self._login_wait_page(page)} after {self.page_wait_sec:.0f} s")
                     self._wait_ran_out(result)
                     return False
+                if not entry_opened and self._article_without_entry(page, result, sites_opened):
+                    # Looked for again on every pass below (an entry drawn late): none for ENTRY_LOOK_SEC, the
+                    # login has nothing to wait for (_end_without_entry), not the whole page wait.
+                    no_entry_since = no_entry_since or time.time()
+                    if time.time() - no_entry_since >= self.ENTRY_LOOK_SEC:
+                        self._end_without_entry(page, result)
+                        return False
+                else:
+                    no_entry_since = 0.0
                 # Navigation and auto-submit can finish during the preceding
                 # wait. Never publish the classification of the old document.
                 user_step = self._users_login_step(page)
@@ -672,6 +701,10 @@ class LoginMixin:
                     if getattr(result, "_visited_idp", False):
                         result._login_round_trip = True
                         self._event(result, "login_round_trip_returned", here.geturl()[:160])
+                if getattr(result, "_route_round_trip", False):
+                    # Back from the school's side by the login's route, unseen by this wait (_note_route_hop): the
+                    # next try of the PDF is the one after the login, as when the wait saw it come back.
+                    result._route_round_trip, returned = False, True
                 if (on_publisher and self._is_success_article_url(here.geturl())
                         and not self._is_auth_page(here.geturl()) and not self._challenge_shell(page)
                         and (returned or time.time() - last_probe >= self.WAIT_PROBE_EVERY_SEC)
@@ -704,6 +737,14 @@ class LoginMixin:
                             # 2026-11-17), and the page read before it is read again.
                             result._login_round_trip = True
                             return True
+                        if self._at_login_landing(here.geturl(), result):
+                            # From the login landing the login went round as well, though the article
+                            # is still offered or denied: the next pass tries the PDF and, with the
+                            # page's evidence, ends the wait as not subscribed. NEJM Catalyst
+                            # (10.1056/cat.25.0121, Windows 2026-11-23): the school's sign-in kept from
+                            # the paper before, authenticateSharedSP, "Get Access" again; the wait ran
+                            # out on the article (login_not_reached).
+                            result._login_round_trip = returned = True
                     except Exception as exc:
                         self._event(result, "idp_return_article_error", type(exc).__name__)
                     continue
@@ -1342,6 +1383,15 @@ class LoginMixin:
             self._event(result, "login_page_opened", target)
         return True
 
+    @staticmethod
+    def _on_login_site(page: Any, result: DownloadResult | None) -> bool:
+        """The page is on the site the adapter sent this item's login to
+        (``_open_adapter_login_page``: ScienceDirect's same article for an Elsevier
+        journal's own site), not on the site the login came from."""
+        source = str(getattr(result, "_login_site_from", "") or "") if result is not None else ""
+        host = (urlparse(str(getattr(page, "url", "") or "")).hostname or "").lower()
+        return bool(source and host and host != (urlparse(source).hostname or "").lower())
+
     def _return_from_login_site(self, page: Any, result: DownloadResult) -> bool:
         """The adapter sent the login to another site (an Elsevier journal site's
         institution login is ScienceDirect's). Once that site shows the institution
@@ -1349,12 +1399,22 @@ class LoginMixin:
         2026-10-31), open the article again on the journal's own site: whether the school
         has access, and which PDF to take, is that site's to answer. If the journal
         site still gives only the abstract, go back once to the login site's
-        article, which then decides as before. True when navigated."""
+        article, which then decides as before. True when navigated.
+
+        Not in the login after a failed PDF: the journal's site has refused that PDF
+        already, and the login site's article decides. Giving the article, its PDF is
+        taken there (``_article_access_available``); denying it to the school's session,
+        the school has no access (``_login_block_reason``). jacc.org
+        (10.1016/j.jcmg.2025.09.021, Windows 2026-11-23): "This is an Open Access Article"
+        by "GET ACCESS", its PDF 403; ScienceDirect's same article showed "Open access" and
+        its full text, and the login waited a page wait there and ended as pdf_not_captured."""
         url = str(getattr(page, "url", "") or "")
         host = (urlparse(url).hostname or "").lower()
         source = getattr(result, "_login_site_from", "")
         fallback = getattr(result, "_login_site_fallback", "")
         if source and host != (urlparse(source).hostname or "").lower():
+            if getattr(result, "_pdf_retry_login", False):
+                return False
             if not (self._has_publisher_institution_session(page) or self._article_access_available(page)):
                 return False
             result._login_site_from, result._login_site_fallback = "", url
@@ -1479,6 +1539,29 @@ class LoginMixin:
         return null;
     }"""
 
+    # In an opened access menu only: its "Check Access" when the panel around it says the access is an
+    # institution's. APA PsycNET's "Get Access" panel: "You may have access to this content with your personal
+    # login credentials or through your institutional subscription. CHECK ACCESS", which opens its sign-in page
+    # with the institutions' list (select#entityID); no entry was found there (2026-11-24). Elsewhere "Check
+    # Access" is an offer (access_rules.OFFER_LABEL).
+    _MENU_CHECK_ACCESS_JS = r"""() => {
+        const shown = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+        const controls = [...document.querySelectorAll('a, button, [role="button"]')];
+        for (const [index, el] of controls.entries()) {
+            const label = (el.innerText || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
+            if (!shown(el) || !/^check access$/i.test(label)) continue;
+            for (let panel = el.parentElement, n = 0; panel && panel !== document.body && n < 6; panel = panel.parentElement, n++) {
+                const text = (panel.innerText || '').replace(/\s+/g, ' ');
+                if (text.length > 1500) break;
+                if (/\binstitution(?:al)?\b/i.test(text)) {
+                    const href = el.tagName === 'A' && el.href && !/^javascript:/i.test(el.href) ? el.href : '';
+                    return {label: label.slice(0, 120), href, index};
+                }
+            }
+        }
+        return null;
+    }"""
+
     def _open_entry_from_access_menu(self, page: Any, result: DownloadResult | None) -> bool:
         """Open the site's access menu once per page and take the institution entry
         inside it: the adapter's own rule, else ``_INSTITUTION_ENTRY_JS``. An
@@ -1495,10 +1578,11 @@ class LoginMixin:
             result._access_menus = tried | {url}  # opened once: a second click would close it
             self._event(result, "access_menu_opened", str(label)[:120])
             entry = None
-            if pump_until(page, lambda: bool(page.evaluate(self._INSTITUTION_ENTRY_JS)), 2_500):
+            if pump_until(page, lambda: bool(page.evaluate(self._INSTITUTION_ENTRY_JS)
+                                             or page.evaluate(self._MENU_CHECK_ACCESS_JS)), 2_500):
                 if self.adapter.open_institution_entry(page, result):
                     return True
-                entry = page.evaluate(self._INSTITUTION_ENTRY_JS)
+                entry = page.evaluate(self._INSTITUTION_ENTRY_JS) or page.evaluate(self._MENU_CHECK_ACCESS_JS)
             if not isinstance(entry, dict):
                 return False
             href = str(entry.get("href") or "")
@@ -1547,6 +1631,8 @@ class LoginMixin:
             "button:has-text('Institutional Access')",
             "a:has-text('Institutional Access')",
             "button:has-text('Institutional Sign In')",
+            "a:has-text('Change institution')",
+            "button:has-text('Change institution')",
         )
         sso_selectors = (*self.adapter.sso_selectors, *sso_selectors)
         for selector in sso_selectors:
@@ -1600,7 +1686,8 @@ class LoginMixin:
                     'log in via your institution',
                     'provided by your institution',
                     'username/password provided by your institution',
-                    'log in with username/password provided by your institution'
+                    'log in with username/password provided by your institution',
+                    'change institution'
                   ];
                   const clickableSelector = 'a,button,[role="button"],input[type="button"],input[type="submit"]';
                   const textOf = (el) => [
@@ -1663,7 +1750,7 @@ class LoginMixin:
         """A page of the publisher's own where its institution entry would be: not
         a login, IdP or chooser page, no verification, no school login form."""
         url = str(getattr(page, "url", "") or "")
-        return (url.startswith("http") and self._on_publisher_host(url) and not self._is_auth_page(url)
+        return (url.startswith("http") and self._on_landing_site(url) and not self._is_auth_page(url)
                 and not self._challenge_shell(page) and not self._is_human_login_page(page))
 
     # The page's own sign-in and access controls, for the record of a missing entry.
@@ -1867,6 +1954,69 @@ class LoginMixin:
         self._remember_no_entry(page, result, NO_INSTITUTION_ENTRY)
         return True
 
+    def _no_login_off_publisher(self, page: Any, result: DownloadResult) -> None:
+        """The login after a failed PDF found no institution entry on a site its publisher's rules do not
+        name and the page shows no sign of a school route (``_route_probe``): the reason is the site's
+        (``NO_INSTITUTION_ENTRY``), kept for the batch, not the PDF's. The PDF was looked for by the
+        publisher's rules, on its own site, which says nothing of this one: Springer Nature's DOIs that
+        open springermedizin.de, springerprofessional.de or scientificamerican.com (the PDF address 404,
+        no school login) ended as 原因不明 · 没取到 PDF, the next paper of the same site as 网站不提供学校登录
+        (Windows 2026-11-24). On the publisher's own site the PDF's reason stays: its rules may be at fault."""
+        url = str(getattr(page, "url", "") or "")
+        if (not url.startswith("http") or self.profile.generic or self._on_publisher_host(url)
+                or not self._on_landing_site(url) or self._is_auth_page(url) or self._school_login_done()):
+            return
+        probe = self._route_probe(page)
+        if probe is None or probe["signs"]:
+            return
+        result.reason = NO_INSTITUTION_ENTRY
+        self._event(result, NO_INSTITUTION_ENTRY,
+                    f"{url[:160]} | a site the publisher's rules do not name: no PDF, no school login entry")
+        self._remember_no_entry(page, result, NO_INSTITUTION_ENTRY)
+
+    # The controls a school is searched for in, on a publisher's page (the CARSI-mode entry's own check).
+    _INSTITUTION_SEARCH_BOX = ('input[name*="institution" i]:visible, input[placeholder*="institution" i]:visible, '
+                               'input[name*="school" i]:visible, input[placeholder*="school" i]:visible')
+
+    # How long the article's own page may stand with no entry opened on it and nothing chosen before the
+    # login ends (``_end_without_entry``): the entry is looked for again on every pass of the wait meanwhile
+    # (one drawn late, ScienceDirect's after linkinghub), and the PDF tried once (WAIT_PROBE_EVERY_SEC).
+    ENTRY_LOOK_SEC = 20
+
+    def _article_without_entry(self, page: Any, result: DownloadResult, sites_opened: int) -> bool:
+        """The page is still the article's own on the publisher's site, no login page was opened, no school
+        chosen or reached, and it shows no chooser, no institution search box and nobody typing: nothing for
+        a school's login there. Not a redirect, a login, chooser or verification page."""
+        url = str(getattr(page, "url", "") or "")
+        if (sum(e["state"] == "login_page_opened" for e in result.events) > sites_opened
+                or getattr(result, "_institution_not_listed", False)
+                or any(e["state"] in self._SCHOOL_CHOSEN for e in result.events) or self._school_login_done()
+                or not url.startswith("http") or self.adapter.is_redirect_page(url) or self._is_auth_page(url)
+                or not self._on_landing_site(url) or not self._is_success_article_url(url)
+                or self._is_human_login_page(page) or self._challenge_shell(page)):
+            return False
+        try:
+            searching = page.locator(self._INSTITUTION_SEARCH_BOX).count()
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return False
+        return not ((isinstance(searching, int) and searching > 0) or self._has_visible_editable_input(page)
+                    or self.adapter.institution_chooser_open(page))
+
+    def _end_without_entry(self, page: Any, result: DownloadResult) -> None:
+        """The login ends on the article's own page that stood ``ENTRY_LOOK_SEC`` with no entry the rules
+        could open (``_article_without_entry``): ``publisher_institution_entry_missing``, PaperSearch's to fix.
+        nature.com's Nature Cities (Windows 2026-11-24) stood the whole page wait on its article, its entry
+        not one the rules knew, then 原因不明 · 没进入学校登录页."""
+        url = str(getattr(page, "url", "") or "")
+        result.reason = "publisher_institution_entry_missing"
+        looked_for, controls = self._entry_lookup_evidence(page)
+        self._event(result, "login_entry_missing",
+                    f"{url[:160]} | no entry opened on the article's page in {self.ENTRY_LOOK_SEC} s; {looked_for}")
+        self._event(result, "login_entry_controls", controls)
+        self._snapshot(page, result, "login entry missing")
+
     # The publisher's own account sign-in, with no school entry on it, is never the school's
     # login: the wait ends once it has stood this long (time for an institutional option
     # drawn late by script to show).
@@ -1884,7 +2034,7 @@ class LoginMixin:
         typing. A form the user fills stays theirs."""
         url = str(getattr(page, "url", "") or "")
         parsed = urlparse(url)
-        if (parsed.scheme not in ("http", "https") or not self._on_publisher_host(url)
+        if (parsed.scheme not in ("http", "https") or not self._on_landing_site(url)
                 or self._is_idp_host(parsed.netloc) or self._on_school_login_page(url)
                 or self._is_federation_chooser(url) or self._school_login_done()
                 or (result is not None and any(e.get("state") in self._SCHOOL_CHOSEN for e in result.events))):
@@ -1933,7 +2083,10 @@ class LoginMixin:
         """An earlier paper of this batch found no school login entry on this site's page
         (``login_routes.no_entry_since``) and this page shows none either: ended at once,
         nothing looked for or clicked, with that paper's reason. The login after a failed PDF
-        ends as the first paper's did, the PDF's reason kept."""
+        ends as it does on the page itself (``_complete_login_steps``): on a site without rules
+        the shared rules found no entry (``GENERIC_ENTRY_MISSING``), elsewhere the PDF's reason
+        is kept. jle.com (10.1684/ndt.2025.156, Windows 2026-11-23): the first paper ended so,
+        the second, its PDF 403 "Accès refusé", as pdf_not_captured, tried again at the end."""
         from .. import login_routes, progress_reporter
 
         host = (urlparse(str(getattr(page, "url", "") or "")).hostname or "").lower()
@@ -1950,6 +2103,13 @@ class LoginMixin:
                     f"{host}: no school login entry on an earlier paper of this batch ({earlier['doi']}), "
                     f"none on this page either")
         if not getattr(result, "_pdf_retry_login", False):
+            result.reason = reason
+        elif self.profile.generic:
+            result.reason = GENERIC_ENTRY_MISSING
+        elif not self._on_publisher_host(str(getattr(page, "url", "") or "")):
+            # A site its publisher's rules do not name: the PDF was looked for by those rules, on the publisher's own
+            # site, which says nothing of this one; the reason is the site's (Scientific American in Springer Nature's
+            # list, Windows 2026-11-24: nature.com's address 404, then 原因不明 · 没取到 PDF).
             result.reason = reason
         return True
 
@@ -1977,11 +2137,15 @@ class LoginMixin:
                        ("/institutionlogin", "/idp/", "/entity/"))
 
     # The labels of an institution entry, the whole label in lower case (CARSI mode).
+    # "Change institution": a site that knows the reader's institution and denies the article to it
+    # (nature.com's "Access to this article via <consortium> is not available", Nature Cities, Windows
+    # 2026-11-24) opens its chooser from there; the school's own login then tells whether the school has it.
     _INSTITUTION_ENTRY_LABELS = frozenset({
         "access through your institution", "access through institution",
         "access through your organization", "institutional access",
         "institutional login", "institutional sign in", "log in via an institution",
         "log in through your institution", "log in via your institution", "log in via institution",
+        "change institution",
     })
 
     def _click_manual_institution_entry(self, page: Any, result: DownloadResult | None) -> bool:
@@ -2003,18 +2167,40 @@ class LoginMixin:
                 if control.evaluate("el => el.tagName !== 'A' && Boolean(el.form || el.closest('form'))"):
                     continue
                 href = control.get_attribute("href", timeout=2_000) or control.get_attribute("formaction", timeout=2_000) or ""
+                # A link whose address only the site's script follows (ASCO's
+                # <a data-href="/action/ssostart">, 2026-11-25).
+                scripted = "" if href else (control.get_attribute("data-href", timeout=2_000) or "")
             except Exception as exc:
                 if not _is_browser_error(exc):
                     raise
                 continue  # gone or changed while the page moved on (JAMA Pediatrics, 2026-11-02)
             if href and not self._manual_institution_target_allowed(urljoin(str(page.url), href)):
                 continue
+            before = str(getattr(page, "url", "") or "")
             if not self._click_control(page, control, result, f"institution entry: {label.strip()[:80]}"):
                 continue  # nothing was clicked (script_click_failed)
             if result is not None:
                 self._event(result, "sso_entry_clicked", "generic-institution-chooser")
+            if scripted:
+                self._follow_scripted_entry(page, result, before, urljoin(before, scripted))
             return True
         return False
+
+    # How long a clicked entry whose address only the site's script follows may leave the page on its own.
+    SCRIPTED_ENTRY_WAIT_MS = 5_000
+
+    def _follow_scripted_entry(self, page: Any, result: DownloadResult | None, before: str, target: str) -> None:
+        """The entry's own address opened when its click left the page where it was:
+        ASCO's "INSTITUTIONAL LOGIN" (``data-href="/action/ssostart"``) answered a
+        click that timed out, then the script's click, only now and then; the other
+        times the login wait ran its minute on the article page (2026-11-25). Only
+        an address the chooser may open (``_manual_institution_target_allowed``)."""
+        pump_until(page, lambda: str(getattr(page, "url", "") or "") != before, self.SCRIPTED_ENTRY_WAIT_MS)
+        if str(getattr(page, "url", "") or "") != before or not self._manual_institution_target_allowed(target):
+            return
+        open_page(page, target, timeout_ms=30_000)
+        if result is not None:
+            self._event(result, "sso_entry_opened", f"the entry's own address: {urlparse(target).path[:80]}")
 
     def _has_visible_editable_input(self, page: Any) -> bool:
         """Someone may be typing here: a visible editable field holds a value. Read
@@ -2068,6 +2254,27 @@ class LoginMixin:
         if any(host == domain or host.endswith("." + domain) for domain in self.profile.base_domains):
             return True
         return self.adapter.is_article_page_url(url) is True
+
+    def _on_landing_site(self, url: str) -> bool:
+        """The publisher's own site (``_on_publisher_host``), or the site this paper's article opened on
+        past its DOI's redirects (``_note_article_host``), which no profile may name: Nature Digest's
+        natureasia.com in Springer Nature's list, whose personal subscribers' sign-in was taken for the
+        school's login page and held the publisher's 73 other papers, again after each 登录并继续
+        (Windows, 2026-11-24)."""
+        host = (urlparse(url).hostname or "").lower()
+        return self._on_publisher_host(url) or bool(host) and host == getattr(self, "_article_host", "")
+
+    def _note_article_host(self, page: Any) -> None:
+        """The site the article opened on (``_on_landing_site``): not one on the school's side, a
+        login, chooser or federation page, nor one this paper's login has gone on to."""
+        url = str(getattr(page, "url", "") or "")
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if (parsed.scheme not in ("http", "https") or not host or getattr(self, "_route_away", False)
+                or self._is_idp_host(host) or self._on_school_login_page(url) or self._is_auth_page(url)
+                or self._is_federation_chooser(url) or self._school_login_done()):
+            return
+        self._article_host = host
 
     def _page_wait_over(self, page: Any, outside_since: float) -> tuple[bool, float]:
         """Whether a login wait has been off the user's own login step for a whole
@@ -2155,7 +2362,7 @@ class LoginMixin:
             return "authentication_redirect"
         if self._is_auth_page(url):
             return "institution_chooser" if self.institution_query else "school_choice"
-        return "publisher" if self._on_publisher_host(url) else "other"
+        return "publisher" if self._on_landing_site(url) else "other"
 
     def _is_human_login_page(self, page: Any) -> bool:
         url = str(getattr(page, "url", "") or "")

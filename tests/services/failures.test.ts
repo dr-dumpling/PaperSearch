@@ -84,9 +84,31 @@ it("takes a publisher page without its login entry for a site not supported yet,
   expect(summary.groups.map((g) => [g.failureClass, g.code])).toEqual([["unsupported", "publisher_institution_entry_missing"]]);
   expect(summary.groups[0].items[0].screenshots).toEqual(shots);
   const text = renderFailuresText(summary);
-  expect(text).toContain("暂不支持（PaperSearch 要补规则）  1");
+  expect(text).toContain("待适配（PaperSearch 的规则还没覆盖这个网站，我们来补）  1");
   expect(text).toContain("/runs/download_failed/diagnostic.json\n      截图：" + shots[0] + "\n      截图：" + shots[1]);
   expect(text).toContain("paper-search failures --export <文件.zip>");
+});
+
+it("groups the papers a verification stopped by its kind, when the record names it (user, 2026-11-25)", () => {
+  const root = mkdtempSync(join(tmpdir(), "failures-challenge-"));
+  const stopped = (doi: string, challengeType?: string) => ({ doi, status: "error", stages: [{
+    ...entitled("captcha_required", "SAGE", "https://journals.sagepub.com/doi/" + doi),
+    trace: { publisher: "SAGE", ...(challengeType ? { challengeType } : {}) } }] });
+  run(root, "20261125-170000-cccccc", [
+    stopped("10.1177/a", "recaptcha_v2_image"), stopped("10.1177/b", "recaptcha_v2_image"),
+    stopped("10.1177/c", "cloudflare"), stopped("10.1177/d"), stopped("10.1177/e", "not-a-kind"),
+  ]);
+  const summary = summarizeFailures(root);
+  expect(summary.groups.map((g) => [g.code, g.challengeType, g.count])).toEqual([
+    ["captcha_required", "recaptcha_v2_image", 2],
+    // Records before 2026-11-25, and a word the CLI does not know, stay as they were.
+    ["captcha_required", undefined, 2],
+    ["captcha_required", "cloudflare", 1],
+  ]);
+  const text = renderFailuresText(summary);
+  expect(text).toContain("  SAGE · journals.sagepub.com · captcha_required · reCAPTCHA v2 图像识别  2");
+  expect(text).toContain("  SAGE · journals.sagepub.com · captcha_required · Cloudflare 5 秒盾  1");
+  expect(text).toContain("  SAGE · journals.sagepub.com · captcha_required  2");
 });
 
 it("includes partial attachments and filters DOI without counting completed empty checks", () => {
@@ -98,11 +120,55 @@ it("includes partial attachments and filters DOI without counting completed empt
     { doi: "10.1234/unsupported", status: "ok", supplements: [{ status: "skipped", reason: "supplements_not_supported" }],
       stages: [{ ...entitled("", "Fixture", "https://publisher.example/article"), status: "ok" }] },
   ]);
-  expect(summarizeFailures(root).failed).toBe(2);
+  // Saved papers short of files are not failures (the batch counts them succeeded): told apart.
+  const all = summarizeFailures(root);
+  expect([all.failed, all.supplementsMissing]).toEqual([0, 2]);
   const selected = summarizeFailures(root, { doi: "10.1234/PARTIAL" });
-  expect(selected.failed).toBe(1);
-  expect(selected.groups[0].code).toBe("challenge_timeout");
-  expect(selected.groups[0].items[0].part).toBe("supplements");
+  expect([selected.failed, selected.supplementsMissing, selected.groups]).toEqual([0, 1, []]);
+  expect(selected.supplementGroups[0]).toMatchObject({ code: "challenge_timeout", reason: "被网站拦截", failureClass: "external" });
+  expect(selected.supplementGroups[0].items[0].part).toBe("supplements");
+});
+
+it("tells a saved paper short of a file apart from the failures, as the batch counts it (AHA, 2026-11-22)", () => {
+  const root = mkdtempSync(join(tmpdir(), "failures-shortfall-"));
+  const events = [{ state: "pdf_saved" }, { state: "publisher_session_saved" }, { state: "supplements_listed_on_article", detail: "2" },
+    { state: "supplements_found", detail: "2" }, { state: "supplements_saved", detail: "1/2" }];
+  run(root, "20261123-022637-c8baa6", [
+    // The PDF saved, one of its two files answered 404: the batch counted it succeeded.
+    { doi: "10.1161/circoutcomes.125.012945", status: "ok",
+      supplements: [{ status: "failed", label: "Download, SUPPL-1-DESCRIPTION (pdf 450.85)", reason: "http_404" },
+        { status: "saved", label: "Download, DOCX (1.08 MB)" }],
+      stages: [{ stage: "entitled_access", status: "ok", trace: { publisher: "AHA Journals" },
+        backend: { record: { file: "/runs/x/diagnostics/circoutcomes_record.json", status: "success",
+          final_url: "https://www.ahajournals.org/doi/10.1161/CIRCOUTCOMES.125.012945", events } } }] },
+    { doi: "10.1161/atvbaha.125.000001", status: "error", stages: [entitled("entitlement_missing", "AHA Journals",
+      "https://www.ahajournals.org/doi/10.1161/ATVBAHA.125.000001")] },
+    // A file without a phrasing of its own (a PLOS paper's Figshare file, the same sweep): 附录没下载成功.
+    { doi: "10.1371/journal.pone.0000001", status: "ok", supplements: [{ status: "failed", reason: "figshare_request_failed" }],
+      stages: [{ stage: "entitled_access", status: "ok", trace: { publisher: "PLOS" },
+        backend: { record: { final_url: "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0000001" } } }] },
+  ]);
+  const summary = summarizeFailures(root);
+  // The run counted 1 failed; so does the summary.
+  expect([summary.failed, summary.classes.unexplained, summary.classes.external]).toEqual([1, 0, 0]);
+  expect(summary.groups.map((g) => [g.failureClass, g.code])).toEqual([["no_access", "entitlement_missing"]]);
+  expect(summary.supplementsMissing).toBe(2);
+  expect(summary.supplementGroups.map((g) => [g.failureClass, g.reason, g.code, g.count])).toEqual([
+    // A file the page links that the site answers 404 for: the site's (外部原因), not 原因不明.
+    ["external", "出版社网站出错", "http_404", 1],
+    ["unexplained", "附录没下载成功", "figshare_request_failed", 1],
+  ]);
+  // Where the paper's visit stopped is not where its file failed.
+  expect(summary.supplementGroups[0].items[0]).toEqual({ doi: "10.1161/circoutcomes.125.012945", runId: "20261123-022637-c8baa6",
+    part: "supplements" });
+  const text = renderFailuresText(summary);
+  expect(text).toContain("机构下载失败 1 篇");
+  expect(text).not.toContain("停在 pdf_saved");
+  expect(text).toContain("附录未下全  2（正文已保存，不算失败）\n"
+    + "  AHA Journals · www.ahajournals.org · 出版社网站出错 · http_404  1\n    10.1161/circoutcomes.125.012945");
+  expect(text).toContain("  PLOS · journals.plos.org · 附录没下载成功 · figshare_request_failed  1\n    10.1371/journal.pone.0000001");
+  // One left to look into (附录没下载成功 is 原因不明): the export's hint.
+  expect(text).toContain("paper-search failures --export <文件.zip>");
 });
 
 

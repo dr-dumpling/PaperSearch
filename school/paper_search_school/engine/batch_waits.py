@@ -14,7 +14,8 @@ from urllib.parse import urlparse
 
 from ..entitlements import UserMarkedNoEntitlement
 from ..browser import watchdog
-from ..browser.challenge import detection as challenges, interaction as challenge_interaction
+from ..browser.challenge import detection as challenges
+from ..browser.challenge.local import interaction as challenge_interaction
 from .batch_common import (AWAY_WAIT_SEC, DownloadResult, _IP_BLOCK_STATUS_CODES, _observe_preview)
 
 class UserWaitMixin:
@@ -268,6 +269,8 @@ class UserWaitMixin:
             self._event(result, "ip_blocked_response", f"{suspect} | no PDF after waiting ({shown or 'nothing shown'})")
             return False
         finally:
+            if automatic.get("service_cleanup") is not None:
+                automatic["service_cleanup"].close()
             self._verification_attention(result, None)
             activity.automatic_for(0)
             result._attention_page = None
@@ -412,6 +415,9 @@ class UserWaitMixin:
         An absent/loading widget stays automatic, including late arrivals. A
         visible widget we cannot operate hands off within the existing budget.
         """
+        host = (urlparse(str(getattr(page, "url", "") or "")).hostname or "").lower()
+        if self._is_idp_host(host):
+            return False
         now = time.time()
         if not attempt:
             attempt.update(started=now, attempts=0, retry_at=now + 2)
@@ -430,17 +436,31 @@ class UserWaitMixin:
         activity = getattr(result, "_page_activity", None)
         if activity is not None:
             activity.automatic_for(automatic_end - now)
+        if self._forward_checked_challenge(page, result, attempt, automatic_end):
+            return True
+        from ..browser.challenge.handlers import text_captcha
+        if text_captcha.find(page):
+            return self._continue_challenge(page, result, attempt, automatic_end, "image_code")
         if challenge_interaction.needs_manual_verification(page):
             widget = challenge_interaction.verification_widget(page, manual_only=True)
             if widget and not attempt.get("widget"):
                 attempt["widget"] = widget  # whose widget the user is asked to complete
                 self._event(result, "challenge_observation", f"manual widget: {widget}")
-            if self._press_confirm_control(page, result, attempt, deadline):
+            kind = challenge_interaction.challenge_kind(page)
+            if kind != "awswaf" and self._press_confirm_control(page, result, attempt, deadline):
                 return True
-            return False
+            return self._continue_challenge(page, result, attempt, automatic_end, kind)
+        if now >= attempt["handoff_at"] and challenge_interaction.challenge_kind(page) == "turnstile":
+            return self._continue_challenge(page, result, attempt, automatic_end, "turnstile")
         if ((attempt["attempts"] >= 2 and now >= attempt["retry_at"])
                 or (attempt.get("unavailable") and now >= attempt["handoff_at"])):
-            return False
+            return self._continue_challenge(page, result, attempt, automatic_end,
+                                            challenge_interaction.challenge_kind(page))
+        if attempt.get("managed") and now >= attempt["handoff_at"]:
+            # With no visible control there is no human action to request. Record
+            # unsupported service continuation once, then retain the fixed wait.
+            self._continue_challenge(page, result, attempt, automatic_end,
+                                     challenge_interaction.challenge_kind(page))
         if now >= automatic_end:
             # No observed user action: the caller ends at its original bound.
             return True
@@ -494,6 +514,27 @@ class UserWaitMixin:
                                 "widget events: " + " -> ".join(names[-6:]))
         return True
 
+    def _continue_challenge(self, page: Any, result: DownloadResult, attempt: dict,
+                            deadline: float, kind: str) -> bool:
+        """One bounded service continuation per verification wait and provider."""
+        from ..browser.challenge.continuation import Limits, resume
+
+        tried = attempt.setdefault("service_tried", set())
+        if kind in tried:
+            return False
+        tried.add(kind)
+        def checkpoint() -> None:
+            self._check_user_decision(result, page)
+            host = (urlparse(str(getattr(page, "url", "") or "")).hostname or "").lower()
+            if self._is_idp_host(host):
+                from ..browser.challenge.continuation import Expired
+                raise Expired
+        limits = Limits(time.monotonic() + max(0, deadline - time.time()),
+                        self._captcha_budget, checkpoint,
+                        attempt.setdefault("service_cleanup", ExitStack()))
+        return resume(page, self.config, kind=kind, limits=limits,
+                      observation=lambda note: self._event(result, "challenge_observation", note))
+
     def _recover_stuck_widget(self, page: Any, result: DownloadResult, attempt: dict[str, Any]) -> bool:
         """A widget that reported failure or expired gets one fresh page.
 
@@ -534,7 +575,7 @@ class UserWaitMixin:
         ``True`` keeps the automatic wait going; the page's own change still
         decides whether verification ended.
         """
-        from ..browser.challenge import prompt as prompt_control
+        from ..browser.challenge.local import prompt as prompt_control
 
         if not prompt_control.enabled() or attempt.get("confirmed"):
             return False
@@ -546,15 +587,128 @@ class UserWaitMixin:
         if budget <= 0.5:
             return False
         reasons: list[str] = []
-        outcome = prompt_control.click_confirm_control(
-            page, timeout_ms=int(min(prompt_control.PRESS_LIMIT_SEC, budget) * 1000),
-            checkpoint=lambda: self._check_user_decision(result, page),
-            observation=reasons.append)
+        # A provider's widget is on the page but its control is not rendered yet:
+        # keep looking for a little while before handing the page out. Not past the
+        # time the user is to be asked (``handoff_at``, browser_stall_notify_after),
+        # and not once the page has moved on: looking up to 15 s regardless kept a
+        # page that let the reader through in 0.2 s on screen as a verification and
+        # asked the user to complete it, and every reminder came late (Windows, real
+        # Chrome, 2026-11-25; since fdebe5b5).
+        widget = self._verification_widget_page(page)
+        try_until = min(deadline, time.time() + prompt_control.PRESS_LIMIT_SEC
+                        + (prompt_control.AWAIT_LIMIT_SEC if widget else 0.0))
+        if remaining is not None:
+            try_until = min(try_until, time.time() + max(0.0, remaining))
+        # The first look as before; looking again only until the user is to be asked.
+        look_again_until = try_until
+        if widget and attempt.get("handoff_at"):
+            look_again_until = min(try_until, float(attempt["handoff_at"]))
+        outcome = "absent"
+        first = True
+        while True:
+            if not first and not (self._challenge_shell(page) or self._is_challenge_page(page)):
+                # Let through meanwhile: the wait sees the page and ends without asking anyone.
+                self._event(result, "challenge_observation", "confirmation control: page moved on")
+                return True
+            room = try_until - time.time()
+            if room <= 0.5:
+                break
+            outcome = prompt_control.click_confirm_control(
+                page, timeout_ms=int(min(prompt_control.PRESS_LIMIT_SEC, room) * 1000),
+                checkpoint=lambda: self._check_user_decision(result, page),
+                observation=reasons.append)
+            first = False
+            if (outcome == "clicked" or not widget
+                    or time.time() + prompt_control.AWAIT_STEP_SEC >= look_again_until):
+                break
+            page.wait_for_timeout(int(prompt_control.AWAIT_STEP_SEC * 1000))
         detail = f"confirmation control: {outcome}"
         if reasons:
             detail += f" ({', '.join(dict.fromkeys(reasons))})"
         self._event(result, "challenge_observation", detail)
+        if outcome == "clicked":
+            self._await_check_then_forward(page, result, attempt, deadline, prompt_control)
         return outcome == "clicked"
+
+    def _await_check_then_forward(self, page: Any, result: DownloadResult, attempt: dict[str, Any],
+                                  deadline: float, prompt_control: Any) -> None:
+        """After the box is pressed: wait for it to read checked, then press the page's own
+        forward button once (JAMA's "Take me to my Content", which must be pressed within a
+        minute of checking or the token expires while the wait goes on)."""
+        reasons: list[str] = []
+        checked = prompt_control.confirm_checked(page)
+        refresh_left = prompt_control.REFRESH_LIMIT
+        rounds = prompt_control.REFRESH_LIMIT + 1
+        for round_index in range(rounds):
+            if checked or self._check_user_decision(result, page):
+                break
+            if prompt_control.expired(page) and refresh_left > 0:
+                refresh_left -= 1
+                if prompt_control.press_refresh(page, timeout_ms=2500, observation=reasons.append):
+                    self._event(result, "challenge_observation",
+                                f"interstitial expired: refreshed ({refresh_left} left)")
+                    page.wait_for_timeout(1500)
+                    continue
+            if round_index and not attempt.get("repressed"):
+                attempt["repressed"] = True
+                prompt_control.click_confirm_control(
+                    page, timeout_ms=2000,
+                    checkpoint=lambda: self._check_user_decision(result, page),
+                    observation=reasons.append)
+            budget_end = min(deadline, time.time() + prompt_control.CHECKED_LIMIT_SEC)
+            while time.time() < budget_end:
+                if self._check_user_decision(result, page):
+                    break
+                if prompt_control.confirm_checked(page):
+                    checked = True
+                    break
+                from ..browser.challenge.handlers.recaptcha_hcaptcha import has_grid
+                if has_grid(page):
+                    self._event(result, "challenge_observation", "picture grid appeared; continue with service")
+                    return
+                page.wait_for_timeout(400)
+            if checked:
+                break
+        detail = f"confirmation checked: {checked}"
+        if reasons:
+            detail += f" ({', '.join(dict.fromkeys(reasons))})"
+        self._event(result, "challenge_observation", detail)
+        if not checked:
+            return
+        self._forward_checked_challenge(page, result, attempt, deadline)
+
+    def _forward_checked_challenge(self, page: Any, result: DownloadResult,
+                                   attempt: dict[str, Any], deadline: float) -> bool:
+        """Observe delayed acknowledgements even after image solving handed back.
+
+        This is also called in manual wait: a user-completed widget gets the same
+        outer submission. A successful press is remembered only for this wait.
+        """
+        from ..browser.challenge.local import prompt as prompt_control
+        host = (urlparse(str(getattr(page, "url", "") or "")).hostname or "").lower()
+        if self._is_idp_host(host) or not prompt_control.confirm_checked(page):
+            return False
+        if attempt.get("forwarded"):
+            return True
+        if time.time() >= deadline or self._check_user_decision(result, page):
+            return False
+        remaining = watchdog.operation_remaining()
+        room = deadline - time.time()
+        if remaining is not None:
+            room = min(room, remaining)
+        if room <= 0:
+            return False
+        reasons: list[str] = []
+        outcome = prompt_control.press_forward(
+            page, timeout_ms=max(1, int(min(prompt_control.FORWARD_LIMIT_SEC, room) * 1000)),
+            observation=reasons.append)
+        if outcome == "pressed":
+            attempt["forwarded"] = True
+        if outcome != attempt.get("forward_outcome"):
+            self._event(result, "challenge_observation",
+                        f"forward control: {outcome} ({'; '.join(reasons)})")
+            attempt["forward_outcome"] = outcome
+        return True  # checked is acknowledgement; the enclosing wait checks access
 
     def _verification_attention(self, result: DownloadResult, deadline: float | None) -> None:
         from .. import progress_reporter
@@ -577,11 +731,13 @@ class UserWaitMixin:
             progress_reporter.update_attention_deadline(key, deadline)
 
     def _wait_for_challenge(self, page: Any, result: DownloadResult, *, deadline: float | None = None,
-                            until: Callable[[], bool] | None = None) -> bool:
+                            until: Callable[[], bool] | None = None, hand_over_only: bool = False) -> bool:
         """Wait while a verification page is up, until ``_wait_deadline``. ``until``: the
         wait ends, as passed, once it says what it waits for has arrived though the page
         is still up (the PDF's answer, captured while ScienceDirect's tab stayed on "Just
-        a moment...": two articles failed with the PDF in hand, 2026-11-21)."""
+        a moment...": two articles failed with the PDF in hand, 2026-11-21).
+        ``hand_over_only``: the PDF step's verification ends, not passed, where the wait on
+        the user would begin; its caller signs in at the article and asks for the PDF again."""
         interaction = ExitStack()
         activity, activity_owned = self._observe_page_activity(page, result)
         automatic: dict[str, Any] = {}
@@ -609,6 +765,7 @@ class UserWaitMixin:
                     if not waited:
                         deadline = self._wait_deadline(result, deadline)
                         started, phase_before = time.time(), self._phase(result, "verification")
+                        self._note_challenge_type(page, result, title_and_url_only=bool(shell))
                     waited = True
                     result.state = "challenge_or_viewer_timeout"
                     if verification_wait is not None:
@@ -621,10 +778,17 @@ class UserWaitMixin:
                     if time.time() >= deadline:
                         break
                     result._attention_page = page
-                    auto_pending = not manual and self._automatic_challenge_step(page, result, automatic, deadline)
+                    auto_pending = (self._forward_checked_challenge(page, result, automatic, deadline)
+                                    if manual else self._automatic_challenge_step(page, result, automatic, deadline))
                     if not auto_pending:
                         activity.automatic_for(0)
                     activity.check()
+                    if not auto_pending and not manual and hand_over_only:
+                        # Not passed by the program's own steps (the captcha service's
+                        # included): no wait on the user in the PDF step (ba77bb4e; the
+                        # parameter went with Bright Data in ead266c9, its callers kept it).
+                        self._note_challenge_type(page, result)
+                        return False
                     if not auto_pending and not manual:
                         result._attention_page = page
                         interaction.enter_context(watchdog.pause_operation())
@@ -665,9 +829,12 @@ class UserWaitMixin:
             if passed:
                 result.state = state_before
             else:
+                self._note_challenge_type(page, result)
                 self._wait_ran_out(result)
             return passed
         finally:
+            if automatic.get("service_cleanup") is not None:
+                automatic["service_cleanup"].close()
             self._verification_attention(result, None)
             activity.automatic_for(0)
             if verification_wait is not None:

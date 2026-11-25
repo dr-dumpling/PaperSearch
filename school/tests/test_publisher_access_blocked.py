@@ -62,7 +62,12 @@ class PublisherAccessBlockedTests(unittest.TestCase):
         # Science, 2026-11-16: its own page under its usual title; the driver had gone on to
         # the school's login, waited out its time, and the next article did the same.
         for body in ('Your IP has been blocked.\nYour IP 69.63.193.18 has been blocked. Please contact membership for assistance.',
-                     'Access denied: your IP address 2001:db8::1 has been blocked by the publisher.'):
+                     'Access denied: your IP address 2001:db8::1 has been blocked by the publisher.',
+                     # Taylor & Francis, 2026-11-25: after the site's header, the article's page and its PDF alike.
+                     'Journals Close Journals Menu Browse all journals ' * 120 + '\nError\nThe IP address of 203.0.113.7 has not '
+                     'been recognised to access this page. Please contact the help desk quoting the IP address of 203.0.113.7.',
+                     # Sage's other platform, sage.cnpereading.com: its web firewall's page (HTTP 592, 2026-11-25).
+                     '您的访问请求可能对网站造成安全威胁，请求已被阻断。\n事件ID：0000000000'):
             with self.subTest(body=body[:30]):
                 self.assertTrue(self.d._ip_blocked_text(body))
         for body in ('Abstract. Blocking the IP3 receptor has been shown to...', 'Log in through your institution', ''):

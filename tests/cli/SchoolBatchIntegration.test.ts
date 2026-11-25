@@ -87,10 +87,10 @@ describe("School backend serial batch through the CLI", () => {
     // the fake returns the same PDF twice; only item 1 carries its DOI
     expect(data).toEqual(expect.objectContaining({ status: "partial", total: 2, succeeded: 1, failed: 1 }));
     const downloads = calls.filter((call) => call.tool === "school_download").map((call) => call.arguments);
-    // Item two's PDF not its own (原因不明): once more at the end (user, 2026-11-22), still the second to finish.
+    // Item two's PDF not its own (原因不明): failed, no retry at the end with 失败后自动重试 off (the default, user 2026-11-24;
+    // the retry itself: BatchOtherSchools.test.ts, DownloadBatch.test.ts).
     expect(downloads).toEqual([
       expect.objectContaining({ identifier: "10.1000/one", batch_index: 1, batch_total: 2, batch_done: 0, batch_succeeded: 0 }),
-      expect.objectContaining({ identifier: "10.1000/two", batch_index: 2, batch_total: 2, batch_done: 1, batch_succeeded: 1 }),
       expect.objectContaining({ identifier: "10.1000/two", batch_index: 2, batch_total: 2, batch_done: 1, batch_succeeded: 1 }),
     ]);
     expect(downloads[0].batch_id).toBe(downloads[1].batch_id);

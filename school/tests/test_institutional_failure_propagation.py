@@ -65,7 +65,7 @@ class InstitutionalFailureTests(unittest.TestCase):
             ("publisher_access_blocked", "access_blocked", "review_access"),
             ("sso_required", "paywall", "login_required"),
             ("institution_pdf_entitlement_missing", "paywall", "review_entitlement"),
-            ("challenge_or_viewer_timeout", "download_timeout", "review_browser"),
+            ("challenge_or_viewer_timeout", "captcha_required", "review_access"),
             ("ip_blocked", "access_blocked", "review_access"),
             ("unexpected_error", "source_exception", ""),
             ("unknown", "download_failed", ""),
@@ -87,6 +87,18 @@ class InstitutionalFailureTests(unittest.TestCase):
         self.assertEqual(final["source_failures"][0]["source"], "institutional:browser")
         self.cache.assert_not_called()
 
+    def test_a_verification_never_passed_is_the_sites_block_not_a_page_that_hung(self):
+        # JAMA, 2026-11-23: after about ten articles in a row jamanetwork.com answered with its crawl prevention
+        # ("Validate User", a reCAPTCHA puzzle) until the wait ran out; gut.bmj.com's Cloudflare check likewise
+        # ("article page budget exhausted before next verification poll"). 被网站拦截, not 页面或浏览器卡住.
+        for url, title in [("https://jamanetwork.com/crawlprevention/governor", "Validate User"),
+                           ("https://gut.bmj.com/lookup/doi/10.1136/gutjnl-2025-336719", "")]:
+            with self.subTest(url=url):
+                result = self.browser_result(SimpleNamespace(
+                    ok=False, pdf_path=None, state="challenge_or_viewer_timeout",
+                    reason="challenge_or_viewer_timeout", final_url=url, title=title))
+                self.assertEqual((result["error_type"], result["action"]), ("captcha_required", "review_access"))
+
     def test_browser_exception_does_not_leak_exception_text(self):
         result = self.browser_result(exception=RuntimeError("cookie=secret"))
         self.assertEqual(result["error_type"], "source_exception")
@@ -100,7 +112,7 @@ class InstitutionalFailureTests(unittest.TestCase):
         self.assertEqual(calls, ["_try_session_broker", "_try_browser_batch_download"])
 
     def test_generic_broker_failure_cannot_hide_specific_browser_failure(self):
-        for code in ["access_blocked", "source_exception", "download_timeout"]:
+        for code in ["access_blocked", "captcha_required", "source_exception", "download_timeout"]:
             with self.subTest(code=code):
                 self.content_error = {"success": False, "error_type": code, "reason": code}
                 result, _ = self.builtin_result(broker={"success": False, "error_type": "not_found"})

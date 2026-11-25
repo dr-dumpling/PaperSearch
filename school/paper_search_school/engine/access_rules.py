@@ -201,6 +201,12 @@ OPEN_SIGNS_JS = r"""() => {
         if (/(?:^|\s)license(?:\s|$)/i.test(link.getAttribute('rel')) && CC.test(link.href) && !link.closest(NOT))
             return `licence link: ${short(link.href)}`;
     }
+    // A licence badge named for what it is, without rel="license": F1000's open research platforms'
+    // <a aria-label="Creative Commons License CC-BY" href="https://creativecommons.org/licenses/">
+    // (Bioethics Open Research, taken for a closed page and sent to the school's login, 2026-11-24).
+    for (const a of document.querySelectorAll('a[href][aria-label*="creative commons licen" i]')) {
+        if (CC.test(a.href) && !a.closest(NOT)) return `licence link: ${short(a.href)}`;
+    }
     for (const script of [...document.querySelectorAll('script[type="application/ld+json"]')].slice(0, 8)) {
         let data;
         try { data = JSON.parse((script.textContent || '').slice(0, 200000)); } catch (_) { continue; }
@@ -270,13 +276,16 @@ _OFFER_PHRASE = re.compile(
 # read this": RSC and Oxford Academic "You do not currently have access to this
 # content/article.", ScienceDirect "<school> does not subscribe to this content
 # on ScienceDirect.", Sage "Access via <school> is not available as they do not
-# subscribe to Sage Journals content.". A whole line: help copy and
-# conditionals around it are not a denial.
+# subscribe to Sage Journals content.", nature.com "Access to this article via <institution>
+# is not available." (its name in <strong> with no spaces around it, so the line reads
+# "via<name>is not available"; Nature Cities, Windows 2026-11-24). A whole line: help copy
+# and conditionals around it are not a denial.
 _DENIAL_LINE = re.compile(
     r"(?:(?:(?P<who>you|your (?:institution|organi[sz]ation))|(?P<name>[^.!?:\"“”]{2,120}?))\s+(?:do|does)\s+not"
     r"\s+(?:currently\s+)?(?:have access to|subscribe to)\s+(?:this|the)\s+"
     r"(?:article|content|pdf|full text|journal|book|chapter)(?:\s+on\s+[^.!?]{2,40})?"
-    r"|access via (?P<via>[^.!?]{2,120}?) is not available as they do not subscribe to [^.!?]{2,80}"
+    r"|access (?:to this (?:article|content|chapter|book|pdf|issue)\s+)?via\s*(?P<via>[^.!?]{2,120}?)\s*is not available"
+    r"(?:\s+as they do not subscribe to [^.!?]{2,80})?"
     r"|your (?:institution|organi[sz]ation) has not (?:subscribed to this content|purchased access to this article))\.?",
     re.I)
 _DENIAL_CONTEXT = re.compile(

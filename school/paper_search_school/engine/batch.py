@@ -94,6 +94,15 @@ from .batch_user import PdfFoundWhileWaiting, UserProvidedPdf, UserRequestsMixin
 from ..browser import watchdog
 from ..entitlements import UserSkippedArticle, UserStoppedBatch
 
+# Why a school login that ended without the article ended, set by the login itself: kept as the
+# article's reason, not "PDF not captured". DBpia's institution search had no entry for the school
+# (institution_federation_unavailable, its wait ended so), and the article was reported as 原因不明 ·
+# 没取到 PDF (Windows 2026-11-24).
+_LOGIN_ENDINGS = frozenset({GENERIC_ENTRY_MISSING, NO_INSTITUTION_ENTRY, "institution_federation_unavailable",
+                            "publisher_institution_entry_missing", "idp_no_return_to_publisher"})
+# An article open to all that its site gives as a web page only (``_page_offers_no_pdf``).
+PDF_NOT_OFFERED = "pdf_not_offered"
+
 
 class PublisherBatchDownloader(
     LoginMixin,
@@ -388,6 +397,8 @@ class PublisherBatchDownloader(
         require_interactive_browser: bool = False,
     ) -> None:
         self.config = load_config() if config is None else config
+        from ..browser.challenge.services.solver import Budget
+        self._captcha_budget = Budget(config=self.config)
         self.profile = profile
         self.institution_query = institution_query.strip()
         self.login_timeout_sec = login_timeout_sec
@@ -447,7 +458,7 @@ class PublisherBatchDownloader(
             config["browser_headless"] = False
         started = time.time()
         ctx = get_persistent_context(profile_path, config)
-        from ..browser.challenge.interaction import prepare_context
+        from ..browser.challenge.local.interaction import prepare_context
         prepare_context(ctx)
         self._browser_start = {**dict(getattr(browser_backend, "LAST_LAUNCH", {}) or {}),
                                "seconds": round(time.time() - started, 1), **({"relaunch": relaunch} if relaunch else {})}
@@ -488,6 +499,7 @@ class PublisherBatchDownloader(
         self._record_title = record.title
         self._expected_title = ""
         self._manual_school = False
+        self._article_host = ""  # the site the article opens on (_note_article_host)
         self._track_article_for_adapter(page, record.doi)
         from ..browser import watchdog
 
@@ -555,16 +567,24 @@ class PublisherBatchDownloader(
                 # reader's access showed): the school's login, once, then the PDF again.
                 # So too for a page taken as open to all whose PDF entry asked for access
                 # (PNAS 2026-11-17: a Creative Commons line in the copyright notes, "GET
-                # ACCESS" by the title, the PDF addresses 403 until the school's login).
-                gated = (getattr(result, "_taken_as_open", False)
-                         and any(e["state"] == "pdf_entry_gated" for e in result.events))
+                # ACCESS" by the title, the PDF addresses 403 until the school's login), and
+                # for one whose PDF was sent to the article's web page: open for its web page
+                # only, or not at all (JAMA's citation_fulltext_world_readable, 10.1001/jama.2025.19316;
+                # jacc.org's "This is an Open Access Article" by "GET ACCESS", 10.1016/j.jcmg.2025.09.021;
+                # both ended as pdf_not_captured, no school tried, Windows 2026-11-23).
+                taken_as_open = getattr(result, "_taken_as_open", False)
+                sent_back = self._pdf_sent_to_article(page, result, attempts_from) if taken_as_open else []
+                gated = bool(taken_as_open and (sent_back or any(e["state"] == "pdf_entry_gated" for e in result.events)))
                 retry = (not wall and (getattr(result, "_pdf_first", False) or gated) and not self._school_login_done())
                 if wall or retry:
                     if wall:
                         self._event(result, "auth_wall_after_pdf_attempt", self._decision_text(page))
                     else:
+                        url = str(getattr(page, "url", "") or "")
                         self._event(result, "open_access_pdf_gated" if gated and not getattr(result, "_pdf_first", False)
-                                    else "access_unknown_pdf_failed", getattr(page, "url", ""))
+                                    else "access_unknown_pdf_failed",
+                                    f"{url[:160]} | PDF sent to the article's web page: {str(sent_back[-1].get('url'))[:120]}"
+                                    if sent_back else url)
                         self._reopen_article_page(page, result)
                         result._pdf_retry_login = True
                     logged_in = self._complete_login_from_current_page(page, result)
@@ -622,10 +642,14 @@ class PublisherBatchDownloader(
                         self._write_diagnostic(page, result, run_dir)
                         return result
                     if not pdf_bytes:
-                        # A site whose page offered no institution entry (one without rules, or
-                        # a sign-in that was the publisher's own account's) says so.
-                        result.reason = result.state = (result.reason if result.reason in (
-                            GENERIC_ENTRY_MISSING, NO_INSTITUTION_ENTRY) else "pdf_not_captured")
+                        # The login's own ending says why (_LOGIN_ENDINGS): a site whose page offered no
+                        # institution entry, a school the publisher's list lacks. A wait on the user that ran
+                        # out says where it ended, as for a login that did not complete (_login_failed: the
+                        # bridge's login_timeout or login_not_reached): DBpia's institution search found
+                        # nothing for a school, the wait stood a minute on it, then 没取到 PDF (2026-11-24).
+                        result.reason = result.state = (
+                            result.reason if result.reason in _LOGIN_ENDINGS
+                            else "sso_required" if getattr(result, "login_wait_page", "") else "pdf_not_captured")
                         result.final_url = page.url
                         result.title = self._title(page)
                         self._write_diagnostic(page, result, run_dir)
@@ -638,9 +662,17 @@ class PublisherBatchDownloader(
                         self._write_diagnostic(page, result, run_dir)
                         return result
                     block_reason = self._login_block_reason(page)
-                    if (not block_reason and signed_in
+                    # The capture came after this item's school login, or none came in this item:
+                    # then the school's session on the page, from an earlier item, is what counts.
+                    if (not block_reason and (signed_in or not self._school_login_done())
                             and self._pdf_sent_to_article_after_login(page, result, attempts_from)):
                         block_reason = "institution_pdf_entitlement_missing"
+                    if (not block_reason and taken_as_open and len(result.pdf_attempts) == attempts_from
+                            and self._page_offers_no_pdf(page)):
+                        # Open to all, nothing tried, and nothing on the page names a PDF.
+                        block_reason = PDF_NOT_OFFERED
+                        self._event(result, PDF_NOT_OFFERED, f"{str(getattr(page, 'url', '') or '')[:160]} | "
+                                    f"{self._title(page)[:80]} | nothing on the page names a PDF")
                     result.reason = block_reason or "pdf_not_captured"
                     result.state = result.reason
                     result.final_url = page.url
@@ -695,7 +727,7 @@ class PublisherBatchDownloader(
         except PublisherPlatformUnsupported as platform:
             result.reason = result.state = "unsupported_platform"
             self._event(result, "unsupported_platform", str(platform))
-            progress_reporter.update(phase=f"这篇文章只在 {platform} 平台提供，暂不支持，当前路径已停止")
+            progress_reporter.update(phase=f"这篇文章只在 {platform} 平台提供，PaperSearch 还没有这个平台的规则，当前路径已停止")
             self._write_diagnostic(page, result, run_dir)
             return result
         except PublisherContentError as error:

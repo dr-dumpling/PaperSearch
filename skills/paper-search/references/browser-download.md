@@ -1,139 +1,142 @@
-# 机构下载：用学校权限下载 PDF
+# School download: download PDFs with the school's access
 
-机构下载（学校订阅下载）在电脑上经用户同意后安装；只用开放下载时不需要读这一篇。本篇适用于目标论文已确认、需要学校订阅，或用户报告登录后没反应、不断跳转、PDF 已打开却没保存。安装、学校、浏览器的设置见 `school-setup.md`。
+The school download (school subscription downloads) is installed on a computer with the user's consent; when only open download is used, this file is not needed. It applies when the target paper is confirmed and needs a school subscription, or when the user reports that nothing happens after sign-in, that pages keep redirecting, or that a PDF opened but was not saved. For installation, the school and the browser, see `school-setup.md`.
 
-## 调用前
+## Before calling
 
-- 核验目标 DOI 和标题；不要用虚构 DOI 做下载探测。
-- 目标出版社能不能走通、能不能取补充材料，先看 `publisher-support.md`；表里没有的网站按通用规则尝试。
-- 用户没说要哪些内容时，开始前问一次：`pdf`（正文 PDF）、`supplements`（补充材料）可以只要一样，也可以都要；批量也只问一次。
-- `paper-search school status --format text` 确认扩展已安装并启用，或“PaperSearch 配置”一行已启用并给出后端路径（用户自己维护的后端，第一行显示“未安装”是正常的）；都没有时按 `school-setup.md` 处理。本文的 `paper-search-school` 命令不在 PATH 上时，用这里“后端”后面的完整路径调用。
-- 开始前运行 `paper-search-school issues`，看有没有之前没处理的问题报告；看完用 `issues resolve <ID> --note "结论"` 记下结论。
+- Verify the target DOI and title; never probe downloads with made-up DOIs.
+- Whether the target publisher works and gives supplementary files: check `publisher-support.md` first; sites not in the table are tried with the general rules.
+- When the user has not said which contents they want, ask once before starting: `pdf` (the full-text PDF), `supplements` (supplementary files), one or both; only once for a batch too.
+- `paper-search school status --format text` confirms the extension is installed and enabled, or that the "PaperSearch 配置" (PaperSearch config) line shows it enabled with a backend path (a backend the user maintains; its first line showing "未安装" (not installed) is normal); when neither, follow `school-setup.md`. When the `paper-search-school` commands in this file are not on PATH, call them by the full path after "后端" (backend) there.
+- Before starting, run `paper-search-school issues` to see whether earlier issue reports are still open; after reading them, record the conclusion with `issues resolve <ID> --note "conclusion"`.
 
-## 一次调用，等待明确结果
+## One call; wait for a clear result
 
-单篇用 `paper-search download` 或 `paper-search run download_with_fallback`，多篇用一次 `paper-search run download_batch`，参数见 `cli-contract.md`。下载顺序固定为 `primary → direct_pdf_url → repositories → unpaywall → publisher_api → scihub → entitled_access → preprint`。机构下载失败后才尝试 DOI 明确关联的 arXiv 预印本。
+One paper: `paper-search download` or `paper-search run download_with_fallback`; several: one `paper-search run download_batch`; parameters in `cli-contract.md`. The download order is fixed: `primary → direct_pdf_url → repositories → unpaywall → publisher_api → scihub → entitled_access → preprint`. An arXiv preprint clearly linked to the DOI is tried only after the school download fails.
 
-- 只用开放来源和学校权限（不用 Sci-Hub）：`download_with_fallback` / `download_batch` 设 `useSciHub=false`。
-- 用户说只走机构下载（或只测学校权限这一步）时，`download_batch` 设 `"mode":"entitled_only"`：PDF、补充材料都直接走机构下载；“接着下”沿用这一批的模式。它会跳过可用的公开副本，用户没这样说时保留默认 `two_phase`。
-- 测试下载也走上面的命令，保持默认的等待时间和数据目录。先登录学校或测试登录用 `paper-search school login --doi <DOI>`（见 `school-setup.md`）。
-- 同一个数据目录同时只跑一个下载。命令没结束时，不因窗口看似停住而重新下载或登录。
-- 机构下载一次一篇，开放渠道同时查后面的篇目。遇到学校登录或验证时停在这一篇；出现人工处理提示后，提醒用户到下载浏览器操作。等待时限：停在学校登录页（以及没配置学校、要用户自己选学校的页面）最多 3 分钟（后端配置 `browser_login_timeout`，秒）；停在其他页面（人机验证、出版社页面、选机构页、取 PDF 时等待处理）连续超过 1 分钟就结束这一篇（`browser_page_wait_timeout`）。两项都能在进度窗口右上角的设置（齿轮）里改，从下一篇起生效。学校统一认证登录一次后，其余篇目通常自动通过。一篇等满时限后（日志写“这一篇等你登录或验证已到时限”），后面每篇只等 60 秒；用户在登录框输入时照常等。
-- 每个出版社每小时最多打开 100 篇（后端配置 `publisher_hourly_limit`，0 为不限）。到上限时批量等到可以继续再下这一篇（日志写明时间）；单篇返回 `rate_limited`，稍后再试。
-- 出版社网站拦截了当前网络（`access_blocked`，如 Cloudflare 拦截页、出版社自己的“IP 已被封锁”页）时这一篇结束；同一期刊的其他文章暂时直接跳过（`journal_blocked_earlier`），每 5 分钟用一篇再试一次网站，能打开就照常继续（换了网络不用等半小时），其他期刊照常继续。告诉用户可能是当前网络被网站防护拦截，也可能是下载过多被暂停：可换网络或稍后再试，后者请联系学校图书馆。
-- 后端会先短暂等待自动验证，每次验证等待对可识别的 Turnstile 复选框最多尝试点击 2 次，两次至少间隔 3 秒；程序提示人工处理时，再提醒用户到下载浏览器接管，不因 `checking_access` 就要求用户操作。学校登录、二次验证和复杂验证码由用户完成（reCAPTCHA、hCaptcha、滑块等验证页，程序认出后直接交给用户）；学校认证页的信息发送同意和使用条款、出版社登录途中的条款确认页由后端代点同意（每篇各最多两次，仍停在那一页时才提醒用户）。不索取账号、密码或验证码，agent 不另开浏览器代操作。
-- 在专用人工登录页输入、选择或点击控件，或点击胶囊接管登录后，暂停剩余学校登录预算；输入间停顿不算离开，离开该人工步骤后恢复计时。无人操作仍按原限时结束。不要询问用户的账号密码。用户在登录页中途停下（比如去拿手机验证码）时继续等，按原来的时限算，不重新发起登录。
-- 学校登录提醒依赖当前可见的账号、密码、二次验证码、二维码，或后端没能代点的同意步骤；学校域名和空闲时间不作为人工操作证据。胶囊“提醒你操作前最多等”仍保存到 `browser_stall_notify_after`（默认 30 秒，1–600）；可见验证控件无法自动操作时，按该值与剩余预算一半的较早者交接。控件仍在加载、已勾选处理中或尚未出现时继续自动观察。未派发点击不消耗最多 2 次输入额度；失败原因见 `challenge_observation`。明确网站封禁和预算耗尽仍结束当前路径，不保证所有验证码自动通过。程序认不出的页面停住达到这个时长、页面上又有可点的控件时，也会提醒“页面可能需要你处理”，同样请用户到下载浏览器看一眼。
-- 通用 Human Verification 图片验证页会等待 Begin 之后的后续步骤。用户在专用验证页操作或通过胶囊接管后，人工阶段暂停剩余验证及文章等待预算；成功离开验证后继续自动流程。未操作时仍按原时限结束，外层任务资源限制不变。
-- 阶段以本次调用的结构化通知为准（命令写在 stderr，stdout 只有最终 JSON）；不凭等待时间猜阶段。
-- PDF 在新标签页打开不等于已保存；以命令的最终结果为准，网页地址不是本地文件。
-- 需要取消时中止当前调用；旧浏览器仍占用数据目录时不启动下一次下载，不自动删除占用锁。
+- Open sources and the school's access only (no Sci-Hub): set `useSciHub=false` on `download_with_fallback` / `download_batch`.
+- When the user says to use only the school download (or to test just the school-access step), set `"mode":"entitled_only"` on `download_batch`: the PDF and supplementary files both go straight to the school download; "go on" (接着下) keeps the batch's mode. It skips available public copies; when the user did not say so, keep the default `two_phase`.
+- Test downloads use the commands above too, keeping the default wait times and data directory. To sign in to the school first, or to test sign-in, use `paper-search school login --doi <DOI>` (see `school-setup.md`).
+- Only one download at a time per data directory. While the command has not finished, do not download or sign in again because the window seems stuck.
+- The school download takes one paper at a time, while the open channels check the following papers at the same time. At a school login or verification it stops on that paper; once a prompt for manual handling appears, remind the user to act in the download browser. Wait limits: on the school login page (and on pages where no school is configured and the user must choose the school) at most 3 minutes (backend setting `browser_login_timeout`, in seconds); on other pages (human verification, publisher pages, the institution-selection page, waiting for handling while fetching the PDF) the paper ends after more than 1 minute there without a break (`browser_page_wait_timeout`). Both can be changed in the settings (gear) at the top right of the progress window, taking effect from the next paper. After one sign-in through the school's single sign-on, the other papers usually pass automatically. Once a paper has waited its full limit (the log says "这一篇等你登录或验证已到时限" (the wait for your sign-in or verification on this paper ran out)), each following paper waits only 60 seconds; while the user is typing in the login box, it waits as usual.
+- Each publisher opens at most 100 papers per hour (backend setting `publisher_hourly_limit`; 0 for no limit). At the limit, a batch waits until it can go on and then downloads this paper (the log states the time); a single download returns `rate_limited`: try again later.
+- When the publisher's site blocks the current network (`access_blocked`, such as a Cloudflare block page or the publisher's own "IP has been blocked" page), that paper ends; other articles of the same journal are skipped for now (`journal_blocked_earlier`); every 5 minutes one paper tries the site again, and once it opens, downloading goes on as usual (after a network change there is no need to wait half an hour); other journals carry on. Tell the user it may be the site's protection blocking the current network, or a pause because of too many downloads: change networks or try later; for the latter, contact the school library.
+- Human verification not passed within the wait (`captcha_required`), HTTP 429 (too many requests) on supplementary files, and the blocking above all count as "被网站拦截" (Blocked by site). In batch downloads (default and `entitled_only`), that publisher's papers pause first while other publishers carry on; after 10 minutes it tries once more automatically, and the progress window shows "被网站拦截，HH:MM 再试暂停的 N 篇" (blocked by the site; the N paused papers are retried at HH:MM), with nothing for the user to do; when the retry is blocked again, that publisher's remaining papers are not tried again in this batch (`blocked_paused`), and they do not go into the final "原因不明" (Unclear) retry or the school switch. Tell the user the site is blocking, not that there is no access; after a while (or on another network) they can say "go on" (接着下).
+- The backend first waits briefly for automatic verification; on each verification wait it tries clicking a recognizable Turnstile checkbox at most 2 times, at least 3 seconds apart; only when the program asks for manual handling, remind the user to take over in the download browser; do not ask the user to act just because of `checking_access`. When an image recognition service is configured, supported publisher AWS WAF puzzles, reCAPTCHA/hCaptcha grids and standalone character codes continue through that service after local controls, with only images and the question sent. Answers are entered in the same browser. Supported embedded Turnstile widgets can also continue through the configured service: only the public HTTPS site origin, sitekey and optional action are sent, and the answer returns to the original widget callback or associated form. Widgets requiring session data or lacking an unambiguous continuation remain manual. Full-page Cloudflare checks stay local. After the widget acknowledges success, the backend also submits its associated verification form when it has one unambiguous native submit control, regardless of the button label. It observes delayed acknowledgements during the wait; downloading continues only after the publisher page actually clears. Unsupported puzzles, exhausted attempts, school sign-in and two-factor checks remain manual; on school authentication pages, the consent to release information and the terms of use, and the terms confirmation pages during a publisher's login, are accepted by the backend (at most twice per paper each; the user is reminded only when it is still stuck on that page). Never ask for the account, password or verification code; the agent does not open another browser to act for the user.
+- Typing, choosing or clicking a control on the dedicated manual login page, or taking over the login by clicking the capsule, pauses the remaining school-login budget; pauses between inputs do not count as leaving; the timer resumes after leaving that manual step. With no one acting, it still ends at the original limit. Never ask the user for their account or password. When the user stops midway on the login page (for example, to get a code from their phone), keep waiting, counted against the original limit; do not start the login again.
+- The school-login reminder relies on a visible account, password, two-factor code or QR code field, or a consent step the backend could not click; the school domain and idle time are not evidence of a manual step. The capsule's "提醒你操作前最多等" (Wait before asking you) is still saved to `browser_stall_notify_after` (default 30 seconds, 1–600); when a visible verification control cannot be handled automatically, the handover happens at that value or at half the remaining budget, whichever is earlier. While a control is still loading, already ticked and processing, or not yet shown, automatic watching continues. Clicks not dispatched do not use up the at most 2 input attempts; failure reasons are in `challenge_observation`. A clear site ban and an exhausted budget still end the current route; not every CAPTCHA is passed automatically. When a page the program does not recognize stays stuck that long and has clickable controls, it also reminds "页面可能需要你处理" (the page may need you); likewise ask the user to take a look in the download browser.
+- The generic Human Verification image check page waits for the steps after Begin. Once the user acts on the dedicated verification page or takes over through the capsule, the manual stage pauses the remaining verification and article wait budgets; after leaving the verification successfully, the automatic flow carries on. With no action it still ends at the original limit; the outer task's resource limits do not change.
+- Go by the structured notices of this call for the stage (written to stderr; stdout has only the final JSON); do not guess the stage from the waiting time.
+- A PDF opened in a new tab is not the same as saved; go by the command's final result; a web address is not a local file.
+- To cancel, abort the current call; while an old browser still holds the data directory, do not start the next download, and do not delete the lock automatically.
 
-## 进度窗口和问题报告
+## The progress window and issue reports
 
-- 判断批量下载有没有卡住：看运行记录（结果的 `runLog`，或 stderr 里 `[批量] 运行记录：…` 给出的目录）里 `timeline.log` 最后一行的时间，和系统当前时间比，不要按自己估计的等待时长判断。最后一行超过 5 分钟没有更新时，先看进度窗口是不是在等登录或验证；不要因此关掉某个来源或重跑整批。
-- 进度窗口是屏幕角落的小胶囊（macOS 右上、Windows 右下）：显示完成数/总数、正在下正文还是附录、出版社；需要用户登录或验证时变成琥珀色，背景与边缘轻柔呼吸并显示倒计时，开启系统通知时同时发一条通知；系统开启“减少动态效果”时只变色。鼠标指上去展开，看当前论文、步骤、成功/失败/剩余和下面的按钮；点成功、失败、剩余的数字列出是哪些论文（成功的点一篇打开所在文件夹并选中 PDF，失败的按原因分组、点一篇在浏览器打开文章页，附录没下全的另列在后面，剩余的分正在下载、排队等机构下载、开放下载还没查，点一篇同样打开文章页；只下补充材料的批量，成功的分“补上附录”和“没有附录（已核对）”，点一篇打开它原有的 PDF 所在文件夹），下载中和结束后都能点；右上角“–”最小化到程序坞或任务栏，图钉按钮“钉住”后鼠标移开也不收起，再点一下取消；只对这个窗口有效。全部成功时结束 8 秒后自动关，有失败或终止时留着，等用户点 × 关闭。pywebview 或网页引擎用不了时不显示窗口，下载照常。
-- 下载用的 Google Chrome 窗口保持运行，但启动、跳转、开新标签及等待人工处理时不主动抢前台。需要操作时点击胶囊的“请登录学校”等提醒，可切到当前任务的下载浏览器；下载进行中，展开胶囊后点正在下载的题名那一行也能切过去（开放获取阶段没有浏览器，不可点）。
-- 结束时卡片按原因列出没下到正文的篇目。PDF 和补充材料一起下（`pdf,supplements`）时，PDF 已保存但补充材料没下全的篇目另列“附录未下全”，按原因分行、默认收起；命令行最后一行同样分开写（“附录未下全 N 篇：原因 n”）。用户在窗口里终止时，没处理的篇目不算失败：结束卡片的三个数字是成功、失败、已终止，点“已终止”列出它们；命令行最后一行写“成功 n，失败 n，已终止 n”。
-- Mac 的系统通知使用 PaperSearch 名称与图标；通知点击共用胶囊的当前任务浏览器恢复入口。系统通知权限或专注模式可能限制横幅，胶囊提醒仍保留。设置的“等待和提醒”页打开通知时会检查系统是否允许 PaperSearch 弹出通知，开关旁有“测试”可发一条测试通知；系统没允许或用户说没看到时，胶囊列出要改的地方并能打开系统的通知设置（Windows 上通知以“Windows PowerShell”的名义发出）。无需另外安装通知工具，不替用户修改系统通知设置。
-- 胶囊齿轮可修改默认下载文件夹（输入绝对路径或选择文件夹），与 `paper-search config set DEFAULT_DOWNLOAD_PATH "/完整路径/论文"` 共用配置。新任务自动采用它；显式 `savePath` / `--save-path` 优先，运行中批次不改目录。
-- “终止”（旧版窗口里叫“终止任务”）：确认后当前这一篇立即结束，整批停下，剩下的篇目记为 `batch_stopped`（未下载）。用户想停下整批时让他点这个，不要另外中止命令。
-- 当前源码（未发布修复）：`browser_operation_timeout` 表示自动页面操作耗尽共享预算，不是无权限，也不是等待用户登录。不要因此反复登录；先检查是否误用了 `entitled_only`。附件阶段终止同样停止后续篇目，保留已保存的正文。
-- 展开后写明正在下哪部分和哪一步：正文有五段步骤条（打开文章、权限、取 PDF、核对、附录），附录显示“附录 2/5”。
-- 右上角齿轮（设置）：手动输入学校登录页、其他页面的最长等待（秒）、页面持续无进展的提醒时间（默认 30 秒）和每家出版社每小时最多下载篇数，保存后用于后续篇目；上限旁的小开关“马上生效”（默认关）打开时，正在等上限的篇目立即按新上限接着下，关闭时等这一小时过后再按新上限；“系统通知”开关点击即保存，可随时开启或关闭；关闭后胶囊仍变色呼吸，点击提醒仍可唤回浏览器。
-- “跳过”：只结束当前这一篇，点击后 1–2 秒内生效。学校有没有权限由下载自己判断，进度窗口里不用标；“⋯”打开“报告问题”。
-- “⋯”里的“报告问题”：用户选择看到的问题后，后端截下页面并处理（读取已打开的 PDF、回到文章、刷新、停止自动选校），窗口显示处理结果。
-- 发起机构下载时同时监听用户的报告（与下载相同的 `SCHOOL_DATA_DIR`）：
-  - 能后台运行命令并在结束时收到通知：后台运行 `paper-search-school issues watch --since <开始下载的时间戳>`，用户报告后它返回报告 JSON（网址、标题、正文片段、截图路径、处理结果）并退出。
-  - 只能逐条执行命令：下载期间定时运行 `paper-search-school issues watch --since <时间戳> --timeout 30`；没有新报告时返回 `{"timeout": true}`（退出码 3）。
-  - 收到报告立即看截图（不能读图时看网址、标题、正文片段），告诉用户页面停在哪里、是什么问题、现在可以怎么做。继续监听时把返回的 `reported_ts` 作为下一次的 `--since`。
+- To judge whether a batch download is stuck: in the run log (the result's `runLog`, or the directory given by `[批量] 运行记录：…` ([batch] run log: …) on stderr), compare the time on the last line of `timeline.log` with the system's current time; do not judge by your own estimate of the wait. When the last line has not changed for more than 5 minutes, first check whether the progress window is waiting for sign-in or verification; do not turn off a source or rerun the whole batch because of it.
+- The progress window is a small capsule in a corner of the screen (top right on macOS, bottom right on Windows): it shows done/total, whether it is downloading the full text or the supplementary files, and the publisher; when the user needs to sign in or verify, it turns amber, its background and edges breathe gently and a countdown shows; with system notifications on, a notification is sent too; with the system's "Reduce motion" on, it only changes color. Hovering expands it to show the current paper, the step, saved/failed/left and the buttons below; clicking the "成功" (Saved), "失败" (Failed) or "剩余" (Left) number lists those papers (clicking a saved one opens its folder with the PDF selected; failed ones are grouped by reason, and clicking one opens the article page in the browser, with papers whose supplementary files are incomplete listed after them; the remaining ones are split into downloading now, queued for the school download, and open download not checked yet, and clicking one also opens the article page; in a batch for supplementary files only, the saved ones are split into "补上附录" (supplementary files added) and "没有附录（已核对）" (no supplementary files, checked), and clicking one opens the folder of its existing PDF), during and after the download; "–" at the top right minimizes it to the Dock or taskbar; the pin button "钉住" (Pin) keeps it expanded when the mouse moves away; click it again to undo; it applies only to this window. When everything succeeded, it closes 8 seconds after the end; with failures or a stop it stays until the user closes it with ×. When pywebview or the web engine is unavailable, no window shows and the download goes on as usual.
+- The Google Chrome window used for downloads keeps running, but does not take the foreground on start, navigation, new tabs or while waiting for manual handling. When action is needed, clicking a reminder on the capsule such as "请登录学校" (Sign in to school) switches to the current task's download browser; during a download, expanding the capsule and clicking the title line of the paper being downloaded also switches to it (not clickable during the open-access phase, which has no browser).
+- At the end the card lists the papers without a full text, by reason. When the PDF and supplementary files are downloaded together (`pdf,supplements`), papers whose PDF is saved but whose supplementary files are incomplete are listed separately as "附录未下全" (Supp. missing), one line per reason, collapsed by default; the last line on the command line also writes them separately ("附录未下全 N 篇：原因 n" (Supp. missing: N; reason n)). When the user stops it in the window, the papers not processed do not count as failures: the end card's three numbers are saved, failed and "已终止" (Stopped); clicking "已终止" lists them; the last line on the command line says "成功 n，失败 n，已终止 n" (saved n, failed n, stopped n).
+- Mac system notifications use the PaperSearch name and icon; clicking a notification uses the same entry as the capsule to bring back the current task's browser. The system's notification permission or Focus may limit banners; the capsule reminders remain. When notifications are turned on in the settings' "等待和提醒" (Waits & alerts) page, it checks whether the system allows PaperSearch to show notifications, and "测试" (Test) next to the switch sends a test notification; when the system does not allow it or the user says nothing appeared, the capsule lists what to change and can open the system's notification settings (on Windows, notifications are sent as "Windows PowerShell"). No separate notification tool is needed; do not change the system's notification settings for the user.
+- The capsule's gear can change the default download folder (type an absolute path or choose a folder), sharing the setting with `paper-search config set DEFAULT_DOWNLOAD_PATH "/full/path/Papers"`. New tasks use it automatically; an explicit `savePath` / `--save-path` takes precedence; a running batch does not change folders.
+- "终止" (Stop; called "终止任务" in older windows): after confirming, the current paper ends at once, the whole batch stops, and the remaining papers are recorded as `batch_stopped` (not downloaded). When the user wants to stop the whole batch, have them press this; do not abort the command separately.
+- Current source (unreleased fix): `browser_operation_timeout` means automatic page actions used up the shared budget; it is neither no access nor waiting for the user to sign in. Do not sign in again and again because of it; first check whether `entitled_only` was used by mistake. Stopping during the supplementary-file stage also stops the following papers and keeps the full texts already saved.
+- Expanded, it shows which part and which step is being downloaded: the full text has a five-step bar (open the article, access, fetch the PDF, check, supplementary files); supplementary files show "附录 2/5" (Supp. 2/5).
+- The gear (settings) at the top right: type the longest waits (seconds) for the school login page and for other pages, the reminder time for a page with no progress (default 30 seconds), and the maximum downloads per publisher per hour; once saved, they apply to later papers. The small switch "马上生效" (Apply now) next to the limit (off by default), when on, makes papers waiting at the limit go on at once under the new limit; when off, the new limit applies after this hour; the "系统通知" (Notifications) switch saves on click and can be turned on or off at any time; when off, the capsule still changes color and breathes, and clicking the reminder still brings back the browser.
+- "跳过" (Skip): ends only the current paper, taking effect within 1–2 seconds of the click. The download itself decides whether the school has access; nothing needs marking in the progress window; "⋯" opens "报告问题" (Report issue).
+- "报告问题" (Report issue) under "⋯": after the user picks the problem they see, the backend takes a screenshot of the page and handles it (reading an already opened PDF, going back to the article, reloading, stopping the automatic school selection), and the window shows the outcome.
+- When starting a school download, also listen for the user's reports (with the same `SCHOOL_DATA_DIR` as the download):
+  - When you can run commands in the background and get notified when they end: run `paper-search-school issues watch --since <timestamp when the download started>` in the background; when the user reports, it returns the report JSON (URL, title, text snippet, screenshot path, outcome) and exits.
+  - When you can only run commands one at a time: during the download, run `paper-search-school issues watch --since <timestamp> --timeout 30` periodically; with no new report it returns `{"timeout": true}` (exit code 3).
+  - When a report arrives, look at the screenshot at once (when you cannot read images, look at the URL, title and text snippet), and tell the user where the page stopped, what the problem is and what they can do now. To keep listening, use the returned `reported_ts` as the next `--since`.
 
-## 实时状态和浏览器画面
+## Live status and browser view
 
-读取与进度窗口相同的状态，不启动窗口、浏览器或新下载：
+Reads the same status as the progress window, without starting a window, a browser or a new download:
 
 ```bash
-SCHOOL_DATA_DIR="<数据目录>" paper-search-school progress --json
-SCHOOL_DATA_DIR="<数据目录>" paper-search-school progress --json --watch \
-  --run-id "<本次 run_id>" --identifier "<目标 DOI>" --timeout 30
+SCHOOL_DATA_DIR="<data directory>" paper-search-school progress --json
+SCHOOL_DATA_DIR="<data directory>" paper-search-school progress --json --watch \
+  --run-id "<this run's run_id>" --identifier "<target DOI>" --timeout 30
 ```
 
-开始下载前读一次，记下旧 `run_id`；发起下载后确认 `identifier` 是目标 DOI 且 `run_id` 已变，再用 `--watch` 绑定本次任务。每次监控不超过 60 秒，原任务仍在运行就继续监控同一 `run_id`，不重新下载。长时间没有更新只表示暂无新进度，不推断没有权限。
+Read it once before starting the download and note the old `run_id`; after starting the download, confirm that `identifier` is the target DOI and that `run_id` has changed, then bind this task with `--watch`. Each watch lasts at most 60 seconds; while the original task is still running, keep watching the same `run_id`; do not download again. A long time without updates only means no new progress; do not infer no access from it.
 
-| `stage`                                                | 行动                                                             |
+| `stage`                                                | Action                                                           |
 | ------------------------------------------------------ | ---------------------------------------------------------------- |
-| `waiting_login`                                        | 提醒用户在下载浏览器登录，继续监控。                             |
-| `waiting_verification`                                 | 继续监控；以实际人工处理提醒为准，不仅凭该阶段重复催用户操作。       |
-| `opening_article` / `checking_access` / `fetching_pdf` | 等待，不重复要求登录。                                           |
-| `pdf_captured`                                         | 已读到 PDF，仍需等待保存。                                       |
-| `saved_pending_verification`                           | 已保存，等原调用最终结果和身份核验。                             |
-| `route_failed`                                         | 这条路失败，原任务可能继续；等最终结果，不重新发起下载。         |
-| `failed` / `cancelled` / `interrupted` / `unknown`     | 核查原调用结果，不据此报告成功或没有权限。                       |
+| `waiting_login`                                        | Remind the user to sign in in the download browser; keep watching. |
+| `waiting_verification`                                 | Keep watching; go by actual reminders for manual handling; do not keep pressing the user just because of this stage. |
+| `opening_article` / `checking_access` / `fetching_pdf` | Wait; do not ask for sign-in again.                              |
+| `pdf_captured`                                         | The PDF has been read; still wait for it to be saved.            |
+| `saved_pending_verification`                           | Saved; wait for the original call's final result and identity check. |
+| `route_failed`                                         | This route failed; the original task may go on; wait for the final result; do not start the download again. |
+| `failed` / `cancelled` / `interrupted` / `unknown`     | Check the original call's result; do not report success or no access from this. |
 
-看下载浏览器的最新截图（只读）：
+Latest screenshot of the download browser (read-only):
 
 ```bash
-SCHOOL_DATA_DIR="<数据目录>" paper-search-school preview --run-id "<本次 run_id>" --doi "<目标 DOI>"
+SCHOOL_DATA_DIR="<data directory>" paper-search-school preview --run-id "<this run's run_id>" --doi "<target DOI>"
 ```
 
-返回截图路径的 JSON。截图可能是几秒前的画面，判断当前状态以进度为准；选校、登录、验证仍在实际下载窗口完成。
+Returns JSON with the screenshot path. The screenshot may be a few seconds old; judge the current state by the progress; school selection, sign-in and verification still happen in the actual download window.
 
-## 结果和失败分类
+## Results and failure classes
 
-读 `attempts[]` 里 `entitled_access` 的 `code` 和提示，不展示原始日志、带签名的下载地址或会话内容。批量或单篇结束后运行：
+Read the `code` and the hint of `entitled_access` in `attempts[]`; do not show raw logs, signed download addresses or session contents. After a batch or single download ends, run:
 
 ```bash
 paper-search failures --format text
 ```
 
-（默认最近一批；`--since YYYY-MM-DD`、`--runs N`、`--all`）。它把失败分成五类，每种原因有固定的说法（进度窗口、批量最后一行和汇总里都一样）；向用户说明时用这些类名和说法，不另起说法：
+(The latest batch by default; `--since YYYY-MM-DD`, `--runs N`, `--all`.) It sorts failures into five classes, and each reason has a fixed label (the same in the progress window, the batch's last line and the summary). The program prints these labels in Chinese, as below; the English in brackets is their meaning, and what the window shows in English. When explaining to the user, use these class names and reasons in the user's language (with the Chinese label as printed when it helps the user find it); do not make up other wording:
 
-| 类别 | 说法（常见 code） | 怎么说、怎么做 |
+| Class | Reasons (common codes) | What to say and do |
 | --- | --- | --- |
-| 没权限 | 学校没有订阅（`entitlement_missing`）；出版社没开通本校（`institution_federation_unavailable`、`institution_not_registered`）；你标记过没权限（`no_entitlement`）；换过学校的写“N 所学校都没有权限” | 附上汇总里的依据（页面原话或决定性的一步）。只说本篇、这几所学校用不了，不推断整个平台；出版社没开通本校时不说成学校没有订阅，建议在校园网或学校 VPN 下下载。批量已在最后换过保存的其他学校。 |
-| 要你处理 | 等你登录超时；你跳过或终止了；浏览器被关闭；浏览器被占用；密码被学校拒绝；账号被锁或密码过期 | 说明需要用户做什么（登录、等另一个任务结束、在设置里更新密码、按学校说明解锁），处理后说“接着下”；不连续重新提交登录。 |
-| 外部原因 | 被网站拦截；出版社网站出错；学校登录系统出错；学校登录中途失效；网络中断；达到每小时下载上限；全文还没上线；DOI 查不到；网站没有学校登录 | 说明是对方的问题，不说成没有权限，也不说成程序出错；建议过会儿说“接着下”，或换网络、在校园网或学校 VPN 下下载。全文还没上线的等正式发表；DOI 查不到的过几天再试，一直查不到的请用户在出版社网站按标题自己下载；网站没有学校登录的，开放获取的文章到网站上直接下载。 |
-| 暂不支持 | 只在其他平台提供；网站暂未适配；附录暂未适配 | 说明这个网站 PaperSearch 还没适配，不说成没有权限；给出汇总里的诊断文件和截图位置，建议用 `paper-search failures --export <文件.zip>` 导出记录发给维护者，急用可在校园网下自己下载。 |
-| 原因不明 | 没取到 PDF；拿错 PDF；没法确认 PDF；页面或浏览器卡住；没进入学校登录页；文章页没存下来 | 不说成没有权限；批量已在最后用同一所学校再试过一次。说明原因待查，给出汇总里的“停在哪一步”和诊断文件位置。 |
+| 没权限 (No access) | 学校没有订阅 (No school subscription, `entitlement_missing`); 出版社没开通本校 (Not enabled for school, `institution_federation_unavailable`, `institution_not_registered`); 你标记过没权限 (You marked no access, `no_entitlement`); after switching schools it reads "N 所学校都没有权限" (No access at N schools) | Add the evidence from the summary (the page's own words or the deciding step). Say only that this paper is unavailable through these schools; do not infer anything about the whole platform; when the publisher has not enabled the school, do not call it the school having no subscription; suggest downloading on the campus network or school VPN. The batch has already tried the other saved schools at the end; "go on" (接着下) does not download it again, only when the user names another saved school. |
+| 要你处理 (Needs you) | 等你登录超时 (Login wait timed out); 你跳过或终止了 (Skipped or stopped); 浏览器被关闭 (Browser closed); 浏览器被占用 (Browser in use); 密码被学校拒绝 (Password rejected); 账号被锁或密码过期 (Locked or expired) | Say what the user needs to do (sign in, wait for another task to finish, update the password in the settings, unlock as the school says), and that after that they can say "go on" (接着下); do not resubmit the login again and again. |
+| 外部原因 (External) | 被网站拦截 (Blocked by site); 出版社网站出错 (Publisher site error); 学校登录系统出错 (School login error); 学校登录中途失效 (School login lapsed); 网络中断 (Network down); 达到每小时下载上限 (Hourly limit reached); 全文还没上线 (Full text not online yet); DOI 查不到 (DOI not found); 网站不提供学校登录 (No school login offered); 网站没有 PDF (No PDF on the site) | Say it is a problem on the other side: neither no access nor a program error; suggest saying "go on" (接着下) after a while, or changing networks, or downloading on the campus network or school VPN. For full text not online yet, wait for formal publication; for DOI not found, try again in a few days; a DOI never registered is not downloaded again on "go on": ask the user to download it themselves by title on the publisher's site; for no school login offered, "go on" does not retry: download open-access articles directly on the site, and subscription content on the campus network or school VPN |
+| 待适配 (Pending support) | 只在其他平台提供 (Only on another platform: EM-Consulte, ClinicalKey, which PaperSearch has no rules for yet); 网站暂未适配 (Site not adapted yet); 附录暂未适配 (Files not adapted yet) | Say PaperSearch's rules do not cover this site yet and the maintainers will add them: not that the site cannot be supported, and not no access; give the diagnostic file and screenshot locations from the summary; suggest exporting the records with `paper-search failures --export <file.zip>` to send to the maintainers; if it is urgent, the user can download it themselves on the campus network. "go on" (接着下) downloads it again only after PaperSearch is updated. |
+| 原因不明 (Unclear) | 没取到 PDF (No PDF); 拿错 PDF (Wrong PDF); 没法确认 PDF (PDF unconfirmed); 页面或浏览器卡住 (Page or browser stuck); 没进入学校登录页 (School login not reached); 文章页没存下来 (Page not saved) | Not no access; when "失败后自动重试" (Auto-retry failures) is on in the settings, the batch has already tried once more with the same school at the end (off by default). Say the cause is still to be found, and give the summary's "停在 …" (stopped at …) step and the diagnostic file location. |
 
-`pdf_identity_unverified` / `pdf_identity_mismatch`：不能报成功，`review.path` 只是待核查的文件。
+Papers whose full text is saved and only the supplementary files are missing are not failures: the summary does not count them among the failed papers but lists them separately as "附录未下全" (Supp. missing), one line per reason.
 
-## 学校登录中途失效、接着下
+`pdf_identity_unverified` / `pdf_identity_mismatch`: never report success; `review.path` is only a file awaiting checking.
 
-- 批量下载中，一家出版社前面的篇目经学校登录下到了，之后有一篇停在学校自己的登录页、没有完成登录（登录过期；跳转卡住、网络慢、人机验证这类没到学校登录页的失败都不算），程序把这家出版社的篇目暂停：PDF、补充材料都先不下，其他出版社照常下载。收起的进度窗口在进度旁挂“已暂停 N 篇”，展开后有“学校登录中途失败，已暂停 N 篇”和“登录并继续”；用户随时可以点，其他篇目还在下载时也行，这一篇下完暂停的篇目就接着下，需要时会打开学校登录页。其他篇目都完成后，整批一直等用户点“登录并继续”或“终止”；这时命令还在运行，告诉用户回到进度窗口处理，不要另开下载。终止后这些篇目记为 `login_paused`。
-- 批量下载中电脑断网（doi.org 和 PubMed 都连不上）时，程序停下来等网络，进度窗口写“网络断了，等网络恢复后接着下”；网络恢复后重下断网时那一篇，再往下走，不把断网时的篇目判为失败。单篇下载遇到断网报 `network_unavailable`（网络中断），不是 DOI 不存在。
-- 用户说“接着下”“继续下载”“重试失败的”时，不要自己从失败列表里挑 DOI，运行：
+## School login lapses; "go on" (接着下)
+
+- In a batch download, when earlier papers from a publisher were downloaded through the school login, and then a paper stops on the school's own login page without completing sign-in (login expired; failures that never reached the school login page, such as a stuck redirect, a slow network or human verification, do not count), the program pauses that publisher's papers: the PDF, and supplementary files all wait, while other publishers keep downloading. The collapsed progress window shows "已暂停 N 篇" (N paused) next to the progress; expanded, it has "学校登录中途失败，已暂停 N 篇" (Login lapsed: N paused) and "登录并继续" (Sign in & resume); the user can press it at any time, even while other papers are still downloading; once the current paper finishes, the paused papers go on, opening the school login page when needed. Once all other papers are done, the whole batch waits until the user presses "登录并继续" or "终止" (Stop); the command is still running then: tell the user to go back to the progress window; do not start another download. After a stop, these papers are recorded as `login_paused`.
+- When the computer goes offline during a batch download (neither doi.org nor PubMed can be reached), the program stops and waits for the network, and the progress window says "网络断了，等网络恢复后接着下" (Offline; waiting to go on); once the network is back it downloads again the paper that was cut off and goes on, without marking the papers during the outage as failed. A single download that meets an outage reports `network_unavailable` (网络中断, Network down), not a DOI that does not exist.
+- When the user says "go on" (接着下), "继续下载" (continue downloading) or "重试失败的" (retry the failed ones), do not pick DOIs from the failure list yourself; run:
 
 ```bash
 paper-search run download_batch --json-args '{"resume":"latest"}'
 ```
 
-  它读上一批的运行记录：没下到的篇目按原来的内容重下；PDF 已有、补充材料没下全（没轮到、失败、登录失效）的只补缺的部分，不再下 PDF；都放进原来那批的下载文件夹。确实没有全文来源的不再补。批量被强行中断（如电脑重启）时，还没轮到、运行记录里没有的篇目也照这一批要下的清单重下。文章页查过、没有补充材料的篇目不再重查；某次接着下被终止时，没处理的篇目照旧按原来的情况算。要接着下更早的一批，把 `latest` 换成 `paper-search failures` 给出的运行 ID。原来那批设过环境变量（如 `XDG_DATA_HOME`，换学校的单独数据目录）时，用同样的环境变量运行。
+  It reads the last batch's run log: papers not downloaded are downloaded again with their original contents; papers whose PDF exists but whose supplementary files are incomplete (not reached, failed, login lapsed) get only the missing part, and the PDF is not downloaded again; everything goes into the original batch's download folder. Papers that truly have no full-text source are not retried. When a batch was cut off by force (such as a computer restart), papers not reached and missing from the run log are also downloaded again from this batch's list. Papers whose article page was checked and had no supplementary files are not checked again; when one "go on" run is stopped, the unprocessed papers count as they did before. To go on with an earlier batch, replace `latest` with the run ID that `paper-search failures` gives. When the original batch set environment variables (such as `XDG_DATA_HOME`, a separate data directory for switching schools), run it with the same environment variables.
 
-## 导出失败记录
+## Export failure records
 
 ```bash
 paper-search failures --export ./failure-report.zip
-paper-search failures --run <运行ID> --doi <DOI> --export ./failure-report.zip
+paper-search failures --run <run ID> --doi <DOI> --export ./failure-report.zip
 ```
 
-默认最近一批，可用 `--since YYYY-MM-DD` 或 `--runs N` 替换 `--run`；三者互斥。`--all` 只控制文字汇总显示，不限制导出数量。正文成功但附件失败或未完成的篇目也会列出，已完成的空附件检查不是失败。
+The latest batch by default; `--since YYYY-MM-DD` or `--runs N` can replace `--run`; the three are mutually exclusive. `--all` controls only the text summary, not how much is exported. Papers whose full text succeeded but whose attachments failed or did not finish are listed too; a completed check that found no attachments is not a failure.
 
-扩展需支持 `report-export`；旧扩展会明确报错，不会自动安装、更新或发起下载。导出过程离线，只读源记录；同名 ZIP 不覆盖。单包最多 100 篇、64 MiB 未压缩材料，超限时缩小筛选范围。材料缺失、超限和排除原因见包内 `manifest.json`、`summary.md`，不能把缺少 HTML 当作已采集。
+The extension must support `report-export`; an old extension reports a clear error and does not install, update or start a download automatically. The export is offline and reads only the source records; an existing ZIP of the same name is not overwritten. One package holds at most 100 papers and 64 MiB of uncompressed material; beyond that, narrow the selection. Missing material, limits exceeded and the reasons for leaving things out are in the package's `manifest.json` and `summary.md`; missing HTML must not be treated as collected.
 
-导出副本去除学校标识、个人路径和认证参数；登录页、学校站点或来源不明的截图不附带。用户公开前须检查剩余 HTML、文本和图片中的姓名、邮箱、学号等信息。帮助用户整理 issue 时使用包内摘要，不复制原始诊断、Cookie、浏览器 profile 或下载全文；未获明确授权不上传包、不提交 issue。导出失败不能声称已得到可分享记录。
+The exported copy removes school identifiers, personal paths and authentication parameters; screenshots of login pages, school sites or unknown sources are not included. Before making it public, the user must check the remaining HTML, text and images for names, emails, student numbers and the like. When helping the user write an issue, use the summary in the package; do not copy raw diagnostics, cookies, browser profiles or downloaded full texts; without the user's clear permission, do not upload the package or submit an issue. When the export fails, do not claim that a shareable record was produced.
 
-## 补充材料
+## Supplementary files
 
-- `download_with_fallback` / `download_batch` 的 `content` 里写 `supplements`：只写它时只取补充材料，不走正文的各层；和 `pdf` 一起写时 PDF 和补充材料都取。
-- 补充材料只经学校订阅下载的浏览器取得：PDF 由开放渠道拿到时，会再请它单独取补充材料；它没装或没启用时，这一步记为 `skipped`，写明没有可用的后端。
-- 哪些出版社有补充材料规则见 `publisher-support.md`。完成检查但页面未列出附件时返回空 `supplements`，attempt 为 `skipped/no_supplements`；只取补充材料时整体 `status=ok`，表示检查完成，不表示保存了文件。这家网站没有补充材料专门规则时先按通用规则取文章页补充材料区块里地址带本文 DOI 的文件，仍没有找到时 attempt 为 `skipped/supplements_not_supported`，整体仍为 `ok`：不知道有没有附件，告诉用户“网站暂不支持自动下载附录”，需要的话打开文章页手动下载，不要说成没有附录。登录未完成（`login_required`）、验证未完成（`challenge_timeout`）、网站的人机验证页挡住了附件下载（`verification_page`，如 Figshare）、拿到网页而不是文件（`html_page`）与其他下载失败分别报告，只取补充材料时为 `error`，不影响已保存正文。
-- 文件存在 `<savePath>/<期刊缩写_年月_标题>/supplements/`（同一次下载里同名的另一篇加 `_2`），正文也移进这个文件夹；没取到附件的论文，正文平铺在 `<savePath>` 里；`…_supplements-manifest.json` 记录每个文件的状态（`saved`、`failed`、`skipped`）和原因，在结果 `runLog` 所指的运行记录目录里：有文件没下到时在 `diagnostics/`，都下到时在 `records/`；结果里的 `supplements` 给出实际文件路径。
-- 上限：每篇最多 50 个文件；文件不限大小（在浏览器自带的 PDF 阅读器里打开的除外，超过 1 GB 记 `too_large`）；3 分钟没有进展、或一篇总共超过 15 分钟就停。超出的记 `skipped`（原因 `file_limit`、`too_large`、`time_budget`）。`html_page` 表示链接打开的是网页而不是文件，`http_403` 一类是网站拒绝。
-- 只收本文的文件：别的文章的文件、本文的插图、参考文献里的链接都不收。Figshare 公开 article/collection 链接按原文 DOI 关联后解析文件；其他外部附件平台仍需适配。
-- 补充材料、利益冲突声明里也可能印着目标标题和 DOI；不要把补充材料 PDF 当正文交付，正文成功也不代表补充材料齐全。
-- 个别网站（目前 Taylor & Francis）拒绝程序直接下载补充材料时，改由浏览器自己下载，清单里写 `via: browser_download`；浏览器下载列表里会出现以一串编号命名、没有扩展名的记录，文件已按真实文件名保存在 `_supplements` 目录，这些记录可在浏览器下载页清除。
+- Put `supplements` in the `content` of `download_with_fallback` / `download_batch`: alone, it fetches only the supplementary files and skips the full-text layers; with `pdf`, both the PDF and the supplementary files are fetched.
+- Supplementary files are fetched only through the browser of school subscription downloads: when the PDF came from an open channel, it is asked separately for the supplementary files; when it is not installed or not enabled, this step is recorded as `skipped`, stating that no backend is available.
+- Which publishers have supplementary-file rules: see `publisher-support.md`. When the check completes but the page lists no attachments, the result has an empty `supplements` and the attempt is `skipped/no_supplements`; when only supplementary files were asked for, the overall `status=ok` means the check completed, not that files were saved. When the site has no dedicated supplementary-file rules, the general rules first fetch the files in the article page's supplementary section whose addresses contain this article's DOI; when nothing is found, the attempt is `skipped/supplements_not_supported` and the overall result is still `ok`: whether there are attachments is unknown; tell the user "the site is not yet supported for downloading supplementary files automatically", and that if needed they can open the article page and download them by hand; do not say there are no supplementary files. Sign-in not completed (`login_required`), verification not completed (`challenge_timeout`), a site's human-verification page blocking the attachment download (`verification_page`, such as Figshare), a web page instead of a file (`html_page`) and other download failures are reported separately; when only supplementary files were asked for, the result is `error`, which does not affect a full text already saved.
+- Files are saved in `<savePath>/<journal abbreviation_year-month_title>/supplements/` (another paper with the same name in the same download gets `_2`), and the full text moves into this folder too; papers without attachments keep their full text directly in `<savePath>`; `…_supplements-manifest.json` records each file's status (`saved`, `failed`, `skipped`) and reason, in the run-log directory that the result's `runLog` points to: in `diagnostics/` when some files were not downloaded, in `records/` when all were; `supplements` in the result gives the actual file paths.
+- Limits: at most 50 files per paper; no file size limit (except files opened in the browser's own PDF viewer: over 1 GB is recorded as `too_large`); it stops after 3 minutes without progress, or after more than 15 minutes in total for one paper. Anything beyond is recorded as `skipped` (reasons `file_limit`, `too_large`, `time_budget`). `html_page` means the link opened a web page, not a file; `http_403` and the like mean the site refused.
+- Only this article's files are taken: files of other articles, this article's figures and links in the references are not. Public Figshare article/collection links are resolved into files when linked to the article's DOI; other external attachment platforms still need adapting.
+- Supplementary files and conflict-of-interest statements may also carry the target title and DOI; never deliver a supplementary PDF as the full text; a successful full text does not mean the supplementary files are complete.
+- When a site (currently Taylor & Francis) refuses the program's direct download of supplementary files, the browser downloads them itself, and the list says `via: browser_download`; the browser's download list then shows entries named with a string of numbers and no extension; the files are already saved under their real names in the `_supplements` directory, and these entries can be cleared from the browser's downloads page.
 
-## 确认下载成功
+## Confirm the download succeeded
 
-以命令的最终成功、实际保存的文件和 PDF 首页的身份核验为准：首页 DOI 和题名对得上目标。参考文献里提到目标 DOI 不算；`review.path`、浏览器里显示 PDF、进程退出码为零都不能单独证明成功。浏览器下载列表里的随机文件名、无扩展名或失败记录来自临时下载，不能代替正式输出文件，也不能仅凭名称判断内容错误。交付时给出实际文件路径、目标 DOI 和本次结果。
+Go by the command's final success, the files actually saved and the identity check on the PDF's first page: the DOI and title on the first page match the target. The target DOI appearing in the references does not count; `review.path`, a PDF shown in the browser, or an exit code of zero cannot prove success on their own. Random file names, files without extensions or failed entries in the browser's download list come from temporary downloads; they cannot replace the official output files, and their names alone cannot show that the content is wrong. When delivering, give the actual file path, the target DOI and this result.

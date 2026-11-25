@@ -188,8 +188,10 @@ function batchOutcome(result, folder, content) {
     const index = join(folder, RUN_FOLDER, INDEX_FILE);
     const markdownMissing = items.filter((item) => item.markdown && item.markdown.status !== "ok").length;
     const supplementsMissing = items.filter((item) => supplementShortfall(item)).length;
-    // Saved, its checks against a registered site's page finding something short: to look over (user, 2026-11-17).
-    const markdownPossiblyShort = items.filter((item) => item.status === "ok" && item.markdown?.possiblyMissing).length;
+    // Saved, its checks against a registered site's page finding something short: to look over (user, 2026-11-17);
+    // or saved without figures that did not download, marked in it (user, 2026-11-23).
+    const markdownPossiblyShort = items.filter((item) => item.status === "ok"
+        && (item.markdown?.possiblyMissing || item.markdown?.missingFigures?.length)).length;
     return {
         ...totals,
         content,
@@ -230,7 +232,8 @@ function withoutMarkdown(plan) {
 async function resumeBatch(args, which, searchers, schoolBackend) {
     // Which sites PaperSearch Pro has rules for decides the Markdown to fill (resume.ts).
     await loadMarkdownPro();
-    const planned = planResume(which, process.env, args.markdownAgain ? { markdownAgain: args.markdownAgain } : {});
+    const planned = planResume(which, process.env, { ...(args.markdownAgain ? { markdownAgain: args.markdownAgain } : {}),
+        ...(args.school?.trim() ? { school: args.school.trim() } : {}) });
     if (typeof planned === "string")
         return jsonTextResponse(`Nothing to go on with: ${planned}`);
     const plan = proFeatures() ? planned : withoutMarkdown(planned);
@@ -263,12 +266,17 @@ async function resumeBatch(args, which, searchers, schoolBackend) {
     }
     const summary = { from: plan.runId, folder: plan.folder, content: contentKinds(plan.content, plan.fulltext),
         complete: plan.complete, retried: plan.retry.length, ...(plan.unreached ? { notReached: plan.unreached } : {}),
+        ...(plan.notRetried ? { notRetried: plan.notRetried } : {}),
         filesOnly: plan.files.length, markdownOnly: plan.markdown.length };
-    const said = !papers && !filled.length ? "every paper of it is complete"
+    // Papers left as they were: another try would end the same (resume.ts ``notAgain``), said with their reasons.
+    const left = plan.notRetried
+        ? ` Not downloaded again, another try would end the same: ${Object.entries(plan.notRetried).map(([why, n]) => `${why} ${n}`).join(", ")}.`
+        : "";
+    const said = !papers && !filled.length ? (plan.notRetried ? "nothing left that another try would change" : "every paper of it is complete")
         : [papers && `${papers.succeeded}/${papers.total} papers saved`,
             ...filled.map(({ got, result }) => `${result.succeeded}/${result.total} papers got ${got}`)].filter(Boolean).join("; ");
     const outcome = (result, fulltext) => batchOutcome(result, plan.folder, contentKinds(result.content, fulltext));
-    return jsonTextResponse(`Went on with ${plan.runId}: ${said}.\n\n${JSON.stringify({ resume: summary,
+    return jsonTextResponse(`Went on with ${plan.runId}: ${said}.${left}\n\n${JSON.stringify({ resume: summary,
         ...(papers ? { papers: outcome(papers, plan.fulltext) } : {}),
         ...(filled.length ? { filled: filled.map(({ result, fulltext }) => outcome(result, fulltext)) } : {}) }, null, 2)}`);
 }

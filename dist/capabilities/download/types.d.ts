@@ -52,6 +52,8 @@ export interface DownloadStageRecord {
         text?: number;
         tables?: boolean;
     };
+    /** The Markdown's stage: the figures it was saved without, marked in article.md (the batch's index says them). */
+    missingFigures?: string[];
     /** The Markdown's stage: a registered site's page converted by other rules than its listed ones. */
     rulesFallback?: {
         host: string;
@@ -106,7 +108,8 @@ export interface DownloadWithFallbackOptions {
 /** The Markdown of a download: its full-text package (content markdown, or --markdown). */
 export interface FulltextSummary {
     /**
-     * ok: saved; incomplete: a full text missing figures, not kept (code figures_missing);
+     * ok: saved (missingFigures: without some figures, marked in it); incomplete: a full text
+     * missing figures or a table, not kept (code figures_missing, tables_missing);
      * abstract_only / unavailable: no full text found; error: it failed.
      */
     status: "ok" | "incomplete" | "abstract_only" | "unavailable" | "error";
@@ -153,6 +156,11 @@ export interface FulltextSummary {
         text?: number;
         tables?: boolean;
     };
+    /**
+     * Saved without these figures (their labels), which did not download: each is marked at its
+     * place in article.md; a batch tries them once more at its end (user, 2026-11-23).
+     */
+    missingFigures?: string[];
     /**
      * A registered site's page its listed rules did not convert (abstract only, figures or tables
      * left out), converted completely by other rules (user, 2026-11-18): which, and why.

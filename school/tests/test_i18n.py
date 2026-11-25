@@ -67,6 +67,7 @@ JOINED = {
     "第 \x00/\x00 篇\x00，等待下一篇": "第 3/10 篇已保存，等待下一篇",
     "已检查": "第 3/10 篇已检查，等待下一篇",
     "未完成": "第 3/10 篇未完成，等待下一篇",
+    "\x00 再试 · \x00": "16:58 再试 · 被网站拦截",
 }
 #: A page's script, a selector on it or a regular expression: words looked for, not said.
 CODE = re.compile(r"=>|has-text\(|\(\?:|\|")
@@ -117,6 +118,7 @@ class EnglishTableTests(unittest.TestCase):
         for group in api_keys.groups():
             texts.append(group["title"])
             texts += [s.get("use", "") for s in group["services"]] + [s.get("guide_label", "") for s in group["services"]]
+            texts += [k["label"] for s in group["services"] for k in s["keys"]]
         self.assertEqual(untranslated(texts), [])
 
     def test_the_downloads_prompts_and_phases(self):
@@ -124,7 +126,7 @@ class EnglishTableTests(unittest.TestCase):
         self.assertGreater(len(texts), 10)
         self.assertEqual(untranslated(texts), [])
         for formatted in ("第 3/10 篇已保存，等待下一篇", "第 3/10 篇：进入机构访问", "已完成 2/9 篇，等待下一篇",
-                          "这篇文章只在 Ovid 平台提供，暂不支持，当前路径已停止", "批量下载结束：成功 3，失败 1",
+                          "这篇文章只在 Ovid 平台提供，PaperSearch 还没有这个平台的规则，当前路径已停止", "批量下载结束：成功 3，失败 1",
                           "补充材料已保存 4 个", "请输入 30 到 1800 之间的整数", "已收到：选错了学校，正在处理",
                           "已记录页面；处理时出错（TimeoutError）"):
             self.assertFalse(HAN.search(english(formatted)), formatted)
@@ -169,8 +171,14 @@ class EnglishTableTests(unittest.TestCase):
                 return [s for v in value for s in strings(v, key)]
             return []
 
+        # The papers held for a later try and the next school (user, 2026-11-23), and what 重试's list says of them (2026-11-24).
+        states.append({**running, "later": {"no_access": 2, "blocked": 1, "blocked_at": now + 600},
+                       "switch_note": {"school": "Hongmulan University", "at": now}})
         shown = [s for state in states for s in strings(pv.view(state, now))]
+        shown += ["重试", "重试 5 篇", "换学校再试 · 没权限", "最后再试一次 · 原因不明", "16:58 再试 · 被网站拦截",
+                  "登录后继续 · 学校登录中途失效"]
         self.assertEqual(untranslated(shown), [])
+        self.assertEqual(english("换Hongmulan University再试"), "Retrying with Hongmulan University")
 
     def test_every_text_the_windows_show_is_in_the_table(self):
         """User, 2026-11-21: all the capsule may show is in the tables. A text added to a window's source and not to

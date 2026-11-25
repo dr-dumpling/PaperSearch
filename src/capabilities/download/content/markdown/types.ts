@@ -42,7 +42,11 @@ export interface FulltextFigure {
 }
 
 export interface FulltextOutcome {
-  /** incomplete: a full text missing figures, not kept (code figures_missing). */
+  /**
+   * incomplete: a full text missing figures or a table, not kept (code figures_missing: a
+   * record without its figures' files, or an earlier whole package kept in its place;
+   * tables_missing).
+   */
   status: "ok" | "incomplete" | "abstract_only" | "unavailable" | "error";
   source?: FulltextVia;
   /** The package's files, when written. */
@@ -58,6 +62,11 @@ export interface FulltextOutcome {
   unverified?: UnverifiedSite;
   /** Saved from a registered site's page whose checks found something short (user, 2026-11-17). */
   possiblyMissing?: Shortfall;
+  /**
+   * Saved without these figures (their labels), which did not download: each is marked at its
+   * place in article.md, and a batch tries them once more at its end (user, 2026-11-23).
+   */
+  missingFigures?: string[];
   /** A registered site's page its listed rules did not convert, converted by other rules (user, 2026-11-18). */
   rulesFallback?: RulesFallback;
 }

@@ -75,13 +75,15 @@ class OUPAdapter(PublisherAdapter):
         if not doi:
             return True
         # <prefix>/<journal>/<id>: Oxford's own 10.1093 and the journals it hosts for
-        # others under their prefixes (Karger's 10.1159/ned/…, 2026-11-14).
+        # others under their prefixes (Karger's 10.1159/ned/…, 2026-11-14). The PDF is named
+        # by <id>, under the site's own journal path, which is not always the DOI's journal code
+        # (Sexual Medicine Open Access: 10.1093/sexmed/qfaf103 at /smoa/, an open article with no
+        # PDF tried, Windows 2026-11-23; 89 of 451 journals in acceptance/catalog/oup.csv, e.g.
+        # Neuro-Oncology's neuonc at /neuro-oncology/). The PDF's first page is checked after.
         parts = doi.lower().split("/", 2)
         if len(parts) != 3:
             return False
-        return (f"/doi/{doi.lower()}/" in path
-                or (path.startswith(f"/{parts[1]}/article-pdf/")
-                    and path.rsplit("/", 1)[-1] == parts[2] + ".pdf"))
+        return f"/doi/{doi.lower()}/" in path or path.rsplit("/", 1)[-1] == parts[2] + ".pdf"
 
     def is_institution_chooser(self, url: str) -> bool:
         host = (urlparse(url or "").hostname or "").lower()
@@ -149,6 +151,7 @@ class OUPAdapter(PublisherAdapter):
         d._raise_on_publisher_content_error(page)
         if not d._wait_for_challenge(page, result, deadline=time.time() + max(0, opened_by - time.monotonic())):
             return False
+        d._note_article_host(page)  # the site the article opened on, as the engine's own flow keeps it
         d._raise_on_publisher_content_error(page)
         d._dismiss_cookie_banners(page, result)
         if d._institution_pdf_entitlement_missing(page):

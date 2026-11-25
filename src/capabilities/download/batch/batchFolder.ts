@@ -146,8 +146,9 @@ function markdownCell(paper: LedgerPaper): string {
   const markdown = paper.markdown;
   if (!markdown) return "";
   if (markdown.status === "ok") {
-    // Its checks against a registered site's page found something short (user, 2026-11-17).
-    const doubt = markdownDoubt({ status: "ok", possiblyMissing: markdown.possiblyMissing, message: "" });
+    // Its checks against a registered site's page found something short (user, 2026-11-17), or
+    // figures did not download (marked in it, user 2026-11-23).
+    const doubt = markdownDoubt({ status: "ok", possiblyMissing: markdown.possiblyMissing, missingFigures: markdown.missingFigures });
     return doubt ? `已保存（${doubt.note}）` : "已保存";
   }
   return `未生成：${markdownMissing({ status: markdown.status, code: markdown.code, message: "" } as Parameters<typeof markdownMissing>[0]).reason}`;

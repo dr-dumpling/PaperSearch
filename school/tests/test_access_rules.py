@@ -157,6 +157,20 @@ class DenialTests(unittest.TestCase):
         self.assertTrue(self.d()._institution_pdf_entitlement_missing(page(self.ARTICLE, body)))
         self.assertFalse(self.d()._institution_pdf_entitlement_missing(page(self.ARTICLE, body.replace("Hong Mu-lan", "Peking"))))
 
+    def test_a_denial_naming_an_institution_on_nature_com_is_read_and_checked_by_the_schools_login(self):
+        # Nature Cities (Windows 2026-11-24): the name in <strong> with no spaces around it, a consortium's,
+        # not the school's: the school's own login decides, after it the denial is the school's.
+        for line in ("Access to this article viaExample Consortium Academicis not available.",
+                     "Access to this article via Example Consortium Academic is not available."):
+            self.assertEqual(rules.denial_line(["Access options", line, "Change institution"]),
+                             (line, "Example Consortium Academic"))
+        body = "Access options\nAccess to this article viaExample Consortium Academicis not available.\nChange institution"
+        d = self.d()
+        self.assertFalse(d._institution_pdf_entitlement_missing(page(self.ARTICLE, body)))
+        d._item_result._visited_idp = True
+        self.assertTrue(d._institution_pdf_entitlement_missing(page(self.ARTICLE, body)))
+        self.assertFalse(rules.has_denial_line("If access via your institution is not available, contact us."))
+
     def test_conditional_quoted_and_help_copy_is_no_denial(self):
         for text in ("If you do not have access to this article, contact your librarian.",
                      "FAQ: You do not have access to this article.", "Help\nYou do not have access to this PDF.",

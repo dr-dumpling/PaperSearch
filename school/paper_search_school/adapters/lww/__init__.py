@@ -1,7 +1,8 @@
 """Wolters Kluwer / LWW: publisher-wide answers and two site types.
 
-    LWWAdapter (this module)        the PDF (always Ovid's), the Wolters Kluwer
-                                    login page's federated option
+    LWWAdapter (this module)        the PDF (Ovid's, or journals.lww.com's own for
+                                    a journal still shown there), the Wolters
+                                    Kluwer login page's federated option
       ├─ JournalsLwwSite (journals_lww.py)   journals.lww.com article pages
       └─ OvidSite        (ovid.py)           ovid.com/jnls/ article pages
 
@@ -20,6 +21,9 @@ from .journals_lww import JournalsLwwSite
 from .ovid import OvidSite
 
 _PDF = re.compile(r"/jnls/[^/]+/pdf/(10\.\d{4,9}/.+|\d{8}-\d{9}-\d{5})")
+# A journal still shown on journals.lww.com serves its PDF there, at the DOI
+# (Critical Care Medicine's /ccmjournal/pdf/10.1097/ccm...~title, 2026-11-25).
+_LWW_PDF = re.compile(r"/[^/]+/pdf/(10\.\d{4,9}/.+)")
 SDC_HOST = "links.lww.com"
 # The article's "Supplemental Digital Content" list (Ovid: .lww-article-sdc).
 _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href*="links.lww.com/"]')].map(a => ({
@@ -32,7 +36,8 @@ class LWWAdapter(PublisherAdapter):
     publisher = "lww"
     validates_article_pdf = True
     keeps_pdf_out_of_downloads = True
-    native_pdf_patterns = ("https://www.ovid.com/jnls/*/pdf/*", "https://ovid.com/jnls/*/pdf/*")
+    native_pdf_patterns = ("https://www.ovid.com/jnls/*/pdf/*", "https://ovid.com/jnls/*/pdf/*",
+                           "https://journals.lww.com/*/pdf/*")
     # --fulltext: the article page is Ovid's (journals.lww.com links lead there); its rules are ovid.py's.
     fulltext_shown_js = ovid.FULLTEXT_SHOWN_JS
     fulltext_images_js = ovid.FULLTEXT_IMAGES_JS
@@ -52,14 +57,17 @@ class LWWAdapter(PublisherAdapter):
         return ovid.is_redirect(url)
 
     def is_article_pdf_url(self, url: str, doi: str = "") -> bool | None:
-        # The PDF is always Ovid's, also for articles shown on journals.lww.com.
+        # Ovid's PDF, also for most articles shown on journals.lww.com; a journal
+        # still shown there has its own (_LWW_PDF).
         parsed = urlparse(url)
         path = unquote(parsed.path).lower().split("~", 1)[0].rstrip("/")
-        match = _PDF.fullmatch(path)
+        host = parsed.hostname
+        match = (_PDF.fullmatch(path) if host in ovid.HOSTS
+                 else _LWW_PDF.fullmatch(path) if host == journals_lww.HOST else None)
         # Older Ovid URLs use the numeric article ID (the DOI suffix), without
         # its registrant prefix. Still require the exact requested article.
         identifiers = {doi.lower(), doi.lower().partition("/")[2]} if doi else set()
-        return (parsed.scheme == "https" and parsed.hostname in ovid.HOSTS
+        return (parsed.scheme == "https"
                 and match is not None and (not doi or match[1] in identifiers)
                 and not self.d._is_supplementary_url(url))
 

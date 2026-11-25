@@ -19,13 +19,22 @@ describe("failure classes (ADR 0012)", () => {
     expect(classifyFailureCode("idp_no_return_to_publisher")).toBe("external");
     expect(classifyFailureCode("login_paused")).toBe("external");
     expect(classifyFailureCode("access_blocked")).toBe("external");
+    // A human verification not passed in time is the site's block, not a page that hung (JAMA, BMJ, 2026-11-23); so are
+    // the papers a batch paused for it and left untried, and a files page answering 429 (BMJ Open).
+    for (const code of ["captcha_required", "blocked_paused", "http_429", "figshare_http_403", "challenge_timeout",
+      "publisher_access_blocked"]) {
+      expect([code, classifyFailureCode(code)]).toEqual([code, "external"]);
+    }
     expect(classifyFailureCode("network_unavailable")).toBe("external");
     expect(classifyFailureCode("doi_not_resolved")).toBe("external");
     expect(classifyFailureCode("article_not_yet_published")).toBe("external");
     // A site offering no school login at all (an open-access one): the site's doing, not no access.
     expect(classifyFailureCode("no_institution_entry")).toBe("external");
+    // An open article whose site gives it as a web page only (CAA Reviews).
+    expect(classifyFailureCode("pdf_not_offered")).toBe("external");
     // PaperSearch's to fix: no rules for the site, or its rules missed the journal's page.
     expect(classifyFailureCode("publisher_institution_entry_missing")).toBe("unsupported");
+    // Only on a platform without rules (EM-Consulte, ClinicalKey): its access never tried, not no access (user, 2026-11-25).
     expect(classifyFailureCode("unsupported_platform")).toBe("unsupported");
     expect(classifyFailureCode("unsupported_publisher")).toBe("unsupported");
     expect(classifyFailureCode("generic_institution_entry_missing")).toBe("unsupported");

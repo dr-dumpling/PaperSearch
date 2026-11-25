@@ -9,18 +9,43 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { resolveRunLogRoot } from "../../../infrastructure/runlog/RunLedger.js";
+import { classifyFailureCode } from "../../../infrastructure/runlog/failureClass.js";
+import { paperSearchVersion, resolveRunLogRoot } from "../../../infrastructure/runlog/RunLedger.js";
 import { SCHOOL_UPDATE_NEEDED } from "../../../infrastructure/school/index.js";
 import { markdownPro } from "../content/markdown/pro.js";
 import { RUN_FOLDER } from "./batchFolder.js";
-/** The stop's own entries: nothing was tried for these files. */
-const NOT_TRIED = new Set(["batch_stopped", "user_skipped"]);
+/**
+ * Why a paper not saved is not downloaded again: another try would end the same (user, 2026-11-24, after Nature Digest's
+ * natureasia.com). Its site offers no school login (网站不提供学校登录), or no PDF (网站没有 PDF, CAA Reviews); the DOI
+ * was never registered at doi.org; no access (没权限: the batch's end tried the other saved schools), unless this run
+ * names another school; no rules for it yet
+ * (待适配), unless PaperSearch has been updated since the run that recorded it (its rules may have been added). Undefined:
+ * downloaded again.
+ */
+function notAgain(paper, otherSchool) {
+    const code = paper.reason ?? "";
+    if (code === "no_institution_entry")
+        return "网站不提供学校登录";
+    if (code === "pdf_not_offered")
+        return "网站没有 PDF";
+    if (code === "doi_not_registered")
+        return "DOI 从没登记";
+    const kind = code ? classifyFailureCode(code) : undefined;
+    if (kind === "no_access" && !otherSchool)
+        return "没权限";
+    if (kind === "unsupported" && paper.version && paper.version === paperSearchVersion())
+        return "待适配";
+    return undefined;
+}
+/** The stop's own entries, and a blocked publisher's papers the batch left untried: nothing was tried for these files. */
+const NOT_TRIED = new Set(["batch_stopped", "user_skipped", "blocked_paused"]);
 const notTried = (files) => files.length > 0 && files.every((file) => file.status !== "saved" && NOT_TRIED.has(String(file.reason ?? "")));
 /**
- * A file not to ask for again: the site has no rule for its files, or listed none. A file once
+ * A file not to ask for again: the site has no rule for its files, or listed none, or answered 404 for one its page
+ * lists (a file it does not have; user, 2026-11-24). A file once
  * past the size limit is asked for again: files written to disk have none since 2026-11-17.
  */
-const FINAL_FILE_REASONS = new Set(["supplements_not_supported", "no_supplements"]);
+const FINAL_FILE_REASONS = new Set(["supplements_not_supported", "no_supplements", "http_404"]);
 /**
  * A Markdown not got for want of the login, an older extension or time (stopped), or not
  * kept for missing figures (user, 2026-11-16), not for want of a source: asked for again.
@@ -48,6 +73,10 @@ function siteNamed(message) {
 function markdownMissing(markdown) {
     if (markdown && NOW_SUPPORTED_CODES.has(markdown.code ?? "") && (markdown.untried || (markdown.host && markdownPro()?.hasRulesForUrl(`https://${markdown.host}/`))))
         return true;
+    // Saved without figures that did not download (marked in it, user 2026-11-23): made again, as
+    // one not kept for them was before.
+    if (markdown?.status === "ok" && markdown.missingFigures?.length)
+        return true;
     return !markdown || markdown.status === "error" || MARKDOWN_AGAIN_CODES.has(markdown.code ?? "");
 }
 function readJson(file) {
@@ -64,6 +93,7 @@ function readPapers(dir) {
     if (!existsSync(file))
         return [];
     const papers = [];
+    const version = readJson(join(dir, "run.json"))?.paperSearchVersion;
     for (const line of readFileSync(file, "utf8").split("\n")) {
         if (!line.trim())
             continue;
@@ -85,11 +115,14 @@ function readPapers(dir) {
                 ...(markdown ? { markdown: { status: String(markdown.status ?? ""), ...(markdown.code ? { code: String(markdown.code) } : {}),
                         ...(siteNamed(String(markdown.message ?? "")) ? { host: siteNamed(String(markdown.message ?? "")) } : {}),
                         ...(/has no converter/i.test(String(markdown.message ?? "")) ? { untried: true } : {}),
-                        ...(markdown.possiblyMissing && typeof markdown.possiblyMissing === "object" ? { possiblyMissing: markdown.possiblyMissing } : {}) } } : {}),
+                        ...(markdown.possiblyMissing && typeof markdown.possiblyMissing === "object" ? { possiblyMissing: markdown.possiblyMissing } : {}),
+                        ...(Array.isArray(markdown.missingFigures) && markdown.missingFigures.length
+                            ? { missingFigures: markdown.missingFigures.map(String) } : {}) } } : {}),
                 ...(Array.isArray(item.stages) && item.stages.some((stage) => stage?.stage === "entitled_access"
                     && stage?.status === "ok") ? { byVisit: true } : {}),
                 ...(item.status === "ok" && saved ? { source: String(saved.stage) } : {}),
                 ...(item.status !== "ok" && failed ? { reason: String(failed.code) } : {}),
+                ...(typeof version === "string" && version ? { version } : {}),
                 ...(markdown?.status === "ok" && typeof markdown.path === "string" ? { markdownFile: markdown.path } : {}),
             });
         }
@@ -188,12 +221,20 @@ export function planResume(which, env = process.env, options = {}) {
     const files = [];
     const markdown = [];
     let complete = 0;
+    const notRetried = {};
+    const batchSchool = [...chain].reverse().map(({ run }) => run.school).find((name) => typeof name === "string" && !!name.trim());
+    // Another saved school named for this run: the papers without access go to it.
+    const otherSchool = !!options.school?.trim() && options.school.trim() !== batchSchool?.trim();
     const item = (paper) => ({
         ...(paper.doi ? { doi: paper.doi } : {}), paperId: paper.paperId, ...(paper.title ? { title: paper.title } : {}),
     });
     for (const paper of [...papers.values()].sort((a, b) => a.index - b.index)) {
         if (paper.status !== "ok") {
-            retry.push(item(paper));
+            const why = notAgain(paper, otherSchool);
+            if (why)
+                notRetried[why] = (notRetried[why] ?? 0) + 1;
+            else
+                retry.push(item(paper));
             continue;
         }
         // No record of its files after the institutional visit for its PDF: that visit checked the
@@ -222,10 +263,10 @@ export function planResume(which, env = process.env, options = {}) {
         retry.push(asked);
         unreached += 1;
     }
-    const school = [...chain].reverse().map(({ run }) => run.school).find((name) => typeof name === "string" && !!name.trim());
+    const school = batchSchool;
     // The serial runs (supplements or Markdown alone) record their content as their mode, not a batch mode.
     const mode = [...chain].reverse().map(({ run }) => run.mode).find((value) => value === "two_phase" || value === "per_item" || value === "entitled_only");
     return { runId: first, folder, content, fulltext, ...(school ? { school } : {}), ...(mode ? { mode } : {}),
-        retry, ...(unreached ? { unreached } : {}), files, markdown, complete };
+        retry, ...(unreached ? { unreached } : {}), ...(Object.keys(notRetried).length ? { notRetried } : {}), files, markdown, complete };
 }
 //# sourceMappingURL=resume.js.map

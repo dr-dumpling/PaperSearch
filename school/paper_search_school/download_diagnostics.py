@@ -29,6 +29,7 @@ unsupported_platform unsupported_publisher user_skipped user_marked_no_entitleme
 article_not_yet_published doi_not_resolved doi_not_registered network_unavailable
 institution_federation_unavailable browser_unresponsive browser_operation_timeout login_not_reached idp_no_return_to_publisher
 generic_institution_entry_missing no_institution_entry browser_closed browser_connection_lost
+pdf_not_offered
 """.split())
 _STATES = _FAILURES | _STATUSES | frozenset("""
 started article_loaded article_loaded_after_sso pdf_response_captured
@@ -58,9 +59,9 @@ pdf_capture_started pdf_navigation_error pdf_saved pdf_state_candidate post_logi
 post_login_hold_article_access post_login_hold_auth_wall post_login_hold_login_page
 post_run_hold publisher_access_blocked publisher_content_error publisher_unreachable publisher_login_menu_opened
 publisher_pdf_link_unverified publisher_session_save_failed publisher_session_saved
-publisher_terms_accepted personal_account_offer_skipped personal_account_offer_left
+publisher_terms_accepted download_terms_agreed personal_account_offer_skipped personal_account_offer_left
 record_article_return record_article_return_error seamlessaccess_chooser_opened
-shared_cookies_exported shared_cookies_loaded sso_entry_clicked sso_entry_error sso_start
+shared_cookies_exported shared_cookies_loaded sso_entry_clicked sso_entry_opened sso_entry_error sso_start challenge_type
 access_unknown_pdf_first access_unknown_pdf_failed pdf_step_login_required login_round_trip_returned
 pdf_probe pdf_probe_captured pdf_probe_refused no_access_after_login pdf_found_while_waiting
 login_entry_missing login_entry_controls access_menu_opened access_menu_entry_refused access_menu_error
@@ -161,6 +162,10 @@ def serialize_download_result(result, *, phase=None, full_text=None,
         "final_url_role": _url_role(_get(result, "final_url")),
         "pdf_url_role": _url_role(_get(result, "pdf_url")),
     }
+    from .browser.challenge.kinds import LABELS as CHALLENGE_TYPES
+    challenge_type = _get(result, "challenge_type")
+    if type(challenge_type) is str and challenge_type in CHALLENGE_TYPES:
+        packet["challenge_type"] = challenge_type
     if phase is not None:
         packet["phase"] = _choice(phase, {"primary", "retry"}, "unknown")
     if doi and type(artifact_name) is str and artifact_name == re.sub(r"[^\w\-.]", "_", doi) + ".pdf":

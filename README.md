@@ -7,7 +7,7 @@
 <p align="center"><b>轻量、全自动的 AI 文献全能工具</b><br>
 一句话让AI完成文献检索、核对、下载全文和补充材料，后台自动完成。</p>
 
-<p align="center">简体中文 | <a href="README.en.md">English</a></p>
+<p align="center">简体中文 | <a href="README.zh-Hant.md">繁體中文</a> | <a href="README.en.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.ko.md">한국어</a> | <a href="README.fr.md">Français</a></p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch?style=flat-square" alt="npm"></a>
@@ -125,8 +125,8 @@ AI 会先问你要不要装 PaperSearch 的命令行程序，你同意后装好�
 
 开放渠道下不到的论文，可以借你学校的订阅来下：程序经你学校所属的学术身份联盟登录出版社，用学校账号下载。配置时只要说出学校名称，即可登录下载非OA文献。
 
-1.通过 [eduGAIN](https://edugain.org/) 互联，如中国CARSI、香港HKAF，新加坡SGAF等；
-2.没有加入本国联盟的学校，有 [OpenAthens](https://www.openathens.net/) 权限的，也能经它登录。
+1. 通过 [eduGAIN](https://edugain.org/) 互联，如中国CARSI、香港HKAF，新加坡SGAF等；
+2. 没有加入本国联盟的学校，有 [OpenAthens](https://www.openathens.net/) 权限的，也能经它登录。
 
 **支持的学术身份联盟**
 
@@ -208,6 +208,10 @@ paper-search school status --format text   # 查看是否装好
 | 搜正文片段 | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api)（[申请教程](https://docs.qq.com/aio/DTW9RdFVHc2hJUmpx)） |
 | 下载时找免费全文 | `PAPER_SEARCH_UNPAYWALL_EMAIL` | 不用申请（[Unpaywall 说明](https://unpaywall.org/products/api)） |
 | 检索论文、核对 DOI 是否真实 | `CROSSREF_MAILTO` | 不用申请（[Crossref 说明](https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/)） |
+
+开发版可在设置的「API key → YesCaptcha」填写 ClientKey，点「测试」查询余额、核对密钥后保存。已支持的图片验证只发送题图与题目，答案回本机填写或点击；学校登录页不发送给识别服务。[YesCaptcha 注册](https://yescaptcha.com/)
+
+嵌入式 Turnstile 支持本机验证未完成后的服务接续，只发送公开站点根地址和组件参数；整页 Cloudflare 保留本机处理。
 
 #### 下载订阅全文（非必须）
 

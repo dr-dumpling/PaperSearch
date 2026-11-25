@@ -84,12 +84,12 @@ class DiagnosticsMixin:
                 # choosing the school the page is not waiting for the user (JBJS on
                 # OpenAthens, 2026-11-06: five remembered-school clicks in 25 s, no
                 # main-frame navigation, and a "no progress" reminder in between).
-                "sso_entry_clicked", "openathens_entry", "seamlessaccess_chooser_opened",
+                "sso_entry_clicked", "sso_entry_opened", "openathens_entry", "seamlessaccess_chooser_opened",
                 "auto_remembered_entry", "institution_selected", "auto_institution_search",
                 "institution_search_submitted", "institution_search_retyped",
                 "institution_list_submitted", "institution_continue",
                 "login_round_trip_returned", "redirect_page_passed",
-                "publisher_terms_accepted", "idp_confirmation_accepted", "personal_account_offer_skipped",
+                "publisher_terms_accepted", "download_terms_agreed", "idp_confirmation_accepted", "personal_account_offer_skipped",
             }:
                 activity.progress()
             # Only publish fixed phase text; event details can contain signed URLs.
@@ -103,6 +103,7 @@ class DiagnosticsMixin:
                 "idp_confirmation_required": ("请在浏览器里确认学校认证页的提示（信息发送同意、使用条款或二次验证）", "waiting_login"),
                 "idp_confirmation_accepted": ("已确认学校认证页的提示", "checking_access"),
                 "publisher_terms_accepted": ("已同意出版社的条款", "checking_access"),
+                "download_terms_agreed": ("已勾选同意网站的下载条款", "fetching_pdf"),
                 "login_attempt_started": ("正在尝试机构登录", "checking_access"),
                 "login_retry_wait": ("机构登录暂未完成，准备重试", "checking_access"),
                 "login_navigation_interrupted": ("登录跳转中断，检查是否可重试", "checking_access"),
@@ -204,6 +205,20 @@ class DiagnosticsMixin:
         if result is not None and took > self.LONG_WAIT_SEC:
             self._event(result, "wait", f"{what}: {took:.0f} s, ended: {why}")
 
+    def _note_challenge_type(self, page: Any, result: DownloadResult, *, title_and_url_only: bool = False) -> None:
+        """Which kind of verification the page is (``browser.challenge.kinds``), in the
+        record: an event when it is first seen or changes (a reCAPTCHA box that asks its
+        picture puzzle), and ``result.challenge_type``, which the failure record and the
+        CLI's summary name (the user, 2026-11-25). Only read, never acted on."""
+        from ..browser.challenge import kinds
+
+        kind = kinds.identify(page, title_and_url_only=title_and_url_only)
+        if kind == "other" and result.challenge_type:
+            return  # a later look that tells less keeps what an earlier one told
+        if kind != result.challenge_type:
+            result.challenge_type = kind
+            self._event(result, "challenge_type", f"{kind}: {kinds.LABELS[kind]}")
+
     def _write_diagnostic(self, page: Any, result: DownloadResult, run_dir: Path) -> None:
         diag_dir = run_dir / "diagnostics" / safe_name(result.doi)
         diag_dir.mkdir(parents=True, exist_ok=True)
@@ -249,14 +264,19 @@ class DiagnosticsMixin:
         result.diagnostic_path = str(packet_path)
 
     def _denial_line(self, page: Any) -> str:
-        """The page's denial (access_rules.denial_evidence) for the diagnostic, and
-        why it is the school's: ``denial line: "<the page's words>" (after this
-        item's school login)``."""
+        """The page's denial (access_rules.denial_evidence), else its offer, for the
+        diagnostic, and why it is the school's: ``denial line: "<the page's words>"
+        (after this item's school login)``."""
         try:
             snap = self._access_snapshot(page)
         except Exception:
             return ""  # a probe for the diagnostic; the failure is reported either way
         evidence, named = access_rules.denial_evidence(snap.url, snap.lines, snap.probe)
+        if not evidence:
+            # An offer decided, the school signed in (``_no_access_after_login``: NEJM Catalyst's
+            # "Get Access", Taylor & Francis's "Purchase options"): its words, not "nothing saved".
+            offer = access_rules.offer_evidence(snap.lines, snap.probe, gate=False)
+            evidence = f'offer: "{offer}"' if offer else ""
         if not evidence:
             return ""
         try:

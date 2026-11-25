@@ -4,7 +4,8 @@
  * school cannot have this paper: another saved school is tried at a batch's end); the user's to
  * do (their steps, settings or the school account); the site's, the school's or the network's
  * error (try again later); a site PaperSearch has no rules for yet, or whose rules missed this
- * journal's page (PaperSearch's to fix); or unexplained (tried once more at a batch's end,
+ * journal's page, or an article only on a platform it has no rules for (PaperSearch's to fix: 待适配, named
+ * 暂不支持 until 2026-11-25, which read as "PaperSearch cannot support this site"); or unexplained (tried once more at a batch's end,
  * investigated). "No access" is never concluded from a missing PDF, a timeout or an error.
  * Five since 2026-11-22 (user: eight classes and 58 phrasings were too many to follow; the
  * school's errors go with the site's and the network's; names of four characters at most, 外部原因

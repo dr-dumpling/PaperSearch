@@ -96,6 +96,9 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .head .text { flex: 1; min-width: 0; }
 .head .title { font-weight: 600; font-size: 14px; }
 .head .sub { font-size: 12px; color: var(--dim); }
+.head .sub.noted { position: relative; }
+.head .sub.noted .was { visibility: hidden; }
+.head .sub.noted .note { position: absolute; left: 0; right: 0; top: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The head's buttons close together (user, 2026-11-17): the pin's room comes from their gaps, not the text's. */
 .tools { display: flex; align-items: center; gap: 0; margin-right: -3px; flex: none; }
 /* Each a 32 px target, drawn where it was (user, 2026-11-21: 最小化 was hard to hit): the margins take back what the
@@ -140,30 +143,6 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .unverified-note .btn.link { display: inline; padding: 0; margin-left: 2px; font-size: inherit; }
 .unverified-actions { margin-top: 6px; }
 .stats { display: flex; padding: 12px 0; border-top: 0.5px solid var(--line); border-bottom: 0.5px solid var(--line); }
-/* Markdown by rules not listed for its site: a dot beside 成功 and, pointed at, a card above the
-   counts (user, 2026-11-17: no yellow line for pages that were fine). */
-.stats-wrap { position: relative; }
-/* Pointing at the dot is not pointing at the count. */
-.stats .stat:has(.rules-dot:hover) span { color: var(--dim); }
-/* Up beside its label, taking no room: 成功, 失败 and 剩余 stay under their counts. */
-.stats .stat > span { position: relative; }
-.stats .rules-dot { position: absolute; left: 100%; top: -1px; margin-left: 3px; width: 6px; height: 6px; border-radius: 50%;
-  background: #8b9cf7; cursor: help; }
-/* Its text in line with 成功 below: the card reaches past the counts by its own padding. */
-.rules-pop { display: none; position: absolute; left: -11px; right: -11px; bottom: calc(100% + 6px); z-index: 5; padding: 9px 11px;
-  background: var(--bg); color: var(--fg); border-radius: 10px; font-size: 11.5px; line-height: 1.55;
-  /* Its edge drawn, not a border: a border pushed its text 1 px off 成功 (Windows, 2026-11-17). */
-  box-shadow: 0 0 0 0.5px var(--line), 0 6px 20px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08); }
-.rules-pop.show { display: block; }
-/* The way down to the dot keeps it open. */
-.rules-pop::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 8px; }
-.rules-pop .h { display: flex; align-items: center; gap: 4px; font-weight: 600; font-size: 12px; margin-bottom: 2px; }
-/* The heading's dot hangs in the margin: every line starts in line with 成功. */
-.rules-pop .h i { width: 6px; height: 6px; border-radius: 50%; background: #8b9cf7; flex: none; margin-left: -10px; }
-.rules-pop .r { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rules-pop .r.counts { white-space: normal; }
-.rules-pop .issue { display: block; margin-top: 6px; padding: 6px 0 0; width: 100%; text-align: left; border: none;
-  border-top: 0.5px solid var(--line); background: none; font: inherit; color: var(--accent); cursor: pointer; }
 .stats div, .stats .stat { flex: 1; }
 .stats .stat { padding: 0; border: none; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .stats .stat:hover span, .stats .stat:focus-visible span { color: var(--accent); }
@@ -221,6 +200,13 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .mini-wrap:hover .mini-tip, .mini-wrap:focus-within .mini-tip { display: block; }
 .mini-tip b { font-weight: 600; }
 .mini-tip .k { color: var(--dim); display: inline-block; min-width: 2em; }
+/* A label's small info icon (失败后自动重试): its tip under the row, from its left, inside the window in every language. */
+.tip-row { position: relative; }
+.tip-label { display: inline-flex; align-items: center; }
+/* Pointed at, only its note shows: the cursor stays an arrow, no question mark (user, 2026-11-24). */
+.mini-wrap.info { position: static; margin-left: 4px; color: var(--faint); cursor: default; }
+.mini-wrap.info svg.i { width: 14px; height: 14px; }
+.mini-tip.left { right: auto; left: 0; top: calc(100% - 4px); }
 .foot { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 0.5px solid var(--line); }
 /* Settings: a home list of three pages, each row with its current values; then the page itself. */
 .nav-row, .key-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 0; border: none; border-top: 0.5px solid var(--line);
@@ -346,6 +332,8 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .key-row.editing:hover .nav-title { color: inherit; }
 .key-set { font-size: 12px; color: var(--ok); white-space: nowrap; }
 .key-row .btn { pointer-events: none; }
+/* What a service is for, whole: on a second line where a language says it longer, not cut (user, 2026-11-25). */
+.key-row .nav-sub { white-space: normal; }
 .key-edit { background: var(--hover); border-radius: 8px; padding: 8px 10px; margin: 0 0 6px; }
 /* The school sign-in page (PaperSearch Pro): the schools saved, one the default for downloads, each with its
    account; the fields beside their names, close together (user, 2026-11-20). */
@@ -355,9 +343,6 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .login-school { position: relative; border-radius: 10px; background: var(--fill); padding: 0 10px; }
 .login-school.open { background: var(--bg); box-shadow: 0 0 0 1px var(--edge), 0 2px 8px rgba(17, 24, 39, 0.06); padding-bottom: 10px; }
 .login-school.add { background: none; border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent); }
-/* The open card's head: no masked account (its field is under it), room kept for ⋯ before the chevron. */
-.login-row .ls-end { flex: none; width: 0; margin-left: auto; }
-.login-row .ls-end.with-menu { width: 24px; }
 .ls-dots { position: absolute; right: 29px; top: 7px; width: 24px; height: 24px; margin: 0; border-radius: 6px; background: var(--hover); }
 .ls-dots svg.i { width: 15px; height: 15px; }
 .ls-menu { position: absolute; right: 29px; top: 34px; z-index: 6; min-width: 120px; padding: 4px 0; border-radius: 8px; background: var(--bg);
@@ -382,6 +367,13 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .settings .switch-row { border-top: none; border-bottom: 0.5px solid var(--line); }
 .login-row .ls-acct { margin-left: auto; font-size: 11.5px; color: var(--dim); white-space: nowrap; }
 .login-row svg.i { width: 13px; height: 13px; flex: none; color: var(--faint); }
+/* A school's name whole (user, 2026-11-25, 乙): with its tags on one line where they fit, as before; where not (English and
+   French names, a long Chinese one) the name wraps and its tags go to the next line, not the name cut to "Hongmulan …". The
+   chevron, and on the open card the room for ⋯, stay at the top right. */
+.ls-head { flex-wrap: wrap; row-gap: 4px; position: relative; padding-right: 20px; box-sizing: border-box; }
+.ls-head.with-menu { padding-right: 49px; }
+.ls-head > svg.i:last-child { position: absolute; right: 0; top: 13px; }
+.login-row.ls-head .ls-name { flex: 0 1 auto; max-width: calc(100% - 18px); overflow: visible; white-space: normal; overflow-wrap: anywhere; }
 .tag.fill { background: rgba(22, 163, 74, 0.12); color: var(--ok); }
 .tag.trial { background: var(--hover); color: var(--accent); }
 .tag.default { background: var(--accent); color: #fff; }
@@ -463,6 +455,11 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .login-add .err { text-align: left; margin: 6px 0 0; }
 .login-add .err:empty { display: none; }
 .settings .key-edit input { width: 100%; text-align: left; background: var(--bg); }
+.key-field + .key-field { margin-top: 7px; }
+.key-field label { display: block; margin-bottom: 3px; font-size: 11px; color: var(--dim); }
+.key-input { position: relative; }
+.key-input .iconbtn { position: absolute; right: 8px; top: 50%; margin: 0; transform: translateY(-50%); }
+.settings .key-input input[data-secret] { padding-right: 30px; }
 .key-note { font-size: 11px; line-height: 1.5; color: var(--dim); margin-bottom: 8px; }
 .key-edit .err { text-align: left; margin: 6px 0 0; }
 .key-edit .err:empty { display: none; }
@@ -471,6 +468,11 @@ svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-widt
 .key-links, .key-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .key-actions { gap: 6px; }
 .key-links .grow, .key-actions .grow { flex: 1; }
+/* The editor's buttons on one line where they fit; where a language's words are longer (French on the Mac), 清除 取消 保存
+   together on the next line at the right, not cut off at the window's edge (user, 2026-11-25). */
+.key-actions.wraps { flex-wrap: wrap; row-gap: 6px; }
+.key-actions-end { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-left: auto; }
+.key-actions.wraps .btn { white-space: nowrap; }
 .key-links .iconbtn { margin: 0; }
 .iconbtn[aria-pressed="true"] { color: var(--accent); }
 .strip { display: flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box; margin: 10px 0 2px; padding: 6px 10px;
@@ -617,6 +619,8 @@ const ICONS = {
   check: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9.5"/>',
   alert: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/>',
   minimize: '<path d="M6 12h12"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5v.01"/>',
+  download: '<path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M5 20h14"/>',
   pin: '<path d="M8 4h8"/><path d="M9.5 4v5.5L7 13h10l-2.5-3.5V4"/><path d="M12 13v7"/>',
   close: '<path d="M7 7l10 10M17 7L7 17"/>',
   folder: '<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>',
@@ -684,6 +688,8 @@ function appIcon(size, pro) {
     + '<path d="M352 236 Q352 252 368 252 Q352 252 352 268 Q352 252 336 252 Q352 252 352 236Z" fill="#fff" opacity=".9"/></svg>';
 }
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// The ring: the batch's progress in blue, one arc (user, 2026-11-24: its saved, failed and held parts in three colours
+// were not pleasing; the counts say those).
 function ring(pct, size, stroke, label) {
   const r = (size - stroke) / 2, c = 2 * Math.PI * r, d = Math.max(0, Math.min(100, pct)) / 100 * c;
   return '<svg class="ring" width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + " " + size + '" aria-hidden="true">'
@@ -704,7 +710,7 @@ let flash = { text: "", until: 0 };
 // 登录并继续 pressed: the held publishers then ({run, keys}); the button says so at once,
 // as the papers go on only after the paper running, or within seconds (user, 2026-11-15).
 let heldAsked = null;
-let settings = null, settingsErrors = {}, notifyOn = true, hourlyNow = false;
+let settings = null, settingsErrors = {}, notifyOn = true, hourlyNow = false, retryOn = false;
 // What is typed on this settings page and not yet saved. Any redraw shows it instead of the
 // saved value: a click on the card's background is a drag, and its end redraws the card
 // (a typed hourly limit went back to the saved one, Windows, 2026-11-13).
@@ -846,7 +852,7 @@ function pill() {
   }
   if (v.mode === "running") {
     const where = [v.part, v.publisher].filter(Boolean).join(" · ");
-    return '<div class="pillrow capsule-drag-region">' + ring(v.pct, 24, 3)
+    return '<div class="pillrow capsule-drag-region">' + ring(v.pct, 24, 3, "")
       + '<span class="count">' + (v.total ? v.done + "/" + v.total : v.done) + "</span>"
       + (where ? '<span class="dim">' + esc(where) + "</span>" : "") + '<span class="dot"></span>'
       + ((v.held || []).length ? heldTag() : "") + "</div>";
@@ -860,11 +866,16 @@ function pinButton() {
     + '" title="' + (pinned ? "已钉住，点一下取消" : "钉住：鼠标移开也不收起") + '">' + icon("pin") + "</button>";
 }
 
-function header(title, sub, closable) {
+// ``note``: said for a moment in the place of the line under the title (the next school), over it, one line whatever its
+// length: the line stays, unseen, so the card keeps its height (a long school name wrapped, or the line wrapped in
+// another language, would move the window twice).
+function header(title, sub, closable, note) {
   // Only the ring and the texts drag the window; the buttons stay clickable.
   return '<div class="head"><div class="drag capsule-drag-region">'
     + (V.mode === "running" || V.mode === "attention" ? ring(V.pct, 40, 4, V.pct + "%") : "")
-    + '<div class="text"><div class="title">' + esc(title) + '</div>' + (sub ? '<div class="sub">' + esc(sub) + "</div>" : "") + "</div></div>"
+    + '<div class="text"><div class="title">' + esc(title) + '</div>' + (sub ? '<div class="sub' + (note ? ' noted' : "") + '">' + (note
+      ? '<span class="was">' + esc(sub) + '</span><span class="note" title="' + esc(note) + '">' + esc(note) + "</span>" : esc(sub)) + "</div>" : "")
+    + "</div></div>"
     + '<div class="tools">' + pinButton()
     + '<button class="iconbtn' + (newerVersion() ? " has-dot" : "") + '" data-act="settings" aria-label="设置">' + icon("gear") + "</button>"
     + '<button class="iconbtn" data-act="' + (closable ? "close" : "minimize") + '" aria-label="' + (closable ? "关闭" : "最小化")
@@ -924,8 +935,8 @@ function actionsBlock() {
 }
 
 // A count opens its list of papers once the batch has sent them (user, 2026-11-10).
-function stat(list, value, label, color, mark) {
-  const inner = "<b" + (color ? ' style="color:' + color + '"' : "") + ">" + value + "</b><span>" + label + (mark || "") + "</span>";
+function stat(list, value, label, color) {
+  const inner = "<b" + (color ? ' style="color:' + color + '"' : "") + ">" + value + "</b><span>" + label + "</span>";
   return V.lists && list ? '<button type="button" class="stat" data-act="papers" data-list="' + list + '">' + inner + "</button>"
     : "<div>" + inner + "</div>";
 }
@@ -956,38 +967,20 @@ function heldBlock() {
 
 // Pages from sites not yet supported this batch: the site (or how many), how their Markdown
 // went, and 查看 for those not kept, in the place of the held publishers' line (user, 2026-11-16).
-// Pages whose Markdown came by rules not listed for their site (their publisher's, or the
-// others'), while the batch runs: a small dot beside 成功 (beside 失败 when none was saved,
-// opening their group), and pointed at, a card above the counts: the sites and whose rules,
-// how many were saved, and, when some were not, 提 issue to have the site listed (user,
-// 2026-11-17: the yellow line took a row for pages that were fine).
-const RULES_TITLE = "Markdown：借用其他网站的规则转换";
-let rulesShown = false, rulesTimer = 0;
-const rulesSites = () => (V.sites && V.sites.hosts && V.sites.hosts.length ? V.sites : null);
-function rulesDot(where) {
-  const s = rulesSites();
-  if (!s || where !== (s.saved ? "ok" : "failed")) return "";
-  const act = where === "failed" && V.lists ? ' data-act="papers" data-list="failed" data-unverified="1"' : "";
-  return '<span class="rules-dot" role="note" aria-label="' + esc(RULES_TITLE) + '"' + act + "></span>";
-}
-function rulesCard() {
-  const s = rulesSites();
-  if (!s) return "";
-  const site = s.hosts.length === 1 ? s.hosts[0] : s.hosts.length + " 个网站";
-  // Whose rules were borrowed (user, 2026-11-17: "www.jacc.org · 采用 Atypon 规则").
-  const rules = s.rules && s.rules.length ? "采用 " + s.rules.join(" / ") + " 规则" : "没有适用的规则";
-  // Whether each one's Markdown came whole: only a complete one is saved.
-  const counts = ["完整已保存 " + s.saved + " 篇", "不完整未保存 " + s.unsaved + " 篇", s.skipped ? "未再尝试 " + s.skipped + " 篇" : ""]
-    .filter(Boolean).join(" · ");
-  // Saved or not, one way to have the site listed: the report goes with the issue (user, 2026-11-17).
-  const issue = '<button type="button" class="issue" data-act="markdown_issue">提 issue 纳入已登记网站</button>';
-  return '<div class="rules-pop' + (rulesShown ? " show" : "") + '"><div class="h"><i></i>' + esc(RULES_TITLE) + "</div>"
-    + '<div class="r" title="' + esc(s.hosts.join("、")) + '">' + esc(site + " · " + rules) + '</div><div class="r counts">' + esc(counts) + "</div>" + issue + "</div>";
-}
-function showRules(on) {
-  rulesShown = on;
-  const pop = root.querySelector(".rules-pop");
-  if (pop) pop.classList.toggle("show", on);
+// The papers held for a later try (V.later: without access, for the next school; 原因不明, once more at the end; their
+// site blocked them, again at a time; their school login lapsed, after 登录并继续): 重试 beside
+// 成功 and 失败 on the running card, its list naming them by why; 剩余 those not started (user, 2026-11-24: in place of
+// the card the ring showed when pointed at). Without other saved schools (PaperSearch Pro) none waits for one.
+// A batch that may hold papers for a later try (失败后自动重试 on, or 没权限时换下一所学校 with another school; user,
+// 2026-11-24): otherwise no 重试, a paper paused for the school's login counted in 剩余.
+const holding = () => V.holds !== false;
+const retryCount = () => (holding() && V.later && V.later.total) || 0;
+// The list behind 重试 from the counts alone, when the papers' list does not name them (a caller that sends no DOIs).
+function retryCounts() {
+  const later = V.later || {};
+  const kinds = [["换学校再试 · 没权限", later.no_access], ["最后再试一次 · 原因不明", later.unexplained],
+    [(later.blocked_at ? later.blocked_at + " 再试 · " : "") + "被网站拦截", later.blocked], ["登录后继续 · 学校登录中途失效", later.login]];
+  return { count: retryCount(), groups: kinds.filter((kind) => kind[1] > 0).map(([label, count]) => ({ label, count, papers: [], counted: true })) };
 }
 
 // Under the group of pages from sites not yet supported: what that means, the sites with
@@ -1010,10 +1003,11 @@ function runningCard() {
   // paper; once 登录并继续 is pressed, what comes next (user, 2026-11-15).
   const asked = v.held_wait && resumeAsked();
   const paper = v.held_wait ? '<div class="paper"><div class="line">' + esc(asked ? "如需登录，会打开学校登录页" : v.line) + "</div></div>" : paperBlock();
-  return '<div class="card-body">' + header(asked ? "正在继续下载" : v.headline, sub, false) + paper + heldBlock()
-    + '<div class="stats-wrap">' + rulesCard() + '<div class="stats">' + stat("ok", v.ok, "成功", "var(--ok)", rulesDot("ok"))
-    + stat("failed", v.bad, "失败", "var(--bad)", rulesDot("failed"))
-    + stat("left", v.left == null ? "—" : v.left, "剩余") + "</div></div>"
+  return '<div class="card-body">' + header(asked ? "正在继续下载" : v.headline, sub, false, v.switch_note) + paper + heldBlock()
+    + '<div class="stats">' + stat("ok", v.ok, "成功", "var(--ok)")
+    + stat("failed", v.bad, "失败", "var(--bad)")
+    + (holding() ? stat(retryCount() ? "retry" : "", retryCount(), "重试", retryCount() ? "var(--warn-dot)" : "") : "")
+    + stat("left", v.left == null ? "—" : Math.max(0, v.left - retryCount()), "剩余") + "</div>"
     + actionsBlock() + "</div>";
 }
 
@@ -1036,8 +1030,9 @@ function attentionCard() {
   return html + "</div></div>";
 }
 
-// The five failure classes by the names PaperSearch gives them everywhere (failureClass.ts, 2026-11-22).
-const CLASS_TAGS = { no_access: "没权限", user_side: "要你处理", external: "外部原因", unsupported: "暂不支持",
+// The five failure classes by the names PaperSearch gives them everywhere (failureClass.ts, 2026-11-22;
+// 待适配 was 暂不支持 until 2026-11-25).
+const CLASS_TAGS = { no_access: "没权限", user_side: "要你处理", external: "外部原因", unsupported: "待适配",
   unexplained: "原因不明", other: "其他", doubt: "待核对" };
 let openGroups = null, groupsRun = "";  // null: each reason row as the view opens it
 // Main-text rows first, then the supplementary files' rows, numbered on.
@@ -1077,6 +1072,7 @@ function reasonRow(g, i, brief) {
 function doneCard() {
   const v = V, s = v.summary;
   let html = '<div class="card-body">' + header(v.headline, v.total ? "共 " + v.total + " 篇" : "", true)
+    // 成功 green, as on the running card (user, 2026-11-24: the ring alone is blue, the batch's progress).
     + '<div class="stats done-stats">' + stat("ok", v.ok, "成功", "var(--ok)") + stat("failed", v.bad, "失败", v.bad ? "var(--bad)" : "")
     // Papers the stop left undone in place of the time: their list opens from it (user, 2026-11-16).
     + (v.stopped ? stat("left", v.stopped, "已终止") : stat("", esc(v.elapsed || "—"), "用时")) + "</div>";
@@ -1113,15 +1109,21 @@ function doneCard() {
 }
 
 // The list behind a count: its groups (by way, by reason, by lane), each opened on its own.
-const LIST_TITLES = { ok: "成功", failed: "失败", left: "剩余" };
+const LIST_TITLES = { ok: "成功", failed: "失败", retry: "重试", left: "剩余" };
 let papersKind = "", papersList = null, listOpen = null;
-function shownList() { return (papersList || {})[papersKind] || { count: 0, groups: [] }; }
+function shownList() {
+  const list = (papersList || {})[papersKind];
+  if (papersKind === "retry" && !(list && list.groups.length) && retryCount()) return retryCounts();
+  return list || { count: 0, groups: [] };
+}
 function listGroupOpen(i) { return listOpen ? listOpen.has(i) : !!(shownList().groups[i] || {}).open; }
 async function loadPapers() {
   try { papersList = await api().paper_lists(); } catch (e) { papersList = papersList || {}; }
 }
 
 function listRow(g, i) {
+  // 重试 from its counts alone: a line for each why, nothing to open.
+  if (g.counted) return '<div class="grp"><div class="row"><span class="reason">' + esc(g.label) + '</span><span class="n">' + g.count + " 篇</span></div></div>";
   const opened = listGroupOpen(i);
   const unverified = g.unverified && shownList().groups.findIndex((other, j) => other.unverified && listGroupOpen(j)) === i;
   let html = '<div class="grp"><button type="button" class="row" data-act="list_group" data-group="' + i + '" aria-expanded="' + opened + '">'
@@ -1136,7 +1138,7 @@ function listRow(g, i) {
       if (papersKind === "ok") {
         return '<li><button type="button" class="open-article" data-act="show_paper" data-index="' + p.index + '" title="打开所在文件夹">' + lines + "</button></li>";
       }
-      if ((papersKind === "failed" || papersKind === "left") && p.doi) {
+      if ((papersKind === "failed" || papersKind === "retry" || papersKind === "left") && p.doi) {
         return '<li><button type="button" class="open-article" data-act="open_article" data-doi="' + esc(p.doi)
           + '" title="在浏览器打开这篇文章">' + lines + "</button></li>";
       }
@@ -1185,9 +1187,11 @@ function taskStrip() {
       + '<span class="grow">请重新登录学校</span><span>去处理 ›</span></button>';
   }
   if (V.mode === "running") {
-    return '<button type="button" class="strip" data-act="progress"><span class="grow">正在下载 '
+    // A download icon for 正在下载 and an arrow for 返回进度: the publisher's name has the room in every language (user, 2026-11-24:
+    // "Downloading 11/71 · Spri…  Back to progress ›"; its words on pointing at it).
+    return '<button type="button" class="strip" data-act="progress" title="返回进度">' + icon("download") + '<span class="grow">'
       + esc(V.total ? V.done + "/" + V.total : V.done) + (V.publisher ? " · " + esc(V.publisher) : "")
-      + "</span><span>返回进度 ›</span></button>";
+      + "</span><span>›</span></button>";
   }
   return "";
 }
@@ -1212,10 +1216,28 @@ const field = (name) => settings.fields.find((f) => f.name === name);
 // The user's own folder as ~ on the home page's line (user, 2026-11-21: /Users/<name>/Downloads and the hourly limit
 // did not fit one line in English); the download page shows the folder whole.
 const shortPath = (path) => String(path || "").replace(/^(?:\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\\Users\\[^\\]+)(?=[\/\\]|$)/, "~");
+// The folder on that line whole when it fits; else its middle folders left out, the first ones first, then all but its
+// own name (user, 2026-11-24, 乙: D:\Project-XY\References and the hourly limit cut short in English). Measured once
+// the page is drawn and translated, at the card's own width.
+function fitPaths(node) {
+  node.querySelectorAll(".nav-sub[data-path]").forEach((line) => {
+    const whole = line.dataset.path, rest = tr(line.dataset.rest || "");
+    const sep = whole.includes("\\") ? "\\" : "/";
+    const path = whole.length > 3 ? whole.replace(/[\\/]+$/, "") : whole;
+    const parts = path.split(sep), head = parts[0], last = parts[parts.length - 1], middle = parts.slice(1, -1);
+    const tries = [path];
+    for (let k = 1; k <= middle.length; k++) tries.push([head, "…", ...middle.slice(k), last].join(sep));
+    if (parts.length > 1) tries.push("…" + sep + last);
+    for (const each of tries) {
+      line.textContent = rest ? each + " · " + rest : each;
+      if (line.scrollWidth <= line.clientWidth) return;
+    }
+  });
+}
 function settingsHome() {
   const hourly = field("hourly"), login = field("login");
   const rows = [
-    ["download", "folder", "下载", [shortPath(settings.download_dir), hourly ? "每家每小时 " + hourly.value + " 篇" : ""]],
+    ["download", "folder", "下载", [shortPath(settings.download_dir), hourly ? "每家每小时 " + hourly.value + " 篇" : ""], "", true],
     ["wait", "clock", "等待和提醒", [login ? "登录页 " + login.value + " 秒" : "", "系统通知" + (notifyOn ? "开" : "关")]],
     ["keys", "key", "API key", [apiKeys && apiKeys.ok ? "已填 " + apiKeys.filled + "/" + apiKeys.total : ""]],
   ];
@@ -1242,10 +1264,12 @@ function languageMenu() {
 }
 
 // A row that opens a page: its icon, its name, what it holds now.
-function navRow([page, glyph, title, sub, badge]) {
+function navRow([page, glyph, title, sub, badge, folderFirst]) {
+  // folderFirst: its line begins with a folder, fitted to the line once drawn (fitPaths).
+  const fitted = folderFirst && sub[0] ? ' data-path="' + esc(sub[0]) + '" data-rest="' + esc(sub.slice(1).filter(Boolean).join(" · ")) + '"' : "";
   return '<button type="button" class="nav-row" data-act="settings_page" data-page="' + page + '">' + (glyph === "pro-app" ? appIcon(16, true) : icon(glyph))
     + '<span class="nav-text"><span class="nav-title">' + esc(title)
-    + (badge ? '<span class="pro-pill feature">' + esc(badge) + "</span>" : "") + '</span><span class="nav-sub">'
+    + (badge ? '<span class="pro-pill feature">' + esc(badge) + "</span>" : "") + '</span><span class="nav-sub"' + fitted + ">"
     + esc(sub.filter(Boolean).join(" · ")) + "</span></span>" + icon("right") + "</button>";
 }
 
@@ -1279,8 +1303,16 @@ function settingsDownload() {
     + fieldRows("download") + settingsFoot();
 }
 
+// 失败后自动重试 (user, 2026-11-24): off by default; what it retries in a tip on its small icon, not on the page.
+function retryRow() {
+  return '<div class="row tip-row"><span class="tip-label">失败后自动重试<span class="mini-wrap info" tabindex="0" aria-label="说明">' + icon("info")
+    + '<span class="mini-tip left" role="tooltip"><div>原因不明的失败，最后再重试</div><div>被网站拦截的，10 分钟后再重试</div></span></span></span>'
+    + '<button class="switch' + (retryOn ? " on" : "") + '" data-act="retry" role="switch" aria-checked="' + retryOn
+    + '" aria-label="失败后自动重试"></button></div>' + (settingsErrors.retry ? '<div class="err">' + esc(settingsErrors.retry) + "</div>" : "");
+}
+
 function settingsWait() {
-  return settingsHead("等待和提醒") + fieldRows("wait")
+  return settingsHead("等待和提醒") + fieldRows("wait") + retryRow()
     + '<div class="row"><span>需要处理时发系统通知</span><span id="notify-test-button">' + notifyTestButton() + "</span>"
     + '<button class="switch' + (notifyOn ? " on" : "")
     + '" data-act="notify" role="switch" aria-checked="' + notifyOn + '" aria-label="系统通知"></button></div>'
@@ -1291,32 +1323,43 @@ function settingsWait() {
 function keyRow(s) {
   const name = '<span class="nav-text"><span class="nav-title">' + esc(s.name) + "</span>"
     + (s.use ? '<span class="nav-sub">' + esc(s.use) + "</span>" : "") + "</span>";
+  const hasValues = s.keys.some((k) => k.set);
   if (editing !== s.id) {
     return '<button type="button" class="key-row" data-act="edit_key" data-service="' + esc(s.id) + '">' + name
-      + (s.set ? '<span class="key-set">' + esc(s.masked) + "</span>" : '<span class="btn">填写</span>') + "</button>";
+      + (s.set ? '<span class="key-set">' + esc(s.masked) + "</span>"
+        : '<span class="btn">' + (hasValues ? "补全" : "填写") + "</span>") + "</button>";
   }
   let html = '<div class="key-row editing">' + name
-    + (s.set ? '<span class="key-set">' + esc(s.masked) + "</span>" : '<span class="dim" style="font-size:12px">未填</span>')
+    + (s.set ? '<span class="key-set">' + esc(s.masked) + "</span>"
+      : '<span class="dim" style="font-size:12px">' + (hasValues ? "待补全" : "未填") + "</span>")
     + '</div><div class="key-edit">';
   // A saved key is in its field, hidden until the eye shows it.
   // A contact email: what it is for above its field, and the field in plain text (user, 2026-11-11).
   const emails = s.keys.every((k) => k.kind === "email");
+  const labeled = s.keys.some((k) => k.kind === "zone");
+  const eye = '<button class="iconbtn" data-act="reveal" aria-label="显示 key" aria-pressed="' + revealed + '">' + icon("eye") + "</button>";
   if (s.note) html += '<div class="key-note">' + esc(s.note) + "</div>";
   for (const k of s.keys) {
-    html += '<input id="key-' + esc(k.key) + '" data-key="' + esc(k.key) + '" type="' + (revealed || k.kind === "email" ? "text" : "password")
-      + '" value="' + esc(editValues[k.key] || "") + '" autocomplete="off" spellcheck="false" aria-label="' + esc(s.name + " " + k.label)
-      + '" placeholder="' + (k.kind === "email" ? "填你常用的邮箱" : "粘贴 key") + '">';
+    const id = "key-" + esc(k.key);
+    const secret = k.kind !== "email" && k.kind !== "zone";
+    const placeholder = k.kind === "zone" ? "填入“我的API”中的“名称”" : k.kind === "email" ? "填你常用的邮箱" : k.kind === "url" ? "服务地址" : "粘贴 key";
+    if (labeled) html += '<div class="key-field"><label for="' + id + '">' + esc(k.label) + '</label><div class="key-input">';
+    html += '<input id="' + id + '" data-key="' + esc(k.key) + '"' + (secret ? ' data-secret' : '')
+      + ' type="' + (secret && !revealed ? "password" : "text") + '" value="' + esc(editValues[k.key] || "")
+      + '" autocomplete="off" spellcheck="false"' + (labeled ? "" : ' aria-label="' + esc(s.name + " " + k.label) + '"')
+      + ' placeholder="' + placeholder + '">';
+    if (labeled) html += (secret ? eye : "") + "</div></div>";
   }
   return html + '<div class="key-links">'
     + '<button class="btn link" data-act="signup" data-service="' + esc(s.id) + '">' + esc(s.signup_label || "去申请") + icon("external") + "</button>"
     + (s.guide ? '<button class="btn link" data-act="guide" data-service="' + esc(s.id) + '">' + esc(s.guide_label || "教程") + icon("external") + "</button>" : "")
     + '<span class="grow"></span>'
-    + (emails ? "" : '<button class="iconbtn" data-act="reveal" aria-label="显示 key" aria-pressed="' + revealed + '">' + icon("eye") + "</button>") + "</div>"
-    + '<div class="err" id="key-error" role="status"></div><div class="key-actions">'
-    + '<button class="btn" data-act="test_key" data-service="' + esc(s.id) + '">测试</button><span class="grow"></span>'
-    + (s.set ? '<button class="btn danger" data-act="clear_key" data-service="' + esc(s.id) + '">清除</button>' : "")
+    + (emails || labeled ? "" : eye) + "</div>"
+    + '<div class="err" id="key-error" role="status"></div><div class="key-actions wraps">'
+    + '<button class="btn" data-act="test_key" data-service="' + esc(s.id) + '">测试</button><span class="key-actions-end">'
+    + (hasValues ? '<button class="btn danger" data-act="clear_key" data-service="' + esc(s.id) + '">清除</button>' : "")
     + '<button class="btn" data-act="cancel_key">取消</button>'
-    + '<button class="btn primary" data-act="save_key" data-service="' + esc(s.id) + '">保存</button></div></div>';
+    + '<button class="btn primary" data-act="save_key" data-service="' + esc(s.id) + '">保存</button></span></div></div>';
 }
 
 function settingsKeys() {
@@ -1393,13 +1436,13 @@ const PRO_KEEPS = [["photo", "图片"], ["table", "表格"], ["formula", "公式
 // said in full.
 const PRO_MERITS = [
   ["file", "出版社原文", "取自出版社网页或 XML，不从 PDF 识别：章节、图注、表格（含合并单元格）和 LaTeX 公式按原文还原，避免识别错误。"],
-  ["check", "完整才保存", "图片或表格有缺失就不生成，记为失败并说明原因，后续重试。"],
+  ["check", "缺失会标明", "表格有缺失就不生成；图片没下到的在批量最后再取一次，仍缺就在原位置标明，清单里写明缺哪张图。"],
   ["link", "来源可追溯", "每篇保留出版社原始网页或 XML，以及来源清单：来源地址、DOI 核对结果和获取时间。"],
 ];
 function proMerits() {
   return '<button type="button" class="nav-row pro-row" data-act="pro_merits" aria-expanded="' + proMeritsOpen + '">' + icon("shield")
     + '<span class="nav-text"><span class="nav-title">' + esc("三项特点") + '</span><span class="nav-sub">'
-    + esc("出版社原文 · 完整才保存 · 来源可追溯") + "</span></span>" + icon(proMeritsOpen ? "down" : "right") + "</button>"
+    + esc("出版社原文 · 缺失会标明 · 来源可追溯") + "</span></span>" + icon(proMeritsOpen ? "down" : "right") + "</button>"
     + (proMeritsOpen ? '<div class="pro-merits">' + PRO_MERITS.map(([glyph, title, said]) => '<div class="pro-merit">' + icon(glyph)
       + "<div><b>" + esc(title) + "</b><span>" + esc(said) + "</span></div></div>").join("") + "</div>" : "");
 }
@@ -1688,11 +1731,11 @@ function loginSchool(s, index) {
   const shown = loginOpen === s.key, items = loginMenuItems(s);
   // Their order, where there is more than one (user, 2026-11-21: 没权限时换下一所学校 goes down it; 1 the default).
   const many = ((schoolLogin && schoolLogin.schools) || []).length > 1;
-  const row = '<button type="button" class="login-row" data-act="login_open" data-key="' + esc(s.key) + '" aria-expanded="' + shown + '">'
+  const row = '<button type="button" class="login-row ls-head' + (shown && items.length ? " with-menu" : "") + '" data-act="login_open" data-key="'
+    + esc(s.key) + '" aria-expanded="' + shown + '">'
     + (many ? '<span class="ls-n">' + (index + 1) + "</span>" : "") + '<span class="ls-name">' + esc(schoolName(s)) + "</span>"
     + (s.current ? '<span class="tag default">' + esc("默认") + "</span>" : "") + tagHtml(s.status)
-    + (shown ? '<span class="ls-end' + (items.length ? " with-menu" : "") + '"></span>'
-      : '<span class="ls-acct">' + esc(s.saved ? (s.enabled ? s.username : "已关闭") : "未填账号") + "</span>")
+    + (shown ? "" : '<span class="ls-acct">' + esc(s.saved ? (s.enabled ? s.username : "已关闭") : "未填账号") + "</span>")
     + icon(shown ? "down" : "right") + "</button>";
   if (!shown) return '<div class="login-school">' + row + "</div>";
   if (schoolTest.state === "running" && schoolTest.key === s.key) return '<div class="login-school open">' + row + loginTesting(schoolTest) + "</div>";
@@ -2058,7 +2101,7 @@ function updateStrip() {
 }
 
 async function loadSettings() {
-  settings = await api().settings(); notifyOn = settings.notify; hourlyNow = settings.hourly_now === true; settingsErrors = {}; settingsDraft = {}; notifyCheck = null;
+  settings = await api().settings(); notifyOn = settings.notify; hourlyNow = settings.hourly_now === true; retryOn = settings.retry === true; settingsErrors = {}; settingsDraft = {}; notifyCheck = null;
   try { apiKeys = await api().api_keys(); } catch (error) { apiKeys = null; }
   if (!proOn()) return;
   try { proStatus = await api().pro_status(); } catch (error) { proStatus = null; }
@@ -2156,6 +2199,7 @@ function render(force) {
     const list = root.querySelector(".papers-scroll, .keys-scroll");
     if (list) list.scrollTop = scrolled;
     localize(root);
+    fitPaths(root);
     if (panel === "settings") holdSettingsHeight();
     if (attention) updateAttentionCountdown();
     renderedAttention = attention ? V : null;
@@ -2302,11 +2346,7 @@ async function act(action, target) {
     case "papers": {
       papersKind = target.dataset.list; panel = "papers"; listOpen = null; papersList = null; render(true);
       await loadPapers();
-      // From the line on sites not yet supported: their group open, in view.
-      const at = target.dataset.unverified ? shownList().groups.findIndex((g) => g.unverified) : -1;
-      if (at >= 0) listOpen = new Set([at]);
       render(true);
-      if (at >= 0) { const shown = root.querySelector(".unverified-note"); if (shown) shown.closest(".grp").scrollIntoView({ block: "start" }); }
       return;
     }
     case "markdown_issue": return say(await api().markdown_issue());
@@ -2388,7 +2428,7 @@ async function act(action, target) {
     case "reveal":
       revealed = !revealed;
       target.setAttribute("aria-pressed", String(revealed));
-      root.querySelectorAll(".key-edit input").forEach((input) => { input.type = revealed ? "text" : "password"; });
+      root.querySelectorAll(".key-edit input[data-secret]").forEach((input) => { input.type = revealed ? "text" : "password"; });
       return;
     case "install_pro": {
       try { proInstall = (await api().install_pro()) || { state: "idle" }; }
@@ -2606,6 +2646,21 @@ async function act(action, target) {
       } finally { target.disabled = false; }
       return;
     }
+    case "retry": {
+      target.disabled = true;
+      try {
+        const result = await api().set_retry(!retryOn);
+        if (!result.ok) throw new Error(result.error || "设置保存失败");
+        retryOn = result.retry;
+        settings.retry = retryOn;
+        target.classList.toggle("on", retryOn);
+        target.setAttribute("aria-checked", String(retryOn));
+      } catch (error) {
+        settingsErrors.retry = error.message || "设置保存失败";
+        render(true);
+      } finally { target.disabled = false; }
+      return;
+    }
     case "hourly_now": {
       target.disabled = true;
       try {
@@ -2659,21 +2714,6 @@ async function act(action, target) {
 // A paper list scrolls; pressing in it must not drag the window. Nor in 支持的学校's list (user, 2026-11-21: a press
 // between its rows dragged, and the redraw after it went back to the top).
 const interactive = (target) => target.closest('button, input, select, textarea, a, [contenteditable="true"], [role="button"], .paper-list, .papers-scroll, .keys-scroll, #support-list');
-// The dot's card: open while the pointer is on the dot or the card, a moment's grace between
-// them. Told by where the pointer moves, not by its leaving: the card is redrawn every second
-// and a dot redrawn under the pointer never says it was left.
-const RULES_PARTS = ".rules-dot, .rules-pop";
-function rulesPointer(over) {
-  if (over) {
-    clearTimeout(rulesTimer);
-    rulesTimer = 0;
-    if (!rulesShown) showRules(true);
-  } else if (rulesShown && !rulesTimer) {
-    rulesTimer = setTimeout(() => { rulesTimer = 0; showRules(false); }, 300);
-  }
-}
-document.addEventListener("pointermove", (event) => rulesPointer(!!(event.target.closest && event.target.closest(RULES_PARTS))));
-document.documentElement.addEventListener("pointerleave", () => rulesPointer(false));
 root.addEventListener("pointerdown", (event) => {
   if (event.button === 0 && api().activate_on_input) inputActivation = api().activate_on_input();
   if (event.button === 0 && event.target.closest(".attention-target")) {

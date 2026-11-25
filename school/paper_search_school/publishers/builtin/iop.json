@@ -4,7 +4,8 @@
     "name": "IOP",
     "article_url_template": "https://iopscience.iop.org/article/{doi}",
     "pdf_url_templates": [
-      "https://iopscience.iop.org/article/{doi}/pdf"
+      "https://iopscience.iop.org/article/{doi}/pdf",
+      "https://iopscience.iop.org/article/{doi}/ampdf"
     ],
     "success_url_markers": [
       "iopscience.iop.org/article/"

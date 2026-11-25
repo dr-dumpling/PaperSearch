@@ -247,15 +247,16 @@ def school_switch_state() -> str:
     """The schools a batch's papers without access (没权限) are tried with at its end, one after another
     (没权限时换下一所学校, school_switch.py): the default one first, each named as ``school_download``'s ``school``
     takes it (its entityID); none while the switch is off; and whether the batch takes one journal's papers one after
-    another (``group``: on and more than one school). Opens no browser. Answers
-    {"on": bool, "schools": [{"name": ..., "entity_id": ...}, ...], "group": bool}."""
-    from . import school_switch
+    another (``group``: on and more than one school); and whether 失败后自动重试 is on (``retry``, user_settings). Opens no
+    browser. Answers {"on": bool, "schools": [{"name": ..., "entity_id": ...}, ...], "group": bool, "retry": bool}."""
+    from . import school_switch, user_settings
 
     config = load_config()
     on = school_switch.enabled(config)
     schools = [{"name": school_switch.name(entry), "entity_id": str(entry.get("idp_entity_id") or "").strip()}
                for entry in school_switch.schools(config)] if on else []
-    return json.dumps({"on": on, "schools": schools, "group": on and len(schools) > 1}, ensure_ascii=False)
+    return json.dumps({"on": on, "schools": schools, "group": on and len(schools) > 1,
+                       "retry": config.get(user_settings.RETRY_KEY) is True}, ensure_ascii=False)
 
 
 @mcp_app.tool()
@@ -293,6 +294,8 @@ def school_batch_progress(
     lanes: str = "",
     held: list[dict[str, Any]] | None = None,
     held_wait: bool = False,
+    later: dict[str, Any] | None = None,
+    switch_to: str = "",
 ) -> str:
     """Update the progress window of a serial batch without downloading.
 
@@ -310,12 +313,20 @@ def school_batch_progress(
     running download of the batch too: then only the counts and this line change.
 
     held: the publishers whose papers the caller holds because their school login stopped
-    working mid-batch, [{key (DOI prefix), name, count}]; the window shows them with a
+    working mid-batch, [{key (its name, else its DOI prefix), name, count}]; the window shows them with a
     button to go on. The answer's "resume" lists those the user asked to go on with since
     the last report (each once), and "stop" whether the user ended the batch in the window
     (a batch waiting for the user downloads nothing that would hear of it).
     held_wait: nothing is left but the held publishers' papers and the batch waits for the
     user (登录并继续 or 终止); the window says so, collapsed too.
+
+    later: the papers whose first try failed and that the caller tries again later, by why:
+    {no_access (the next saved school at the end), unexplained (once more at the end), blocked
+    (their site blocked them; tried again at blocked_at, epoch seconds), login (their school login
+    lapsed; waiting for 登录并继续), papers: {each kind: its papers' DOIs}}; the window's ring shows them
+    beside the papers done, and its 重试 count and list.
+    switch_to: the saved school the caller now tries its papers without access with; the window
+    names it for a few seconds.
     """
     from . import entitlements, progress_reporter
 
@@ -323,7 +334,7 @@ def school_batch_progress(
     updated = progress_reporter.sync_batch(batch_id, total, done, succeeded, failed,
                                            current=label, finished=finished, results=results,
                                            phase=phase, channel=channel, lanes=lanes, held=held,
-                                           held_wait=held_wait)
+                                           held_wait=held_wait, later=later, switch_to=switch_to)
     stop = entitlements.batch_stop_requested() and (progress_reporter.read_state() or {}).get("batch_id") == batch_id
     return json.dumps({"updated": updated, "resume": entitlements.take_resumes(batch_id), "stop": bool(stop)})
 

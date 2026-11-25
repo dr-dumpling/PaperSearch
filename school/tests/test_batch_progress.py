@@ -34,6 +34,20 @@ class BatchProgressTests(unittest.TestCase):
             self.assertEqual(self.state()["content"], "main")
             outcome["result"] = {"success": True}
 
+    def test_the_batch_keeps_what_it_was_asked_for(self):
+        """Its first article's content stays the batch's (its lists' headings), whatever a later one asks for (the end's
+        Markdown alone for those short of figures, Windows 2026-11-24); another batch takes its own."""
+        for batch_id, index, content in (("b21", 1, "both"), ("b21", 2, "markdown"), ("b22", 1, "markdown")):
+            self.new_process()
+            batch = pr.BatchContext.from_args(batch_id, index, 3, index - 1, index - 1, 0)
+            with pr.tracked_download(f"10.1000/{batch_id}{index}", None, batch, content=content) as outcome:
+                state = self.state()
+                self.assertEqual((state["content"], state["batch_content"]),
+                                 (content, "markdown" if batch_id == "b22" else "both"))
+                outcome["result"] = {"success": True}
+            data = self.state(); data["owner_pid"] = DEAD_PID
+            pr.progress_path().write_text(json.dumps(data), encoding="utf-8")
+
     def item(self, index, total, ok, **counts):
         self.new_process()
         batch = pr.BatchContext.from_args("b1", index, total, *(counts.get(k) for k in ("done", "succeeded", "failed")))
@@ -50,7 +64,7 @@ class BatchProgressTests(unittest.TestCase):
         from paper_search_school import entitlements, progress_capsule
 
         entitlements.resume_path().unlink(missing_ok=True)
-        held = [{"key": "10.1126/", "name": "Science", "count": 1}]
+        held = [{"key": "Science", "name": "Science", "count": 1}]
         lanes = "开放下载 2 篇 · 机构下载 2 篇"
         self.new_process()
         with pr.tracked_download("10.1002/now", None, pr.BatchContext.from_args("b7", 5, 10, 4, 4, 0)) as outcome:
@@ -60,35 +74,39 @@ class BatchProgressTests(unittest.TestCase):
             api = progress_capsule.Api(MagicMock(), MagicMock(), MagicMock())
             self.assertEqual(api.act("resume_held", "", state["run_id"]), "已收到：这一篇下完后接着下暂停的篇目")
             reply = json.loads(server.school_batch_progress("b7", 10, 4, 4, 0, lanes=lanes, held=held))
-            self.assertEqual(reply["resume"], ["10.1126/"])
+            self.assertEqual(reply["resume"], ["Science"])
             self.assertEqual(self.state()["current"], "10.1002/now")
             outcome["result"] = {"success": True}
 
     def test_a_held_publisher_shows_with_its_button_and_the_users_answer_comes_back_once(self):
-        # The caller holds a publisher whose school login stopped working mid-batch (2026-11-15).
+        # The caller holds a publisher whose school login stopped working mid-batch (2026-11-15), keyed as the
+        # batch keys it (batch.ts heldList): by its name, else, not named yet, by its DOI prefix. Keys of
+        # DOI prefixes alone were kept until 2026-11-23, and the window dropped every publisher the batch held.
         import time
         from paper_search_school import entitlements, progress_view
 
         entitlements.resume_path().unlink(missing_ok=True)
         entitlements.control_path().with_name("stop.json").unlink(missing_ok=True)
+        kept = [{"key": "Science", "name": "Science", "count": 3}, {"key": "10.1038/", "name": "10.1038/", "count": 2}]
         reply = json.loads(server.school_batch_progress("b9", 10, 4, 4, 0, phase="其他篇目已完成", held=[
-            {"key": "10.1126/", "name": "Science", "count": 3}, {"key": "not-a-doi", "name": "x", "count": 2},
-            {"key": "10.1098/", "name": "Royal Society Publishing", "count": 0}]))
+            *kept, {"key": "Sci\nence", "name": "x", "count": 2}, {"key": 7, "name": "x", "count": 2},
+            {"key": "x" * 121, "name": "x", "count": 2},
+            {"key": "Royal Society Publishing", "name": "Royal Society Publishing", "count": 0}]))
         self.assertEqual(reply, {"updated": True, "resume": [], "stop": False})
         state = self.state()
-        self.assertEqual(state["held"], [{"key": "10.1126/", "name": "Science", "count": 3}])
-        self.assertEqual(progress_view.view(state, time.time())["held"], [{"key": "10.1126/", "name": "Science", "count": 3}])
+        self.assertEqual(state["held"], kept)
+        self.assertEqual(progress_view.view(state, time.time())["held"], kept)
         # 登录并继续: the next report answers it, once; another batch's press is not this one's.
-        entitlements.request_resume("10.1126/", "b9")
-        entitlements.request_resume("10.1126/", "b8")
+        entitlements.request_resume("Science", "b9")
+        entitlements.request_resume("Science", "b8")
         self.assertEqual(json.loads(server.school_batch_progress("b9", 10, 4, 4, 0, held=[]))["resume"], [])
-        entitlements.request_resume("10.1126/", "b9")
-        self.assertEqual(json.loads(server.school_batch_progress("b9", 10, 4, 4, 0, held=[]))["resume"], ["10.1126/"])
+        entitlements.request_resume("Science", "b9")
+        self.assertEqual(json.loads(server.school_batch_progress("b9", 10, 4, 4, 0, held=[]))["resume"], ["Science"])
         self.assertEqual(json.loads(server.school_batch_progress("b9", 10, 4, 4, 0))["resume"], [])
         self.assertEqual(self.state()["held"], [])
         # Nothing else left: the batch waits, which the window says instead of the last paper.
         wait = "其他篇目已完成，等你回来点“登录并继续”"
-        held = [{"key": "10.1126/", "name": "Science", "count": 3}]
+        held = [{"key": "Science", "name": "Science", "count": 3}]
         server.school_batch_progress("b9", 10, 7, 7, 0, current="10.1126/last", phase=wait, held=held, held_wait=True)
         shown = progress_view.view(self.state(), time.time())
         self.assertTrue(shown["held_wait"])
@@ -105,6 +123,54 @@ class BatchProgressTests(unittest.TestCase):
         entitlements.request_action("", entitlements.STOP_BATCH, self.state()["run_id"])
         self.assertTrue(json.loads(server.school_batch_progress("b9", 10, 4, 4, 0, phase="其他篇目已完成"))["stop"])
         entitlements.control_path().with_name("stop.json").unlink(missing_ok=True)
+
+    def test_the_papers_held_for_a_later_try_and_the_next_school(self):
+        """The papers the caller holds for a later try, by why, for the window's ring (user, 2026-11-23): kept through
+        the batch's downloads and its reports that do not say them, changed by those that do, dropped at its end; the
+        next school named for a moment."""
+        import time
+        from paper_search_school import progress_view
+
+        later = {"no_access": 2, "unexplained": 1, "blocked": 1, "blocked_at": 1_800_000_000, "login": 0, "other": 9}
+        self.assertTrue(json.loads(server.school_batch_progress("b11", 67, 32, 30, 2, later=later))["updated"])
+        state = self.state()
+        self.assertEqual(state["later"], {"no_access": 2, "unexplained": 1, "blocked": 1, "blocked_at": 1_800_000_000.0, "login": 0})
+        shown = progress_view.view(state, time.time())
+        self.assertEqual(shown["later"]["total"], 4)
+        self.assertEqual((shown["done"], shown["left"], shown["pct"]), (32, 35, 48))
+        self.new_process()
+        with pr.tracked_download("10.1000/33", None, pr.BatchContext.from_args("b11", 33, 67, 32, 30, 2)) as outcome:
+            self.assertEqual(self.state()["later"]["no_access"], 2)
+            # Beside the running download (the open-access lane's report): only they and the counts change.
+            self.assertTrue(pr.sync_batch("b11", 67, 32, 30, 2, lanes="开放下载 1 篇 · 机构下载 31 篇", later={"no_access": 1}))
+            snap = self.state()
+            self.assertEqual((snap["later"]["no_access"], snap["current"], snap["awaiting_next"]), (1, "10.1000/33", False))
+            outcome["result"] = {"success": True}
+        server.school_batch_progress("b11", 67, 33, 31, 2)
+        self.assertEqual(self.state()["later"]["no_access"], 1)
+        # Bad counts are none.
+        server.school_batch_progress("b11", 67, 33, 31, 2, later={"no_access": -1, "login": True, "blocked": 2})
+        self.assertEqual(self.state()["later"], {"no_access": 0, "unexplained": 0, "blocked": 2, "login": 0})
+        # The next school: named on the card for a few seconds.
+        server.school_batch_progress("b11", 67, 64, 62, 2, later={"no_access": 3}, switch_to="红木兰大学")
+        state = self.state()
+        self.assertEqual(progress_view.view(state, time.time())["switch_note"], "换红木兰大学再试")
+        self.assertEqual(progress_view.view(state, time.time() + 6)["switch_note"], "")
+        # The batch's end: none held.
+        server.school_batch_progress("b11", 67, 67, 65, 2, finished=True)
+        self.assertEqual(self.state()["later"], {})
+
+    def test_the_papers_held_for_a_later_try_are_named_by_doi(self):
+        """Each kind's papers by DOI (user, 2026-11-24: the window's 重试 list names them, 剩余 lists the others): as many
+        as the kind counts at most, DOIs only; none from a caller that does not send them."""
+        later = {"no_access": 2, "unexplained": 1, "blocked": 0, "login": 0,
+                 "papers": {"no_access": ["10.1/a", "10.1/b", "10.1/c"], "unexplained": ["10.1/d", 7], "blocked": [""],
+                            "login": "10.1/e", "other": ["10.1/f"]}}
+        server.school_batch_progress("b12", 67, 32, 30, 2, later=later)
+        self.assertEqual(self.state()["later"]["papers"],
+                         {"no_access": ["10.1/a", "10.1/b"], "unexplained": ["10.1/d"], "blocked": []})
+        server.school_batch_progress("b12", 67, 33, 31, 2, later={"no_access": 1})
+        self.assertNotIn("papers", self.state()["later"])
 
     def test_items_accumulate_and_the_window_waits_between_them(self):
         self.item(1, 3, True)

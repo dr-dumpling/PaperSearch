@@ -19,6 +19,15 @@ export const NETWORK_POLL_MS = 15_000;
 /** A paper done again at most this often for the network (a site of its own failing is no network loss). */
 const NETWORK_AGAIN = 3;
 
+/**
+ * The backend's word that the publisher's site did not answer (the connection dropped, or opening it timed out) while
+ * the network is up: the paper is done once more after ``SITE_AGAIN_MS``, whatever 失败后自动重试 says (user,
+ * 2026-11-24: 2 of some 1300 papers of the publisher sweep, Springer Publishing's and Cambridge's, a few seconds' trouble).
+ * Only the paper's own stages: a supplementary file not answered is not worth the paper again.
+ */
+export const SITE_UNREACHABLE_CODE = "publisher_unreachable";
+export const SITE_AGAIN_MS = 15_000;
+
 /** doi.org or PubMed's E-utilities answering anything, any status: the network is up. */
 export async function networkReachable(): Promise<boolean> {
   const answers = await Promise.all(["https://doi.org/", "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/einfo.fcgi"]
@@ -29,14 +38,18 @@ export async function networkReachable(): Promise<boolean> {
 
 /**
  * "lost": the backend found neither doi.org nor PubMed; "suspect": a stage could not
- * reach its host (one site's trouble or the network's, the network to be looked at).
+ * reach its host (one site's trouble or the network's, the network to be looked at);
+ * "site": the publisher's site did not answer the paper's own stage (``SITE_UNREACHABLE_CODE``).
  */
-export function networkSigns(result: DownloadWithFallbackResult): "lost" | "suspect" | undefined {
+export function networkSigns(result: DownloadWithFallbackResult): "lost" | "suspect" | "site" | undefined {
   const codes = [...result.attempts.map((attempt) => attempt.code),
     ...(result.supplements ?? []).map((file) => file.reason)];
   if (codes.includes(NETWORK_LOST_CODE)) return "lost";
-  return result.attempts.some((attempt) => attempt.status === "error" && NETWORK_ERROR.test(attempt.message ?? ""))
-    ? "suspect" : undefined;
+  if (result.attempts.some((attempt) => attempt.status === "error" && NETWORK_ERROR.test(attempt.message ?? ""))) {
+    return "suspect";
+  }
+  return result.status !== "ok" && result.attempts.some((attempt) => attempt.status === "error" && attempt.code === SITE_UNREACHABLE_CODE)
+    ? "site" : undefined;
 }
 
 export interface NetworkWatch {
@@ -70,12 +83,19 @@ export async function pastNetworkLoss(
   watch: NetworkWatch,
 ): Promise<DownloadWithFallbackResult> {
   let result = await run();
+  let siteAgain = false;
   for (let again = 0; again < NETWORK_AGAIN; again += 1) {
     const signs = networkSigns(result);
     if (!signs) break;
     if (!(await watch.online())) await waitForNetwork(watch);
     else if (signs === "suspect") break;
-    else watch.log("[批量] 刚才网络断过（doi.org 和 PubMed 都没连上），重下这一篇");
+    else if (signs === "site") {
+      // Once a paper: a site still not answering after the wait is the site's, its reason kept.
+      if (siteAgain) break;
+      siteAgain = true;
+      watch.log(`[批量] 出版社网站没有应答（连接被断开或打开超时）：${SITE_AGAIN_MS / 1000} 秒后重下这一篇`);
+      await watch.pause(SITE_AGAIN_MS);
+    } else watch.log("[批量] 刚才网络断过（doi.org 和 PubMed 都没连上），重下这一篇");
     result = await run();
   }
   return result;

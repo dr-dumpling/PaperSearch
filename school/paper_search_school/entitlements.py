@@ -211,7 +211,7 @@ def resume_path() -> Path:
 
 
 def request_resume(key: str, batch_id: str) -> None:
-    """The user asked the batch to go on with a publisher it holds (a DOI prefix)."""
+    """The user asked the batch to go on with a publisher it holds (its key: its name, else its DOI prefix)."""
     data = _read_json(resume_path())
     keys = list(data.get("keys") or []) if data.get("batch_id") == batch_id else []
     if key not in keys:

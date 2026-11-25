@@ -347,6 +347,9 @@ class DownloadResult:
     fulltext_page: dict[str, Any] = field(default_factory=dict)
     #: Where a login that waited on the user ended (``_login_wait_page``).
     login_wait_page: str = ""
+    #: The kind of the last verification page this item waited on (a key of
+    #: ``browser.challenge.kinds.LABELS``), for the record (``_note_challenge_type``).
+    challenge_type: str = ""
     #: How the browser of this item started: who held its profile, the wait for
     #: it, the launch's seconds, a relaunch (``_launch_context``).
     browser_start: dict[str, Any] = field(default_factory=dict)

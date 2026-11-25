@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from paper_search_school import progress_reporter
-from paper_search_school.browser.challenge import interaction
+from paper_search_school.browser.challenge.local import interaction
 from paper_search_school.engine import batch_login
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 from test_challenge_interaction import widget, wait_case

@@ -38,9 +38,13 @@ _SSOSTART_LINKS_JS = """() => [...document.querySelectorAll('a[href*="/action/ss
 # (Science, NEJM and PNAS, pages saved after a school login, 2026-11-14). A publisher on
 # this template names these once one of its pages is verified; Atypon's older template
 # (Taylor & Francis: hlFld-Fulltext) has neither: its rules are CLASSIC_TEMPLATE_* below.
+# A table's figure that holds the table itself gives no image: NEJM's figure.table has the
+# table and a picture of it, the Markdown writes the table, and the picture was counted as
+# a figure left out ("图片可能不全" on 6 NEJM pages, 2026-11-25).
 CURRENT_TEMPLATE_FULLTEXT_SHOWN_JS = """() => (document.querySelector('section#bodymatter')?.innerText.length || 0) > 500
   && !document.querySelector('.denial-block')"""
 CURRENT_TEMPLATE_FULLTEXT_IMAGES_JS = r"""() => [...document.querySelectorAll('figure img[data-open="viewer"], section#bodymatter figure img')]
+  .filter((img) => !img.closest('figure')?.querySelector('table'))
   .map((img) => img.currentSrc || img.src)
   .filter((url) => /\/assets\/images\//.test(url))
   .map((url) => url.replace(/\/assets\/images\/(?:small|medium)\//, '/assets/images/large/'))"""
@@ -115,6 +119,10 @@ class AtyponAdapter(PublisherAdapter):
 
     site_hosts: frozenset[str] = frozenset()
     entry_event = "atypon-institution-link"
+    # Without access the PDF address (/doi/pdf/<DOI>) answers with the article's own page there: Taylor & Francis
+    # (Scand J Rheumatol 2013, 10.3109, signed in, "Purchase options" on it) and NEJM Catalyst (10.1056/cat.24.0478,
+    # "Welcome: <school>" and "Get Access" on it), each ended as pdf_not_captured (Windows, 2026-11-22 and -23).
+    pdf_address_shows_article_page = True
 
     def _on_site(self, url: str) -> bool:
         parsed = urlparse(url or "")

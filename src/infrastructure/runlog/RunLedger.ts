@@ -73,6 +73,20 @@ export function pruneOldRuns(root: string, now: Date = new Date()): string[] {
   return removed;
 }
 
+let version = "";
+/**
+ * The PaperSearch version this run ran with, kept in run.json: 接着下 downloads again a paper not supported then only
+ * once PaperSearch has been updated since (resume.ts, user 2026-11-24). The command line sets it from its package.json
+ * as it starts (cli.ts, as it does the edition); unset (tests), runs say none.
+ */
+export function setPaperSearchVersion(value: string): void {
+  version = value;
+}
+
+export function paperSearchVersion(): string {
+  return version;
+}
+
 export interface RunLedgerStart {
   kind: "download" | "download_batch";
   total: number;
@@ -166,6 +180,7 @@ export class RunLedger {
       runId,
       ...start,
       startedAt: now.toISOString(),
+      ...(paperSearchVersion() ? { paperSearchVersion: paperSearchVersion() } : {}),
       pid: process.pid,
       cwd: process.cwd(),
     });

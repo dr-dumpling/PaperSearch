@@ -68,6 +68,7 @@ export declare class SchoolMcpClient implements SchoolBackend {
     schoolSwitch(signal?: AbortSignal): Promise<{
         schools: SchoolTurn[];
         group: boolean;
+        retry: boolean;
     } | undefined>;
     /** The batch's papers for the window's lists, on the backend the batch already has. */
     reportBatchPapers(update: SchoolBatchPapers, last?: boolean): Promise<boolean>;

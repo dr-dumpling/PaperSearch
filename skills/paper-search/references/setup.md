@@ -1,39 +1,39 @@
-# 配置：请开始配置
+# Setup: "start setup" (请开始配置)
 
-用户说“请开始配置”（或“配置 PaperSearch”“start setup”）时，按下面固定的流程做。一次只问一个问题，等用户回答了再往下走；不要把所有配置项一起列出来让用户填。
+When the user says "start setup" (or "请开始配置", "配置 PaperSearch", "set up PaperSearch"), follow the fixed flow below. Ask one question at a time and wait for the answer before going on; do not list all the settings for the user to fill in at once.
 
-1. 运行 `paper-search doctor --format text`，先看清哪些已经配好；这一步不用问用户。找不到 `paper-search` 命令时，先按 `management-layer.md` 的“只装了 Skill 时”征得同意装好，再运行它。
-2. 只问一个问题：要不要用学校订阅下载（机构配置）。问的时候说明它用学校账号下载非 OA 文章的全文和补充材料，需要 Google Chrome（没有时一起装）。以下情况不问：已经装好（`doctor` 的 `entitled_access` 是 `available`）直接走 A；这台机器没有图形界面，或用户说过不要（`PAPER_SEARCH_SCHOOL_DECLINED` 为 `true`），直接走 B。用户说不要时运行 `paper-search config set PAPER_SEARCH_SCHOOL_DECLINED true` 记下来，再走 B。
+1. Run `paper-search doctor --format text` to see what is already set up; this step needs no question to the user. When there is no `paper-search` command, first install it with the user's consent as "When only the Skill is installed" in `management-layer.md` says, then run it.
+2. Ask only one question: whether to use school subscription downloads (school setup). When asking, explain that it downloads the full texts and supplementary files of non-OA articles with the school account, and needs Google Chrome (installed too if missing). Do not ask in these cases: already installed (`entitled_access` in `doctor` is `available`): go straight to A; this computer has no graphical interface, or the user said no before (`PAPER_SEARCH_SCHOOL_DECLINED` is `true`): go straight to B. When the user says no, run `paper-search config set PAPER_SEARCH_SCHOOL_DECLINED true` to record it, then go to B.
 
-A. 机构配置（用户同意用学校订阅下载）
+A. School setup (the user agrees to use school subscription downloads)
 
-1. 没装时安装（见 `school-setup.md`）：`paper-search school install --yes --skip-school`，没有 Chrome 时先装 Chrome。
-2. 直接问用户的学校并设好：运行 `paper-search-school setup --institution "学校名"`（见 `school-setup.md` 的“学校”一节）。只有用户主动说跳过时才跳过，那样第一次下载时在选校页选。
-3. 其余配置都在设置窗口里做：装完设置窗口会自己打开；没打开或早已装好时，直接运行 `paper-search settings` 打开设置窗口。告诉用户在窗口里填要用的 API key、改下载文件夹和等待时间，每个 key 可以点“测试”，填完点右上角 × 关闭。推荐先填 EasyScholar（影响因子和分区）和 Semantic Scholar（正文片段），其余 key 非必须。不在对话里逐项问 key 或下载文件夹。
-4. 用户说填好了，运行 `paper-search doctor --format text`，告诉用户现在能用哪些功能。
+1. When it is not installed, install it (see `school-setup.md`): `paper-search school install --yes --skip-school`; when there is no Chrome, install Chrome first.
+2. Ask the user for their school right away and set it: run `paper-search-school setup --institution "School name"` (see "School" in `school-setup.md`). Skip this only when the user says to skip it; then they choose on the school-selection page at the first download.
+3. Everything else is set in the settings window: it opens by itself after installation; when it did not open, or it was installed long ago, run `paper-search settings` directly to open the settings window. Tell the user to enter the API keys they want and change the download folder and wait times in the window; each key has a "测试" (Test) button; when done, close it with the × at the top right. Recommend EasyScholar (impact factors and quartiles) and Semantic Scholar (body snippets) first; the other keys are optional. Do not ask for keys or the download folder one by one in the chat.
+4. When the user says they are done, run `paper-search doctor --format text` and tell the user what they can use now.
 
-B. 不用机构配置
+B. No school setup
 
-1. 只推荐两个 key：`EASYSCHOLAR_KEY`（影响因子和分区）、`SEMANTIC_SCHOLAR_API_KEY`（正文片段），给出申请入口（`doctor` 的 To enable 一行）；其余 key 都非必须，用户问起再说。用户说都不需要就跳到第 4 步。
-2. 请用户在自己的终端运行 `paper-search setup --skip-school` 填 key（输入时不显示），填完告诉你。
-3. 用户说填好了，对填了的每个 key 运行 `paper-search config test <KEY>` 确认能用。
-4. 设好默认下载文件夹（见下面“默认下载文件夹”）。
-5. 运行 `paper-search doctor --format text`，告诉用户现在能用哪些功能。
+1. Recommend only two keys: `EASYSCHOLAR_KEY` (impact factors and quartiles) and `SEMANTIC_SCHOLAR_API_KEY` (body snippets), with where to apply (the To enable line in `doctor`); all other keys are optional; mention them only when the user asks. When the user needs neither, skip to step 4.
+2. Ask the user to run `paper-search setup --skip-school` in their own terminal to enter the keys (the input is hidden), and to tell you when done.
+3. When the user says they are done, run `paper-search config test <KEY>` for each key they entered to confirm it works.
+4. Set the default download folder (see "Default download folder" below).
+5. Run `paper-search doctor --format text` and tell the user what they can use now.
 
-不在“请开始配置”里时：用户第一次要下订阅文章、学校订阅下载还没装、用户没说过不要、这台机器有图形界面，也问一次要不要装（说明同第 2 步），同意后按 A 的 1–3 做。用户只问某个功能缺什么时，只提这个功能要的 key 和申请入口，填法按 A 的第 3 步（设置窗口）或 B 的第 2 步（终端）。
+Outside "start setup": when the user first wants a subscription article, school subscription downloads are not installed, the user has not said no, and this computer has a graphical interface, also ask once whether to install it (explained as in step 2); when they agree, do steps 1–3 of A. When the user only asks what a capability lacks, mention only the key it needs and where to apply; for entering it, use step 3 of A (the settings window) or step 2 of B (the terminal).
 
-## 默认下载文件夹
+## Default download folder
 
-配置时，或第一次要下载而还没设过时，先看有没有设好：
+During setup, or at the first download when it has not been set, first check whether it is set:
 
 ```bash
 paper-search config get DEFAULT_DOWNLOAD_PATH
 ```
 
-没有设置（返回的 `configured` 为 `false`）时问用户：“下载的论文默认放到哪个文件夹？”用户给出位置后保存为完整路径（`~` 表示用户目录）：
+When it is not set (`configured` is `false`), ask the user: "Which folder should downloaded papers go to by default?" When the user gives a place, save it as a full path (`~` means the home folder):
 
 ```bash
 paper-search config set DEFAULT_DOWNLOAD_PATH "~/Documents/Papers"
 ```
 
-之后下载不传 `savePath` / `--save-path`，文件自动存到这个文件夹里每次新建的 `<年月日-时分秒>_PaperSearchDownload` 文件夹；只有用户这一次指定了别的位置才传。没有设置时，文件会存到命令当前所在目录下的 `./downloads`，位置不固定，用户很难找到。用户也可以在进度胶囊的设置里改这个文件夹。
+After that, do not pass `savePath` / `--save-path` when downloading: files go into a new `<YYYYMMDD-HHmmss>_PaperSearchDownload` folder created in this folder each time; pass it only when the user names another place for this download. When it is not set, files go to `./downloads` under the command's current directory, a place that changes and that users find hard to locate. Users can also change this folder in the settings of the progress capsule.

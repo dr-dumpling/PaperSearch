@@ -18,8 +18,9 @@ from paper_search_school import login_routes, progress_reporter
 from paper_search_school.download_diagnostics import serialize_download_result
 from paper_search_school.engine import access_rules, batch, batch_login, bridge
 from paper_search_school.engine.batch import DownloadResult, PaperRecord, PublisherBatchDownloader
-from paper_search_school.engine.batch_login import NO_INSTITUTION_ENTRY
+from paper_search_school.engine.batch_login import GENERIC_ENTRY_MISSING, NO_INSTITUTION_ENTRY
 from paper_search_school.publishers.model import PublisherProfile
+from paper_search_school.publishers.site import site_profile
 from tests.thread_clock import this_thread_only
 
 DOI = "10.9999/oa.2026.101"
@@ -120,6 +121,89 @@ class NoSchoolRouteTests(Isolated):
         self.assertIn("no_institution_entry_remembered", states)
         self.assertEqual(login_routes.no_entry_since(HOST, "batch-1"), {"doi": DOI, "reason": NO_INSTITUTION_ENTRY})
 
+    def test_a_personal_sign_in_on_the_site_the_doi_opened_ends_at_once(self):
+        # Nature Digest in Springer Nature's list (Windows, 2026-11-24): its DOI opens a site no profile names, whose
+        # subscribers' sign-in (e-mail, password) was taken for the school's login page and held the publisher.
+        digest = "https://www.digest.example/ja-jp/digest/v22/n12/article"
+        d = self.downloader()
+        page = fake_page(digest, {**NONE_SHOWN, "password": True, "credential": True}, boxes=1)
+        d._item_result = DownloadResult(doi=DOI, status="failed", article_url="https://doi.org/" + DOI)
+        self.assertEqual(d._login_wait_page(page), "school_login")  # not yet known as the article's site
+        d._note_article_host(page)
+        self.assertEqual(d._login_wait_page(page), "publisher")
+        signed_in, result = self.login(d, page)
+        self.assertFalse(signed_in)
+        self.assertEqual(result.reason, NO_INSTITUTION_ENTRY)
+        self.assertNotIn("login_state", [e["state"] for e in result.events])  # no wait for the user
+
+    def test_a_failed_pdfs_login_on_a_site_outside_the_rules_says_the_sites_reason(self):
+        # Scientific American in Springer Nature's list (Windows, 2026-11-24): the PDF looked for on nature.com by the
+        # publisher's rules (404), then no school login on scientificamerican.com: the site's reason, not 没取到 PDF.
+        site = "https://www.magazine.example/article/a-poem"
+        first = self.downloader()
+        first._item_result = DownloadResult(doi=DOI, status="failed", article_url="https://doi.org/" + DOI)
+        first._note_article_host(fake_page(site))
+        self.login(first, fake_page(site, NONE_SHOWN))
+        d = self.downloader()
+        d._item_result = DownloadResult(doi=LATER, status="failed", article_url="https://doi.org/" + LATER)
+        d._note_article_host(fake_page(site))
+        signed_in, result = self.login(d, fake_page(site, NONE_SHOWN), LATER, retry=True)
+        self.assertFalse(signed_in)
+        self.assertEqual(result.reason, NO_INSTITUTION_ENTRY)
+
+    def test_the_first_failed_pdfs_login_on_a_site_outside_the_rules_says_the_sites_reason_too(self):
+        # springermedizin.de in Springer Nature's list (Windows, 2026-11-24): the batch's first paper of the site ended
+        # as 原因不明 · 没取到 PDF (the PDF looked for on link.springer.com, 404), the next as 网站不提供学校登录.
+        site = "https://www.newsportal.example/a-report/51541736"
+        d = self.downloader()
+        d._item_result = DownloadResult(doi=DOI, status="failed", article_url="https://doi.org/" + DOI)
+        d._note_article_host(fake_page(site))
+        signed_in, result = self.login(d, fake_page(site, NONE_SHOWN), retry=True)
+        self.assertFalse(signed_in)
+        self.assertEqual(result.reason, NO_INSTITUTION_ENTRY)
+        self.assertEqual(login_routes.no_entry_since("www.newsportal.example", "batch-1"),
+                         {"doi": DOI, "reason": NO_INSTITUTION_ENTRY})
+        # On the publisher's own site the PDF's reason stays (its rules may be at fault); so too with a route shown.
+        for url, route in ((ARTICLE, NONE_SHOWN), (site, ENTRY)):
+            with self.subTest(url=url):
+                self.batch_id = "batch-" + url[-3:]
+                d = self.downloader()
+                d._item_result = DownloadResult(doi=LATER, status="failed", article_url="https://doi.org/" + LATER)
+                d._note_article_host(fake_page(url))
+                signed_in, result = self.login(d, fake_page(url, route), LATER, retry=True)
+                self.assertEqual(result.reason, "")
+
+    def test_the_articles_own_page_with_no_entry_to_open_ends_the_login_before_the_page_wait(self):
+        # Nature Cities on nature.com (Windows 2026-11-24): no entry the rules knew, a minute on the article, then
+        # 原因不明 · 没进入学校登录页. Now ENTRY_LOOK_SEC of it ends the login, its entry looked for on every pass.
+        d = self.downloader()
+        result = DownloadResult(doi=DOI, status="failed", article_url="https://doi.org/" + DOI)
+        d._item_result = result
+        self.assertLess(d.ENTRY_LOOK_SEC, d.page_wait_sec)
+        self.assertTrue(d._article_without_entry(fake_page(route=ENTRY), result, 0))
+        self.assertFalse(d._article_without_entry(fake_page(route=ENTRY, boxes=1), result, 0))  # a school search box
+        self.assertFalse(d._article_without_entry(fake_page("https://www.elsewhere.example/x", ENTRY), result, 0))
+        result.events.append({"state": "login_page_opened", "detail": "https://login.example/x"})
+        self.assertFalse(d._article_without_entry(fake_page(route=ENTRY), result, 0))  # a login page was opened
+        result.events[:] = [{"state": "institution_selected", "detail": "红木兰大学"}]
+        self.assertFalse(d._article_without_entry(fake_page(route=ENTRY), result, 0))  # the school was chosen
+        result.events.clear()
+        d._end_without_entry(fake_page(route=ENTRY), result)
+        self.assertEqual(result.reason, "publisher_institution_entry_missing")
+        self.assertIn("login_entry_missing", [e["state"] for e in result.events])
+
+    def test_the_article_site_is_never_the_schools_side_or_where_the_login_went(self):
+        d = self.downloader()
+        d._item_result = DownloadResult(doi=DOI, status="failed", article_url="https://doi.org/" + DOI)
+        d._note_article_host(fake_page("https://idp.example.edu.cn/idp/profile/SAML2/Redirect/SSO"))
+        self.assertEqual(getattr(d, "_article_host", ""), "")
+        d._route_away = True  # the login went on from the publisher: where it is now is not the article's site
+        d._note_article_host(fake_page("https://login.school-system.example/cas/login"))
+        self.assertEqual(getattr(d, "_article_host", ""), "")
+        d._route_away = False
+        d._note_article_host(fake_page("https://www.digest.example/ja-jp/digest/1"))
+        self.assertEqual(d._article_host, "www.digest.example")
+
     def test_the_same_sites_later_paper_in_the_batch_does_not_look_again(self):
         self.login(self.downloader(), fake_page())
         d = self.downloader()
@@ -187,6 +271,31 @@ class NoSchoolRouteTests(Isolated):
         _, result = self.login(self.downloader(), fake_page(route={**NONE_SHOWN, "ready": False}), wait=True)
         self.assertNotIn(NO_INSTITUTION_ENTRY, [e["state"] for e in result.events])
 
+    def test_a_site_without_rules_ends_its_later_papers_as_its_first(self):
+        """jle.com (Windows 2026-11-23): two papers, each PDF 403 "Accès refusé", only the
+        site's own "Se connecter" on the page. The first ended as no entry found by the shared
+        rules; the second, the site remembered, as pdf_not_captured (tried again at the end)."""
+        first, later = "10.1684/ndt.2025.154", "10.1684/ndt.2025.156"
+        page_of = "https://www.jle.com/fr/revues/ndt/doc/{}/jle_article.dhtml".format
+        profile = site_profile(first, page_of("fuite-de-chyle_79250"))
+        self.assertTrue(profile.generic)
+
+        def downloader():
+            d = self.downloader()
+            d.profile = profile
+            return d
+
+        d = downloader()
+        _, result = self.login(d, fake_page(page_of("fuite-de-chyle_79250")), first, retry=True)
+        self.assertEqual(result.reason, GENERIC_ENTRY_MISSING)
+        self.assertEqual(login_routes.no_entry_since("www.jle.com", "batch-1"),
+                         {"doi": first, "reason": GENERIC_ENTRY_MISSING})
+        d = downloader()
+        _, result = self.login(d, fake_page(page_of("quoi-de-neuf-en-dialyse-en-2025_79557")), later, retry=True)
+        self.assertEqual(result.reason, GENERIC_ENTRY_MISSING)
+        d._click_sso_entry.assert_not_called()
+        self.assertIn(first, next(e["detail"] for e in result.events if e["state"] == NO_INSTITUTION_ENTRY))
+
     def test_the_login_after_a_failed_pdf_keeps_its_own_ending(self):
         d = self.downloader()
         _, result = self.login(d, fake_page(), retry=True)
@@ -194,6 +303,37 @@ class NoSchoolRouteTests(Isolated):
         self.assertIn("login_entry_missing", states)
         self.assertNotIn(NO_INSTITUTION_ENTRY, states)
         self.assertEqual(login_routes.no_entry_since(HOST, "batch-1"), {})
+
+
+class GenericPersonalSignInTests(Isolated):
+    """mathnet.ru (Sbornik: Mathematics, Windows 2026-11-25): a site without rules of its own whose article
+    page signs in only to its own accounts ("Personal entry: Login, Password"), no institution entry; it
+    ended as 暂未适配 (generic_institution_entry_missing), now 网站不提供学校登录."""
+
+    def login_on_site(self, route, boxes, batch_id, *, retry=False):
+        self.batch_id = batch_id  # each case its own batch: the batch remembers the site's ending
+        d = self.downloader()
+        d.profile = site_profile(DOI, ARTICLE)
+        self.assertTrue(d.profile.generic)
+        return self.login(d, fake_page(ARTICLE, route, boxes=boxes), retry=retry)
+
+    def test_only_the_sites_own_account_sign_in_is_no_school_login(self):
+        signed_in, result = self.login_on_site(PERSONAL, 1, "batch-1")
+        self.assertFalse(signed_in)
+        self.assertEqual(result.reason, NO_INSTITUTION_ENTRY)
+        self.assertIn("the publisher's own account sign-in",
+                      next(e["detail"] for e in result.events if e["state"] == NO_INSTITUTION_ENTRY))
+        self.assertEqual(login_routes.no_entry_since(HOST, "batch-1"), {"doi": DOI, "reason": NO_INSTITUTION_ENTRY})
+
+    def test_no_password_field_or_a_failed_pdf_keeps_not_adapted_yet(self):
+        # A page showing a school route is not ended here at all (_may_offer_entry: the wait goes on).
+        cases = {"no password field": (NONE_SHOWN, 0, False),
+                 "the login after a failed PDF": (PERSONAL, 1, True)}
+        for n, (case, (route, boxes, retry)) in enumerate(cases.items(), 2):
+            with self.subTest(case):
+                _, result = self.login_on_site(route, boxes, f"batch-{n}", retry=retry)
+                self.assertEqual(result.reason, GENERIC_ENTRY_MISSING)
+                self.assertNotIn(NO_INSTITUTION_ENTRY, [e["state"] for e in result.events])
 
 
 class PersonalSignInTests(Isolated):

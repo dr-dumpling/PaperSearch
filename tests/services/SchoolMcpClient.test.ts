@@ -959,6 +959,28 @@ describe("SchoolMcpClient", () => {
     await expectAllChildrenExited();
   });
 
+  it("sends the papers held for a later try and the next school only to a backend that declares them", async () => {
+    // The window's ring and its card (user, 2026-11-23): their counts by why, the blocked ones' time in seconds.
+    const update = { id: "batch-later", total: 9, done: 3, succeeded: 2, failed: 1, finished: false, switchTo: "红木兰大学",
+      later: { noAccess: 2, unexplained: 1, blocked: 1, blockedAt: 1_800_000_000_400, login: 0,
+        papers: { noAccess: ["10.1/a", "10.1/b"], unexplained: ["10.1/c"], blocked: ["10.1/d"], login: [] } } };
+    expect(await fakeClient("batch_later").reportBatchProgress(update)).toBe(true);
+    expect(await fakeClient("batch").reportBatchProgress(update)).toBe(true);
+    const sent = readLog().filter((row) => row.event === "call" && row.tool === "school_batch_progress").map((row) => row.arguments);
+    // Each kind's papers by DOI too, for the window's 重试 list (user, 2026-11-24).
+    expect(sent[0]).toMatchObject({ later: { no_access: 2, unexplained: 1, blocked: 1, blocked_at: 1_800_000_000, login: 0,
+      papers: { no_access: ["10.1/a", "10.1/b"], unexplained: ["10.1/c"], blocked: ["10.1/d"], login: [] } },
+      switch_to: "红木兰大学" });
+    expect(sent[1]).not.toHaveProperty("later");
+    expect(sent[1]).not.toHaveProperty("switch_to");
+    // A count that is not one is no report; a report of them alone goes to no backend that does not show them, nor
+    // starts one.
+    expect(await fakeClient("batch_later").reportBatchProgress({ ...update, later: { ...update.later, blocked: -1 } })).toBe(false);
+    expect(await fakeClient("batch").reportBatchProgress({ ...update, laterOnly: true })).toBe(false);
+    expect(readLog().filter((row) => row.tool === "school_batch_progress")).toHaveLength(2);
+    await expectAllChildrenExited();
+  });
+
   function fakeClient(
     scenario: string,
     overrides: {

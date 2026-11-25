@@ -19,6 +19,14 @@ class PublisherManualWaitTests(unittest.TestCase):
         self.downloader._write_diagnostic = Mock()
         self.downloader._hold_after_run = Mock()
 
+    def test_a_page_that_waits_for_the_user_asks_them(self):
+        self.downloader.login_timeout_sec = 1
+        self.downloader._verification_attention = Mock()
+        self.downloader._automatic_challenge_step = Mock(return_value=False)
+        result = DownloadResult(doi='10.1000/test', status='failed')
+        self.assertFalse(self.downloader._wait_for_challenge(self.page, result))
+        self.downloader._verification_attention.assert_called()
+
     def test_challenge_at_article_url_is_not_fulltext_access(self):
         self.downloader._looks_logged_out = Mock(return_value=False)
         self.assertFalse(self.downloader._article_access_available(self.page))
@@ -75,18 +83,3 @@ class PublisherManualWaitTests(unittest.TestCase):
         self.downloader._complete_login_from_current_page.assert_not_called()
         self.downloader._capture_pdf.assert_not_called()
 
-    def test_pdf_challenge_does_not_try_another_pdf_candidate(self):
-        d = self.downloader
-        self.page.context.browser = None
-        d._return_to_record_article_if_needed = Mock(return_value=False)
-        d._click_pdf_entry = Mock(return_value=False)
-        d._pdf_candidates = Mock(return_value=['https://www.sciencedirect.com/first.pdf', 'https://www.sciencedirect.com/second.pdf'])
-        d._should_use_async_pdf_navigation = Mock(return_value=True)
-        d._capture_pdf_via_async_navigation = Mock(return_value=(None, self.page.url))
-        result = DownloadResult(doi='10.1000/test', status='failed')
-        self.assertIsNone(d._capture_pdf(self.page, result.doi, result)[0])
-        d._capture_pdf_via_async_navigation.assert_called_once()
-
-
-if __name__ == '__main__':
-    unittest.main()

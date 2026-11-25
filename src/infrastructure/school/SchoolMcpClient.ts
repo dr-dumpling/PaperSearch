@@ -35,6 +35,7 @@ import {
   SchoolToolResultError,
 } from "./SchoolResultNormalizer.js";
 import type {
+  SchoolBatchLater,
   SchoolBatchPapers,
   SchoolBatchUpdate,
   SchoolBatchRequests,
@@ -67,7 +68,7 @@ export const SCHOOL_BACKEND_UTF8_ENV: Readonly<Record<string, string>> = { PYTHO
 
 const SCHOOL_BACKEND_SOURCE = "school";
 // MCP clientInfo is informational only; keep in step with package.json on release.
-const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.7.3";
+const PAPER_SEARCH_MCP_CLIENT_VERSION = "0.8.0";
 
 interface ActiveSession {
   client: Client;
@@ -431,7 +432,8 @@ export class SchoolMcpClient implements SchoolBackend {
       typeof update.id !== "string" ||
       !update.id.trim() ||
       update.id.length > 128 ||
-      ![update.total, update.done, update.succeeded, update.failed].every(
+      ![update.total, update.done, update.succeeded, update.failed,
+        ...(update.later ? [update.later.noAccess, update.later.unexplained, update.later.blocked, update.later.login] : [])].every(
         count,
       ) ||
       update.total < 1 ||
@@ -440,9 +442,11 @@ export class SchoolMcpClient implements SchoolBackend {
       return false;
     }
     const current = update.current ? sanitizeDoi(update.current) : undefined;
-    // The lanes line rides on the batch's backend once there, never starting one of its own.
-    return this.report(update.lanes === undefined, signal, async (session) => {
-      if (!session.batchSupport.progressTool || (update.lanes !== undefined && !session.batchSupport.progressLanes)) {
+    // The lanes line rides on the batch's backend once there, never starting one of its own; so does a report of the
+    // papers held for a later try alone, sent only to a backend that shows them.
+    return this.report(update.lanes === undefined && !update.laterOnly, signal, async (session) => {
+      if (!session.batchSupport.progressTool || (update.lanes !== undefined && !session.batchSupport.progressLanes)
+        || (update.laterOnly && !session.batchSupport.progressLater)) {
         return false;
       }
       assertProtocolIntegrity(session.protocolState);
@@ -464,6 +468,8 @@ export class SchoolMcpClient implements SchoolBackend {
             ...(!update.finished && update.lanes !== undefined ? { lanes: update.lanes } : {}),
             ...(update.held !== undefined && session.batchSupport.progressHeld ? { held: update.held } : {}),
             ...(update.heldWait && session.batchSupport.progressHeldWait ? { held_wait: true } : {}),
+            ...(update.later && session.batchSupport.progressLater ? { later: laterArgument(update.later) } : {}),
+            ...(update.switchTo && session.batchSupport.progressLater ? { switch_to: update.switchTo } : {}),
           },
         },
         undefined,
@@ -542,7 +548,7 @@ export class SchoolMcpClient implements SchoolBackend {
    * The schools a batch's papers without access are tried with at its end, and whether it takes one journal's papers
    * one after another (school_switch_state), on its backend.
    */
-  async schoolSwitch(signal?: AbortSignal): Promise<{ schools: SchoolTurn[]; group: boolean } | undefined> {
+  async schoolSwitch(signal?: AbortSignal): Promise<{ schools: SchoolTurn[]; group: boolean; retry: boolean } | undefined> {
     const session = this.retainedSession;
     if (!session || session.readiness.state !== "available" || !session.batchSupport.switchStateTool) return undefined;
     try {
@@ -553,7 +559,7 @@ export class SchoolMcpClient implements SchoolBackend {
       const content = (result as { content?: unknown })?.content;
       const block = Array.isArray(content) && content.length === 1 ? content[0] as { type?: unknown; text?: unknown } : undefined;
       if ((result as { isError?: unknown })?.isError === true || block?.type !== "text" || typeof block.text !== "string") return undefined;
-      const state = JSON.parse(block.text) as { schools?: unknown; group?: unknown };
+      const state = JSON.parse(block.text) as { schools?: unknown; group?: unknown; retry?: unknown };
       const listed = state.schools;
       // Names to show and entityIDs to name them by; anything else is left out.
       const schools = (Array.isArray(listed) ? listed : []).flatMap((entry) => {
@@ -561,7 +567,7 @@ export class SchoolMcpClient implements SchoolBackend {
         return typeof name === "string" && name.trim() && name.length <= 200 && typeof entityId === "string" && /^https?:\/\/\S{1,500}$/.test(entityId)
           ? [{ name: name.trim(), entityId }] : [];
       });
-      return { schools, group: state.group === true };
+      return { schools, group: state.group === true, retry: state.retry === true };
     } catch {
       return undefined;
     }
@@ -1325,6 +1331,14 @@ function batchProgressAnswer(result: unknown): { updated?: unknown; resume?: unk
   } catch {
     return undefined;
   }
+}
+
+/** The papers a batch holds for a later try as school_batch_progress takes them (``blocked_at`` in epoch seconds). */
+function laterArgument(later: SchoolBatchLater) {
+  return { no_access: later.noAccess, unexplained: later.unexplained, blocked: later.blocked, login: later.login,
+    ...(later.blockedAt ? { blocked_at: Math.round(later.blockedAt / 1000) } : {}),
+    ...(later.papers ? { papers: { no_access: later.papers.noAccess, unexplained: later.papers.unexplained,
+      blocked: later.papers.blocked, login: later.papers.login } } : {}) };
 }
 
 function batchProgressUpdated(result: unknown): boolean {

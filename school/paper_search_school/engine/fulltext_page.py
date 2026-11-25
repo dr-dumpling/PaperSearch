@@ -62,6 +62,27 @@ _PAGE_DOI_JS = """() => {
 }"""
 
 
+def paragraph_text_js(paragraphs: str, outside: str, threshold: str, *, root: str = "") -> str:
+    """A ``fulltext_shown_js`` that counts the article's paragraph text: the elements
+    ``paragraphs`` selects (inside the first ``root`` when one is given: no full text without
+    it), those inside ``outside`` aside, their text's length compared with ``threshold``
+    ("> 500", ">= 200": each adapter's own). The selectors are written in single quotes."""
+    if not re.fullmatch(r">=? \d+", threshold):
+        raise ValueError(f"threshold is a comparison with a number: {threshold!r}")
+    if any("'" in selector or "\\" in selector for selector in (paragraphs, outside, root)):
+        raise ValueError("a selector with a quote or a backslash")
+    lines = ["() => {"]
+    scope = "document"
+    if root:
+        lines += [f"  const root = document.querySelector('{root}');", "  if (!root) return false;"]
+        scope = "root"
+    lines.append(f"  const text = [...{scope}.querySelectorAll('{paragraphs}')]")
+    if outside:
+        lines.append(f"    .filter((p) => !p.closest('{outside}'))")
+    lines += ["    .reduce((total, p) => total + (p.textContent || '').length, 0);", f"  return text {threshold};", "}"]
+    return "\n".join(lines)
+
+
 # For an adapter's ``fulltext_prepare_js`` on a MathJax page that keeps no MathML in the
 # DOM (ScienceDirect's MathJax 4, Wiley's lazy MathJax 4.1, 2026-11-14): each formula's
 # source written onto its element as data-original-mathml, which PaperSearch reads. A
@@ -90,6 +111,16 @@ MATHJAX_SOURCES_JS = r"""async () => {
   }
   return kept;
 }"""
+
+
+def _names_doi(named: str, doi: str) -> bool:
+    """Whether the DOI a page names (``_PAGE_DOI_JS``) is this one, or the page names none. A
+    DOI written as the end of a sentence is the same DOI: the AMA Journal of Ethics writes
+    "10.1001/amajethics.2025.884." in its citation_doi too, and its pages were taken for another
+    article's (other_article, 2026-11-22)."""
+    named = normalize_doi(named).lower()
+    wanted = (normalize_doi(doi) or "").lower()
+    return not named or named == wanted or named.rstrip(".") == wanted.rstrip(".")
 
 
 def page_dir(output_dir: Path, doi: str) -> Path:
@@ -192,8 +223,7 @@ def read_page(page: Any, doi: str, adapter: Any, *, sample: bool = False) -> tup
     shown_js = _SAMPLE_SHOWN_JS if general else own
     if not wait_stable(page):
         return None, "page_not_stable"
-    named = normalize_doi(str(page.evaluate(_PAGE_DOI_JS) or "")).lower()
-    if named and named != (normalize_doi(doi) or "").lower():
+    if not _names_doi(str(page.evaluate(_PAGE_DOI_JS) or ""), doi):
         return None, "other_article"
     if not sample:
         pdf_only = str(page.evaluate(_PDF_ONLY_JS) or "")
@@ -321,11 +351,19 @@ def save_page(read: dict[str, Any], output_dir: Path, doi: str, request: Any, *,
                 failed.append({"url": url, "reason": "not_an_image"})
                 continue
             body = bytearray()
-            for chunk in response.chunks():
-                body.extend(chunk)
-                if total + len(body) > MAX_BYTES or clock() > deadline:
-                    break
-            else:
+            try:
+                whole = True
+                for chunk in response.chunks():
+                    body.extend(chunk)
+                    if total + len(body) > MAX_BYTES or clock() > deadline:
+                        whole = False
+                        break
+            except Exception as exc:
+                # A read that fails part way (PLOS's image host timing out, 2026-11-23) is recorded like
+                # one that could not start: this figure is missing, the page and the PDF go on.
+                failed.append({"url": url, "reason": type(exc).__name__})
+                continue
+            if whole:
                 if not body:
                     failed.append({"url": url, "reason": "empty"})
                     continue

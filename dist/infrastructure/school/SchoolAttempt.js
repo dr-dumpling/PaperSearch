@@ -20,7 +20,8 @@ const MESSAGES = {
     paywall: "页面提示全文访问受限，尚不能确认机构登录或订阅状态；请核查页面，不要连续重复登录。",
     entitlement_missing: "学校登录后仍拿不到全文，学校可能没有订阅这部分内容：出版社仍限制这篇论文的全文访问。请核查机构订阅范围、年份和账号权限；不自动重复登录。",
     cloudflare_blocked: "网页需要人工安全验证。请在下载浏览器完成验证后重试。",
-    captcha_required: "网页需要人工安全验证。请在下载浏览器完成验证后重试。",
+    captcha_required: "出版社网站的人机验证在等待时间内没有通过（多半是短时间内访问太多，被网站拦截），本次未取得 PDF；这不代表没有权限。批量下载会先暂停这家出版社的篇目、其他照常，10 分钟后再试一次；单篇请稍后再试，或在下载浏览器里完成验证。",
+    blocked_paused: "这家出版社的网站在本批中拦截了访问（人机验证没过或访问太多），这一篇暂停后没有去试（暂停 10 分钟再试时仍被拦截，或任务已终止）；不代表没有权限。过一阵或换网络后说“接着下”即可。",
     download_timeout: "下载等待超时。请检查下载浏览器是否在等待登录或人工验证，再重试。",
     timeout: "下载等待超时。请检查下载浏览器是否在等待登录或人工验证，再重试。",
     cancelled: "下载已取消。",
@@ -32,7 +33,7 @@ const MESSAGES = {
     browser_operation_timeout: "页面处理超过设定的等待时间，已停止这一篇的浏览器步骤；这不代表没有全文权限。可在下载窗口设置中调整其他页面等待时间后重试。",
     browser_unresponsive: "下载浏览器长时间没有响应，已结束这一篇，批量中的其他文章照常继续；可稍后单独重试这一篇。",
     browser_connection_lost: "和下载浏览器的连接断了，这一篇没有下完；批量换一个新的浏览器接着下其他文章，这一篇可以“接着下”重下。这不代表没有权限。",
-    unsupported_platform: "这篇文章只在出版社的另一个平台（如 ClinicalKey）提供，需单独订阅，PaperSearch 暂不支持在该平台登录和下载；本次未取得 PDF。",
+    unsupported_platform: "这篇文章的全文只在出版社的另一个平台上（如 EM-Consulte、ClinicalKey），PaperSearch 还没有这个平台的规则，本次未取得 PDF；这不代表没有权限：学校订阅了该平台的，可在校园网下到该平台下载。",
     article_not_yet_published: "这篇论文已录用，但出版社还没有上线全文（页面写明正式发表后才能阅读）；本次未取得 PDF，正式发表后再下载。这不代表没有权限。",
     page_not_saved: "学校订阅下载打开了这篇文章，但全文网页没存下来（页面一直在变、跳到了别处或读取超时）；这不代表没有权限，可以“接着下”再试。",
     doi_not_resolved: "doi.org 还查不到这个 DOI（刚上线的文章常要过几天才登记，也可能当时连不上 doi.org），这家出版社的文章页只能经 DOI 打开，没有打开浏览器，本次未取得 PDF；这不代表没有权限，过几天再下即可。",
@@ -42,6 +43,7 @@ const MESSAGES = {
     generic_institution_entry_missing: "这家出版社还没有专门的规则，按通用规则没有找到机构登录入口；可以把这篇报告给我们补规则，或在校园网下下载。",
     publisher_institution_entry_missing: "PaperSearch 在出版社的文章页上没找到学校登录入口：多半是这本期刊的页面和 PaperSearch 的规则对不上（期刊从别的出版社并过来、网站改版等），是 PaperSearch 要补的规则（暂不支持），不代表没有权限。截图和诊断记录见 paper-search failures，可以发给我们修规则；急用可在校园网下自己下载。",
     no_institution_entry: "这个网站没有学校登录入口：文章页上只有网站自己的个人账户登录（邮箱和密码、ORCID），或者什么登录都没有（开放获取的网站常这样），程序没有去登录，也没有等你登录。这不代表学校没有订阅：开放获取的文章可以直接在网站上阅读和下载，订阅内容可以在校园网或学校 VPN 下下载。",
+    pdf_not_offered: "这篇文章在网站上只有网页全文，文章页上没有任何 PDF（开放获取，不用学校登录）；勾选了 Markdown 时网页全文已存为 Markdown。这不代表没有权限，也不是下载出错。",
     access_blocked: "出版社网站拦截了当前网络（可能是当前网络被网站防护拦截，也可能是下载过多被暂停）；本次未取得 PDF，同一期刊本批后续文章直接跳过。可换网络或稍后再试。",
     rate_limited: "这家出版社一小时内的下载已到上限（防止学校因下载过多被暂停访问）；批量下载会等到可以继续时再下这一篇，单篇请稍后再试。",
     source_exception: "下载路径发生程序异常，请检查后端诊断记录；本次未取得 PDF。",
@@ -76,8 +78,14 @@ const SHORT_REASONS = {
     cloudflare_blocked: "被网站拦截",
     captcha_required: "被网站拦截",
     verification_page: "被网站拦截",
+    blocked_paused: "被网站拦截",
+    http_429: "被网站拦截",
+    figshare_http_403: "被网站拦截",
+    challenge_timeout: "被网站拦截",
+    publisher_access_blocked: "被网站拦截",
     publisher_content_error: "出版社网站出错",
     publisher_unreachable: "出版社网站出错",
+    http_404: "出版社网站出错",
     idp_login_error: "学校登录系统出错",
     idp_no_return_to_publisher: "学校登录系统出错",
     login_paused: "学校登录中途失效",
@@ -86,8 +94,9 @@ const SHORT_REASONS = {
     article_not_yet_published: "全文还没上线",
     doi_not_resolved: "DOI 查不到",
     doi_not_registered: "DOI 查不到",
-    no_institution_entry: "网站没有学校登录",
-    // 暂不支持 (unsupported)
+    no_institution_entry: "网站不提供学校登录",
+    pdf_not_offered: "网站没有 PDF",
+    // 待适配 (unsupported)
     unsupported_platform: "只在其他平台提供",
     unsupported_publisher: "网站暂未适配",
     generic_institution_entry_missing: "网站暂未适配",
@@ -119,9 +128,43 @@ const SHORT_REASONS = {
 export function schoolShortReason(code, unknown = SHORT_REASONS.download_failed) {
     return code && Object.hasOwn(SHORT_REASONS, code) ? SHORT_REASONS[code] : unknown;
 }
+/**
+ * 被网站拦截: the site blocked the current network, or its human verification was not passed. A
+ * batch pauses the paper's publisher on it (batch.ts, user 2026-11-23).
+ */
+export function blockedBySite(code) {
+    return !!code && Object.hasOwn(SHORT_REASONS, code) && SHORT_REASONS[code] === SHORT_REASONS.access_blocked;
+}
+/**
+ * The kinds of verification the backend tells apart on a verification page (browser/challenge/kinds.py
+ * LABELS, the same keys and names): the record names the one a paper last waited on (the user, 2026-11-25).
+ */
+export const CHALLENGE_TYPE_LABELS = {
+    recaptcha_v2: "reCAPTCHA v2",
+    recaptcha_v3: "reCAPTCHA v3",
+    hcaptcha: "hCaptcha",
+    cloudflare: "Cloudflare 5 秒盾",
+    image_code: "图片英数字识别",
+    recaptcha_v2_image: "reCAPTCHA v2 图像识别",
+    hcaptcha_image: "hCaptcha 图像识别",
+    funcaptcha_image: "FunCaptcha 图像识别",
+    awswaf_image: "AWS WAF / bCaptcha 图像识别",
+    turnstile: "Cloudflare Turnstile",
+    friendly_captcha: "Friendly Captcha",
+    geetest: "GeeTest",
+    datadome: "DataDome",
+    perimeterx: "PerimeterX",
+    aliyun: "阿里云验证码",
+    tencent: "腾讯验证码",
+    other: "其他验证（未分出类型）",
+};
 export function schoolAttemptDetails(code, trace) {
     const knownCode = Object.hasOwn(MESSAGES, code) ? code : "download_failed";
     // The school's site a login stopped on is a validated host name (SchoolResultNormalizer).
-    return { code: knownCode, message: MESSAGES[knownCode].replace("{host}", trace?.stoppedHost || "学校的网站") };
+    const message = MESSAGES[knownCode].replace("{host}", trace?.stoppedHost || "学校的网站");
+    // A verification that stopped the paper: which kind it was (a key the normalizer kept).
+    const kind = knownCode === "captcha_required" && trace?.challengeType
+        && Object.hasOwn(CHALLENGE_TYPE_LABELS, trace.challengeType) ? CHALLENGE_TYPE_LABELS[trace.challengeType] : "";
+    return { code: knownCode, message: kind ? `${message}验证类型：${kind}。` : message };
 }
 //# sourceMappingURL=SchoolAttempt.js.map

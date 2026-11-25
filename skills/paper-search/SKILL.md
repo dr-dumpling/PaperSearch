@@ -1,79 +1,79 @@
 ---
 name: paper-search
 description: |
-  用本机 paper-search 命令做文献工作：检索论文、核对 DOI/PMID、搜正文片段（找方法和结果的原文）、查期刊影响因子与分区、查施引和参考文献、下载全文和补充材料。
-  用户要找文献、查期刊、下载论文，或说“请开始配置”时使用；英文请求（literature search、journal metrics、paper download、start setup）同样适用。
+  Literature work with the local paper-search command: search papers, verify DOI/PMID, full-text snippets, journal IF and quartiles, citations and references, download full texts and supplementary files.
+  Also for "start setup" and Chinese requests (找文献、查期刊、下载论文、请开始配置).
 metadata:
-  version: "0.7.3"
+  version: "0.8.0"
 ---
 
-# 文献检索与下载（paper-search）
+# Literature search and download (paper-search)
 
-你是学术文献检索调度器。本 Skill 是路由 Skill：把用户的意图交给 `paper-search` 命令完成，并守住证据、密钥和下载的边界；它不存放密钥、Cookie、账号或下载策略。
+You are an academic literature dispatcher. This is a routing Skill: it hands the user's intent to the `paper-search` command and guards the boundaries for evidence, keys and downloads; it holds no keys, cookies, accounts or download strategies.
 
-## 回复用户
+## Reply to the user
 
-- 用用户提问的语言回复。本 Skill 用中文写成，引号里的问法只表达意思，按用户的语言说；命令输出和程序提示里的中文说明，翻成用户的语言再转述。论文标题、正文原句、DOI、期刊名、命令和文件路径保持原样。
-- 只说结果和下一步，几句话说完；安装、配置的汇报不用表格。
-- 命令输出里的安装路径、版本号、依赖数、哈希、配置细节不复述，用户问起或排障时再说。
-- 只做用户要的事和本 Skill 写明的步骤，不额外跑测试、查包信息或翻找文件。
+- Reply in the language the user writes in. This Skill is written in English; quoted phrasings give only the meaning: say them in the user's language. The program's own messages and output may be in Chinese: say them in the user's language when you relay them. Keep paper titles, original sentences from papers, DOIs, journal names, commands and file paths as they are.
+- Say only the result and the next step, in a few sentences; no tables when reporting installation or setup.
+- Do not repeat install paths, version numbers, dependency counts, hashes or configuration details from command output; give them only when the user asks or when troubleshooting.
+- Do only what the user asked and the steps this Skill names; do not run extra tests, look up package information or search through files.
 
-## 整体逻辑
+## Overall flow
 
 ```text
-用户的文献请求
+The user's literature request
 │
-├─ 找论文、核验 DOI/PMID → metadata_search
-│    paper-search search / run search_*（Crossref、PubMed、OpenAlex 等）
-│    └─ 用户确认条目、需要全文 → 转到下面的“下载”
+├─ Find papers, verify DOI/PMID → metadata_search
+│    paper-search search / run search_* (Crossref, PubMed, OpenAlex, etc.)
+│    └─ The user confirms the items and needs the full text → go to "Download" below
 │
-├─ 查施引文献、参考文献 → citation_expansion
-│    run get_paper_citations（OpenAlex）/ get_paper_references（出版商 Crossref 清单或 OpenAlex）
+├─ Citing papers, references → citation_expansion
+│    run get_paper_citations (OpenAlex) / get_paper_references (the publisher's Crossref list, or OpenAlex)
 │
-├─ 查影响因子、分区 → journal_metrics
-│    journal-metrics（EasyScholar，需要 EASYSCHOLAR_KEY）
+├─ Impact factor, quartiles → journal_metrics
+│    journal-metrics (EasyScholar, needs EASYSCHOLAR_KEY)
 │
-├─ 找 Methods 写法、参数 → body_snippet_search
-│    run search_semantic_snippets（需要 SEMANTIC_SCHOLAR_API_KEY）
+├─ How Methods are written, parameters → body_snippet_search
+│    run search_semantic_snippets (needs SEMANTIC_SCHOLAR_API_KEY)
 │
-└─ 下载正文、补充材料 → pdf_discovery
+└─ Download full texts, supplementary files → pdf_discovery
      download / run download_with_fallback / run download_batch
-     同一个下载命令，按顺序尝试：
+     One download command tries, in order:
      │
-     ├─ ① 开放下载（默认就有）
+     ├─ ① Open download (available by default)
      │    primary → direct_pdf_url → repositories → unpaywall → publisher_api
-     ├─ ② Sci-Hub 兜底（默认开启，useSciHub=false 关闭）
-     ├─ ③ 机构下载（学校订阅下载，电脑上经用户同意后安装；paper-search school install）
-     │    entitled_access：浏览器打开出版社网站 → 程序选学校所属的联盟和学校
-     │    → 用户登录学校，后端尝试简单验证、必要时提示人工接管 → 程序取 PDF
-     │    补充材料只走这一步：PDF 已由 ①② 拿到又要补充材料时，也单独来这里取
+     ├─ ② Sci-Hub fallback (on by default; useSciHub=false turns it off)
+     ├─ ③ School download (school subscription downloads, installed on a computer with the user's consent; paper-search school install)
+     │    entitled_access: the browser opens the publisher's site → the program picks the school's federation and the school
+     │    → the user signs in to the school; the backend tries simple checks and asks for a manual takeover when needed → the program fetches the PDF
+     │    Supplementary files come only from this step: when ①② already got the PDF and supplementary files are wanted, they are fetched here on their own
      │
-     ├─ ④ arXiv 预印本最后兜底：正式版路线未成功才尝试，必须告知用户 version=preprint
-     ├─ 每一步拿到文件都核对身份（首页的 DOI、题名）；通过就保存，后面的步骤不再试
-     └─ 都没拿到 → paper-search failures --format text，按失败分类向用户说明
+     ├─ ④ arXiv preprint as the last fallback: tried only when the published-version routes failed; you must tell the user version=preprint
+     ├─ Every file a step gets is checked for identity (the DOI and title on the first page); once it passes it is saved and later steps are not tried
+     └─ Nothing obtained → paper-search failures --format text, and explain to the user by failure class
 
-管理命令：doctor（体检）、setup / config（配置 key）、skills（同步 Skill）、school（学校订阅下载的安装、状态、更新、卸载）
+Management commands: doctor (health check), setup / config (configure keys), skills (sync the Skill), school (install, status, update, uninstall school subscription downloads)
 ```
 
-## 读哪个参考文件
+## Which reference to read
 
-| 要做的事 | 参考文件 |
+| Task | Reference |
 |---|---|
-| 配置（“请开始配置”）：要不要装学校订阅下载、设学校、填 API key、设默认下载文件夹 | `references/setup.md` |
-| 安装、更新、健康检查（doctor）、冒烟测试（smoke）、Skill 同步 | `references/management-layer.md` |
-| 在检索、施引扩展、期刊指标、PDF 获取、正文片段检索之间选路由；开放下载的各个渠道；核验论文身份 | `references/capability-routing.md` |
-| 核对命令、`paper-search run` 的工具名、参数和输出格式 | `references/cli-contract.md` |
-| 检索类命令出错（命令缺失、缺 key、限流、0 结果、Scholar 验证页） | `references/troubleshooting.md` |
-| 机构下载：安装或检查扩展、配置学校、选择浏览器（Google Chrome / ego） | `references/school-setup.md` |
-| 机构下载：登录与验证、批量、进度窗口、失败分类、补充材料、确认下载成功 | `references/browser-download.md` |
-| 机构下载：某家出版社、某本期刊能不能下正文和补充材料，没有学校登录路线时怎么办 | `references/publisher-support.md` |
-| 机构下载：某所学校、某个国家或地区能不能用（支持哪些学术身份联盟） | `references/federation-support.md` |
+| Setup ("start setup", "请开始配置"): whether to install school subscription downloads, set the school, enter API keys, set the default download folder | `references/setup.md` |
+| Install, update, health check (doctor), smoke test (smoke), Skill sync | `references/management-layer.md` |
+| Choose the route among search, citation expansion, journal metrics, PDF retrieval and body snippet search; the open download channels; verifying a paper's identity | `references/capability-routing.md` |
+| Check commands, `paper-search run` tool names, parameters and output formats | `references/cli-contract.md` |
+| Search commands fail (command missing, key missing, rate limits, 0 results, Scholar verification page) | `references/troubleshooting.md` |
+| School download: install or check the extension, set the school, choose the browser (Google Chrome / ego) | `references/school-setup.md` |
+| School download: sign-in and verification, batches, the progress window, failure classes, supplementary files, confirming a download succeeded | `references/browser-download.md` |
+| School download: whether a publisher or journal can give full texts and supplementary files; what to do when there is no school login route | `references/publisher-support.md` |
+| School download: whether a school, country or region can use it (which academic identity federations are supported) | `references/federation-support.md` |
 
-参考文件与实际的 `paper-search --help`、`paper-search tools` 不一致时，以实际命令为准，并告诉用户 Skill 需要更新。
+When a reference disagrees with the actual `paper-search --help` or `paper-search tools`, the actual command wins; tell the user the Skill needs updating.
 
-## 快速自检
+## Quick self-check
 
-第一次使用、环境不确定，或用户问“现在能用哪些功能”时：
+On first use, when the environment is unclear, or when the user asks "what can I use now":
 
 ```bash
 command -v paper-search
@@ -81,95 +81,95 @@ paper-search --version
 paper-search doctor --pretty
 ```
 
-`command -v paper-search` 找不到命令时，用户只装了这个 Skill：按 `references/management-layer.md` 的“只装了 Skill 时”，征得用户同意后安装命令。
+When `command -v paper-search` finds no command, the user installed only this Skill: follow "When only the Skill is installed" in `references/management-layer.md`, and install the command only after the user agrees.
 
-`paper-search --version` 比本 Skill 开头 `metadata.version` 写的版本旧时，命令行程序需要更新：告诉用户，问要不要现在运行 `npm install -g papersearch@latest`（Windows PowerShell 用 `npm.cmd`），同意后再运行，然后接着做原来的事。命令输出里出现 `PaperSearch update available` 或“PaperSearch 有新版本……本机版本为……”的提示时同样处理。
+When `paper-search --version` is older than the version in `metadata.version` at the top of this Skill, the command-line program needs updating: tell the user, ask whether to run `npm install -g papersearch@latest` now (in Windows PowerShell use `npm.cmd`), run it only after they agree, then carry on with the original task. Do the same when command output shows `PaperSearch update available` or "PaperSearch 有新版本……本机版本为……" (PaperSearch has a new version …; this computer has …).
 
-给用户看可读的报告用 `paper-search doctor --format text`。刚替用户装好时，用一两句话告诉用户能用哪些功能、需要配置时说“请开始配置”；这时不装别的。用户原来有文献请求时，说完接着做。
+For a readable report for the user, use `paper-search doctor --format text`. Right after you install it for the user, tell them in a sentence or two what they can use now and that they can say "start setup" when they need setup; install nothing else at this point. When the user came with a literature request, carry on with it after that.
 
-### 配置（请开始配置）
+### Setup ("start setup")
 
-用户说“请开始配置”“配置 PaperSearch”“start setup”，或要填 API key、设下载文件夹、装学校订阅下载时，**先读 `references/setup.md`，按里面固定的流程做**：一次只问一个问题，先问要不要用学校订阅下载，再走对应的路线。
+When the user says "start setup", "请开始配置" or "配置 PaperSearch" (set up PaperSearch), or wants to enter API keys, set the download folder or install school subscription downloads, **read `references/setup.md` first and follow its fixed flow**: ask one question at a time; first ask whether to use school subscription downloads, then take the matching route.
 
-更新时先区分包本体更新和 Skill 同步，不要只运行 `skills update`；步骤见 `references/management-layer.md` 的“包更新与功能配置”一节。
+For updates, first tell apart updating the package itself and syncing the Skill; do not just run `skills update`; the steps are in the "Package update and capability setup" section of `references/management-layer.md`.
 
-### 默认下载文件夹
+### Default download folder
 
-下载时不传 `savePath` / `--save-path`，文件自动存到 `DEFAULT_DOWNLOAD_PATH`；只有用户这一次指定了别的位置才传。每次下载都在其中新建一个 `<年月日-时分秒>_PaperSearchDownload` 文件夹，这次的论文都放在里面；告诉用户位置时用下载结果里的实际路径。`paper-search config get DEFAULT_DOWNLOAD_PATH` 返回的 `configured` 为 `false` 时，先按 `references/setup.md` 的“默认下载文件夹”问用户放哪里，再下载。
+When downloading, do not pass `savePath` / `--save-path`: files go to `DEFAULT_DOWNLOAD_PATH` automatically; pass it only when the user names another place for this download. Each download creates a `<YYYYMMDD-HHmmss>_PaperSearchDownload` folder in it, holding this download's papers; when telling the user the location, use the actual path in the download result. When `paper-search config get DEFAULT_DOWNLOAD_PATH` returns `configured` as `false`, first ask the user where to put it, as "Default download folder" in `references/setup.md` says, then download.
 
-## 功能地图
+## Capability map
 
-`paper-search update check --format text` 检查 npm 稳定新版。日常命令的更新提示在 stderr，不能当作文献任务失败；可告知用户建议，未经用户授权不执行升级。`paper-search config set PAPER_SEARCH_UPDATE_NOTIFY false` 关闭自动检查与提醒，详见 `references/management-layer.md`。
+`paper-search update check --format text` checks for a new stable npm release. Update notices from everyday commands go to stderr and are not a failure of the literature task; you may pass on the suggestion, but do not run the upgrade without the user's permission. `paper-search config set PAPER_SEARCH_UPDATE_NOTIFY false` turns off the automatic check and notices; see `references/management-layer.md`.
 
-本 Skill 有五个文献功能；`doctor`、`smoke`、`config`、`skills`、`school`、`failures` 是管理和诊断命令。
+This Skill has five literature capabilities; `doctor`, `smoke`, `config`, `skills`, `school` and `failures` are management and diagnostic commands.
 
-| 用户意图 | 能力名 | 首选入口 | 关键边界 |
+| User intent | Capability | Preferred entry | Key boundary |
 |---|---|---|---|
-| 搜论文、找相关研究、核验 DOI/PMID、文献初筛 | `metadata_search` | `paper-search search` 集成入口 / `paper-search run search_*` 精确工具入口 | 只返回和核验论文元数据；Sci-Hub 不属于搜索源 |
-| 查已知论文的施引文献或参考文献 | `citation_expansion` | `paper-search run get_paper_citations` / `paper-search run get_paper_references` | 需要已知的 `paperId`、DOI 或 arXiv ID；不是关键词检索 |
-| 查影响因子、JCR/SSCI/中科院分区、JCI、ESI、预警、期刊等级 | `journal_metrics` | `paper-search journal-metrics` / `paper-search run query_journal_metrics` | 查期刊，不查论文；需要 `EASYSCHOLAR_KEY` |
-| 下载已确认论文的 PDF | `pdf_discovery` | `paper-search download` / `paper-search run download_with_fallback` | 先核验论文身份；默认只走开放下载，装了学校订阅下载时最后再用学校权限 |
-| 批量下载一组已确认的论文（几十篇以上，篇数不限） | `pdf_discovery` | `paper-search run download_batch` | 一次调用，不自己循环单篇；用学校权限时读 `references/browser-download.md` |
-| 下载补充材料（附录、Supporting Information） | `pdf_discovery` | `download_with_fallback` / `download_batch` 的 `content` 里写 `supplements` | 只有机构下载能取；只有部分出版社有规则，见 `references/publisher-support.md` |
-| 在论文正文片段中找 Methods、参数、写法线索 | `body_snippet_search` | `paper-search run search_semantic_snippets` | 查 Semantic Scholar 开放获取片段索引；需要 `SEMANTIC_SCHOLAR_API_KEY`；不是完整全文解析 |
+| Search papers, find related studies, verify DOI/PMID, first screening | `metadata_search` | `paper-search search` integrated entry / `paper-search run search_*` exact tool entry | Returns and verifies paper metadata only; Sci-Hub is not a search source |
+| Citing papers or references of a known paper | `citation_expansion` | `paper-search run get_paper_citations` / `paper-search run get_paper_references` | Needs a known `paperId`, DOI or arXiv ID; not a keyword search |
+| Impact factor, JCR/SSCI/CAS zones, JCI, ESI, warning lists, journal grades | `journal_metrics` | `paper-search journal-metrics` / `paper-search run query_journal_metrics` | Looks up journals, not papers; needs `EASYSCHOLAR_KEY` |
+| Download the PDF of a confirmed paper | `pdf_discovery` | `paper-search download` / `paper-search run download_with_fallback` | Verify the paper's identity first; by default only open download is used; with school subscription downloads installed, the school's access comes last |
+| Batch-download a set of confirmed papers (dozens or more, no upper limit) | `pdf_discovery` | `paper-search run download_batch` | One call; do not loop over single downloads yourself; when the school's access is used, read `references/browser-download.md` |
+| Download supplementary files (appendices, Supporting Information) | `pdf_discovery` | `supplements` in the `content` of `download_with_fallback` / `download_batch` | Only the school download can fetch them; only some publishers have rules, see `references/publisher-support.md` |
+| Find Methods, parameters and phrasing in body snippets | `body_snippet_search` | `paper-search run search_semantic_snippets` | Searches the Semantic Scholar open-access snippet index; needs `SEMANTIC_SCHOLAR_API_KEY`; not full-text parsing |
 
-## 两种下载方式
+## Two ways to download
 
-装好 `paper-search` 就能用开放下载。机构下载（学校订阅下载）要用户同意后才装：按 `references/setup.md` 问过、用户同意后，运行 `paper-search school install --yes --skip-school`；本机没有 Google Chrome 时先装 Chrome（问的时候一并说明）。装完会弹出设置窗口的 API key 页，请用户在窗口里填 key、改下载文件夹（见 `references/school-setup.md`）。没有图形界面的服务器不装、不问。
+Open download works as soon as `paper-search` is installed. The school download (school subscription downloads) is installed only after the user agrees: once you have asked as `references/setup.md` says and the user agrees, run `paper-search school install --yes --skip-school`; when this computer has no Google Chrome, install Chrome first (say so when you ask). When it finishes, the settings window opens on its API key page; ask the user to enter keys and change the download folder in the window (see `references/school-setup.md`). On a server without a graphical interface, do not install it and do not ask.
 
-两种情况不装、不提，用户自己要求时才装：
-- 用户说过不要：`paper-search config get PAPER_SEARCH_SCHOOL_DECLINED` 为 `true`。用户说不要时，运行 `paper-search config set PAPER_SEARCH_SCHOOL_DECLINED true` 记下来。
-- 这台机器没有图形界面（Linux 上没有 `DISPLAY`、`WAYLAND_DISPLAY`）：学校登录要在看得见的浏览器里完成，装不了。
+In two cases, do not install it or bring it up; install it only when the user asks:
+- The user said no: `paper-search config get PAPER_SEARCH_SCHOOL_DECLINED` is `true`. When the user says no, run `paper-search config set PAPER_SEARCH_SCHOOL_DECLINED true` to record it.
+- This computer has no graphical interface (on Linux, no `DISPLAY` or `WAYLAND_DISPLAY`): the school login must happen in a visible browser, so it cannot be installed.
 
-| | 开放下载 | 机构下载（学校订阅下载） |
+| | Open download | School download (school subscription downloads) |
 |---|---|---|
-| 能不能直接用 | 装好 `paper-search` 就能用 | 电脑上经用户同意后安装（`paper-search school install`），需要 Google Chrome；服务器上不装 |
-| 能拿到什么 | 开放获取的正文 | 用户学校订阅的正文；有规则的出版社还能取补充材料 |
-| 怎么拿 | 程序直接下载，通常几秒，不用登录：来源自带的下载、元数据里的 PDF 地址、PMC、Unpaywall、出版社接口（用户自己的 key）；最后是默认开启的 Sci-Hub 兜底（它不是开放获取，`useSciHub=false` 关闭） | 打开浏览器，经学校所属的学术身份联盟或 OpenAthens 登录学校，在出版社网站取 PDF；账号密码由用户输入，后端尝试简单验证，必要时提示人工接管 |
-| 补充材料 | 不提供 | 有规则的出版社可以取，见 `references/publisher-support.md` |
-| 结果里怎么看 | `attempts[]` 里成功的一步是 `primary`、`direct_pdf_url`、`repositories`、`unpaywall`、`publisher_api` 或 `scihub` | 成功的一步是 `entitled_access` |
-| 参考文件 | `references/capability-routing.md` 的“PDF 获取” | `references/school-setup.md`、`references/browser-download.md`、`references/publisher-support.md`、`references/federation-support.md` |
+| Ready to use? | Works once `paper-search` is installed | Installed on a computer after the user agrees (`paper-search school install`); needs Google Chrome; not installed on servers |
+| What it gets | Open-access full texts | Full texts the user's school subscribes to; supplementary files from publishers with rules |
+| How | The program downloads directly, usually in seconds, with no sign-in: the source's own download, the PDF address in the metadata, PMC, Unpaywall, the publisher API (the user's own key); last, the Sci-Hub fallback, on by default (it is not open access; `useSciHub=false` turns it off) | Opens a browser, signs in to the school through its academic identity federation or OpenAthens, and fetches the PDF on the publisher's site; the user types the account and password; the backend tries simple checks and asks for a manual takeover when needed |
+| Supplementary files | Not provided | From publishers with rules; see `references/publisher-support.md` |
+| In the result | The successful step in `attempts[]` is `primary`, `direct_pdf_url`, `repositories`, `unpaywall`, `publisher_api` or `scihub` | The successful step is `entitled_access` |
+| Reference | "PDF retrieval" in `references/capability-routing.md` | `references/school-setup.md`, `references/browser-download.md`, `references/publisher-support.md`, `references/federation-support.md` |
 
-两种方式用同一个下载命令，不需要分开调用：先试开放下载；拿不到时，机构下载已启用才继续用学校权限，它固定是最后一步。
+Both ways use the same download command; no separate calls: open download is tried first; when it gets nothing, the school's access is used only if the school download is enabled, and it is always the last step.
 
-- 交付时告诉用户文件来自哪种方式：开放下载、Sci-Hub，还是机构下载。
-- 开放下载没拿到、机构下载又没装时：告诉用户开放渠道没有找到这篇。不主动提安装时（见上），只说出版社 API key 这一种办法；否则说如果学校订阅了它，有两种办法：安装学校订阅下载（本机要先装 Google Chrome）；或者在校园网里配出版社 API key，只对 Elsevier（DOI 以 10.1016 开头）和 Springer（10.1007）的论文有效，申请网址和配置命令见下载结果里 `publisher_api` 那一步的提示。安装前先征得用户同意，不擅自安装。
-- 用机构下载前，先运行 `paper-search school status --format text` 确认扩展可用：显示已安装并启用，或者“PaperSearch 配置”一行显示已启用并给出后端路径。后一种是用户自己维护的后端（例如开发版），第一行写“未安装”是正常的，直接使用，不要再安装或改路径；`paper-search doctor` 里 `entitled_access` 为 `available` 也说明后端能用。
-- 扩展自己的命令 `paper-search-school` 安装后通常不在 PATH 上：`command -v paper-search-school` 找不到时，用 `school status` 输出里“PaperSearch 配置”一行“后端”后面的完整路径调用，例如 `<后端路径> issues`、`<后端路径> progress --json`。
+- When delivering, tell the user which way each file came from: open download, Sci-Hub, or the school download.
+- When open download got nothing and the school download is not installed: tell the user the open channels did not find this paper. When you are not to bring up installing it (see above), mention only the publisher API key; otherwise say that if their school subscribes to it, there are two ways: install school subscription downloads (Google Chrome must be installed on this computer first); or, on the campus network, set a publisher API key, which works only for Elsevier (DOI starting with 10.1016) and Springer (10.1007) papers; the sign-up address and the command are in the hint of the `publisher_api` step in the download result. Ask for the user's consent before installing; never install on your own.
+- Before using the school download, run `paper-search school status --format text` to confirm the extension is usable: it shows installed and enabled, or the "PaperSearch 配置" (PaperSearch config) line shows enabled with a backend path. The latter is a backend the user maintains (a development build, for example); its first line saying "未安装" (not installed) is normal: use it directly; do not install it again or change the path. `entitled_access` as `available` in `paper-search doctor` also means the backend works.
+- The extension's own command `paper-search-school` is usually not on PATH after installation: when `command -v paper-search-school` finds nothing, call it by the full path after "后端" (backend) on the "PaperSearch 配置" line of the `school status` output, for example `<backend path> issues`, `<backend path> progress --json`.
 
-## 默认工作流
+## Default workflow
 
-开放式的文献任务分两步：
+Open-ended literature tasks take two steps:
 
-1. 先做 `metadata_search`：检索并核验题名、作者、年份、期刊、DOI、PMID/PMCID、网址、摘要线索和相关性。
-2. 用户确认条目，或任务明确需要 PDF 后，再做 `pdf_discovery`；失败的条目记下原因，不阻塞其他条目。
+1. First `metadata_search`: search and verify title, authors, year, journal, DOI, PMID/PMCID, URL, abstract clues and relevance.
+2. Only after the user confirms the items, or the task clearly needs PDFs, do `pdf_discovery`; record the reason for each failed item and do not let it block the others.
 
-直接下载请求（用户给出单个 DOI、PMID、PMCID 或已核验的清单，并明确要求下载）可以跳过广泛检索：先核验目标身份，再下载。
+Direct download requests (the user gives a single DOI, PMID, PMCID or a verified list and clearly asks for a download) may skip the broad search: verify the target's identity first, then download.
 
-下载前问清要什么：用户没说要哪些内容时，开始下载前问一次（批量也只问一次）。两样内容各自单独取，可以只要一样，也可以都要（`"pdf,supplements"`）：
+Ask what is wanted before downloading: when the user has not said which contents they want, ask once before starting (only once for a batch too). The two contents are each fetched on their own; one or both can be wanted (`"pdf,supplements"`):
 
-- `pdf`：正文 PDF（不写 `content` 时就是它）；
-- `supplements`：补充材料；
+- `pdf`: the full-text PDF (the default when `content` is not given);
+- `supplements`: supplementary files;
 
-问的时候顺带说明：补充材料只有部分出版社支持，见 `references/publisher-support.md`。用户已经说明的不再问。机构下载没启用时只走开放下载：取不到补充材料；用户要补充材料时，告诉用户补充材料要靠学校订阅下载（`references/school-setup.md`）；用户说过不装时只说明这一点，不劝装。
+When asking, also say that only some publishers support supplementary files; see `references/publisher-support.md`. Do not ask again about what the user has already said. When the school download is not enabled, only open download is used: supplementary files cannot be fetched; when the user wants supplementary files, tell them these need school subscription downloads (`references/school-setup.md`); when the user said they will not install it, only say this and do not urge them to install.
 
-几十篇以上（篇数不限）用一次 `download_batch`，不要自己循环调用单篇下载。批量要传 `folderName`，按这一批的内容起名：某期刊的文章用期刊缩写加年份，期刊缩写与每篇文件夹开头的相同（NLM 缩写，如 `Osteoarthritis Cartilage_2024-2026`），不自拟首字母缩写；主题检索写主题词加年份，不用默认的时间文件夹；它建在下载文件夹（或 `savePath`）下，见下面的“下载结果”。下载结束后运行 `paper-search failures --format text`，按失败类别向用户说明。需要向维护者报告时用 `paper-search failures --export ./failure-report.zip` 导出副本，先核对包内公开检查清单；详见 `references/browser-download.md`。不自动上传或提交 issue。
+For dozens of papers or more (no upper limit), use one `download_batch`; do not loop over single downloads yourself. Give a batch `folderName`, named for what it holds: a journal's papers get the journal abbreviation plus years, the same abbreviation that begins each paper's folder (the NLM abbreviation, e.g. `Osteoarthritis Cartilage_2024-2026`), not initials you make up; a topic search gets the topic words plus years; do not use the default time-stamped folder. It is created in the download folder (or `savePath`); see "Download results" below. After the download ends, run `paper-search failures --format text` and explain to the user by failure class. When something needs reporting to the maintainers, export a copy with `paper-search failures --export ./failure-report.zip` and first go through the public-check list in the package; see `references/browser-download.md`. Never upload anything or open an issue automatically.
 
-## 核心规则
+## Core rules
 
-- 不凭模型记忆编造 PMID、DOI、期刊、年份或作者；关键论文输出前按 `references/capability-routing.md` 核验。
-- 同一篇论文的 PMID、DOI、题名、第一作者和年份应一致；不一致时标为可疑。
-- 学校登录、二次验证及复杂验证码由用户在下载浏览器里完成；后端每次验证等待最多尝试点击可识别的 Turnstile 复选框 3 次，仍需人工时再提示用户。账号密码由用户自己在登录页输入，不要询问用户的账号密码。
-- 测试下载时用 `paper-search download` 或 `paper-search run download_batch`，保持默认的等待时间和数据目录。
-- 用户想先登录学校、或想试试能不能登录时，运行 `paper-search school login --doi <学校订阅的一篇文章的 DOI>`（见 `references/school-setup.md`）：只有回复 `success: true` 才算登录成功。下载浏览器和它的资料目录由程序管理；不要翻源码另找登录办法。
-- 下载结果以命令的最终返回和实际保存的文件为准；每个文件都要核对身份（首页的 DOI 和题名）才算成功，交付时给出实际文件路径。
-- “没有权限”必须有依据，原因不明的不说成没有权限。
-- 出版社支持表说明的是程序能不能走通这类网站，不代表用户学校订阅了某本期刊。
+- Do not make up PMIDs, DOIs, journals, years or authors from model memory; verify key papers as `references/capability-routing.md` says before giving them.
+- The PMID, DOI, title, first author and year of one paper should agree; when they do not, mark it as doubtful.
+- The school login, two-factor checks and complex CAPTCHAs are done by the user in the download browser; on each verification wait the backend tries clicking a recognizable Turnstile checkbox at most 2 times, and asks the user only when a person is still needed. The user types the account and password on the login page; never ask the user for their account or password.
+- For test downloads, use `paper-search download` or `paper-search run download_batch`, keeping the default wait times and data directory.
+- When the user wants to sign in to the school first, or to try whether sign-in works, run `paper-search school login --doi <DOI of an article the school subscribes to>` (see `references/school-setup.md`): only a reply with `success: true` means sign-in succeeded. The program manages the download browser and its profile directory; do not dig through the source code for another way to sign in.
+- The download result is the command's final return and the files actually saved; each file counts as a success only after its identity is checked (the DOI and title on the first page); give the actual file paths when delivering.
+- "No access" needs evidence; never call a failure with an unknown cause "no access".
+- The publisher support table says whether the program can work through that kind of site, not whether the user's school subscribes to a journal.
 
-## 不属于本 Skill 的事
+## Not part of this Skill
 
-- 不管理 Zotero、Obsidian 或其他文献库。
-- 不写论文正文，不做语言润色。
-- 不把 API key、token、Cookie 写入 Skill、README 或回复。
+- Managing Zotero, Obsidian or other reference libraries.
+- Writing paper text or polishing language.
+- Writing API keys, tokens or cookies into the Skill, the README or replies.
 
-下载结果在下载文件夹（`savePath`，没传时用 `DEFAULT_DOWNLOAD_PATH`）里这次的文件夹：批量传了 `folderName` 就是这个名字，否则新建 `<年月日-时分秒>_PaperSearchDownload/`。PDF 直接放在里面，取到了补充材料的论文单独一个文件夹（正文、`supplements/`）。批量的文件夹里另有 `_run/`：`batch-args.json` 这批要下的内容、`batch.log` 进度记录、每次运行一个子文件夹的明细（“接着下”的也在里面），以及 `article_index.csv`（每篇的结果：PDF、来源、补充材料、失败原因、所在文件夹，路径从批量文件夹算起），随下载更新；向用户汇报时可以让用户打开这份清单。出过问题的篇目的诊断记录和截图在结果 `runLog` 所指运行记录目录的 `diagnostics/` 里（可能带登录信息，不要发给别人；30 天后自动删除）。正文按“期刊缩写_年月_标题”命名，附件保留原名；使用结果返回的实际 `path` / `supplements[].file`，不要自行拼 DOI 文件名。过长名称会截短，完整标题见返回结果。
+Download results are in this download's folder inside the download folder (`savePath`, or `DEFAULT_DOWNLOAD_PATH` when it is not passed): the `folderName` given to a batch, otherwise a new `<YYYYMMDD-HHmmss>_PaperSearchDownload/`. PDFs go straight into it; a paper with supplementary files gets its own folder (the full text, `supplements/`). A batch folder also has `_run/`: `batch-args.json` (what this batch is to download), `batch.log` (progress), one subfolder of details per run ("go on" (接着下) runs included), and `article_index.csv` (each paper's result: PDF, source, supplementary files, failure reason, folder, with paths from the batch folder), updated as the download runs; when reporting, you can ask the user to open this list. Diagnostic records and screenshots of papers that had problems are in `diagnostics/` of the run-log directory that the result's `runLog` points to (they may contain sign-in information: do not send them to others; they are deleted after 30 days). Full texts are named "journal abbreviation_year-month_title"; attachments keep their original names; use the actual `path` / `supplements[].file` in the result; do not build DOI file names yourself. Names that are too long are shortened; the full title is in the result.

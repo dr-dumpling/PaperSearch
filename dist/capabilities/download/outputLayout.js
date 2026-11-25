@@ -89,7 +89,9 @@ function titleComponent(value, limit, bytes) {
     if (cut === whole || !whole.startsWith(cut) || /^\s/.test(whole.slice(cut.length)))
         return cut;
     const space = cut.lastIndexOf(' ');
-    const atWord = space >= cut.length * 0.6 ? cut.slice(0, space).replace(/[\s,;:–—-]+$/u, '') : '';
+    // Its end as safeComponent's: no trailing dot or space, which Windows drops from a folder's name, so
+    // the folder the backend made and the one read back differed ("…(CorGI-REx). I.", Windows 2026-11-25).
+    const atWord = space >= cut.length * 0.6 ? cut.slice(0, space).replace(/[\s,;:.–—-]+$/u, '') : '';
     return atWord || cut;
 }
 /**

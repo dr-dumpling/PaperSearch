@@ -84,6 +84,21 @@ export declare function downloadBatchItem(searchers: Searchers, options: Downloa
     batch: DownloadBatchPosition;
 }, tiers: DownloadTier[], backend?: SchoolBackend): Promise<DownloadWithFallbackResult>;
 /**
+ * How long a publisher's papers wait after its site blocked one of them (被网站拦截: its human verification not passed,
+ * its block page): the batch goes on with the other publishers meanwhile, then tries them once more (user, 2026-11-23).
+ * Ten minutes: JAMA's first block in the publisher sweep had cleared within five (the re-check interval the user set for
+ * a blocked journal, 2026-11-16), its second held for the 47 minutes the batch went on hitting it; with one retry only,
+ * twice that interval. Shorter than the half hour after which a publisher's school session lapsed unused (Wiley,
+ * 2026-11-12), so nothing is loaded from the blocking site to keep it.
+ */
+export declare const BLOCKED_PAUSE_MS: number;
+/**
+ * Without 失败后自动重试: a publisher's papers its site blocks in a row before its others are given up for the batch
+ * (user, 2026-11-24: Wiley's one verification not passed, paper 85, gave its other 40 up untried). Each one blocked
+ * fails on its own; one not blocked starts the count again.
+ */
+export declare const BLOCKED_IN_ROW = 3;
+/**
  * How often a batch waiting for the hourly limit keeps the publisher's session alive:
  * Wiley's institutional session lapsed after about half an hour without a request,
  * and the school's login had expired by then too (Windows, 2026-11-12).
@@ -98,5 +113,5 @@ export declare const HOURLY_RECHECK_EVERY_MS = 10000;
 /** The user pressed 终止 in the batch's window (papers not reached, or still paused, show it). */
 export declare function batchStopped(result: DownloadBatchResult): boolean;
 /** Download a list serially; one batch id ties it to one progress window. */
-export declare function downloadBatch(searchers: Searchers, options: DownloadBatchOptions, backend?: SchoolBackend, log?: (line: string) => void, createTiers?: (backend?: SchoolBackend) => DownloadTier[], pause?: (ms: number) => Promise<void>, online?: () => Promise<boolean>): Promise<DownloadBatchResult>;
+export declare function downloadBatch(searchers: Searchers, options: DownloadBatchOptions, backend?: SchoolBackend, log?: (line: string) => void, createTiers?: (backend?: SchoolBackend) => DownloadTier[], pause?: (ms: number) => Promise<void>, online?: () => Promise<boolean>, now?: () => number): Promise<DownloadBatchResult>;
 //# sourceMappingURL=batch.d.ts.map

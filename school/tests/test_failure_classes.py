@@ -67,7 +67,9 @@ class FailureKindTests(unittest.TestCase):
         self.assertEqual(_failure_kind(self.result("sso_required", "school_login"))[0], "login_timeout")
         self.assertEqual(_failure_kind(self.result("sso_required", "school_choice"))[0], "login_timeout")
         self.assertEqual(_failure_kind(self.result("sso_required", "publisher"))[0], "login_not_reached")
-        self.assertEqual(_failure_kind(self.result("sso_required", "institution_chooser"))[0], "login_not_reached")
+        # The chooser never named the school: no route at the publisher.
+        self.assertEqual(_failure_kind(self.result("sso_required", "institution_chooser"))[0],
+                         "institution_federation_unavailable")
         # Oxford Academic's own login flow ends as login_timeout; the same rule applies.
         self.assertEqual(_failure_kind(self.result("login_timeout", "publisher"))[0], "login_not_reached")
         # Without the page (records written before), the old reading stays.

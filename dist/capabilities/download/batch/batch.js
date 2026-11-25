@@ -3,12 +3,12 @@ import { randomUUID } from "node:crypto";
 import { RunLedger } from "../../../infrastructure/runlog/RunLedger.js";
 import { classifyFailureCode, FAILURE_CLASS_NAMES, } from "../../../infrastructure/runlog/failureClass.js";
 import { createDefaultDownloadTiers, downloadWithFallback, } from "../content/pdf/OpenAccessFallbackService.js";
-import { schoolAttemptDetails, schoolShortReason } from "../../../infrastructure/school/index.js";
+import { blockedBySite, schoolAttemptDetails, schoolShortReason } from "../../../infrastructure/school/index.js";
 import { journalOfDoi, takeNext } from "./journalKey.js";
 import { downloadSupplementsOnly, filesPastNetworkLoss } from "../content/supplements/fetch.js";
 import { supplementShortfall } from "../content/supplements/shortfall.js";
 import { fulltextPageVisit } from "../content/markdown/pageVisit.js";
-import { fulltextAlone, fulltextForItem, markdownBeside, markdownPastNetworkLoss } from "../content/markdown/step.js";
+import { figuresMissing, figuresOnceMore, fulltextAlone, fulltextForItem, markdownBeside, markdownPastNetworkLoss } from "../content/markdown/step.js";
 import { markdownDoubt, markdownMissing } from "../content/markdown/shortfall.js";
 import { batchPaper, failure, reportBatchResults, stoppedItem } from "./batchSummary.js";
 import { loadMarkdownPro, markdownBlocked } from "../content/markdown/pro.js";
@@ -85,6 +85,23 @@ const SCHOOL_SIGN_IN_PAGE = "school_login";
 /** How often a batch waiting for the user to go on with held publishers asks its window. */
 const HOLD_POLL_MS = 3_000;
 const HOLD_WAIT_PHASE = "其他篇目已完成，等你回来点“登录并继续”";
+/**
+ * How long a publisher's papers wait after its site blocked one of them (被网站拦截: its human verification not passed,
+ * its block page): the batch goes on with the other publishers meanwhile, then tries them once more (user, 2026-11-23).
+ * Ten minutes: JAMA's first block in the publisher sweep had cleared within five (the re-check interval the user set for
+ * a blocked journal, 2026-11-16), its second held for the 47 minutes the batch went on hitting it; with one retry only,
+ * twice that interval. Shorter than the half hour after which a publisher's school session lapsed unused (Wiley,
+ * 2026-11-12), so nothing is loaded from the blocking site to keep it.
+ */
+export const BLOCKED_PAUSE_MS = 10 * 60_000;
+/**
+ * Without 失败后自动重试: a publisher's papers its site blocks in a row before its others are given up for the batch
+ * (user, 2026-11-24: Wiley's one verification not passed, paper 85, gave its other 40 up untried). Each one blocked
+ * fails on its own; one not blocked starts the count again.
+ */
+export const BLOCKED_IN_ROW = 3;
+/** A time of day as the batch's lines say it ("01:05"). */
+const clockTime = (at) => new Date(at).toTimeString().slice(0, 5);
 const AWAY_NOTICE = "[批量] 这一篇等你登录或验证已到时限；后面的篇目遇到登录或验证只等 60 秒，你在登录页开始输入就照常等";
 /**
  * Entitled access waited on the user (school login, verification) until its
@@ -93,7 +110,7 @@ const AWAY_NOTICE = "[批量] 这一篇等你登录或验证已到时限；后�
 function waitedOutOnUser(result) {
     return (result.status !== "ok" &&
         result.attempts.some((attempt) => attempt.stage === "entitled_access" &&
-            (attempt.code === "login_timeout" || attempt.code === "download_timeout")));
+            (attempt.code === "login_timeout" || attempt.code === "download_timeout" || attempt.code === "captcha_required")));
 }
 /**
  * The seconds the backend asked this article to wait, and whose limit it is: the publisher's
@@ -213,11 +230,32 @@ function unexplainedFailure(result) {
     const school = [...result.attempts].reverse().find((attempt) => attempt.stage === "entitled_access");
     return school?.status === "error" && classifyFailureCode(school.code) === "unexplained";
 }
+/**
+ * 被网站拦截 at the school's stage (blockedBySite): the publisher's site blocked the network or its human verification was
+ * not passed. Its publisher's papers wait (``BLOCKED_PAUSE_MS``); none goes to the end's retry or other schools.
+ */
+function siteBlocked(result) {
+    if (!result || result.status === "ok" || stoppedByUser(result))
+        return false;
+    const school = [...result.attempts].reverse().find((attempt) => attempt.stage === "entitled_access");
+    return school?.status === "error" && blockedBySite(school.code);
+}
 /** The other saved schools a batch's papers without access go to at its end: none for a batch given its school. */
 async function schoolsAfterDefault(backend, options) {
     if (options.school?.trim() || !backend?.schoolSwitch)
         return [];
     return (await backend.schoolSwitch().catch(() => undefined))?.schools.slice(1) ?? [];
+}
+/**
+ * 失败后自动重试 (the settings' 等待和提醒 page; user, 2026-11-24: off by default, whoever wants it turns it on): 原因不明
+ * tried once more at the batch's end, a publisher whose site blocked it paused and tried once more after BLOCKED_PAUSE_MS.
+ * Off, or a backend that does not say: 原因不明 fails at once, and a blocking site's publisher is given up for the batch
+ * (接着下 goes on with it). Neither 没权限时换下一所学校 (its own switch) nor a lapsed school login (登录并继续) is one.
+ */
+async function retrySetting(backend) {
+    if (!backend?.schoolSwitch)
+        return false;
+    return (await backend.schoolSwitch().catch(() => undefined))?.retry === true;
 }
 /**
  * 没权限时换下一所学校 at a batch's end (PaperSearch Pro; user, 2026-11-22): the papers still without access go to each
@@ -280,6 +318,21 @@ function recorded(request, ledger, item) {
         ? { ...request, onStage: (record) => ledger.stage(item, record), recordsDir: ledger.records, diagnosticsDir: ledger.diagnostics }
         : request;
 }
+/**
+ * A batch's end (user, 2026-11-23): the papers whose Markdown was saved without figures that did not download get
+ * those figures once more (figuresOnceMore); still missing, the Markdown stays saved with them marked in it. Each
+ * paper's record waits for this, to say how it ended.
+ */
+async function figuresAtTheEnd(papers, log, ledger) {
+    if (!papers.length)
+        return;
+    log(`[批量] Markdown 缺图的 ${papers.length} 篇再取一次图片`);
+    ledger?.phase(`Markdown 缺图的 ${papers.length} 篇再取一次图片`);
+    for (const { result, request } of papers)
+        await figuresOnceMore(result, request);
+    const still = papers.filter(({ result }) => figuresMissing(result)).length;
+    log(`[批量] 再取图片：${papers.length - still} 篇补齐` + (still ? `，${still} 篇仍缺图（Markdown 已保存，缺的图在文中标明）` : ""));
+}
 function openLedger(mode, batchId, options, log) {
     const ledger = RunLedger.open({
         kind: "download_batch",
@@ -330,7 +383,7 @@ function summary(mode, batchId, items, extra = {}) {
     };
 }
 /** Download a list serially; one batch id ties it to one progress window. */
-export async function downloadBatch(searchers, options, backend, log = (line) => process.stderr.write(`${line}\n`), createTiers = createDefaultDownloadTiers, pause = wait, online = networkReachable) {
+export async function downloadBatch(searchers, options, backend, log = (line) => process.stderr.write(`${line}\n`), createTiers = createDefaultDownloadTiers, pause = wait, online = networkReachable, now = Date.now) {
     options = { ...options, savePath: resolveDownloadPath(options.savePath) };
     // The batch's own folder keeps its records beside its papers (user, 2026-11-17).
     const { folderRecord: _given, ...asked } = options;
@@ -369,7 +422,7 @@ export async function downloadBatch(searchers, options, backend, log = (line) =>
             ? downloadSerialBatch(options, backend, log, searchers, createTiers, pause, online)
             : options.mode === "per_item"
                 ? downloadPerItem(searchers, options, backend, log, createTiers, pause, online)
-                : downloadTwoPhase(searchers, options, backend, log, createTiers, options.mode === "entitled_only" ? "entitled_only" : "two_phase", pause, online));
+                : downloadTwoPhase(searchers, options, backend, log, createTiers, options.mode === "entitled_only" ? "entitled_only" : "two_phase", pause, online, now));
         await reportBatchResults(result, backend, startedAt, options.savePath);
         return result;
     };
@@ -432,8 +485,8 @@ export async function downloadBatch(searchers, options, backend, log = (line) =>
         (missed ? `。附录未下全 ${missed} 篇：${[...shortfalls].map(([reason, n]) => `${reason} ${n}`).join("、")}` : "") +
         (incomplete ? `。Markdown 未生成 ${incomplete} 篇：${[...noMarkdown].map(([reason, n]) => `${reason} ${n}`).join("、")}` : "") +
         (doubtful ? `。Markdown 可能不全 ${doubtful} 篇（已保存，请核对）：${[...doubts].map(([reason, n]) => `${reason} ${n}`).join("、")}` : ""));
-    // What is left goes on later with one word (user, 2026-11-15).
-    if ((result.failed || missed || incomplete) && result.runLog) {
+    // What is left goes on later with one word (user, 2026-11-15): a Markdown's missing figures too.
+    if ((result.failed || missed || incomplete || result.items.some(figuresMissing)) && result.runLog) {
         log("[批量] 没下全的篇目：回来后对 AI 说“接着下”即可补（download_batch 的 resume: \"latest\"，同一套环境变量）");
     }
     folderRecord?.refresh();
@@ -458,6 +511,9 @@ async function downloadSerialBatch(options, backend, log, searchers, createTiers
     let succeeded = 0;
     let failed = 0;
     let away = false;
+    /** Papers whose Markdown lacks figures, recorded after their second try at the end (figuresAtTheEnd). */
+    const figuresLater = [];
+    let stopped = false;
     for (const [offset, item] of options.items.entries()) {
         const batch = { id: batchId, index: offset + 1, total, done: offset, succeeded, failed };
         const request = { ...itemOptions(item, options), batch, ...(away ? { shortUserWait: true } : {}) };
@@ -489,10 +545,14 @@ async function downloadSerialBatch(options, backend, log, searchers, createTiers
             succeeded += 1;
         else
             failed += 1;
-        ledger?.item(entry, result);
         items.push(itemResult(result, offset + 1, request));
+        if (figuresMissing(result))
+            figuresLater.push({ offset, entry, request, ...(item.mainPath ? { mainPath: item.mainPath } : {}) });
+        else
+            ledger?.item(entry, result);
         papers.set(offset, batchPaper(request, items[items.length - 1], undefined, content, item.mainPath));
         if (stoppedByUser(result)) {
+            stopped = true;
             for (const [rest, item] of options.items.entries()) {
                 if (rest <= offset)
                     continue;
@@ -507,6 +567,14 @@ async function downloadSerialBatch(options, backend, log, searchers, createTiers
             break;
         }
         await papers.send();
+    }
+    // Markdown saved without some figures: those once more, unless the user stopped the batch (user, 2026-11-23).
+    if (!stopped) {
+        await figuresAtTheEnd(figuresLater.map(({ offset, entry, request }) => ({ result: items[offset], request: recorded(request, ledger, entry) })), log, ledger);
+    }
+    for (const { offset, entry, request, mainPath } of figuresLater) {
+        ledger?.item(entry, items[offset]);
+        papers.set(offset, batchPaper(request, items[offset], undefined, content, mainPath));
     }
     await papers.send(true);
     ledger?.close();
@@ -531,10 +599,35 @@ async function downloadPerItem(searchers, options, backend, log, createTiers, pa
     // school at a time (``laterSchools``, user 2026-11-22).
     let turns;
     const otherSchools = () => (turns ??= schoolsAfterDefault(backend, options));
+    let retryOn;
+    const retrying = () => (retryOn ??= retrySetting(backend));
     const waiting = new Map();
     const schoolsTried = new Map();
     /** Papers failed for a reason not known, waiting for their one more try at the end (user, 2026-11-22). */
     const unexplainedYet = new Map();
+    // The papers held for a later try are in the window's ring beside those done (user, 2026-11-23), told when they change.
+    const dois = (entries) => [...entries.values()].map((entry) => entry.doi ?? "").filter(Boolean);
+    const later = () => ({ noAccess: waiting.size, unexplained: unexplainedYet.size, blocked: 0, login: 0,
+        papers: { noAccess: dois(waiting), unexplained: dois(unexplainedYet), blocked: [], login: [] } });
+    let laterSaid = JSON.stringify(later());
+    /** The window told of them, and at the switch to another school, its name; none once every paper is done. */
+    const reportLater = async (school) => {
+        const counts = later();
+        if (!backend?.reportBatchProgress || succeeded + failed >= total || !school && JSON.stringify(counts) === laterSaid)
+            return;
+        laterSaid = JSON.stringify(counts);
+        await backend.reportBatchProgress({ id: batchId, total, done: succeeded + failed, succeeded, failed, current: "",
+            finished: false, later: counts, ...(school ? { switchTo: school.name } : {}), laterOnly: true }).catch(() => false);
+    };
+    /** Papers whose Markdown lacks figures, recorded after their second try at the end (figuresAtTheEnd). */
+    const figuresLater = new Map();
+    /** A finished paper into the run's records, unless its Markdown's figures wait for the end. */
+    const record = (offset, entry) => {
+        if (figuresMissing(items[offset]))
+            figuresLater.set(offset, entry);
+        else
+            ledger?.item(entry, items[offset]);
+    };
     let stopped = false;
     for (const [offset, item] of options.items.entries()) {
         const index = offset + 1;
@@ -560,13 +653,15 @@ async function downloadPerItem(searchers, options, backend, log, createTiers, pa
             waiting.set(offset, entry);
             papers.set(offset, batchPaper(request, finished, "school", content));
             await papers.send();
+            await reportLater();
             continue;
         }
-        if (unexplainedFailure(finished)) {
+        if (unexplainedFailure(finished) && await retrying()) {
             // Not finished: once more at the end, with this school.
             unexplainedYet.set(offset, entry);
             papers.set(offset, batchPaper(request, finished, "school", content));
             await papers.send();
+            await reportLater();
             continue;
         }
         if (result.status === "ok")
@@ -575,7 +670,7 @@ async function downloadPerItem(searchers, options, backend, log, createTiers, pa
             failed += 1;
         // The window's end when the last paper is finished, not the last in the list (some wait for the end).
         await reportBatchItem({ ...request, batch: { ...batch, index: batch.done + 1 } }, finished, backend);
-        ledger?.item(entry, finished);
+        record(offset, entry);
         papers.set(offset, batchPaper(request, finished, undefined, content));
         if (publisherBlocked(result))
             log(blockedNotice(request.doi || request.paperId));
@@ -597,6 +692,7 @@ async function downloadPerItem(searchers, options, backend, log, createTiers, pa
     }
     /** A paper's school stage once more (another saved school when given), its files and Markdown when it comes. */
     const again = async (offset, entry, school) => {
+        await reportLater();
         const request = { ...itemOptions(options.items[offset], options), ...(school ? { school: school.entityId } : {}) };
         const batch = { id: batchId, index: offset + 1, total, done: succeeded + failed, succeeded, failed };
         log(school ? `[批量] 换${school.name}：${request.doi || request.paperId}` : `[批量] 再试一次：${request.doi || request.paperId}`);
@@ -625,7 +721,7 @@ async function downloadPerItem(searchers, options, backend, log, createTiers, pa
         else
             failed += 1;
         await reportBatchItem({ ...request, batch }, items[offset], backend);
-        ledger?.item(entry, items[offset]);
+        record(offset, entry);
         papers.set(offset, batchPaper(request, items[offset], undefined, content));
         await papers.send();
     };
@@ -651,6 +747,7 @@ async function downloadPerItem(searchers, options, backend, log, createTiers, pa
         await laterSchools(await otherSchools(), () => [...waiting.keys()], async (school, count) => {
             log(`[批量] 没权限的 ${count} 篇换${school.name}再试`);
             ledger?.phase(`没权限的 ${count} 篇换${school.name}再试`);
+            await reportLater(school);
         }, async (offset, school) => {
             const entry = waiting.get(offset);
             const finished = await again(offset, entry, school);
@@ -666,6 +763,14 @@ async function downloadPerItem(searchers, options, backend, log, createTiers, pa
     // Without access with every school (or the batch stopped first): failed.
     for (const [offset, entry] of waiting)
         await finish(offset, entry);
+    // Markdown saved without some figures: those once more, unless the user stopped the batch (user, 2026-11-23).
+    if (!stopped) {
+        await figuresAtTheEnd([...figuresLater].map(([offset, entry]) => ({ result: items[offset], request: recorded(itemOptions(options.items[offset], options), ledger, entry) })), log, ledger);
+    }
+    for (const [offset, entry] of figuresLater) {
+        ledger?.item(entry, items[offset]);
+        papers.set(offset, batchPaper(itemOptions(options.items[offset], options), items[offset], undefined, content));
+    }
     await papers.send(true);
     ledger?.close();
     return summary("per_item", batchId, items, {
@@ -681,7 +786,7 @@ function laneError(stage, error) {
                 message: error instanceof Error ? `${error.name}: ${error.message}` : String(error) }],
     };
 }
-async function downloadTwoPhase(searchers, options, backend, log, createTiers, mode = "two_phase", pause = wait, online = networkReachable) {
+async function downloadTwoPhase(searchers, options, backend, log, createTiers, mode = "two_phase", pause = wait, online = networkReachable, now = Date.now) {
     const batchId = randomUUID();
     const total = options.items.length;
     const ledger = openLedger(mode, batchId, options, log);
@@ -691,10 +796,17 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
     const content = options.content ?? "main";
     const papers = new PaperList(backend, batchId, options.savePath, requests.map((request) => batchPaper(request, undefined, mode === "entitled_only" ? "school" : "open", content)));
     const recordedOffsets = new Set();
+    /** Papers whose Markdown lacks figures: recorded after their second try at the end (figuresAtTheEnd). */
+    const figuresLater = new Set();
+    let figuresTried = false;
     /** An item goes to the run record once, when it has settled. */
     const record = (offset) => {
         if (recordedOffsets.has(offset))
             return;
+        if (!figuresTried && figuresMissing(results[offset])) {
+            figuresLater.add(offset);
+            return;
+        }
         recordedOffsets.add(offset);
         ledger?.item(entries[offset], results[offset]);
     };
@@ -743,11 +855,11 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
     const reportProgress = (current) => {
         if (!openProgress)
             return reports;
-        const update = {
+        const update = withLater({
             id: batchId, total, done: settledOk() + failed, succeeded: settledOk(), failed, current, finished: false,
             ...(openRunning ? { phase: `${OPEN_CHANNEL}：已查 ${checked}/${total} 篇，找到 ${openFound} 篇`, channel: OPEN_CHANNEL } : {}),
             ...(missed.length ? { lanes: lanes() } : {}),
-        };
+        });
         reports = reports.then(() => backend.reportBatchProgress(update)).catch(() => false);
         return reports;
     };
@@ -761,8 +873,8 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
     const watch = { log, pause, online, notice: (phase) => {
             if (!backend?.reportBatchProgress || !(openProgress || missed.length))
                 return reports;
-            const update = { id: batchId, total, done: settledOk() + failed, succeeded: settledOk(), failed, current: "",
-                finished: false, phase };
+            const update = withLater({ id: batchId, total, done: settledOk() + failed, succeeded: settledOk(), failed, current: "",
+                finished: false, phase });
             reports = reports.then(() => backend.reportBatchProgress(update)).catch(() => false);
             return reports;
         } };
@@ -863,7 +975,8 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
             }
             // Its page stopped at the school's own sign-in page: held with its publisher, its Markdown
             // fetched again when the user goes on (the files it got stand).
-            if (pageWait === SCHOOL_SIGN_IN_PAGE && wentThrough(offset) && !stoppedByUser(item) && await canHold()) {
+            if (pageWait === SCHOOL_SIGN_IN_PAGE && wentThrough(offset) && !stoppedByUser(item) && await canHold()
+                && !heldAgain(offset)) {
                 item.attempts.length = markdownFrom;
                 delete item.markdown;
                 finishing.add(offset);
@@ -901,6 +1014,12 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
     const viaSchool = new Set();
     /** Each held publisher's papers, open-access ones still to be finished among them. */
     const held = new Map();
+    /**
+     * The papers that held their publisher. Gone on with by 登录并继续 and stopped at the school's sign-in page again, such
+     * a paper fails and its publisher's other papers go on, not held a second time (Windows, 2026-11-24: Nature Digest, a
+     * site with only its subscribers' sign-in, held Springer Nature's 73 other papers again after each 登录并继续).
+     */
+    const heldBy = new Set();
     /** Where each paper's wait on a school login ended, as the backend said (trace.loginWaitPage). */
     const waitEnded = new Map();
     const prefixOf = (offset) => (/^10\.\d{4,9}\//.exec(requests[offset].doi.toLowerCase()) ?? [""])[0];
@@ -926,15 +1045,26 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
     const canHold = async () => (holdOk ??= await backend?.holdSupported?.().catch(() => false) ?? false);
     /** Each DOI prefix's publisher as the school's stages named it ("Science"); the last one named. */
     const publishers = new Map();
-    const heldList = () => [...held.entries()].map(([key, offsets]) => ({
+    // A publisher whose site blocks the batch (被网站拦截: its human verification not passed, its block page): its papers
+    // wait in ``held`` too, the others go on, and they are tried once more after BLOCKED_PAUSE_MS, without the user; blocked
+    // again then, the publisher is given up for this batch (user, 2026-11-23: JAMA blocked after about 15 papers, and 21
+    // of 28 each waited out its verification, at the end again with the retry of 原因不明 and with the next school).
+    /** Each held publisher whose site blocked the batch: when its papers are tried again. */
+    const blockedUntil = new Map();
+    /** Publishers whose papers went on after their pause: blocked again, the batch gives them up. */
+    const triedAgain = new Set();
+    /** Publishers given up: their papers not tried yet end as 被网站拦截, untried; no visit of the batch's end goes to them. */
+    const givenUp = new Set();
+    /** The held publishers waiting for the user (登录并继续), not those blocked. */
+    const heldList = () => [...held.entries()].filter(([key]) => !blockedUntil.has(key)).map(([key, offsets]) => ({
         key, name: publishers.get(key) ?? key, count: offsets.length,
     }));
     /** The window's line and button for the held publishers (none: cleared). */
     const reportHeld = (waiting = false) => {
         if (!backend?.reportBatchProgress || !holdOk)
             return reports;
-        const update = { id: batchId, total, done: settledOk() + failed, succeeded: settledOk(), failed, current: "",
-            finished: false, held: heldList(), ...(waiting ? { phase: HOLD_WAIT_PHASE, heldWait: true } : { lanes: lanes() }) };
+        const update = withLater({ id: batchId, total, done: settledOk() + failed, succeeded: settledOk(), failed, current: "",
+            finished: false, held: heldList(), ...(waiting ? { phase: HOLD_WAIT_PHASE, heldWait: true } : { lanes: lanes() }) });
         reports = reports.then(() => backend.reportBatchProgress(update)).catch(() => false);
         return reports;
     };
@@ -946,13 +1076,98 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
             return;
         }
         held.set(key, [offset]);
+        heldBy.add(offset);
         log(`[批量] ${key} 的文章前面经学校登录下到了，这一篇停在学校登录页没有完成登录：` +
             "这家出版社的篇目先暂停，其他照常下载；回来后在进度窗口点“登录并继续”");
         ledger?.phase(`暂停 ${key}：学校登录中途失效`);
         void reportHeld();
     };
-    /** The user pressed 登录并继续 (or 终止) in the window: held papers go on first. */
+    /** ``offset`` held its publisher before and stopped at the school's sign-in page again after 登录并继续: not held again. */
+    const heldAgain = (offset) => {
+        if (!heldBy.has(offset))
+            return false;
+        log(`[批量] ${id(offset)} 点“登录并继续”后仍停在学校登录页：这一篇记为失败，${publisherOf(offset)} 的其他篇目接着下载`);
+        return true;
+    };
+    /** The window's line while blocked publishers' papers wait: when they are tried again, how many. */
+    const reportBlocked = () => {
+        if (!backend?.reportBatchProgress || !blockedUntil.size)
+            return reports;
+        const until = Math.min(...blockedUntil.values());
+        const count = [...blockedUntil.keys()].reduce((sum, key) => sum + (held.get(key)?.length ?? 0), 0);
+        if (!count)
+            return reports;
+        const update = withLater({ id: batchId, total, done: settledOk() + failed, succeeded: settledOk(), failed, current: "",
+            finished: false, phase: `被网站拦截，${clockTime(until)} 再试暂停的 ${count} 篇` });
+        reports = reports.then(() => backend.reportBatchProgress(update)).catch(() => false);
+        return reports;
+    };
+    /**
+     * ``key``'s site blocked the batch (``why``): the publisher's papers wait, the others go on. ``offset``, the paper it
+     * blocked, waits with them; none when the paper was saved and only its files were refused as too many requests.
+     */
+    const pauseBlocked = (key, why, offset) => {
+        const until = now() + BLOCKED_PAUSE_MS;
+        held.set(key, [...(held.get(key) ?? []), ...(offset === undefined ? [] : [offset])]);
+        blockedUntil.set(key, until);
+        log(`[批量] ${key} 的网站拦截了访问（${why}）：这家出版社的篇目先暂停，${clockTime(until)} 再试一次，其他照常下载`);
+        ledger?.phase(`暂停 ${key}：被网站拦截`);
+        void reportBlocked();
+    };
+    /** Pauses with none of their publisher's papers left to wait (its files refused on its last paper): not waited out. */
+    const dropEmptyPauses = () => {
+        for (const key of [...blockedUntil.keys()]) {
+            if (held.get(key)?.length)
+                continue;
+            blockedUntil.delete(key);
+            held.delete(key);
+        }
+    };
+    /** ``offset``'s publisher's site blocked it again after the pause, or at the batch's end: given up for this batch. */
+    const giveUp = (offset) => {
+        const key = publisherOf(offset);
+        if (givenUp.has(key))
+            return;
+        givenUp.add(key);
+        log(`[批量] ${key} 的网站${triedAgain.has(key) ? "暂停后仍" : ""}拦截了访问（${id(offset)}）：这家出版社余下的篇目本批不再试` +
+            "（没试的记为被网站拦截，原因不明的不再重试，没权限的不再换学校）；过一阵说“接着下”再补");
+        ledger?.phase(`不再试 ${key}：仍被网站拦截`);
+    };
+    /** Without 失败后自动重试: each publisher's papers blocked in a row (BLOCKED_IN_ROW of them give it up). */
+    const blockedInRow = new Map();
+    const blockedOnce = (offset) => {
+        const key = publisherOf(offset);
+        const count = (blockedInRow.get(key) ?? 0) + 1;
+        blockedInRow.set(key, count);
+        if (count >= BLOCKED_IN_ROW)
+            giveUp(offset);
+        else
+            log(`[批量] ${key} 的网站拦截了 ${id(offset)}（连续第 ${count} 篇）：这一篇记为失败，这家出版社的其他篇目接着试`);
+    };
+    /** Blocked publishers whose pause is over: their papers go first, once more. */
+    const releaseBlocked = () => {
+        let released = 0;
+        for (const [key, until] of blockedUntil) {
+            if (now() < until)
+                continue;
+            const offsets = held.get(key) ?? [];
+            blockedUntil.delete(key);
+            held.delete(key);
+            // A pause nothing waited in (only a paper's files were refused) is no try: its next block pauses again.
+            if (!offsets.length)
+                continue;
+            triedAgain.add(key);
+            queue.unshift(...offsets);
+            released += offsets.length;
+            log(`[批量] ${key} 已暂停 ${BLOCKED_PAUSE_MS / 60_000} 分钟：暂停的 ${offsets.length} 篇再试一次`);
+            ledger?.phase(`再试 ${key} 暂停的 ${offsets.length} 篇`);
+        }
+        if (released)
+            notify();
+    };
+    /** The user pressed 登录并继续 (or 终止) in the window: held papers go on first. Blocked ones whose pause is over too. */
     const takeRequests = () => {
+        releaseBlocked();
         const asked = backend?.takeBatchRequests?.(batchId);
         if (!asked)
             return;
@@ -960,6 +1175,8 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
             stopped = true;
         let resumed = 0;
         for (const key of asked.resume) {
+            if (blockedUntil.has(key))
+                continue;
             const offsets = held.get(key) ?? [];
             held.delete(key);
             queue.unshift(...offsets);
@@ -972,22 +1189,32 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
             notify();
         }
     };
+    /** A paper its publisher's pause left untried: its school stage says so (``code``), or, its PDF from open access standing, its files. */
+    const untried = (offset, code, files = code) => {
+        const item = results[offset];
+        if (finishing.has(offset)) {
+            // Its PDF stands; its browser's part waited.
+            if (wantsFiles)
+                item.supplements = [{ status: "skipped", label: "", reason: files }];
+        }
+        else {
+            const stage = { stage: "entitled_access", status: "error", ...schoolAttemptDetails(code) };
+            results[offset] = itemResult({ ...item, status: "error", attempts: [...item.attempts, stage] }, offset + 1, requests[offset]);
+            // The run record says it too, as `paper-search failures` reads it: there such a paper had no school stage, "没有走到
+            // 机构下载" beside the batch's 被网站拦截 (BMJ, 2026-11-23: 1 + 47 against 48).
+            ledger?.stage(entries[offset], { ...stage, startedAt: new Date().toISOString(), durationMs: 0,
+                trace: { publisher: publisherOf(offset) } });
+        }
+    };
     /** The held papers end as paused (the batch stopped): returns them, no longer held. */
     const markPaused = () => {
         const paused = [...held.values()].flat();
-        for (const offset of paused) {
-            const item = results[offset];
-            if (finishing.has(offset)) {
-                // Its PDF stands; its browser's part waited for the login.
-                if (wantsFiles)
-                    item.supplements = [{ status: "skipped", label: "", reason: "batch_stopped" }];
-            }
-            else {
-                results[offset] = itemResult({ ...item, status: "error", attempts: [...item.attempts,
-                        { stage: "entitled_access", status: "error", ...schoolAttemptDetails("login_paused") }] }, offset + 1, requests[offset]);
-            }
+        for (const [key, offsets] of held) {
+            for (const offset of offsets)
+                untried(offset, blockedUntil.has(key) ? "blocked_paused" : "login_paused", "batch_stopped");
         }
         held.clear();
+        blockedUntil.clear();
         return paused;
     };
     /**
@@ -1013,12 +1240,44 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
     // one school before the next (``laterSchools``, user 2026-11-22).
     let turns;
     const otherSchools = () => (turns ??= schoolsAfterDefault(backend, options));
+    // 失败后自动重试 (retrySetting): asked once, when the first paper might be tried again.
+    let retryOn;
+    const retrying = () => (retryOn ??= retrySetting(backend));
     /** Papers without access with the schools tried so far, waiting for the next one. */
     const withoutAccessYet = new Set();
     /** Papers failed for a reason not known, waiting for their one more try at the end. */
     const unexplainedYet = new Set();
     /** Each waiting paper's schools tried, the default one counted. */
     const schoolsTried = new Map();
+    // The papers held for a later try, by why, are in the window's ring beside those done, not in 剩余 unsaid (user,
+    // 2026-11-23): every report to it says them, and one of its own does before a paper's school visit when they changed.
+    /** The papers held for a later try now. */
+    const later = () => {
+        const waiting = (blocked) => [...held].filter(([key]) => blockedUntil.has(key) === blocked).flatMap(([, offsets]) => offsets);
+        const until = [...blockedUntil].filter(([key]) => held.get(key)?.length).map(([, at]) => at);
+        const dois = (offsets) => [...offsets].map((offset) => requests[offset].doi).filter(Boolean);
+        const blocked = waiting(true), login = waiting(false);
+        return { noAccess: withoutAccessYet.size, unexplained: unexplainedYet.size, blocked: blocked.length, login: login.length,
+            ...(until.length ? { blockedAt: Math.min(...until) } : {}),
+            papers: { noAccess: dois(withoutAccessYet), unexplained: dois(unexplainedYet), blocked: dois(blocked), login: dois(login) } };
+    };
+    /** What the window was last told of them. */
+    let laterSaid = JSON.stringify(later());
+    /** A report to the window with them (``later``). */
+    const withLater = (update) => {
+        const counts = later();
+        laterSaid = JSON.stringify(counts);
+        return { ...update, later: counts };
+    };
+    /** The window told of papers held for a later try, or back from it, when no report has said so; none once all are done. */
+    const reportLater = () => {
+        if (!backend?.reportBatchProgress || JSON.stringify(later()) === laterSaid || settledOk() + failed >= total)
+            return reports;
+        const update = withLater({ id: batchId, total, done: settledOk() + failed, succeeded: settledOk(), failed, current: "",
+            finished: false, laterOnly: true });
+        reports = reports.then(() => backend.reportBatchProgress(update)).catch(() => false);
+        return reports;
+    };
     // One journal's papers one after another when the backend says so (more than one school taking part, user
     // 2026-11-21; kept with the switch at the end, user 2026-11-22). Asked until the backend has run a paper and can say.
     let groupJournals;
@@ -1039,6 +1298,19 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
                 held.get(publisherOf(offset)).push(offset);
                 continue;
             }
+            if (givenUp.has(publisherOf(offset))) {
+                // Its publisher's site still blocks after the pause: not tried, 被网站拦截.
+                untried(offset, "blocked_paused");
+                if (finishing.delete(offset))
+                    openSettled += 1;
+                else
+                    failed += 1;
+                record(offset);
+                settle(offset);
+                await sendPapers();
+                continue;
+            }
+            await reportLater();
             if (finishing.has(offset)) {
                 await finishOpenItem(offset);
                 if (stopped)
@@ -1083,11 +1355,17 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
             }, offset + 1, request);
             const school = result.attempts.find((attempt) => attempt.stage === "entitled_access");
             const holding = result.status !== "ok" && wentThrough(offset) && school?.code === LOGIN_LAPSED_CODE
-                && waitEnded.get(offset) === SCHOOL_SIGN_IN_PAGE && !stoppedByUser(result) && await canHold();
+                && waitEnded.get(offset) === SCHOOL_SIGN_IN_PAGE && !stoppedByUser(result) && await canHold() && !heldAgain(offset);
+            // Its publisher's site blocked it: it waits with the publisher's other papers, once (BLOCKED_PAUSE_MS).
+            const blocked = !holding && siteBlocked(result);
+            const pausing = blocked && !triedAgain.has(publisherOf(offset)) && await retrying();
+            if (!blocked)
+                blockedInRow.delete(publisherOf(offset));
             // Its Markdown now, from the page this visit saved, or the open sources (only these
-            // while its school login is in doubt).
-            if (wantsMarkdown && !stoppedByUser(result)) {
-                await markdownPastNetworkLoss(results[offset], recorded({ ...request, batch }, ledger, entries[offset]), searchers, holding ? undefined : pageVisit(backend, { ...request, batch, ...(away ? { shortUserWait: true } : {}) }, log, pause), watch);
+            // while its school login is in doubt or its site blocks); a paused paper's when it is tried again.
+            if (wantsMarkdown && !stoppedByUser(result) && !pausing) {
+                await markdownPastNetworkLoss(results[offset], recorded({ ...request, batch }, ledger, entries[offset]), searchers, holding || blocked ? undefined
+                    : pageVisit(backend, { ...request, batch, ...(away ? { shortUserWait: true } : {}) }, log, pause), watch);
             }
             if (result.status === "ok") {
                 succeeded += 1;
@@ -1095,15 +1373,39 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
                 settle(offset);
                 if (school?.status === "ok")
                     cameThrough(offset);
+                // Saved, its files refused as too many requests (BMJ Open's, 2026-11-23, the paper before gut.bmj.com's check):
+                // the publisher's other papers wait all the same.
+                const key = publisherOf(offset);
+                if (result.supplements?.some((file) => file.reason === "http_429") && !blockedUntil.has(key) && !triedAgain.has(key)) {
+                    // Without 失败后自动重试: no pause; one of BLOCKED_IN_ROW in a row (blockedOnce).
+                    if (await retrying())
+                        pauseBlocked(key, `${id(offset)} 的附录：请求太多`);
+                    else
+                        blockedOnce(offset);
+                }
             }
             else if (holding) {
                 hold(offset);
+            }
+            else if (pausing) {
+                pauseBlocked(publisherOf(offset), `${id(offset)}：人机验证没过或拦截页`, offset);
+            }
+            else if (blocked) {
+                // Blocked again after its pause: this one fails 被网站拦截, its publisher's others are not tried. Without 失败后自动
+                // 重试: this one fails, its publisher's others go on until BLOCKED_IN_ROW in a row (blockedOnce).
+                if (triedAgain.has(publisherOf(offset)))
+                    giveUp(offset);
+                else
+                    blockedOnce(offset);
+                failed += 1;
+                record(offset);
+                settle(offset);
             }
             else if (withoutAccess(result) && !stoppedByUser(result) && (await otherSchools()).length) {
                 withoutAccessYet.add(offset);
                 settle(offset, "school");
             }
-            else if (unexplainedFailure(result)) {
+            else if (unexplainedFailure(result) && await retrying()) {
                 unexplainedYet.add(offset);
                 settle(offset, "school");
             }
@@ -1112,12 +1414,11 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
                 record(offset);
                 settle(offset);
             }
-            // The window's line, not for a paper that waits for the end (it would close the batch early when last).
-            if (!withoutAccessYet.has(offset) && !unexplainedYet.has(offset)) {
+            // The window's line, not for a paper that waits for the end or its publisher's pause (it would close the batch
+            // early when last).
+            if (!withoutAccessYet.has(offset) && !unexplainedYet.has(offset) && !pausing) {
                 await reportBatchItem({ ...request, batch: { ...batch, index: batch.done + 1 } }, result, backend);
             }
-            if (publisherBlocked(result))
-                log(blockedNotice(id(offset)));
             if (stoppedByUser(result)) {
                 stopped = true;
                 return;
@@ -1147,21 +1448,32 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
     // The held publishers wait for the user as long as it takes (user, 2026-11-15): the
     // window shows 登录并继续 and 终止. 登录并继续 downloads them, the school's login asking
     // the user where it lapsed; held again, the wait starts over. 终止 ends them as paused.
+    // Those blocked by their site wait out their pause and go on by themselves (user, 2026-11-23).
+    dropEmptyPauses();
     if (held.size && !stopped) {
-        const waiting = [...held.values()].reduce((sum, offsets) => sum + offsets.length, 0);
-        log(`[批量] 其他篇目已完成，暂停的 ${waiting} 篇等你回来：在进度窗口点“登录并继续”，或点“终止”结束`);
-        ledger?.phase(`等你回来：暂停的 ${waiting} 篇`);
+        const waiting = heldList().reduce((sum, publisher) => sum + publisher.count, 0);
+        if (waiting) {
+            log(`[批量] 其他篇目已完成，暂停的 ${waiting} 篇等你回来：在进度窗口点“登录并继续”，或点“终止”结束`);
+            ledger?.phase(`等你回来：暂停的 ${waiting} 篇`);
+        }
+        const blockedWaiting = [...blockedUntil.keys()].reduce((sum, key) => sum + (held.get(key)?.length ?? 0), 0);
+        if (blockedWaiting) {
+            log(`[批量] 其他篇目已完成，被网站拦截暂停的 ${blockedWaiting} 篇 ${clockTime(Math.min(...blockedUntil.values()))} 再试一次`);
+            ledger?.phase(`等网站解除拦截：暂停的 ${blockedWaiting} 篇`);
+        }
     }
     while (held.size && !stopped) {
-        await reportHeld(true);
+        await (heldList().length ? reportHeld(true) : reportBlocked());
         await pause(HOLD_POLL_MS);
         takeRequests();
         if (queue.length && !stopped) {
             await entitledLane();
         }
+        dropEmptyPauses();
     }
     /** A paper's school stage once more, with another saved school when given; merged into its result. */
     const visitAgain = async (offset, school) => {
+        await reportLater();
         const request = { ...requests[offset], ...(school ? { school: school.entityId } : {}) };
         const done = settledOk() + failed;
         const batch = { id: batchId, index: done + 1, total, done, succeeded: settledOk(), failed };
@@ -1189,22 +1501,29 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
         }
         if (stoppedByUser(result))
             stopped = true;
-        if (publisherBlocked(result))
-            log(blockedNotice(id(offset)));
+        // Its publisher's site blocks the batch's end too: no more visits go there (no pause at the end).
+        if (siteBlocked(result))
+            giveUp(offset);
         return item;
     };
+    /** Not visited again at the batch's end: its publisher's site still blocks (``giveUp``). */
+    const visitable = (offset) => !givenUp.has(publisherOf(offset));
     /** The window's line for a paper finished at the end (the counts before it, as ``reportBatchItem`` takes them). */
     const reportSettled = async (offset) => {
         const done = settledOk() + failed;
         await reportBatchItem({ ...requests[offset], batch: { id: batchId, index: done + 1, total, done, succeeded: settledOk(), failed } }, results[offset], backend);
     };
-    // 原因不明 once more, the default school still signed in, before any other school (user, 2026-11-22).
-    if (unexplainedYet.size && !stopped) {
-        log(`[批量] 原因不明的 ${unexplainedYet.size} 篇再试一次`);
-        ledger?.phase(`原因不明的 ${unexplainedYet.size} 篇再试一次`);
-        for (const offset of [...unexplainedYet]) {
+    // 原因不明 once more, the default school still signed in, before any other school (user, 2026-11-22). Not where the
+    // site still blocks: those end as they were.
+    const unexplainedAgain = [...unexplainedYet].filter(visitable);
+    if (unexplainedAgain.length && !stopped) {
+        log(`[批量] 原因不明的 ${unexplainedAgain.length} 篇再试一次`);
+        ledger?.phase(`原因不明的 ${unexplainedAgain.length} 篇再试一次`);
+        for (const offset of unexplainedAgain) {
             if (stopped)
                 break;
+            if (!visitable(offset))
+                continue;
             const item = await visitAgain(offset);
             unexplainedYet.delete(offset);
             if (!stopped && item.status !== "ok" && withoutAccess(item) && (await otherSchools()).length) {
@@ -1228,8 +1547,11 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
         record(offset);
     }
     unexplainedYet.clear();
-    // The papers without access go to the other saved schools, one school at a time.
+    // The papers without access go to the other saved schools, one school at a time; not where the site still blocks
+    // (they end without access, with the schools tried so far).
     const withSchool = async (offset, school) => {
+        if (!visitable(offset))
+            return;
         const item = await visitAgain(offset, school);
         schoolsTried.set(offset, (schoolsTried.get(offset) ?? 1) + 1);
         if (!stopped && withoutAccess(item)) {
@@ -1248,13 +1570,14 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
         await sendPapers();
     };
     if (withoutAccessYet.size && !stopped) {
-        await laterSchools(await otherSchools(), () => [...withoutAccessYet], async (school, count) => {
+        await laterSchools(await otherSchools(), () => [...withoutAccessYet].filter(visitable), async (school, count) => {
             log(`[批量] 没权限的 ${count} 篇换${school.name}再试`);
             ledger?.phase(`没权限的 ${count} 篇换${school.name}再试`);
             if (!backend?.reportBatchProgress)
                 return;
-            const update = { id: batchId, total, done: settledOk() + failed, succeeded: settledOk(), failed, current: "",
-                finished: false, phase: `没权限，换${school.name}` };
+            // The card names the school a moment (switchTo), in place of a line saying so.
+            const update = withLater({ id: batchId, total, done: settledOk() + failed, succeeded: settledOk(), failed, current: "",
+                finished: false, switchTo: school.name, laterOnly: true });
             reports = reports.then(() => backend.reportBatchProgress(update)).catch(() => false);
             await reports;
         }, withSchool, () => stopped);
@@ -1266,6 +1589,16 @@ async function downloadTwoPhase(searchers, options, backend, log, createTiers, m
         record(offset);
     }
     withoutAccessYet.clear();
+    // Markdown saved without some figures: those once more, unless the user stopped the batch (user, 2026-11-23);
+    // recorded before a stop's own marks on the papers not recorded yet.
+    figuresTried = true;
+    if (!stopped) {
+        await figuresAtTheEnd([...figuresLater].map((offset) => ({ result: results[offset], request: recorded(requests[offset], ledger, entries[offset]) })), log, ledger);
+    }
+    for (const offset of figuresLater) {
+        record(offset);
+        settle(offset);
+    }
     await reports;
     // Stopped in the window: the items neither lane reached end as not downloaded, the held as paused.
     if (stopped) {

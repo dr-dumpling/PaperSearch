@@ -1,6 +1,12 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { describeFailure, FAILURE_CLASSES, FAILURE_CLASS_LABELS, hostOf, } from "../../infrastructure/runlog/failureClass.js";
+import { classifyFailureCode, describeFailure, FAILURE_CLASSES, FAILURE_CLASS_LABELS, hostOf, } from "../../infrastructure/runlog/failureClass.js";
+import { CHALLENGE_TYPE_LABELS, schoolShortReason } from "../../infrastructure/school/index.js";
+/**
+ * The codes of a paper the batch left untried while its publisher was paused (被网站拦截, 学校登录中途失效): its run
+ * record has the school stage the batch gave it, no visit (batch.ts ``untried``).
+ */
+const UNTRIED = new Set(["blocked_paused", "login_paused"]);
 /** One entry per failed paper, including a saved main text with incomplete attachments. */
 export function selectFailures(root, query = {}, options = {}) {
     const runs = selectRuns(root, query);
@@ -18,7 +24,11 @@ export function selectFailures(root, query = {}, options = {}) {
             if (item.status === "ok" && !incomplete)
                 continue;
             const stages = Array.isArray(item.stages) ? item.stages : [];
-            const main = [...stages].reverse().find((s) => s.stage === "entitled_access");
+            // The batch's mark on a paper its publisher's pause left untried is no visit: the export keeps to the paper's
+            // visits (an earlier one, or none: not attempted), the summary counts the mark as the batch's last line does.
+            const visits = options.forExport
+                ? stages.filter((s) => !(s.stage === "entitled_access" && UNTRIED.has(String(s.code)))) : stages;
+            const main = [...visits].reverse().find((s) => s.stage === "entitled_access");
             const attachment = [...stages].reverse().find((s) => s.stage === "supplements");
             const part = incomplete && (item.status === "ok" || !main || main.status !== "error") ? "supplements" : undefined;
             const stage = part ? attachment ?? main : main;
@@ -33,7 +43,11 @@ export function selectFailures(root, query = {}, options = {}) {
             const code = !part && recorded === "download_failed" && trace.state === "publisher_institution_entry_missing"
                 ? trace.state : recorded;
             const backend = stage.backend;
-            const current = describeFailure(code, backend, stage.trace);
+            // A saved paper's missing file: its reason's class alone. The visit's last step was the
+            // paper's own ("停在 pdf_saved"), not where the file failed (AHA, 2026-11-22).
+            const paperSaved = part === "supplements" && item.status === "ok";
+            const current = paperSaved ? { failureClass: classifyFailureCode(code) }
+                : describeFailure(code, backend, stage.trace);
             // An unregistered entry's evidence as said now: records before 2026-11-19 may carry an old
             // inference of no subscription for it.
             const description = !part && FAILURE_CLASSES.includes(stage.failureClass)
@@ -49,15 +63,17 @@ export function selectFailures(root, query = {}, options = {}) {
             const paper = { doi, runId, ...description,
                 publisher: typeof trace.publisher === "string" && trace.publisher ? trace.publisher : "-",
                 site: hostOf(detail.final_url) || hostOf(detail.article_url) || "-", code,
+                ...(!part && typeof trace.challengeType === "string" && Object.hasOwn(CHALLENGE_TYPE_LABELS, trace.challengeType)
+                    ? { challengeType: trace.challengeType } : {}),
                 ...(part ? { part } : {}),
+                ...(paperSaved ? { paperSaved: true } : {}),
                 ...(typeof diagnostic === "string" && diagnostic ? { diagnostic } : {}),
                 // Local paths for the text summary; an export takes the pictures from the diagnostic itself.
                 ...(!options.forExport && screenshotsOf(backend).length ? { screenshots: screenshotsOf(backend) } : {}),
                 ...(typeof record === "string" && record ? { record } : {}),
                 detail: options.forExport ? detail : {},
                 outcome: options.forExport ? { status: item.status, supplements,
-                    stages: stages.map(({ stage, status, code, message, startedAt, durationMs }) => ({ stage, status, code, message, startedAt, durationMs })) } : {},
-            };
+                    stages: stages.map(({ stage, status, code, message, startedAt, durationMs }) => ({ stage, status, code, message, startedAt, durationMs })) } : {}, };
             if (options.forExport) {
                 exportBytes += Buffer.byteLength(JSON.stringify(paper));
                 if (papers.length >= 100 || exportBytes > 8 * 1024 * 1024 - 1024) {
@@ -73,26 +89,41 @@ export function summarizeFailures(root, query = {}) {
     const { runs, papers, notAttempted } = selectFailures(root, query);
     const classes = Object.fromEntries(FAILURE_CLASSES.map((c) => [c, 0]));
     const groups = new Map();
+    const shortfalls = new Map();
+    let failed = 0;
     for (const paper of papers) {
-        const { failureClass, publisher, site, code } = paper;
-        classes[failureClass] += 1;
-        const key = [failureClass, publisher, site, code].join("\u0000");
-        const group = groups.get(key) ?? { failureClass, publisher, site, code, count: 0, items: [] };
-        group.count += 1;
-        if (!group.evidence && paper.evidence)
-            group.evidence = paper.evidence;
-        group.items.push({ doi: paper.doi, runId: paper.runId,
+        const { failureClass, publisher, site, code, challengeType } = paper;
+        const key = [failureClass, publisher, site, code, challengeType ?? ""].join("\u0000");
+        const entry = { doi: paper.doi, runId: paper.runId,
             ...(paper.evidence ? { evidence: paper.evidence } : {}),
             ...(paper.stoppedAt ? { stoppedAt: paper.stoppedAt } : {}),
             ...(paper.diagnostic ? { diagnostic: paper.diagnostic } : {}),
             ...(paper.screenshots ? { screenshots: paper.screenshots } : {}),
             ...(paper.part ? { part: paper.part } : {}),
-        });
+        };
+        if (paper.paperSaved) {
+            // Saved, a file short: not a failure of the paper (the batch counts it succeeded).
+            const group = shortfalls.get(key) ?? { failureClass, publisher, site, code,
+                reason: schoolShortReason(code, "附录没下载成功"), count: 0, items: [] };
+            group.count += 1;
+            group.items.push(entry);
+            shortfalls.set(key, group);
+            continue;
+        }
+        failed += 1;
+        classes[failureClass] += 1;
+        const group = groups.get(key) ?? { failureClass, publisher, site, code,
+            ...(challengeType ? { challengeType } : {}), count: 0, items: [] };
+        group.count += 1;
+        if (!group.evidence && paper.evidence)
+            group.evidence = paper.evidence;
+        group.items.push(entry);
         groups.set(key, group);
     }
     const order = (c) => FAILURE_CLASSES.indexOf(c);
-    return { root, runs, failed: papers.length, notAttempted, classes,
-        groups: [...groups.values()].sort((a, b) => order(a.failureClass) - order(b.failureClass) || b.count - a.count) };
+    const byClass = (list) => [...list].sort((a, b) => order(a.failureClass) - order(b.failureClass) || b.count - a.count);
+    return { root, runs, failed, notAttempted, classes, groups: byClass(groups.values()),
+        supplementsMissing: papers.length - failed, supplementGroups: byClass(shortfalls.values()) };
 }
 /** The diagnostic's screenshots: the page when it failed, then the pages kept on the way. */
 function screenshotsOf(backend) {
@@ -154,7 +185,8 @@ export function renderFailuresText(summary, options = {}) {
             continue;
         lines.push("", `${FAILURE_CLASS_LABELS[failureClass]}  ${summary.classes[failureClass]}`);
         for (const group of groups) {
-            lines.push(`  ${group.publisher} · ${group.site} · ${group.code}  ${group.count}`);
+            const kind = group.challengeType ? ` · ${CHALLENGE_TYPE_LABELS[group.challengeType]}` : "";
+            lines.push(`  ${group.publisher} · ${group.site} · ${group.code}${kind}  ${group.count}`);
             if (failureClass === "no_access" && group.evidence)
                 lines.push(`    依据：${group.evidence}`);
             if (failureClass !== "unexplained" && failureClass !== "unsupported")
@@ -169,7 +201,20 @@ export function renderFailuresText(summary, options = {}) {
                 lines.push(`    …另 ${group.items.length - shown} 篇（--all 全部列出）`);
         }
     }
-    if (summary.classes.unsupported || summary.classes.unexplained) {
+    // Saved papers short of some files, apart from the failures (the batch's last line: 附录未下全).
+    if (summary.supplementsMissing) {
+        lines.push("", `附录未下全  ${summary.supplementsMissing}（正文已保存，不算失败）`);
+        for (const group of summary.supplementGroups) {
+            lines.push(`  ${group.publisher} · ${group.site} · ${group.reason} · ${group.code}  ${group.count}`);
+            for (const item of group.items.slice(0, shown))
+                lines.push(`    ${item.doi}`);
+            if (group.items.length > shown)
+                lines.push(`    …另 ${group.items.length - shown} 篇（--all 全部列出）`);
+        }
+    }
+    const toLookInto = (c) => c === "unsupported" || c === "unexplained";
+    if (summary.classes.unsupported || summary.classes.unexplained
+        || summary.supplementGroups.some((group) => toLookInto(group.failureClass))) {
         lines.push("", "要我们排查：paper-search failures --export <文件.zip> 导出记录（发出前先看一遍），发给我们。");
     }
     return lines.join("\n");

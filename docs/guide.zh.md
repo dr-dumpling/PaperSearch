@@ -65,7 +65,7 @@ paper-search failures --format text
 
 两种方式用同一个下载命令：先试开放下载，拿不到时，装了机构下载才继续用学校权限。
 
-- 几十到几百篇用一次 `download_batch`：每篇先试开放渠道，没拿到正文的随即用机构下载，两者同时进行，学校登录在开始后几秒就会提示。结束后 `paper-search failures` 把没下到的篇目分类：没权限（附页面原话等依据）、你这边、学校那边、出版社或网络、文章或网站本身、暂不支持的网站、网站适配问题（PaperSearch 待修，附截图位置）、原因不明。
+- 几十到几百篇用一次 `download_batch`：每篇先试开放渠道，没拿到正文的随即用机构下载，两者同时进行，学校登录在开始后几秒就会提示。结束后 `paper-search failures` 把没下到的篇目分成五类：没权限（附页面原话等依据）、要你处理（登录、验证、等待等）、外部原因（网站、学校或网络的问题）、待适配（PaperSearch 的规则还没覆盖，附截图位置）、原因不明。
 - arXiv 论文先找正式发表版，都没拿到才下载预印本；结果里写 `version: "preprint"`，已知时附正式版 DOI。
 - 不想用 Sci-Hub 时，在 `download_with_fallback` / `download_batch` 里设 `"useSciHub": false`。
 - 每个 PDF 都核对首页的 DOI 和题名；对不上的不算成功，单独留待核查。
@@ -94,7 +94,7 @@ paper-search failures --format text
 
 ## Agent Skill
 
-Skill 随 npm 包发布（`skills/paper-search/`），全中文，开头有整体逻辑图，按需读这些参考文件：功能路由与开放下载的各个渠道、命令约定、机构下载的安装和使用、[出版社支持表](../skills/paper-search/references/publisher-support.md)、排障。它只告诉 AI 怎么调用 `paper-search`，不保存 key、Cookie 或账号。
+Skill 随 npm 包发布（`skills/paper-search/`），全英文，开头有整体逻辑图，按需读这些参考文件：功能路由与开放下载的各个渠道、命令约定、机构下载的安装和使用、[出版社支持表](../skills/paper-search/references/publisher-support.md)、排障。它只告诉 AI 怎么调用 `paper-search`，不保存 key、Cookie 或账号。
 
 单独安装 Skill（需要 Node.js 22 或以上），运行后选你用的 AI 工具：
 

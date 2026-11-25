@@ -16,7 +16,7 @@ from urllib.parse import unquote, urlparse
 
 from ...engine.router import _append_aps_candidates
 from ...engine.batch_common import open_page
-from ...engine.fulltext_page import MATHJAX_SOURCES_JS
+from ...engine.fulltext_page import MATHJAX_SOURCES_JS, paragraph_text_js
 from ..base import PublisherAdapter, SupplementLink, register
 
 _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href]')].map(a => ({
@@ -32,11 +32,8 @@ _SUPPLEMENT_ROWS_JS = """() => [...document.querySelectorAll('a[href]')].map(a =
 # access, 2026-11-15).
 FULLTEXT_SHOWN_JS = """() => {
   if (/\\/accepted\\//i.test(location.pathname) || document.querySelector('#inline-unauthorized-page')) return false;
-  const body = document.querySelector('#article-body #fulltext-content');
-  if (!body || body.getAttribute('data-loaded') === 'pending') return false;
-  const text = [...body.querySelectorAll('p')].filter((p) => !p.closest('figure, .article-fulltext-table-wrap'))
-    .reduce((total, p) => total + (p.textContent || '').length, 0);
-  return text > 500;
+  if (document.querySelector('#article-body #fulltext-content')?.getAttribute('data-loaded') === 'pending') return false;
+  return (""" + paragraph_text_js("p", "figure, .article-fulltext-table-wrap", "> 500", root="#article-body #fulltext-content") + """)();
 }"""
 FULLTEXT_IMAGES_JS = """() => {
   const body = document.querySelector('#article-body #fulltext-content');

@@ -1,10 +1,11 @@
 paper-search-school, the school subscription download backend of PaperSearch
-Copyright (C) 2026 dr-dumpling
+Copyright (C) 2026 Yu Xie
 https://github.com/dr-dumpling/PaperSearch
 
 Licensed under the GNU Affero General Public License, version 3 only (AGPL-3.0-only; the
 full text is in LICENSE), with a commercial license available: see NOTICE at the top of the
-PaperSearch repository.
+PaperSearch repository. Provided by Yu Xie "AS IS", without warranty of any kind (sections
+15 and 16 of LICENSE).
 
 It draws on scansci-pdf (https://github.com/Rimagination/scansci-pdf), under the MIT
 License; that copyright and license notice are kept in LICENSE-scansci-pdf.

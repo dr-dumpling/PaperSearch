@@ -6,6 +6,7 @@ from the DOI for the journals whose codes are known.
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 from urllib.parse import unquote, urlparse
 
@@ -103,17 +104,21 @@ class MDPIAdapter(PublisherAdapter):
     fulltext_prepare_js = MATHJAX_SOURCES_JS
 
     def fulltext_page_url(self, doi: str, page_url: str) -> str:
-        """--fulltext: the article page again, at its address with MDPI's update-check query.
-        On a repeat visit MDPI may answer the bare address with the abstract alone (a 120-140 kB
-        document with one div.html-p; the full page is 230-800 kB, its Akamai check passed or
-        not), and keeps doing so for that address; the same address with a query is the full
-        page every time (Energies 10.3390/en19215280, -5291, three of ten said 文章页没有正文,
-        2026-11-18). "" off MDPI's article pages, or when the address has a query already."""
+        """--fulltext: the article page again, at its address with MDPI's update-check query and
+        a value of this read's own, for when the article page shows no full text. MDPI may answer
+        an article's address with the abstract alone (a 120-140 kB document with one div.html-p;
+        the full page is 230-800 kB) and keeps doing so for that address: the bare one on a repeat
+        visit (Energies 10.3390/en19215280, -5291, 2026-11-18), and the one with the update-check
+        query too, for 16 of 80 articles of 2025 (10.3390/s25226876: the same abstract-only page
+        on two reads 30 s apart; for 6 of them the bare address, loaded twice meanwhile, was a
+        full page by its size, 2026-11-22). Queries not asked before (?a=1, ?a=2) gave the full
+        page every time (2026-11-18). "" off MDPI's article pages, or when the address has a query
+        already."""
         target = urlparse(page_url or "")
         if (target.scheme != "https" or (target.hostname or "").lower() not in {"www.mdpi.com", "mdpi.com"}
                 or target.query or not _ARTICLE_PATH.fullmatch(target.path)):
             return ""
-        return target._replace(query="type=check_update&version=1", fragment="").geturl()
+        return target._replace(query=f"type=check_update&version=1&t={time.time_ns() // 1_000_000}", fragment="").geturl()
 
     @classmethod
     def profile_pdf_candidates(cls, doi: str, source_url: str) -> list[str]:

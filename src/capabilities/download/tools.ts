@@ -181,7 +181,7 @@ export const DOWNLOAD_BATCH_TOOL = {
       resume: {
         type: "string",
         description:
-          "Go on with an earlier batch (the user says 接着下, 继续下载, 重试失败的): \"latest\" or a run id as paper-search failures names it. Its papers not saved are downloaded again with its content, those saved without all their supplementary files or without their Markdown (not reached, failed, login lapsed) get only those, beside their PDF, never the PDF again; everything goes into the earlier batch's download folder, and items and content are taken from its run ledger. Run it with the same environment as the earlier batch (its XDG_DATA_HOME, if one was set).",
+          "Go on with an earlier batch (the user says 接着下, 继续下载, 重试失败的): \"latest\" or a run id as paper-search failures names it. Its papers not saved are downloaded again with its content, but not those another try would end the same (no access, unless another saved school is named; not supported, unless PaperSearch was updated since; a DOI never registered; a site offering no school login: the result lists them), those saved without all their supplementary files or without their Markdown (not reached, failed, login lapsed) get only those, beside their PDF, never the PDF again; everything goes into the earlier batch's download folder, and items and content are taken from its run ledger. Run it with the same environment as the earlier batch (its XDG_DATA_HOME, if one was set).",
       },
     },
   },
@@ -218,7 +218,7 @@ export function downloadTools(pro: boolean = proFeatures()): DownloadTool[] {
       {
         content: { description: OPEN_CONTENT },
         mode: { description: "two_phase (default): open stages for every item first, then entitled access only for the items still missing, so browser logins happen in one stretch at the end. per_item: the whole funnel per item. entitled_only: through the school alone: every item goes straight to entitled access, the open stages skipped. 接着下 (resume) goes on with the batch's own mode unless one is given." },
-        resume: { description: "Go on with an earlier batch (the user says 接着下, 继续下载, 重试失败的): \"latest\" or a run id as paper-search failures names it. Its papers not saved are downloaded again with its content, those saved without all their supplementary files (not reached, failed, login lapsed) get only those, beside their PDF, never the PDF again; everything goes into the earlier batch's download folder, and items and content are taken from its run ledger. Run it with the same environment as the earlier batch (its XDG_DATA_HOME, if one was set)." },
+        resume: { description: "Go on with an earlier batch (the user says 接着下, 继续下载, 重试失败的): \"latest\" or a run id as paper-search failures names it. Its papers not saved are downloaded again with its content, but not those another try would end the same (no access, unless another saved school is named; not supported, unless PaperSearch was updated since; a DOI never registered; a site offering no school login: the result lists them), those saved without all their supplementary files (not reached, failed, login lapsed) get only those, beside their PDF, never the PDF again; everything goes into the earlier batch's download folder, and items and content are taken from its run ledger. Run it with the same environment as the earlier batch (its XDG_DATA_HOME, if one was set)." },
       }),
   ];
 }

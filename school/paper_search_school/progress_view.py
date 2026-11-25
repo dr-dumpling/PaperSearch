@@ -64,6 +64,7 @@ MAX_LISTED_PAPERS = 200
 CLASS_ORDER = ("no_access", "user_side", "external", "unsupported", "unexplained")
 DEFAULT_LINGER_SECONDS = 8.0
 NOTICE_SECONDS = 10.0  # how long the download's answer to a click stays on screen
+SWITCH_SECONDS = 5.0  # how long the card names the school the papers without access go on with
 
 
 class AutoClose:
@@ -258,24 +259,33 @@ def summary_view(results: Any) -> dict[str, Any] | None:
 
 
 OPEN_DOWNLOAD = "开放下载"
+# Behind 重试 (user, 2026-11-24): the papers held for a later try, by why, as the card says them.
+RETRY_GROUPS = (("no_access", "换学校再试 · 没权限"), ("unexplained", "最后再试一次 · 原因不明"), ("blocked", "被网站拦截"),
+                ("login", "登录后继续 · 学校登录中途失效"))
 # Behind 剩余: the paper being downloaded, then the waiting ones by lane.
 LEFT_GROUPS = (("now", "正在下载"), ("school", "排队等机构下载"), ("open", "开放下载还没查"))
 
 
-def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
-    """The lists behind the card's 成功, 失败 and 剩余, from the batch's papers (``sync_papers``).
+def paper_lists(listed: Any, state: dict[str, Any] | None, holds: bool = True) -> dict[str, Any]:
+    """The lists behind the card's 成功, 失败, 重试 and 剩余, from the batch's papers (``sync_papers``).
 
     ``ok``: by the way each came (开放下载, its sources in brackets; 机构下载), a paper
     opening its PDF by ``index``; ``failed``: by reason as on the finished card, a paper
     opening its article page, then the saved papers missing supplementary files, by reason
     (``supplement`` groups; ``count`` the failed papers only, ``supplement_count`` these); ``left``: the paper being downloaded, those waiting for the
     institutional download and those open access has not checked yet. Each list has its
-    ``count`` and groups, the first one open. Empty for another batch's papers."""
+    ``count`` and groups, the first one open. Empty for another batch's papers. ``holds`` false (neither
+    失败后自动重试 nor 没权限时换下一所学校 on, the card without 重试): no 重试 list, each paper where its state puts it."""
     if not isinstance(listed, dict) or not state or listed.get("batch_id") != state.get("batch_id"):
         return {}
     papers = sorted((p for p in (listed.get("papers") or {}).values() if isinstance(p, dict)),
                     key=lambda p: _count(p.get("index")))
     current = str(state.get("current") or "").lower() if state.get("status") == "running" else ""
+    # The papers the caller holds for a later try, by DOI (its ``later``): behind 重试, not 失败 nor 剩余 (user, 2026-11-24).
+    later = (state.get("later") if holds and state.get("status") == "running" and isinstance(state.get("later"), dict)
+             else {})
+    held = {doi.lower(): kind for kind, dois in (later.get("papers") or {}).items() for doi in dois}
+    held_paper = lambda paper: str(paper.get("doi") or "").lower() in held  # noqa: E731
 
     def row(paper: dict[str, Any], *where: Any) -> dict[str, Any]:
         doi = str(paper.get("doi") or "").strip()
@@ -317,13 +327,14 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
 
     # A batch of the Markdown alone fails a paper for its Markdown: a site not yet supported's
     # note stands in for the journal, as on the finished card (user, 2026-11-16).
-    markdown_alone = state.get("content") == "markdown"
+    asked = state.get("batch_content") or state.get("content")  # the batch's, not the running article's
+    markdown_alone = asked == "markdown"
 
     def site_note(paper: dict[str, Any]) -> dict[str, Any]:
         note = str(paper.get("markdown_note") or "")
         return {"note": note, "journal": "" if note else paper.get("journal")}
 
-    failed_papers = [p for p in papers if p.get("state") == "failed"]
+    failed_papers = [p for p in papers if p.get("state") == "failed" and not held_paper(p)]
     failed = _reason_groups([{**p, **(site_note(p) if markdown_alone else {"note": ""})} for p in failed_papers], 0)
     for item in failed:
         item.update(label=item["reason"])
@@ -354,7 +365,7 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
 
     waiting: dict[str, list[dict[str, Any]]] = {key: [] for key, _ in LEFT_GROUPS}
     for paper in papers:
-        if paper.get("state") not in ("open", "school"):
+        if paper.get("state") not in ("open", "school") or held_paper(paper):
             continue
         now = bool(current) and str(paper.get("doi") or "").lower() == current
         way = "机构下载" if paper["state"] == "school" else OPEN_DOWNLOAD
@@ -375,41 +386,15 @@ def paper_lists(listed: Any, state: dict[str, Any] | None) -> dict[str, Any]:
     missing = first_open(failed + short + markdown + doubt)
     missing.update(count=sum(item["count"] for item in failed), supplement_count=sum(item["count"] for item in short),
                    markdown_count=sum(item["count"] for item in markdown), doubt_count=sum(item["count"] for item in doubt),
-                   failed_title=failed_title(state.get("content")))
-    return {"ok": first_open(saved), "failed": missing, "left": first_open(left)}
-
-
-def unverified_sites(listed: Any, state: dict[str, Any] | None) -> dict[str, Any] | None:
-    """The sites not yet supported this batch's pages came from (user, 2026-11-16), for the
-    line in the running card: ``hosts`` (most papers first), how many papers' Markdown was
-    ``saved`` (converted completely and checked), ``unsaved`` (tried, not complete) and
-    ``skipped`` (not tried: the batch gave the site up after its first three failed), and
-    whose rules converted their pages or came closest, ``rules`` (most papers first; none
-    when no rules read a page): the card says which were borrowed (user, 2026-11-17)."""
-    if not isinstance(listed, dict) or not state or listed.get("batch_id") != state.get("batch_id"):
-        return None
-    counts: dict[str, int] = {}
-    rules: dict[str, int] = {}
-    saved = unsaved = skipped = 0
-    for paper in (listed.get("papers") or {}).values():
-        if not isinstance(paper, dict) or not paper.get("markdown_host"):
-            continue
-        counts[str(paper["markdown_host"])] = counts.get(str(paper["markdown_host"]), 0) + 1
-        if paper.get("markdown_rules"):
-            rules[str(paper["markdown_rules"])] = rules.get(str(paper["markdown_rules"]), 0) + 1
-        if paper.get("markdown_saved"):
-            saved += 1
-        elif paper.get("markdown_skipped"):
-            skipped += 1
-        else:
-            unsaved += 1
-    if not counts:
-        return None
-    def most_first(tally: dict[str, int]) -> list[str]:
-        return [name for name, _ in sorted(tally.items(), key=lambda kv: (-kv[1], kv[0]))]
-
-    return {"hosts": most_first(counts), "saved": saved, "unsaved": unsaved, "skipped": skipped,
-            **({"rules": most_first(rules)} if rules else {})}
+                   failed_title=failed_title(asked))
+    retry = []
+    for kind, label in RETRY_GROUPS:
+        rows = [row(p, p.get("journal")) for p in papers if held.get(str(p.get("doi") or "").lower()) == kind]
+        at = later.get("blocked_at")
+        timed = kind == "blocked" and isinstance(at, (int, float)) and not isinstance(at, bool) and at > 0
+        if rows:
+            retry.append(group(f"{time.strftime('%H:%M', time.localtime(at))} 再试 · {label}" if timed else label, rows))
+    return {"ok": first_open(saved), "failed": missing, "left": first_open(left), "retry": first_open(retry)}
 
 
 # The longest publisher name the hourly-limit notice keeps on one line, in zh and en,
@@ -428,6 +413,34 @@ def _hourly_hold(state: dict[str, Any], now: float) -> tuple[str, int | None, st
         return None
     limit = limit if isinstance(limit, int) and not isinstance(limit, bool) and limit > 0 else None
     return str(raw.get("publisher") or ""), limit, time.strftime("%H:%M", time.localtime(until))
+
+
+def _later(state: dict[str, Any], left: int) -> dict[str, Any] | None:
+    """The papers the caller holds for a later try (user, 2026-11-23): 重试 on the running card, its list by why; at most
+    those not done (a paper just counted may still be said held). None when none (an older PaperSearch's state)."""
+    raw = state.get("later")
+    if not isinstance(raw, dict):
+        return None
+    counts = {kind: _count(raw.get(kind)) for kind in ("no_access", "unexplained", "blocked", "login")}
+    held = min(sum(counts.values()), left)
+    if not held:
+        return None
+    at = raw.get("blocked_at")
+    timed = counts["blocked"] and isinstance(at, (int, float)) and not isinstance(at, bool) and at > 0
+    # When the paused publisher's papers are tried again ("16:58 再试"), the earliest of several.
+    return {"total": held, **counts, "blocked_at": time.strftime("%H:%M", time.localtime(at)) if timed else ""}
+
+
+def _switch_note(state: dict[str, Any], now: float) -> str:
+    """"换红木兰大学再试" for a few seconds once the batch tries its papers without access with another saved school
+    (user, 2026-11-23: on the card's line under its title, in place of the counts and the time)."""
+    raw = state.get("switch_note")
+    if not isinstance(raw, dict) or not str(raw.get("school") or ""):
+        return ""
+    at = raw.get("at")
+    if not isinstance(at, (int, float)) or isinstance(at, bool) or not 0 <= now - at < SWITCH_SECONDS:
+        return ""
+    return f"换{raw['school']}再试"
 
 
 def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
@@ -451,7 +464,7 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
     awaiting = bool(state.get("awaiting_next"))
     # Publishers whose school login stopped working mid-batch, held by the caller:
     # a line and a button to go on with them once the user is back (2026-11-15).
-    held = [{"key": str(entry.get("key")), "name": str(entry.get("name") or entry.get("key")),
+    held = [{"key": str(entry.get("key")), "name": str(entry.get("name") or entry.get("key")).removeprefix("site:"),
              "count": int(entry.get("count") or 0)}
             for entry in (state.get("held") or []) if running and isinstance(entry, dict) and entry.get("key")]
     # Nothing else left: the batch waits for the user, which the collapsed capsule says
@@ -483,6 +496,10 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
     # Before any publisher (the caller's open-access stretch), the channel stands in.
     publisher = str(state.get("publisher") or "") or str(state.get("channel") or "")
     journal = str(state.get("journal") or "")
+    # A site without rules of its own runs under "site:<domain>" (publishers/site.py), a name never shown: its journal
+    # names it, else its domain (user, 2026-11-24: "site:bristoluniversitypressdigital.com" on the capsule, often).
+    if publisher.startswith("site:"):
+        publisher = journal or publisher[len("site:"):]
     current = str((attention[-1].get("current") if attention else "") or state.get("current") or "")
     title = str(state.get("title") or "")
     if held_wait:
@@ -567,7 +584,8 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
         "ok": ok, "bad": bad, "left": max(0, total - done) if running and total else None,
         "stopped": stopped,
         "part": part, "publisher": publisher,
-        "where": " · ".join(v for v in (journal, publisher) if v),
+        # A journal named as its publisher (Science, JAMA, BMJ, PNAS) once (user, 2026-11-23).
+        "where": " · ".join(v for v in (journal, "" if publisher.casefold() == journal.casefold() else publisher) if v),
         "title": title, "current": current,
         "run_id": str(state.get("run_id") or ""),
         "step": step, "steps": list(steps), "line": line,
@@ -583,6 +601,8 @@ def view(state: dict[str, Any] | None, now: float) -> dict[str, Any]:
                    and (not awaiting or bool(state.get("browser_pid") or state.get("browser_pids"))),
         "stop_left": max(0, total - done - 1),
         "held": held, "held_wait": held_wait,
+        "later": _later(state, max(0, total - done)) if running else None,
+        "switch_note": _switch_note(state, now) if running else "",
         "folder": bool(state.get("output_dir")),
     }
 

@@ -155,12 +155,15 @@ class CapsulePageTests(unittest.TestCase):
             {'title': '한국어 제목과 日本語のタイトル — Ελληνικά ✓ 🧬 Ünïcødé'},
             {'title': '', 'current': '10.1016/j.jare.2025.09.053'},
             {'title': long, 'step': None, 'line': '开放下载：已查 870/1551 篇，找到 869 篇'},
-            {'title': long, 'step': None, 'line': '这篇文章只在 ScienceDirect 平台提供，暂不支持，当前路径已停止'},
+            {'title': long, 'step': None, 'line': '这篇文章只在 ScienceDirect 平台提供，PaperSearch 还没有这个平台的规则，当前路径已停止'},
             {'title': long, 'step': None, 'line': ''},
             {'title': long, 'notice': '已在浏览器打开这篇文章'},
             {'title': long, 'where': 'The Journal of Clinical Endocrinology & Metabolism · Oxford University Press'},
             {'title': long, 'browser': False},
             {'title': long, 'done': 870, 'ok': 869, 'bad': 1, 'left': 681},
+            # The papers held for a later try (重试), and the next school named under the title (2026-11-23).
+            {'title': long, 'later': {'total': 5, 'no_access': 2, 'unexplained': 2, 'blocked': 1, 'blocked_at': '16:58', 'login': 0}},
+            {'title': long, 'switch_note': '换Hongmulan University of Science and Technology at Lingnan再试'},
         ]
         with sync_playwright() as p:
             browser, page = self.drag_page(p, 'darwin')
@@ -618,6 +621,90 @@ class CapsulePageTests(unittest.TestCase):
                     finally:
                         browser.close()
 
+    def test_the_papers_to_be_tried_again_are_counted_as_retry_beside_failed(self):
+        """The papers held for a later try (user, 2026-11-23): 重试 beside 成功 and 失败, its list by why, 剩余 those not started (user, 2026-11-24: in place of the card
+        the ring showed when pointed at, which is gone); the next school named a moment on the line under the title, one
+        line whatever its length. Nothing held: 重试 0, nothing to open."""
+        import time
+        from datetime import datetime
+        from patchright.sync_api import sync_playwright
+        from paper_search_school.progress_view import view
+        now = time.time()
+        raw = dict(status='running', run_id='r-later', current='10.1053/j.gastro.2025.08.034', total=67, done=32, success=30,
+                   failed=2, title='Validation of a Serum-Based Biomarker Signature for Detection of Early-Stage Cancer',
+                   publisher='Elsevier', journal='Gastroenterology', stage='checking_access', part='main', lists=True,
+                   started_at=datetime.fromtimestamp(now - 673).isoformat(timespec='seconds'),
+                   later={'no_access': 2, 'unexplained': 2, 'blocked': 1, 'blocked_at': now + 600, 'login': 0})
+        at = time.strftime('%H:%M', time.localtime(now + 600))
+        school = 'Hongmulan University of Science and Technology at Lingnan'
+        height = "root.querySelector('.card-body').getBoundingClientRect().height"
+        with sync_playwright() as p:
+            for english in (False, True):
+                with self.subTest(english=english):
+                    browser, page = self.drag_page(p, 'win32', english=english)
+                    lang = {'lang': 'en'} if english else {}
+                    try:
+                        page.evaluate("s => { testState = s; open = true; tick(); }", {**view(raw, now), 'lists': True, **lang})
+                        page.wait_for_function("root.querySelector('.card-body > .head .ring') && !root.classList.contains('animating')")
+                        # The ring: the batch's progress, one blue arc; 成功 green (user, 2026-11-24: as before).
+                        arcs = page.evaluate("""() => [...root.querySelectorAll('.card-body > .head .ring circle:not(.track)')].map(c =>
+                            [c.getAttribute('class'), parseFloat(c.getAttribute('stroke-dasharray')), getComputedStyle(c).stroke])""")
+                        self.assertEqual([name for name, *_ in arcs], ['fill'])
+                        accent, ok = page.evaluate("""() => { const s = getComputedStyle(document.documentElement);
+                            const color = v => { const e = document.createElement('i'); e.style.color = v; document.body.append(e);
+                              const c = getComputedStyle(e).color; e.remove(); return c; };
+                            return [color(s.getPropertyValue('--accent')), color(s.getPropertyValue('--ok'))]; }""")
+                        self.assertEqual(arcs[0][2], accent)
+                        self.assertAlmostEqual(arcs[0][1] / (2 * 3.14159 * 18), 32 / 67, delta=0.01)
+                        self.assertEqual(page.evaluate("getComputedStyle(root.querySelector('.stats b')).color"), ok)
+                        self.assertEqual(page.locator('.card-body > .head .ring text').text_content(), '48%')
+                        self.assertEqual(page.locator('.stats b').all_inner_texts(), ['30', '2', '5', '30'])
+                        self.assertEqual(page.locator('.stats span').all_inner_texts(),
+                                         ['Saved', 'Failed', 'Retry', 'Left'] if english else ['成功', '失败', '重试', '剩余'])
+                        # Pointed at, the ring shows nothing more.
+                        before = page.evaluate(height)
+                        page.hover('.card-body > .head .ring')
+                        page.wait_for_timeout(400)
+                        self.assertEqual(page.locator('.ring-pop').count(), 0)
+                        self.assertEqual(page.evaluate(height), before)
+                        # 重试's list: by why (from the counts, the papers' list naming none here).
+                        page.locator('.stats [data-list=retry]').click()
+                        page.wait_for_function("panel === 'papers' && !!root.querySelector('.grp')")
+                        self.assertEqual(page.locator('.head .title').inner_text(), 'Retry 5' if english else '重试 5 篇')
+                        rows = [line for line in page.locator('.papers-scroll').inner_text().split('\n') if line.strip()]
+                        self.assertEqual(rows, ['Other school · No access', '2', 'One last try · Unclear', '2',
+                                                f'Retry at {at} · Blocked by site', '1'] if english else
+                                         ['换学校再试 · 没权限', '2 篇', '最后再试一次 · 原因不明', '2 篇', f'{at} 再试 · 被网站拦截', '1 篇'])
+                        page.locator('[data-act=back]').click()
+                        page.wait_for_function("panel === ''")
+                        # The next school: in the place of the line under the title, one line (the rest on hover), the card's
+                        # height as it was whether that line takes one line or two.
+                        page.evaluate("async s => { testState = s; await tick(); }",
+                                      {**view({**raw, 'switch_note': {'school': school, 'at': now}}, now), 'lists': True, **lang})
+                        sub = page.evaluate("""() => { const note = root.querySelector('.head .sub .note'), range = document.createRange();
+                            range.selectNodeContents(note); return [root.querySelector('.head .sub').innerText, note.title,
+                              new Set([...range.getClientRects()].map(r => Math.round(r.top))).size]; }""")
+                        said = f'Retrying with {school}' if english else f'换{school}再试'
+                        self.assertEqual(sub, [said, said, 1])
+                        self.assertEqual(page.evaluate(height), before)
+                        # Nothing held: 重试 0, nothing to open; 剩余 all not done.
+                        page.evaluate("async s => { testState = s; await tick(); }", {**view({**raw, 'later': None}, now), 'lists': True, **lang})
+                        self.assertEqual(page.locator('.stats b').all_inner_texts(), ['30', '2', '0', '35'])
+                        self.assertEqual(page.locator('.stats [data-list=retry]').count(), 0)
+                        # Neither 失败后自动重试 nor 没权限时换下一所学校 on (user, 2026-11-24): no 重试, 剩余 all not
+                        # done (a paper paused for the school's login among them).
+                        page.evaluate("async s => { testState = s; await tick(); }", {**view(raw, now), 'holds': False, 'lists': True, **lang})
+                        self.assertEqual(page.locator('.stats span').all_inner_texts(),
+                                         ['Saved', 'Failed', 'Left'] if english else ['成功', '失败', '剩余'])
+                        self.assertEqual(page.locator('.stats b').all_inner_texts(), ['30', '2', '35'])
+                        # Collapsed: the capsule's ring, one blue arc too.
+                        page.evaluate("async s => { testState = s; open = false; await tick(); }", {**view(raw, now), **lang})
+                        page.wait_for_function("root.querySelector('.pillrow .ring')")
+                        self.assertEqual(page.evaluate("[...root.querySelectorAll('.pillrow .ring circle:not(.track)')].map(c => c.getAttribute('class'))"),
+                                         ['fill'])
+                    finally:
+                        browser.close()
+
     def test_a_held_batch_card_keeps_its_header_to_one_line_and_says_the_hold_once(self):
         """Held by the hourly limit: "148/392 · 已达每小时上限 · 已用 40:09" broke into two
         lines, and the hold's phase repeated the notice below it (Windows, 2026-11-13)."""
@@ -925,8 +1012,8 @@ class CapsulePageTests(unittest.TestCase):
                                    'failures': [item('学校没有订阅', 'no_access', 'No access')],
                                    'supplement_failures': [item('被网站拦截', 'external', 'Blocked file'),
                                                            item('附录暂未适配', 'unsupported', 'No rule')],
-                                   'markdown_failures': [item('网页只有摘要', 'unsupported', 'Abstract only'),
-                                                         item('网页只有摘要', 'unsupported', 'Abstract too'),
+                                   'markdown_failures': [item('网页只有摘要', 'external', 'Abstract only'),
+                                                         item('网页只有摘要', 'external', 'Abstract too'),
                                                          item('网站暂不支持转换', 'unsupported', 'No page rule')]}), now)
         with sync_playwright() as p:
             browser, page = self.drag_page(p, 'darwin')
@@ -1006,16 +1093,13 @@ class CapsulePageTests(unittest.TestCase):
             finally:
                 browser.close()
 
-    def test_sites_not_yet_supported_are_said_while_running_and_reported_from_the_lists(self):
-        """Pages whose Markdown came by rules not listed for their site, while the batch runs:
-        no line of their own, a dot beside 成功 (beside 失败 when none was saved, opening their
-        group in 失败 with its note, the supported sites and the report buttons) and, pointed
-        at, a card above the counts: the site and whose rules, the counts, and 提 issue only
-        when some were not saved; the finished card's group as before (user, 2026-11-16; the
-        dot and its card 2026-11-17)."""
+    def test_sites_not_yet_supported_are_reported_from_the_failed_list(self):
+        """Pages whose Markdown came by rules not listed for their site: no dot nor card on the running card (user,
+        2026-11-24: not understood, and its counts took the papers whose PDF failed in too); their group in 失败 with its
+        note, the supported sites and 提 issue (user, 2026-11-16); the finished card's group as before."""
         import time
         from patchright.sync_api import sync_playwright
-        from paper_search_school.progress_view import paper_lists, summary_view, unverified_sites, view
+        from paper_search_school.progress_view import paper_lists, summary_view, view
         raw = dict(status='running', batch_id='b-sites', run_id='r-sites', current='10.1016/5', title='Being fetched',
                    publisher='Elsevier', journal='Journal of the American College of Cardiology', total=6, done=4, success=4, failed=0,
                    content='both', markdown=True, stage='fetching_pdf')
@@ -1031,7 +1115,7 @@ class CapsulePageTests(unittest.TestCase):
             paper(4, 'ok', supplement_cls='external', supplement_reason='被网站拦截'),
             paper(5, 'school'), paper(6, 'open'))}}
         lists = paper_lists(listed, raw)
-        state = {**view(raw, time.time()), 'lists': True, 'sites': unverified_sites(listed, raw)}
+        state = {**view(raw, time.time()), 'lists': True}
         for english in (False, True):
             with self.subTest(english=english), sync_playwright() as p:
                 browser, page = self.drag_page(p, 'win32', english=english)
@@ -1043,56 +1127,15 @@ class CapsulePageTests(unittest.TestCase):
                         testState = state; open = true; }""", {'state': {**state, **({'lang': 'en'} if english else {})}, 'lists': lists})
                     page.evaluate("async () => { await tick(); }")
                     page.wait_for_function("!root.classList.contains('animating')")
-                    # No line of its own: a dot beside 成功, on the label's one line; its card hidden.
-                    self.assertEqual(page.locator('.held').count(), 0)
-                    self.assertEqual(page.locator('.stat[data-list=ok] .rules-dot').count(), 1)
-                    self.assertEqual(page.locator('.stat[data-list=failed] .rules-dot').count(), 0)
-                    self.assertTrue(page.evaluate("() => root.querySelector('.stat[data-list=ok] span').getClientRects().length === 1"))
-                    self.assertFalse(page.locator('.rules-pop').is_visible())
-                    # Pointed at: the card above the counts, inside the window; away, it closes.
-                    page.hover('.rules-dot')
-                    page.wait_for_function("root.querySelector('.rules-pop.show')")
-                    self.assertTrue(page.evaluate("""() => { const c = root.querySelector('.rules-pop').getBoundingClientRect(),
-                        s = root.querySelector('.stats').getBoundingClientRect(), r = root.getBoundingClientRect();
-                        return c.bottom <= s.top && c.top >= r.top && c.left >= r.left && c.right <= r.right; }"""))
-                    # Its text in line with 成功 below; 成功, 失败 and 剩余 where they are without the dot.
-                    self.assertTrue(page.evaluate("""() => Math.abs(root.querySelector('.rules-pop .r').getBoundingClientRect().left
-                        - root.querySelector('.stat[data-list=ok] span').getBoundingClientRect().left) < 1
-                        && [...root.querySelectorAll('.stats .stat')].every(st => Math.abs(st.querySelector('b').getBoundingClientRect().left
-                        - st.querySelector('span').getBoundingClientRect().left) < 1)"""))
-                    card = page.locator('.rules-pop').inner_text().split('\n')
-                    if english:
-                        self.assertEqual(card, ['Markdown: rules borrowed from other sites', 'www.jacc.org · Atypon rules', '2 complete, saved · 1 incomplete, not saved',
-                                                'Open an issue to list it'])
-                    else:
-                        self.assertEqual(card, ['Markdown：借用其他网站的规则转换', 'www.jacc.org · 采用 Atypon 规则', '完整已保存 2 篇 · 不完整未保存 1 篇',
-                                                '提 issue 纳入已登记网站'])
-                    page.mouse.move(2, 2)
-                    page.wait_for_function("!root.querySelector('.rules-pop.show')")
-                    if not english:
-                        # Two sites borrowing two sets of rules, both named; all saved, 提 issue too: the site
-                        # can be listed (user, 2026-11-17).
-                        page.evaluate("async (s) => { testState = s; await tick(); }",
-                                      {**state, 'sites': {**state['sites'], 'hosts': ['www.jacc.org', 'b.example.org'],
-                                                          'rules': ['Atypon', 'Silverchair'], 'saved': 3, 'unsaved': 0}})
-                        page.hover('.rules-dot')
-                        page.wait_for_function("root.querySelector('.rules-pop.show')")
-                        self.assertEqual(page.locator('.rules-pop').inner_text().split('\n'),
-                                         ['Markdown：借用其他网站的规则转换', '2 个网站 · 采用 Atypon / Silverchair 规则', '完整已保存 3 篇 · 不完整未保存 0 篇',
-                                          '提 issue 纳入已登记网站'])
-                        # 提 issue from the card.
-                        page.evaluate("async (s) => { testState = s; await tick(); }", state)
-                        page.hover('.rules-dot')
-                        page.wait_for_function("root.querySelector('.rules-pop.show .issue')")
-                        page.locator('.rules-pop .issue').click()
-                        page.wait_for_function("asked.includes('issue')")
-                        page.evaluate("async () => { window.asked = []; showRules(false); await tick(); }")
-                    # None saved: the dot beside 失败, opening their group.
-                    page.evaluate("async (s) => { testState = s; await tick(); }",
-                                  {**state, **({'lang': 'en'} if english else {}), 'sites': {**state['sites'], 'saved': 0}})
-                    self.assertEqual(page.locator('.stat[data-list=ok] .rules-dot').count(), 0)
-                    page.locator('.stat[data-list=failed] .rules-dot').click()
+                    # No line, dot or card of its own on the running card.
+                    self.assertEqual(page.locator('.held, .rules-dot, .rules-pop').count(), 0)
+                    # 失败's list: the site's group, with its note and buttons once opened.
+                    page.locator('.stat[data-list=failed]').click()
                     page.wait_for_function("panel === 'papers' && papersList && !root.classList.contains('animating')")
+                    group = page.locator('[data-act=list_group]', has_text='Incomplete' if english else '内容不完整')
+                    if group.get_attribute('aria-expanded') != 'true':
+                        group.click()
+                        page.wait_for_function("!root.classList.contains('animating')")
                     if english:
                         self.assertIsNone(page.evaluate(r"""() => [root.innerText, ...[...root.querySelectorAll('[title], [aria-label]')]
                             .flatMap(e => [e.title, e.getAttribute('aria-label') || ''])].join('\n').match(/[一-鿿]+/g)"""))
@@ -1101,8 +1144,7 @@ class CapsulePageTests(unittest.TestCase):
                     for expected in ('补充材料未下全 1 篇', 'Markdown 未生成 1 篇', '内容不完整',
                                      '这些网站尚未正式支持 Markdown，内容不完整的未保存。如需支持，欢迎提 issue 或 PR。', note):
                         self.assertIn(expected, text)
-                    # Only the site's group is open, with its one button: 提 issue exports the report too (2026-11-17).
-                    self.assertEqual(page.locator('.paper-list li').all_inner_texts(), [f'Paper 3\n{note}'])
+                    self.assertEqual(page.locator('.grp', has=group).locator('.paper-list li').all_inner_texts(), [f'Paper 3\n{note}'])
                     self.assertEqual(page.locator('.unverified-actions .btn').all_inner_texts(), ['提 issue'])
                     for act, said in (('markdown_support', '已在浏览器打开'), ('markdown_issue', '已导出报告 PaperSearch-Markdown报告-20261116-2005.zip 并打开 issue 页面，把它拖进去')):
                         page.locator(f'[data-act={act}]').click()
@@ -1378,11 +1420,12 @@ class CapsulePageTests(unittest.TestCase):
                 browser.close()
 
     def test_the_api_key_list_scrolls_within_half_the_screen_and_keeps_its_place(self):
-        """Twelve services no longer stretch the window: the list scrolls under its title,
-        an opened one's editor comes into view and the list stays put (user, 2026-11-11)."""
+        """All the services (twelve then, thirteen with Bright Data) no longer stretch the window: the list scrolls
+        under its title, an opened one's editor comes into view and the list stays put (user, 2026-11-11)."""
         from patchright.sync_api import sync_playwright
         from paper_search_school import api_keys
-        listing = {'ok': True, 'filled': 0, 'total': 12, 'groups': [
+        services = sum(len(g['services']) for g in api_keys.groups())
+        listing = {'ok': True, 'filled': 0, 'total': services, 'groups': [
             {'title': g['title'], 'services': [{**s, 'guide': s.get('guide', ''), 'guide_label': s.get('guide_label', ''),
              'signup_label': s.get('signup_label', ''), 'set': False, 'masked': '',
              'keys': [{**k, 'kind': k.get('kind', 'key'), 'set': False, 'masked': ''} for k in s['keys']]}
@@ -1405,7 +1448,7 @@ class CapsulePageTests(unittest.TestCase):
                 self.assertEqual(box['most'], box['half'])
                 self.assertLessEqual(box['height'], box['half'])
                 self.assertGreater(box['inner'], box['height'])
-                self.assertEqual(page.locator('.keys-scroll [data-act=edit_key]').count(), 12)
+                self.assertEqual(page.locator('.keys-scroll [data-act=edit_key]').count(), services)
                 # The last one, opened from the bottom of the list: its editor in view, the title in place.
                 page.evaluate("() => { const s = root.querySelector('.keys-scroll'); s.scrollTop = s.scrollHeight; }")
                 page.locator(f'[data-service={last}]').click()
@@ -1522,14 +1565,14 @@ class CapsulePageTests(unittest.TestCase):
                     # What sets it apart: a row like the platforms', its three names under it, each said in full once
                     # opened (user, 2026-11-21).
                     merits = page.locator('[data-act=pro_merits]')
-                    self.assertIn('Original text · Whole only · Traceable' if english else '出版社原文 · 完整才保存 · 来源可追溯',
+                    self.assertIn('Original text · Gaps marked · Traceable' if english else '出版社原文 · 缺失会标明 · 来源可追溯',
                                   merits.inner_text())
                     self.assertEqual(page.locator('.pro-merit').count(), 0)
                     merits.click()
                     page.wait_for_selector('.pro-merit')
                     self.assertEqual(page.locator('.pro-merit b').all_inner_texts(),
-                                     ['Original text', 'Whole only', 'Traceable'] if english
-                                     else ['出版社原文', '完整才保存', '来源可追溯'])
+                                     ['Original text', 'Gaps marked', 'Traceable'] if english
+                                     else ['出版社原文', '缺失会标明', '来源可追溯'])
                     self.assertIn('source list' if english else '来源清单', page.locator('.pro-merits').inner_text())
                     merits.click()
                     page.wait_for_function("!document.querySelector('.pro-merit')")
@@ -1657,6 +1700,67 @@ class CapsulePageTests(unittest.TestCase):
                 finally:
                     browser.close()
 
+    def test_the_download_folder_on_the_home_page_fits_its_line(self):
+        """The home page's 下载 line (user, 2026-11-24, 乙): the folder whole when it fits, else its middle folders left out,
+        the first ones first; the drive, the folder's own name and the hourly limit always shown, the line never cut."""
+        from patchright.sync_api import sync_playwright
+        cases = [  # folder, its first part, its own name, whether it is shortened in English
+            (r'D:\Refs', 'D:\\', 'Refs', False),
+            (r'D:\Project-XY\References', 'D:\\', 'References', None),
+            (r'D:\Project-XY\Literature\Systematic reviews\2026 update\References', 'D:\\', 'References', True),
+            ('/Volumes/Research Data/Literature/Systematic reviews/2026 update/Papers', '/', 'Papers', True)]
+        for english in (False, True):
+            with self.subTest(english=english), sync_playwright() as p:
+                browser, page = self.drag_page(p, 'win32', english=english)
+                try:
+                    for folder, first, own, shortened in cases:
+                        page.evaluate("""([folder, english]) => { Object.assign(pywebview.api, {
+                              settings: async () => ({notify: true, download_dir: folder, language: english ? 'en' : 'zh', fields: [
+                                {name: 'hourly', label: '每家出版社每小时最多', value: 200, default: 200, page: 'download'}]}),
+                              api_keys: async () => ({ok: true, filled: 5, total: 13, groups: []}),
+                              pro_status: async () => ({ok: true, installed: false, version: ''}),
+                              pro_install_state: async () => ({state: 'idle'})});
+                            testState = {...testState, mode: 'idle', ...(english ? {lang: 'en'} : {})}; }""", [folder, english])
+                        page.evaluate("async () => { panel = ''; await tick(); await act('settings'); await loadSettings(); render(true); }")
+                        page.wait_for_function("!root.classList.contains('animating') && !!root.querySelector('.nav-sub[data-path]')")
+                        line = page.locator('.nav-row[data-page=download] .nav-sub')
+                        text = line.inner_text()
+                        self.assertTrue(page.evaluate("(e) => e.scrollWidth <= e.clientWidth", line.element_handle()), text)
+                        self.assertTrue(text.startswith(first), text)
+                        limit = '200/h per publisher' if english else '每家每小时 200 篇'
+                        self.assertTrue(text.endswith(own + ' · ' + limit), text)
+                        if shortened is False:
+                            self.assertEqual(text, folder + ' · ' + limit)
+                        if shortened:
+                            self.assertIn('…', text)
+                finally:
+                    browser.close()
+
+    def test_the_download_strip_shows_the_publisher_whole_in_every_language(self):
+        """The settings' download strip (user, 2026-11-24, 甲): a download icon for 正在下载, an arrow for 返回进度 (its words
+        on pointing at it), so the count and a long publisher's name fit in every language."""
+        from patchright.sync_api import sync_playwright
+        publisher = 'American Meteorological Society'
+        for code in ('zh', 'en', 'ja', 'ko', 'fr'):
+            with self.subTest(lang=code), sync_playwright() as p:
+                browser, page = self.drag_page(p, 'win32', english=code != 'zh')
+                try:
+                    page.evaluate("""([code, publisher]) => { Object.assign(pywebview.api, {
+                          settings: async () => ({notify: true, download_dir: 'D:\\\\Refs', language: code, fields: []}),
+                          api_keys: async () => ({ok: true, filled: 5, total: 13, groups: []}),
+                          pro_status: async () => ({ok: true, installed: false, version: ''}),
+                          pro_install_state: async () => ({state: 'idle'})});
+                        testState = {...testState, publisher, done: 14, total: 71}; lang = code; }""", [code, publisher])
+                    page.evaluate("async () => { await tick(); await act('settings'); render(true); }")
+                    page.wait_for_function("!!document.querySelector('#task-strip .strip svg.i')")
+                    grow = page.locator('#task-strip .grow')
+                    self.assertEqual(grow.inner_text(), '14/71 · ' + publisher)
+                    self.assertTrue(page.evaluate("(e) => e.scrollWidth <= e.clientWidth", grow.element_handle()))
+                    title = {'zh': '返回进度', 'en': 'Back to progress', 'ja': '進捗に戻る', 'ko': '진행 상황으로', 'fr': 'Retour au suivi'}[code]
+                    self.assertEqual(page.locator('#task-strip .strip').get_attribute('title'), title)
+                finally:
+                    browser.close()
+
     def test_the_language_is_one_menu_at_the_home_pages_foot(self):
         """The home page's last line (user, 2026-11-21): PaperSearch's version at its left, to 关于 PaperSearch; the
         language at its right, one menu of the languages each in its own name, more to come. It opens over the page without
@@ -1750,6 +1854,47 @@ class CapsulePageTests(unittest.TestCase):
             finally:
                 browser.close()
 
+    def test_the_retry_switch_is_off_and_says_what_it_retries_on_its_icon(self):
+        """失败后自动重试 (user, 2026-11-24): on the 等待和提醒 page before the notifications' row, off by default, saved at
+        once; what it retries in a tip on its small icon, not on the page."""
+        from patchright.sync_api import sync_playwright
+        for english in (False, True):
+            with self.subTest(english=english), sync_playwright() as p:
+                browser, page = self.drag_page(p, 'darwin', english=english)
+                try:
+                    page.evaluate("""english => { window.saved = [];
+                        Object.assign(pywebview.api, {
+                          settings: async () => ({notify: true, retry: false, download_dir: '/papers', language: english ? 'en' : 'zh',
+                            fields: [{name: 'login_timeout_sec', label: '学校登录页最多等', unit: '秒', value: 180, default: 180, page: 'wait'}]}),
+                          set_retry: async (on) => { saved.push(on); return {ok: true, retry: on}; }});
+                        if (english) testState = {...testState, lang: 'en'}; }""", english)
+                    page.evaluate("async () => { await tick(); await openSettings({page: 'wait'}); }")
+                    switch = page.locator('[data-act=retry]')
+                    switch.wait_for()
+                    # Before the notifications' row; off.
+                    rows = page.evaluate("[...document.querySelectorAll('.row')].map((r) => !!r.querySelector('[data-act=retry]') ? 'retry'"
+                                         " : !!r.querySelector('[data-act=notify]') ? 'notify' : '')")
+                    self.assertLess(rows.index('retry'), rows.index('notify'))
+                    self.assertEqual(switch.get_attribute('aria-checked'), 'false')
+                    label = page.locator('[data-act=retry]').locator('xpath=..').locator('.tip-label')
+                    self.assertEqual(label.inner_text().strip(), 'Auto-retry failures' if english else '失败后自动重试')
+                    tip = page.locator('.mini-wrap.info .mini-tip')
+                    self.assertFalse(tip.is_visible())
+                    page.wait_for_timeout(600)
+                    page.locator('.mini-wrap.info').hover()
+                    tip.wait_for(state='visible')
+                    self.assertEqual(tip.locator('div').all_inner_texts(),
+                                     ['Unclear: retried at the end', 'Blocked by site: retried in 10 min'] if english
+                                     else ['原因不明的失败，最后再重试', '被网站拦截的，10 分钟后再重试'])
+                    self.assertTrue(page.evaluate("document.querySelector('.mini-wrap.info .mini-tip').getBoundingClientRect().right"
+                                                  " <= root.getBoundingClientRect().right"))
+                    switch.click()
+                    page.wait_for_function("saved.length === 1")
+                    self.assertEqual(page.evaluate('saved'), [True])
+                    self.assertEqual(switch.get_attribute('aria-checked'), 'true')
+                finally:
+                    browser.close()
+
     def test_the_small_switch_beside_the_hourly_limit_says_what_it_does(self):
         """马上生效 (user, 2026-11-19): a small switch in the hourly limit's row, off by default,
         saved at once; its note, two lines of the same length, shows on hover."""
@@ -1827,7 +1972,8 @@ class CapsulePageTests(unittest.TestCase):
                 page.wait_for_function('open')
                 page.locator('[data-act=settings]').click()
                 self.assertIn('已填 1/3', page.locator('[data-page=keys]').inner_text())
-                self.assertIn('正在下载 0/3', page.locator('#task-strip').inner_text())
+                self.assertIn('0/3 · Test', page.locator('#task-strip').inner_text())
+                self.assertEqual(page.locator('#task-strip .strip').get_attribute('title'), '返回进度')
                 page.locator('[data-page=keys]').click()
                 self.assertEqual(page.locator('.key-group').all_inner_texts(), ['查期刊、搜正文', '出版社接口'])
                 page.locator('[data-service=easyscholar]').click()  # a saved key is in its field, hidden
@@ -2505,6 +2651,84 @@ class CapsulePageTests(unittest.TestCase):
                 self.assertEqual(page.locator('.login-row .ls-n').count(), 0)
             finally:
                 browser.close()
+
+    def test_the_settings_fit_in_languages_that_say_them_longer(self):
+        """User, 2026-11-25 (French on the Mac): the key editor's Save cut off at the window's edge and the key list
+        scrolling sideways; a service's note in an ellipsis; a school's English name cut to "Hongmulan …" by its tags.
+        Linux's fonts are narrower than the Mac's: the editor's buttons drawn larger here, as wide as there."""
+        from patchright.sync_api import sync_playwright
+        from paper_search_school import api_keys
+        listing = {'ok': True, 'filled': 1, 'total': 1, 'groups': [
+            {'title': g['title'], 'services': [{**s, 'guide': s.get('guide', ''), 'guide_label': s.get('guide_label', ''),
+             'signup_label': s.get('signup_label', ''), 'set': True, 'masked': '••••9362',
+             'keys': [{**k, 'kind': k.get('kind', 'key'), 'set': True, 'masked': '••••9362'} for k in s['keys']]}
+             for s in g['services']]} for g in api_keys.groups()]}
+        fits = """() => { const list = root.querySelector('.keys-scroll'), edit = root.querySelector('.key-edit').getBoundingClientRect();
+            const notes = [...root.querySelectorAll('.key-row .nav-sub')].filter((n) => n.scrollWidth > n.clientWidth + 1);
+            return {sideways: list.scrollWidth - list.clientWidth, notes: notes.map((n) => n.textContent),
+                    out: [...root.querySelectorAll('.key-actions .btn')].filter((b) => b.getBoundingClientRect().right > edit.right + 0.5)
+                         .map((b) => b.textContent)}; }"""
+        with sync_playwright() as p:
+            for lang in ('fr', 'en', 'zh'):
+                with self.subTest(lang=lang):
+                    browser, page = self.drag_page(p, 'darwin', english=True)
+                    try:
+                        page.evaluate("""([lang, listing]) => { Object.assign(pywebview.api, {
+                            settings: async () => ({notify: true, download_dir: '/papers', language: lang, fields: []}),
+                            api_keys: async () => listing, api_key_values: async () => ({ok: true, values: {}})});
+                            const wide = document.createElement('style'); wide.textContent = '.key-actions .btn { font-size: 13.5px; }';
+                            document.head.appendChild(wide); testState = {...testState, mode: 'idle', lang: lang}; }""", [lang, listing])
+                        page.evaluate("async () => { await tick(); await act('settings'); await act('settings_page', {dataset: {page: 'keys'}}); }")
+                        page.wait_for_function("!root.classList.contains('animating')")
+                        page.locator('.key-row[data-service="yescaptcha"]').click()
+                        page.wait_for_function("!root.classList.contains('animating') && document.querySelector('.key-edit')")
+                        self.assertEqual(page.evaluate(fits), {'sideways': 0, 'notes': [], 'out': []})
+                        # Where they fit, on one line as before.
+                        tops = page.evaluate("[...root.querySelectorAll('.key-actions .btn')].map((b) => Math.round(b.getBoundingClientRect().top))")
+                        if lang == 'zh':
+                            self.assertEqual(len(set(tops)), 1, tops)
+                    finally:
+                        browser.close()
+            for lang, name, whole in (('en', 'Hongmulan University of Science and Technology', True), ('zh', '红木兰大学', False)):
+                with self.subTest(lang=lang, school=name):
+                    browser, page = self.drag_page(p, 'darwin', english=True)
+                    try:
+                        page.evaluate("""([lang, name]) => {
+                            const one = {key: 'A', name: '红木兰大学', name_en: name, current: true, entity: true, saved: true,
+                                         username: '2******4', enabled: true, off: '', status: 'surveyed'};
+                            const two = {key: 'B', name: '蓝杉大学', name_en: 'Lanshan University', current: false, entity: true,
+                                         saved: false, username: '', enabled: false, off: '', status: 'check'};
+                            const state = () => ({ok: true, pro: true, schools: [one, two], counts: {}, switch: true});
+                            Object.assign(pywebview.api, {
+                                settings: async () => ({notify: true, download_dir: '/papers', language: lang, fields: []}),
+                                api_keys: async () => ({ok: true, filled: 0, total: 0, groups: []}),
+                                pro_status: async () => ({ok: true, installed: true, version: '0.4.0'}),
+                                pro_install_state: async () => ({state: 'idle'}),
+                                school_login_state: async () => state(), school_login_saved: async () => ({username: '20261234', password: 'pw'})});
+                            testState = {...testState, mode: 'idle', lang: lang}; }""", [lang, name])
+                        page.evaluate("async () => { await tick(); await act('settings'); await act('settings_page', {dataset: {page: 'login'}}); }")
+                        page.wait_for_selector('.ls-dots')  # the default school's card open, the other closed
+                        page.wait_for_function("!root.classList.contains('animating')")
+                        seen = page.evaluate("""() => [...root.querySelectorAll('.ls-head')].map((head) => {
+                            const r = head.getBoundingClientRect(), named = head.querySelector('.ls-name');
+                            const dots = head.parentNode.querySelector('.ls-dots'), d = dots && dots.getBoundingClientRect();
+                            const parts = [...head.children].map((c) => c.getBoundingClientRect()).filter((b) => b.height);
+                            return {name: named.textContent, cut: named.scrollWidth > named.clientWidth + 1,
+                                    lines: new Set(parts.map((b) => Math.round(b.top + b.height / 2))).size,
+                                    inside: parts.every((b) => b.right <= r.right + 0.5),
+                                    clear: !d || [...head.querySelectorAll('.ls-name, .tag')].map((t) => t.getBoundingClientRect())
+                                      .every((b) => b.right <= d.left || b.top >= d.bottom)}; })""")
+                        self.assertEqual(seen[0]['name'], name)
+                        for card in seen:
+                            self.assertFalse(card['cut'], card)
+                            self.assertTrue(card['inside'], card)
+                            self.assertTrue(card['clear'], card)  # nothing under ⋯
+                        if whole:
+                            self.assertGreater(seen[0]['lines'], 1, seen)  # its tags under the name
+                        else:
+                            self.assertEqual([card['lines'] for card in seen], [1, 1], seen)  # as before
+                    finally:
+                        browser.close()
 
     def test_a_schools_sign_in_tested_from_its_page(self):
         # 测试登录 (user, 2026-11-21, as drawn): the article it opens, set by the user (乙: its DOI and 修改, a DOI or the

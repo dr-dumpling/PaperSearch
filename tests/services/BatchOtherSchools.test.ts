@@ -31,7 +31,7 @@ const AGAIN: Record<string, Record<string, string | string[]>> = {
   "10.1000/h": { default: ["download_failed", "entitlement_missing"], [B.entityId]: "ok" },
 };
 
-function run(mode: "entitled_only" | "per_item" | "two_phase", schools = [A, B, C], group = false, access = ACCESS) {
+function run(mode: "entitled_only" | "per_item" | "two_phase", schools = [A, B, C], group = false, access = ACCESS, retry = true) {
   const visits: string[] = [];
   const updates: SchoolBatchUpdate[] = [];
   const lines: string[] = [];
@@ -39,7 +39,7 @@ function run(mode: "entitled_only" | "per_item" | "two_phase", schools = [A, B, 
     probe: async () => ({ state: "available", code: "ready", message: "", missing: [] }),
     downloadLegalDoi: async () => { throw new Error("tiers are faked"); },
     reportBatchProgress: async (update) => { updates.push(update); return true; },
-    schoolSwitch: async () => ({ schools, group }),
+    schoolSwitch: async () => ({ schools, group, retry }),
   };
   const tiers = (): DownloadTier[] => [
     { id: "oa", stage: "unpaywall", run: async () => ({ status: "skipped", message: "no oa" }) },
@@ -98,8 +98,23 @@ describe("a batch's papers without access", () => {
       const last = [...byDoi["10.1000/d"].attempts].reverse().find((attempt) => attempt.stage === "entitled_access");
       expect(last).toMatchObject({ code: "entitlement_missing", schools: 3 });
       expect(result.succeeded).toBe(3);
+      // The window's ring holds them as they wait and lets them go as they end (user, 2026-11-23): a, b and d without
+      // access, e 原因不明 too; then 乙 named a moment, for the three; then 丙, for the two left.
+      const later = (noAccess: number, unexplained = 0) => ({ noAccess, unexplained, blocked: 0, login: 0 });
+      // The counts (each kind's papers by DOI ride along for the window's 重试 list, 2026-11-24).
+      const counts = (update: SchoolBatchUpdate) => update.later && { noAccess: update.later.noAccess, unexplained: update.later.unexplained,
+        blocked: update.later.blocked, login: update.later.login };
+      expect(updates.some((update) => JSON.stringify(counts(update)) === JSON.stringify(later(3, 1)))).toBe(true);
+      expect(updates.filter((update) => update.switchTo).map((update) => [update.switchTo, counts(update)]))
+        .toEqual([["乙大学", later(3)], ["丙大学", later(2)]]);
+      expect(updates.find((update) => update.switchTo === "丙大学")?.later?.papers?.noAccess).toHaveLength(2);
+      expect(updates.some((update) => update.later?.noAccess === 1)).toBe(true);
+      // Never more than the papers not done; no line besides the school's name.
+      const held = (update: SchoolBatchUpdate) => update.later
+        ? update.later.noAccess + update.later.unexplained + update.later.blocked + update.later.login : 0;
+      expect(updates.filter((update) => update.later && update.done + held(update) > update.total)).toEqual([]);
+      expect(updates.some((update) => update.phase?.startsWith("没权限"))).toBe(false);
       if (mode !== "per_item") {
-        expect(updates.some((update) => update.phase === "没权限，换乙大学")).toBe(true);
         const failures = updates.at(-1)?.results?.failures ?? [];
         expect(failures).toEqual(expect.arrayContaining([expect.objectContaining({ doi: "10.1000/d", reason: "3 所学校都没有权限" })]));
       }
@@ -127,6 +142,14 @@ describe("a batch's papers failed for a reason not known", () => {
       expect(status).toEqual({ "10.1000/f": "ok", "10.1000/g": "error", "10.1000/h": "ok" });
       expect(result.succeeded).toBe(2);
     });
+    // 失败后自动重试 off, the default (user, 2026-11-24): failed at once; without access, the next school all the same.
+    it(`fail at once without 失败后自动重试 (${mode})`, async () => {
+      const access = JSON.parse(JSON.stringify(AGAIN)) as typeof AGAIN;
+      const { result, visits, lines } = await run(mode, [A, B], false, access, false);
+      expect(visits).toEqual(["10.1000/f@默认", "10.1000/g@默认", "10.1000/h@默认"]);
+      expect(lines.some((line) => line.includes("再试一次"))).toBe(false);
+      expect(result.items.map((item) => item.status)).toEqual(["error", "error", "error"]);
+    });
   }
 });
 
@@ -136,7 +159,7 @@ describe("a batch with more than one school", () => {
     const backend: SchoolBackend = {
       probe: async () => ({ state: "available", code: "ready", message: "", missing: [] }),
       downloadLegalDoi: async () => { throw new Error("tiers are faked"); },
-      schoolSwitch: async () => ({ schools: [A, B], group: true }),
+      schoolSwitch: async () => ({ schools: [A, B], group: true, retry: true }),
     };
     const tiers = (): DownloadTier[] => [{
       id: "entitled_access",

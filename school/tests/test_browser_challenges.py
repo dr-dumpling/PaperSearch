@@ -6,6 +6,7 @@ import pytest
 
 from paper_search_school.browser import watchdog
 from paper_search_school.browser.challenge import detection as challenges
+from paper_search_school.browser.challenge.local import interaction
 from paper_search_school.engine.batch import PublisherBatchDownloader
 
 
@@ -111,3 +112,27 @@ def test_browser_timeouts_propagate_instead_of_becoming_no_challenge(reader):
     getattr(d, reader).side_effect = watchdog.BrowserUnresponsive("stalled browser")
     with pytest.raises(watchdog.BrowserUnresponsive):
         d._is_challenge_page(SimpleNamespace(url="https://journal.example/article"))
+
+
+def _kind_page(aws_script):
+    """A page with no provider frame; ``evaluate`` sees only what its script asked."""
+    return SimpleNamespace(
+        url="https://journals.ametsoc.org/doi/10.1175/fixture",
+        title=lambda: "Significant Increase in Summer Vegetation Growth",
+        frames=[],
+        evaluate=lambda script, *args: bool(aws_script) and "awswaf" in str(script))
+
+
+def test_cloudflare_shell_kind_does_not_read_the_widget_page(monkeypatch):
+    page = _kind_page(False)
+    page.title = lambda: "Just a moment..."
+    widget = Mock()
+    monkeypatch.setattr(interaction, "verification_widget", widget)
+    assert interaction.challenge_kind(page) == "cloudflare"
+    widget.assert_not_called()
+
+
+@pytest.mark.parametrize("aws_script,expected", [(True, "awswaf"), (False, "other")])
+def test_aws_waf_is_recognised_by_the_script_it_leaves_on_the_page(aws_script, expected):
+    """Its button is on the outer page, so no provider frame ever shows it."""
+    assert interaction.challenge_kind(_kind_page(aws_script)) == expected

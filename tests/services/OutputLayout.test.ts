@@ -72,6 +72,15 @@ describe('download output layout', () => {
     expect(nlm).toEqual([['1946-6234', '1946-6242']]);
   });
 
+  it('never ends a folder name with a dot, which Windows drops (AAS, Windows 2026-11-25: read back as an invalid PDF)', () => {
+    const title = 'CoronaGraph Instrument Reference Stars for Exoplanets (CorGI-REx). I. Preliminary Vetting and Implications'
+      + ' for the Roman Coronagraph and Habitable Worlds Observatory';
+    const names = Array.from({ length: 119 }, (_, n) =>
+      createOutputLayout('/' + 'r'.repeat(n + 1), '10.3847/1538-3881/ae1d68', { journal: 'Astron J', issued: '2025-12', title }).name);
+    expect(names.filter((name) => /[. ]$/.test(name))).toEqual([]);
+    expect(names).toContain('Astron J_2025-12_CoronaGraph Instrument Reference Stars for Exoplanets (CorGI-REx). I');
+  });
+
   it('names a paper by the publisher\'s short title without NLM, and by the journal and year without either', async () => {
     const searchers = (extra: object) => ({
       crossref: {getPaperByDoi: async () => ({journal: 'International Journal of Neural Systems', year: 2027, title: 'Spiking networks', extra})},

@@ -64,8 +64,8 @@ class PublisherAdapter:
     # redirect is remembered as its provenance (Oxford Academic -> Silverchair).
     pdf_cdn_redirects = False
     # Without access the PDF address answers with the article's own page at that address, not a redirect to it
-    # (Taylor & Francis's /doi/pdf/<DOI>?needAccess=true): after the school's login it counts as sent back to the
-    # article (``_pdf_sent_to_article_after_login``), whose denial or offer still has to show.
+    # (Atypon's /doi/pdf/<DOI>: Taylor & Francis, NEJM): after the school's login, or with its session shown, it counts
+    # as sent back to the article (``_pdf_sent_to_article_after_login``), whose denial or offer still has to show.
     pdf_address_shows_article_page = False
     # Only the article's own PDF URLs are tried as candidates.
     article_pdf_candidates_only = False
@@ -122,6 +122,14 @@ class PublisherAdapter:
         """A supplementary file by the publisher's own file naming (``url`` lower
         case, decoded when ``unquotes_supplement_urls``); the profile's markers follow."""
         return False
+
+    @classmethod
+    def covers_site(cls, url: str) -> bool | None:
+        """Whether these rules are for the site ``url`` is on, the address the DOI resolves to,
+        when no profile names that site. False: another site under the publisher's DOI prefix
+        that they were not written for, which takes the shared rules of a site without a profile
+        (publishers/site.py). None = no opinion (the publisher's rules)."""
+        return None
 
     @classmethod
     def belongs_to_article(cls, url: str, doi: str, source_url: str) -> bool | None:
@@ -222,6 +230,12 @@ class PublisherAdapter:
     def content_error(self, page: Any) -> bool:
         """The publisher's own content-service error page (not a login or entitlement issue)."""
         return False
+
+    def server_error_page(self, page: Any) -> str:
+        """The site's own page for a fault on its side, shown in place of the article: its title,
+        "" for any other page. The article is opened once more; the same page again is the
+        publisher's error (``publisher_content_error``)."""
+        return ""
 
     def is_redirect_page(self, url: str) -> bool:
         """A page that moves on to the article by script (wait for it to leave)."""

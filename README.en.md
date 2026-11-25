@@ -7,7 +7,7 @@
 <p align="center"><b>A lightweight, fully automated all-in-one literature tool for AI</b><br>
 One sentence and your AI searches, verifies and downloads full texts and supplementary files, all in the background.</p>
 
-<p align="center"><a href="README.md">简体中文</a> | English</p>
+<p align="center"><a href="README.md">简体中文</a> | <a href="README.zh-Hant.md">繁體中文</a> | English | <a href="README.ja.md">日本語</a> | <a href="README.ko.md">한국어</a> | <a href="README.fr.md">Français</a></p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch?style=flat-square" alt="npm"></a>
@@ -156,7 +156,7 @@ Papers the open channels cannot get can come through your school's subscriptions
 
 </details>
 
-- Full names, school counts and tested schools of each federation: [federation support table](skills/paper-search/references/federation-support.md) (Chinese).
+- Full names, school counts and tested schools of each federation: [federation support table](skills/paper-search/references/federation-support.md).
 - If your school cannot sign in, or you would like your school supported, [open an issue](https://github.com/dr-dumpling/PaperSearch/issues/new?template=school-login.yml) with the school sign-in template, giving the school's name and website domain, and the publisher and paper DOI where it failed.
 
 - **Your school account is enough**: no keys to apply for; publisher API keys only cover Elsevier and Springer.
@@ -164,7 +164,7 @@ Papers the open channels cannot get can come through your school's subscriptions
   - General: Elsevier (including Cell and The Lancet), Springer Nature (including Nature and BMC), Wiley, Oxford Academic, Taylor & Francis, Sage, PNAS, Science
   - Medicine: NEJM, JAMA, AHA, ASH, Wolters Kluwer, Karger, Thieme
   - Science and engineering: ACS, IEEE, ACM
-  - Full list: [publisher support table](skills/paper-search/references/publisher-support.md) (Chinese)
+  - Full list: [publisher support table](skills/paper-search/references/publisher-support.md)
   - Need another publisher? [Open an issue](https://github.com/dr-dumpling/PaperSearch/issues/new/choose) with the DOI of an article you can access; these rules are maintained and extended over time.
 - **Verification boxes clicked for you**: it finds and clicks human-verification boxes and carries on once the site lets it through; you are asked only when it does not pass.
 - **Quiet background downloads**: the browser works in the background. The progress capsule in a screen corner shows the progress; it turns amber when you need to sign in or verify, one click switches to the browser, and the download carries on once you are done.
@@ -208,6 +208,10 @@ Keys fall into four groups by what they are for. Get the key you need (an email 
 | Search full-text snippets | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api) ([guide](https://docs.qq.com/aio/DTW9RdFVHc2hJUmpx), in Chinese) |
 | Find free full texts when downloading | `PAPER_SEARCH_UNPAYWALL_EMAIL` | No sign-up ([Unpaywall: about](https://unpaywall.org/products/api)) |
 | Search papers, check that DOIs are real | `CROSSREF_MAILTO` | No sign-up ([Crossref: about](https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/)) |
+
+In the development build, open Settings → API key → YesCaptcha, enter your ClientKey, and use Test to check the balance before saving. Supported image challenges send only the puzzle images and question; answers are entered or clicked in the local browser. School sign-in pages are excluded. [Register with YesCaptcha](https://yescaptcha.com/).
+
+Embedded Turnstile can continue through the service after local verification fails, sending only the public site origin and widget parameters; full-page Cloudflare checks remain local.
 
 #### Subscribed full texts (optional)
 

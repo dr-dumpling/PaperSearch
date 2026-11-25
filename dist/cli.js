@@ -39,7 +39,7 @@ import { TESTABLE_KEYS, probeKeyFor, testApiKey } from "./config/apiKeyTest.js";
 import { hasScreen } from "./management/school/runtime.js";
 import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveRunLogRoot } from "./infrastructure/runlog/RunLedger.js";
+import { resolveRunLogRoot, setPaperSearchVersion } from "./infrastructure/runlog/RunLedger.js";
 import { NPM_UNINSTALL, renderUninstallPlan, runUninstall, uninstallPlan } from "./management/uninstall/index.js";
 import { runLiveSmoke } from "./management/smoke/index.js";
 dotenv.config();
@@ -1394,6 +1394,8 @@ function moveLegacySchoolData() {
 async function main() {
     // Whether this edition has PaperSearch Pro's features (config/edition.ts).
     setPackageProFeatures(proFeaturesOf(packageJson()));
+    // The version each run's record says (runlog/RunLedger.ts).
+    setPaperSearchVersion(packageVersion());
     const parsed = parseCli(process.argv.slice(2));
     let update;
     try {

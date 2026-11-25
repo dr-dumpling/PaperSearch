@@ -84,6 +84,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "publisher_hourly_limit": 100,
     # 改了上面的上限时，正在等上限的篇目是否立即按新上限接着下；false = 这一小时过后再按新上限。
     "publisher_hourly_limit_now": False,
+    # 失败后自动重试：原因不明的批量最后再试一次，被网站拦截的 10 分钟后再试一次；默认关（用户 2026-11-24）。
+    "batch_retry_failed": False,
+    # 验证码识别服务（用户 2026-11-25 定）：见 browser/challenge/services/solver.py。
     # 没权限时换下一所学校 (school_switch.py; user, 2026-11-21): on unless turned off.
     "school_switch": True,
     # 灰色源竞速浏览器的独立无头开关（只影响 sci-hub 竞速，机构登录仍有可见窗口）。
@@ -131,7 +134,7 @@ def _from_before_rename(existing: dict[str, Any]) -> dict[str, Any]:
     return existing
 
 
-def load_config() -> dict[str, Any]:
+def load_config(*, strict: bool = False) -> dict[str, Any]:
     config = DEFAULT_CONFIG.copy()
     if CONFIG_FILE.exists():
         try:
@@ -139,8 +142,11 @@ def load_config() -> dict[str, Any]:
                 existing = json.load(fh)
             if isinstance(existing, dict):
                 config.update(_from_before_rename(existing))
+            elif strict:
+                raise ValueError("School backend configuration must be a JSON object")
         except Exception:
-            pass
+            if strict:
+                raise
     for key, value in DEFAULT_CONFIG.items():
         config.setdefault(key, value)
     for key in _RETIRED_KEYS:
@@ -149,14 +155,9 @@ def load_config() -> dict[str, Any]:
 
 
 def save_config(config: dict[str, Any]) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with CONFIG_FILE.open("w", encoding="utf-8") as fh:
-        json.dump(config, fh, indent=2, ensure_ascii=False)
-    try:
-        # Readable by the user only: it may hold a school's account (school_login.py).
-        CONFIG_FILE.chmod(0o600)
-    except OSError:
-        pass
+    from .cli_config import write_private_json
+
+    write_private_json(CONFIG_FILE.resolve(), config)
 
 
 _VALIDATION_RULES: dict[str, tuple[type, Any, Any]] = {

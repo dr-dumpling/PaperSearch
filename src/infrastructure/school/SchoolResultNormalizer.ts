@@ -1,6 +1,7 @@
 import { isAbsolute, resolve } from "node:path";
 import type { SchoolFulltextPage, SchoolInvocationOutcome, SchoolSupplement, SchoolTrace } from "./types.js";
 import { isInside } from "../../capabilities/download/outputLayout.js";
+import { CHALLENGE_TYPE_LABELS } from "./SchoolAttempt.js";
 
 export class SchoolToolResultError extends Error {
   constructor(readonly code: "cache_clear_failed" | "invalid_download_result") {
@@ -210,6 +211,9 @@ function backendTrace(value: unknown, outputDir?: string, diagnosticsDir?: strin
   if (stoppedHost) trace.stoppedHost = stoppedHost;
   if (typeof artifacts.login_wait_page === "string" && LOGIN_WAIT_PAGES.has(artifacts.login_wait_page)) {
     trace.loginWaitPage = artifacts.login_wait_page;
+  }
+  if (typeof artifacts.challenge_type === "string" && Object.hasOwn(CHALLENGE_TYPE_LABELS, artifacts.challenge_type)) {
+    trace.challengeType = artifacts.challenge_type;
   }
   if (artifacts.browser_stopped === true) trace.browserStopped = true;
   for (const key of ["record", "diagnostic"] as const) {

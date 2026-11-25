@@ -1,10 +1,12 @@
 """Verification widgets on local pages in Chrome: which pages count as verification."""
 import os
 import time
+from unittest.mock import Mock
 
 import pytest
 
-from paper_search_school.browser.challenge import interaction as challenge_interaction
+from paper_search_school import progress_reporter
+from paper_search_school.browser.challenge.local import interaction as challenge_interaction
 from paper_search_school.engine.batch import DownloadResult, PublisherBatchDownloader
 
 pytestmark = pytest.mark.skipif(os.environ.get("SCHOOL_LOCAL_BROWSER_TEST") != "1",
@@ -15,6 +17,8 @@ BADGE = "https://www.google.com/recaptcha/api2/anchor?k=fixture&size=invisible"
 HCAPTCHA = "https://newassets.hcaptcha.com/captcha/v1/fixture/static/hcaptcha.html#frame=checkbox"
 DATADOME = "https://geo.captcha-delivery.com/captcha/?initialCid=fixture"
 SHORT = "<title>Security check</title><p>One moment, please.</p>"
+MUSE_VERIFY = "https://muse.example/verify?url=%2Farticle%2Ffixture"
+FRIENDLY_WIDGET = '<div class="frc-captcha"><label><input type="checkbox">I am human</label></div>'
 PAGES = {
     "https://journal.example/recaptcha": SHORT + f'<iframe src="{RECAPTCHA}" style="width:304px;height:78px"></iframe>',
     "https://journal.example/hcaptcha": SHORT + f'<iframe src="{HCAPTCHA}" style="width:303px;height:78px"></iframe>',
@@ -24,6 +28,12 @@ PAGES = {
     "https://journal.example/px": SHORT + '<div id="px-captcha" style="width:300px;height:100px">Press &amp; Hold</div>',
     "https://journal.example/awswaf": SHORT + '<script src="https://fixture.us-east-1.captcha.awswaf.com/fixture/jsapi.js"></script>'
                                      '<div id="captcha-container" style="width:300px;height:200px"></div>',
+    "https://journal.example/friendly": SHORT + FRIENDLY_WIDGET,
+    MUSE_VERIFY: '<title>Project MUSE -- Verification required</title><h1>Verification required!</h1>'
+                 '<p>Please complete this challenge.</p><label><input type="checkbox">I am human</label>'
+                 '<p>Friendly Captcha</p>',
+    "https://journal.example/verify": '<h1>Verification required!</h1><p>Confirm your email address.</p>',
+    "https://journal.example/friendly-article": '<meta name="citation_title" content="A study">' + FRIENDLY_WIDGET,
     "https://journal.example/article": '<title>A study</title><meta name="citation_doi" content="10.1/x">'
                                       f'<p>Abstract</p><iframe src="{RECAPTCHA}" style="width:304px;height:78px"></iframe>',
     "https://journal.example/long": '<title>Sign in</title>' + '<p>' + 'Institutional access options. ' * 120 + '</p>'
@@ -58,6 +68,7 @@ def browser_page(tmp_path, monkeypatch):
 @pytest.mark.parametrize("path,name", [
     ("recaptcha", "reCAPTCHA"), ("hcaptcha", "hCaptcha"), ("datadome", "DataDome"), ("geetest", "GeeTest"),
     ("aliyun", "Aliyun"), ("px", "PerimeterX"), ("awswaf", "AWS WAF"),
+    ("friendly", "Friendly Captcha"),
 ])
 def test_a_page_made_of_a_widget_is_a_verification_left_to_the_user(browser_page, path, name):
     page = browser_page
@@ -76,6 +87,8 @@ def test_a_page_made_of_a_widget_is_a_verification_left_to_the_user(browser_page
     "https://journal.example/article",   # an article whose form carries a widget
     "https://journal.example/long",      # a widget among other forms of a long page
     "https://journal.example/hidden",    # not shown
+    "https://journal.example/verify",    # an ordinary confirmation page
+    "https://journal.example/friendly-article",  # a widget on an article page
     "https://journal.example/badge",     # reCAPTCHA v3's badge
     "https://idp.example.edu.cn/idp/login",  # the school's sign-in: its captcha is the user's login
 ])

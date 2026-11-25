@@ -303,6 +303,7 @@ def _adopt_batch(batch_id: str, total: int, counts: tuple[int | None, int | None
                 _STATE.update(total=int(total), lanes=fields.get("lanes", ""),
                               **({"held": fields["held"]} if "held" in fields else {}),
                               **({"held_wait": fields["held_wait"]} if "held_wait" in fields else {}),
+                              **({"later": fields["later"]} if "later" in fields else {}),
                               **({"done": done} if done is not None else {}),
                               **({"success": succeeded} if succeeded is not None else {}),
                               **({"failed": failed} if failed is not None else {}))
@@ -347,15 +348,22 @@ def _adopt_batch(batch_id: str, total: int, counts: tuple[int | None, int | None
     return True
 
 
-_HELD_KEY = re.compile(r"10\.\d{4,9}/")
+def _held_key(value: Any) -> str:
+    """A held publisher's key as the caller sent it, which 登录并继续 sends back unchanged: the
+    publisher's name ("Science"), else its DOI prefix ("10.1126/"); empty when it is not one short line.
+    The batch keys them by name since 2026-11-17 (a publisher's other DOI prefixes wait with it); a
+    check for DOI prefixes alone dropped every one of them, and the window showed no 登录并继续 (2026-11-23)."""
+    if not isinstance(value, str) or not 0 < len(value) <= 120 or not value.isprintable() or value != value.strip():
+        return ""
+    return value
 
 
 def _held(raw: Any) -> list[dict[str, Any]]:
     """The publishers whose papers the caller holds (their school login stopped working
-    mid-batch): [{key (a DOI prefix), name, count}], at most four, checked for the window."""
+    mid-batch): [{key (``_held_key``), name, count}], at most four, checked for the window."""
     held: list[dict[str, Any]] = []
     for entry in raw if isinstance(raw, list) else []:
-        if not isinstance(entry, dict) or not _HELD_KEY.fullmatch(str(entry.get("key") or "")):
+        if not isinstance(entry, dict) or not _held_key(entry.get("key")):
             continue
         count = entry.get("count")
         if not isinstance(count, int) or isinstance(count, bool) or not 0 < count <= 1_000_000:
@@ -365,10 +373,35 @@ def _held(raw: Any) -> list[dict[str, Any]]:
     return held[:4]
 
 
+#: Why the caller holds a paper for a later try (``sync_batch``'s ``later``).
+LATER_KINDS = ("no_access", "unexplained", "blocked", "login")
+
+
+def _later(raw: Any) -> dict[str, Any]:
+    """The papers the caller holds for a later try, by why (LATER_KINDS), and when the blocked ones are tried
+    again (``blocked_at``, epoch seconds), checked for the window."""
+    raw = raw if isinstance(raw, dict) else {}
+
+    def count(value: Any) -> int:
+        return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= _MAX_BATCH_PAPERS else 0
+
+    later: dict[str, Any] = {kind: count(raw.get(kind)) for kind in LATER_KINDS}
+    at = raw.get("blocked_at")
+    if later["blocked"] and isinstance(at, (int, float)) and not isinstance(at, bool) and at > 0:
+        later["blocked_at"] = float(at)
+    # Each kind's papers by DOI (user, 2026-11-24: the window's 重试 list names them; 剩余 lists the others), as many as
+    # it counts at most; none from a caller that does not send them.
+    papers = raw.get("papers")
+    if isinstance(papers, dict):
+        later["papers"] = {kind: [doi for doi in papers.get(kind) if isinstance(doi, str) and 0 < len(doi) <= 300][:later[kind]]
+                           for kind in LATER_KINDS if isinstance(papers.get(kind), list)}
+    return later
+
+
 def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int, *,
                current: str = "", finished: bool = False, results: Any = None,
                phase: str = "", channel: str = "", lanes: str = "", held: Any = None,
-               held_wait: bool = False) -> bool:
+               held_wait: bool = False, later: Any = None, switch_to: str = "") -> bool:
     """Record batch totals for items finished without the backend, or the batch end.
 
     ``results`` (the batch end only) is the caller's summary of every item,
@@ -382,7 +415,10 @@ def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int
     stage and prompts (``_adopt_batch``). ``held``: the publishers the caller holds
     (``_held``), each with a button to go on with them; an empty list clears them.
     ``held_wait``: nothing else is left and the batch waits for the user to go on with
-    them or end it (each report says it again; any other report, or a download, ends it)."""
+    them or end it (each report says it again; any other report, or a download, ends it).
+    ``later``: the papers the caller holds for a later try (``_later``), kept until the next
+    report that says them; dropped at the batch end. ``switch_to``: the school the caller now
+    tries its papers without access with, which the card names for a moment (``switch_note``)."""
     ctx = BatchContext.from_args(batch_id, max(1, min(done, total)), total, done, succeeded, failed)
     if ctx is None or done > total:
         return False
@@ -391,12 +427,15 @@ def sync_batch(batch_id: str, total: int, done: int, succeeded: int, failed: int
     if finished and previous is None and (done == 0 or summary is not None):
         return False
     phase, channel, lanes = _short_line(phase), _short_line(channel), _short_line(lanes)
+    school = _short_line(switch_to, 40)
     adopted = _adopt_batch(ctx.batch_id, total, (done, succeeded, failed),
                            beside_download=bool(lanes) and not finished,
                            **({"current": current} if current else {}),
                            **({"lanes": lanes} if lanes or finished else {}),
                            **({"held": [] if finished else _held(held)} if held is not None or finished else {}),
                            held_wait=bool(held_wait) and not finished,
+                           **({"later": {} if finished else _later(later)} if later is not None or finished else {}),
+                           **({"switch_note": {"school": school, "at": time.time()}} if school and not finished else {}),
                            stage="saved_pending_verification" if finished else "starting",
                            channel="" if finished else channel,
                            phase=(f"批量下载结束：成功 {succeeded}，失败 {failed}" if finished
@@ -687,6 +726,16 @@ def tracked_download(current: str, output_dir: Any = None, batch: BatchContext |
         _STATE.pop("held_wait", None)  # nor waiting for the user to go on with held publishers
     update(content=content if content in ("main", "supplements", "both", "markdown") else "main",
            markdown=bool(markdown), page_reading=False)
+    if batch is not None:
+        with _LOCK:
+            # What the batch was asked for, kept from its first article: its lists say what its failed papers did not
+            # get by it. ``content`` is the running article's (the card's label), and the batch's end asks for the
+            # Markdown alone of those short of figures: the failed list's heading said "Markdown 未生成" a while
+            # (Windows, 2026-11-24).
+            if _STATE and _STATE.get("batch_content_of") != batch.batch_id:
+                _STATE["batch_content"] = _STATE.get("content")
+                _STATE["batch_content_of"] = batch.batch_id
+                _write_state()
     if output_dir:
         set_output_dir(output_dir)
     name_journal(current)

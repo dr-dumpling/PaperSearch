@@ -33,6 +33,20 @@ class OxfordGuardTests(unittest.TestCase):
         self.batch = harness.batch
         self.d = self.batch.PublisherBatchDownloader({}, profile=harness.profiles.OXFORD_ACADEMIC_PROFILE)
 
+    def test_its_own_opening_keeps_the_site_the_article_opened_on(self):
+        # As the engine's flow does (_note_article_host): a personal sign-in there is no school login page (2026-11-24).
+        from unittest.mock import patch
+        page, result = Mock(), SimpleNamespace(article_url='https://doi.org/' + DOI, events=[], reason='')
+        for name in ('_wait_past_redirect_page', '_raise_on_publisher_content_error', '_dismiss_cookie_banners',
+                     '_note_article_host'):
+            setattr(self.d, name, Mock())
+        self.d._wait_for_challenge = Mock(return_value=True)
+        self.d._institution_pdf_entitlement_missing = Mock(return_value=False)
+        self.d._pdf_first_unless_signed_out = Mock(return_value=True)
+        with patch('paper_search_school.adapters.oup.open_page'):
+            self.assertTrue(self.d.adapter.ensure_login(page, result))
+        self.d._note_article_host.assert_called_once_with(page)
+
     def test_homepage_and_embedded_host_are_not_articles(self):
         for url in ('https://academic.oup.com/', 'https://academic.oup.com/journals',
                     'https://other.example/?next=' + ARTICLE,
@@ -52,7 +66,22 @@ class OxfordGuardTests(unittest.TestCase):
         self.assertTrue(self.d._article_pdf_url_matches(
             'https://academic.oup.com/jnci/article-pdf/138/1/2/98765/fixture123.pdf', DOI))
         self.assertFalse(self.d._article_pdf_url_matches(
-            'https://academic.oup.com/sleep/article-pdf/138/1/2/98765/fixture123.pdf', DOI))
+            'https://academic.oup.com/jnci/article-pdf/138/1/2/98765/other123.pdf', DOI))
+
+    def test_a_journal_whose_path_is_not_its_doi_code_has_its_pdf_tried(self):
+        # Sexual Medicine Open Access: 10.1093/sexmed/… at /smoa/, an open article whose PDF step tried
+        # nothing ("candidates: none", Windows 2026-11-23).
+        doi = '10.1093/sexmed/qfaf103'
+        article = 'https://academic.oup.com/smoa/article/13/6/qfaf103/8382596'
+        pdf = 'https://academic.oup.com/smoa/article-pdf/13/6/qfaf103/8382596/qfaf103.pdf'
+        self.assertTrue(self.d._article_pdf_url_matches(pdf, doi))
+        self.assertFalse(self.d._article_pdf_url_matches(pdf.replace('qfaf103', 'qfaf095'), doi))  # another article's
+        page = Mock(url=article)
+        page.evaluate.return_value = {"dois": [doi], "pdfs": [pdf], "links": [pdf, ANNUAL]}
+        self.assertEqual(self.d._pdf_candidates(page, doi), [pdf])
+        response = SimpleNamespace(url='https://watermark02.silverchair.com/qfaf103.pdf?fixture-signature=local',
+                                   status=200, headers={}, history=[SimpleNamespace(url=pdf, headers={})])
+        self.assertTrue(self.d._response_matches_article(response, doi))
 
     def test_a_supplement_issue_is_not_supplementary_material(self):
         doi = '10.1093/eurheartjsupp/suag119.023'

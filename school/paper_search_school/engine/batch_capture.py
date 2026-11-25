@@ -50,6 +50,11 @@ def _sent_as_attachment(headers: dict[str, str]) -> bool:
     return headers.get("content-disposition", "").strip().lower().startswith("attachment")
 
 
+# A PDF control's link that opens a new tab opens in this one, whose PDF responses are watched.
+_SAME_TAB_JS = """el => { const a = el.closest('a[target]');
+    if (a && (a.getAttribute('target') || '').toLowerCase() === '_blank') a.setAttribute('target', '_self'); }"""
+
+
 # A PDF larger than this is read in pieces (Fetch.takeResponseBodyAsStream), the step's time
 # going on while pieces arrive: read whole in one call it was cut at the step's minute, and the
 # page's own copy then fetched in its place took the tab down (Cell, 108 MB, 2026-11-18).
@@ -95,6 +100,18 @@ class CaptureMixin:
             captured["login_wall"] = True
         return True
 
+    def _paywall_answered_before_login(self, result: DownloadResult) -> bool:
+        """This capture, the PDF tried first before the school's login (access not known, ``_pdf_first``), had a PDF
+        address answer 403/429 with the article's own page (``pdf_step_article_page``): the site's other addresses
+        answer the same until the login, which comes next, then every address is tried again. Wiley's Angewandte
+        (10.1002/anie.202516998, Windows 2026-11-24): epdf, pdfdirect and pdf each answered its paywall page in about
+        20 s and the PDF step's page budget ran out before the login, 原因不明 · 页面处理超时; the next paper of the
+        journal went through the login and was saved."""
+        if not getattr(result, "_pdf_first", False) or self._school_login_done():
+            return False
+        started = max((i for i, e in enumerate(result.events) if e.get("state") == "pdf_capture_started"), default=-1)
+        return any(e.get("state") == "pdf_step_article_page" for e in result.events[started + 1:])
+
     def _probe_pdf_while_waiting(self, page: Any, result: DownloadResult, *, after_login: bool) -> bool:
         """While the login waits: this article's PDF from an open tab or fetched
         with the browser's session (``_probe_pdf``); found, the item ends with it
@@ -120,32 +137,57 @@ class CaptureMixin:
     # PDF attempts that came back as a web page (``_record_pdf_attempt``).
     _WEB_PAGE_OUTCOMES = frozenset({"html page", "paywall"})
 
-    def _pdf_sent_to_article_after_login(self, page: Any, result: DownloadResult, since: int) -> bool:
-        """After this item's school login the PDF attempts from ``since`` on were
-        sent to the article's own web page, with no PDF, login, verification or
-        block. Missing entitlement additionally requires the page's denial,
-        purchase offer or abstract-only evidence. A redirect alone can also
-        happen on a freely readable article and does not prove missing access."""
+    def _pdf_sent_to_article(self, page: Any, result: DownloadResult, since: int) -> list[dict[str, Any]]:
+        """The PDF attempts from ``since`` on that were sent to the article's own web page:
+        redirected there, or the PDF address showing that page (the adapter's
+        ``pdf_address_shows_article_page``, or its 403/429 answer printing the article's
+        title, ``pdf_step_article_page``). [] unless every attempt came back as a web page
+        or nothing, and the tab is on no login or verification page. JAMA's ``/articlepdf/``
+        answered with ``/fullarticle/`` (10.1001/jama.2025.19316), jacc.org's ``/doi/pdf/``
+        with the article's page and a 403 (10.1016/j.jcmg.2025.09.021; Windows 2026-11-23)."""
         def plain(url: Any) -> str:
             parsed = urlparse(str(url or ""))
             return f"{parsed.hostname}{parsed.path}".lower().rstrip("/")
 
+        answered = {plain(str(e.get("detail") or "").split(" | ", 1)[0].split(" ", 1)[-1])
+                    for e in result.events if e.get("state") == "pdf_step_article_page"}
         attempts = result.pdf_attempts[since:]
         sent_back = [a for a in attempts if a.get("outcome") in self._WEB_PAGE_OUTCOMES
-                     and (plain(a.get("final_url")) != plain(a.get("url")) or self.adapter.pdf_address_shows_article_page)
+                     and (plain(a.get("final_url")) != plain(a.get("url")) or self.adapter.pdf_address_shows_article_page
+                          or plain(a.get("final_url")) in answered)
                      and self._is_success_article_url(str(a.get("final_url") or ""))]
         url = str(getattr(page, "url", "") or "")
-        if (not sent_back or not self._school_login_done()
+        if (not sent_back
                 or any(a.get("outcome") not in self._WEB_PAGE_OUTCOMES | {"no pdf"} for a in attempts)
                 or self._is_auth_page(url) or self._is_challenge_page(page)):
+            return []
+        return sent_back
+
+    def _pdf_sent_to_article_after_login(self, page: Any, result: DownloadResult, since: int) -> bool:
+        """After this item's school login, or with the school's session shown on the
+        page (signed in by an earlier item), the PDF attempts from ``since`` on were
+        sent to the article's own web page (``_pdf_sent_to_article``). Missing
+        entitlement additionally requires the page's denial, purchase offer or
+        abstract-only evidence. A redirect alone can also happen on a freely
+        readable article and does not prove missing access.
+        NEJM Catalyst (10.1056/cat.24.0478, Windows 2026-11-23): "Welcome: <school>"
+        in the header, "Get Access" over the abstract, the PDF address answering
+        with that page; it ended as pdf_not_captured, the school never switched."""
+        sent_back = self._pdf_sent_to_article(page, result, since)
+        if not sent_back:
             return False
-        evidence = self._no_access_after_login(page, result)
+        signed_in = self._school_login_done()
+        session = not signed_in and self._institution_session(page) == "ours"
+        if not (signed_in or session):
+            return False
+        evidence = self._no_access_after_login(page, result, session_shown=session)
         if not evidence:
             return False
         last = sent_back[-1]
         result.reason = "institution_pdf_entitlement_missing"
         self._event(result, "no_access_after_login",
-                    f"PDF after the school login sent to the article's web page: {str(last.get('url'))[:120]} -> "
+                    f"PDF {'with the school signed in' if session else 'after the school login'} sent to the "
+                    f"article's web page: {str(last.get('url'))[:120]} -> "
                     f"{str(last.get('final_url'))[:160]} | {evidence[:160]}")
         self._snapshot(page, result, "not subscribed")
         return True
@@ -304,6 +346,88 @@ class CaptureMixin:
                     f"after {time.time() - started:.1f} s at {str(getattr(page, 'url', ''))[:160]}")
         return True
 
+    # Anything on the page naming a PDF: a citation PDF address, a link's or control's address,
+    # title or label, the page's text.
+    _NAMES_A_PDF_JS = """() => !!document.querySelector('meta[name$="pdf_url" i]')
+        || [...document.querySelectorAll('a, button, [role="button"]')].some(el => /pdf/i.test(
+            [el.getAttribute('href'), el.getAttribute('title'), el.getAttribute('aria-label')].join(' ')))
+        || /pdf/i.test(document.body ? document.body.innerText || '' : '')"""
+
+    def _page_offers_no_pdf(self, page: Any) -> bool:
+        """Nothing on the article's page names a PDF (``_NAMES_A_PDF_JS``): the site gives this
+        article as a web page only. CAA Reviews' open reviews have no PDF at all, and were reported
+        as "PDF not captured" with no reason (2026-11-24). A page that names one and gave none
+        is not this."""
+        try:
+            return page.evaluate(self._NAMES_A_PDF_JS) is False
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return False
+
+    # A box the reader ticks to agree to the site's terms before its download links work, on the
+    # article's own page. ufn.ru (Physics-Uspekhi, 2026-11-25): "By downloading this file I agree
+    # with the terms of use" beside an unticked box; until it is ticked the site's script takes the
+    # PDF link's address away and greys it (ufn.js: copyright-agree, data-ehref), and the click on it
+    # gave nothing. The user asked for such boxes to be ticked for them, in the shared rules
+    # (2026-11-25), as the publisher's terms form on the way to the school is accepted (2026-11-08).
+    # Its words (its labels, else the nearest enclosing text up to 4 levels, at most 600 characters)
+    # agree to terms, conditions, a licence or copyright and speak of the download, the PDF or the
+    # full text, or the page has a download control held back (disabled, greyed, a link with no
+    # address). Never a box in a form with a password, nor one about newsletters, offers, cookies,
+    # privacy, staying signed in or an account.
+    _DOWNLOAD_TERMS_JS = r"""() => {
+        const shown = el => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+        const words = el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+        const AGREE = /\b(?:agree|accept)\b|同意|接受/i;
+        const TERMS = /\bterms\b|\bconditions\b|copyright|\blicen[cs]e\b|条款|协议|版权|许可/i;
+        const DOWNLOAD = /download|\bpdf\b|full[ -]?text|下载|全文/i;
+        const NOT = /newsletter|subscri|marketing|promot|\boffers?\b|cookie|privacy|remember me|keep me|signed in|sign ?up|regist|account|password|订阅|营销|推广|隐私|记住|注册|账号|账户|密码/i;
+        const held = [...document.querySelectorAll('a, button, [role="button"]')].some(el => shown(el)
+            && DOWNLOAD.test(`${words(el)} ${el.getAttribute('class') || ''} ${el.getAttribute('aria-label') || ''}`)
+            && (el.disabled || el.getAttribute('aria-disabled') === 'true' || /\bdisabled\b/i.test(el.getAttribute('class') || '')
+                || (el.tagName === 'A' && !el.hasAttribute('href'))));
+        for (const box of document.querySelectorAll('input[type="checkbox"]')) {
+            if (box.checked || box.disabled) continue;
+            const labels = [...(box.labels || [])].filter(shown);
+            if (!shown(box) && !labels.length) continue;
+            const form = box.closest('form');
+            if (form && form.querySelector('input[type="password"]')) continue;
+            let text = labels.map(words).join(' ');
+            for (let el = box.parentElement, up = 0; el && up < 4 && !text; el = el.parentElement, up++) text = words(el);
+            if (!text || text.length > 600 || !AGREE.test(text) || !TERMS.test(text) || NOT.test(text)) continue;
+            if (!DOWNLOAD.test(text) && !held) continue;
+            document.querySelectorAll('[data-papersearch-download-terms]')
+                .forEach(el => el.removeAttribute('data-papersearch-download-terms'));
+            (shown(box) ? box : labels[0]).setAttribute('data-papersearch-download-terms', '1');
+            return text.slice(0, 200);
+        }
+        return '';
+    }"""
+
+    def _agree_to_download_terms(self, page: Any, result: DownloadResult) -> bool:
+        """Tick the site's box agreeing to its terms that holds back its download links
+        (``_DOWNLOAD_TERMS_JS``), on the article's own page, never a school's or a federation's;
+        True when ticked. The links are read after it, once the site's script has given them their
+        addresses."""
+        url = str(getattr(page, "url", "") or "")
+        if (not url.startswith("http") or self._is_idp_host(urlparse(url).netloc)
+                or self._school_or_federation_page(url.split("#", 1)[0], result, include_publisher_chooser=False)):
+            return False
+        try:
+            terms = page.evaluate(self._DOWNLOAD_TERMS_JS)
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return False
+        if not terms or not isinstance(terms, str) or not self._click_control(
+                page, page.locator('[data-papersearch-download-terms="1"]').first, result, "agree to the download terms",
+                timeout_ms=3_000):
+            return False
+        self._event(result, "download_terms_agreed", f"{terms[:160]} @ {url[:160]}")
+        settle(page, 1_000)
+        return True
+
     def _nothing_tried_evidence(self, page: Any, doi: str) -> str:
         """The page and its access verdict, and the PDF addresses it offered."""
         try:
@@ -409,25 +533,38 @@ class CaptureMixin:
         fetched after the PDF, in the bridge, with the browser's session, or with the session
         kept here once the browser can no longer be asked then (``_fulltext_session``).
         ``target``: an address to read in a tab of its own instead (the article page again,
-        once the school's login came later)."""
+        once the school's login came later). The address the adapter names for the full text
+        is opened only when the page the browser is on does not show it already."""
         if not self.config.get("fulltext") or getattr(result, "_fulltext_read", None):
             return
 
-        target = self.adapter.fulltext_page_url(doi, str(getattr(page, "url", "") or "")) or target
+        named = self.adapter.fulltext_page_url(doi, str(getattr(page, "url", "") or ""))
+        target = named or target
         tab = None
         # The window says the Markdown's page is being read, then goes back to the part it was on.
         before = progress_reporter.current_part()
         progress_reporter.update(part="markdown", page_reading=True)
         try:
             with watchdog.operation(self.FULLTEXT_READ_SEC, "fulltext_page"):
+                if named and self._fulltext_shown_here(page):
+                    # The article page shows its full text already: read here, not at the other
+                    # address, which may serve less (MDPI, 2026-11-22: for 6 of 80 articles the
+                    # article page was a full one by its size, the address with a query the abstract alone).
+                    target = ""
+                gone = None
                 if target:
                     # The full text is another page than the article's (Thieme): a tab of its own.
                     from .batch_common import open_page
 
                     tab = page.context.new_page()
-                    open_page(tab, target, timeout_ms=30_000)
-                read, why = self._read_fulltext_page(tab or page, doi, result)
-                if read is None and why.startswith("fulltext_not_shown") and not self._pdf_only(why):
+                    gone = self._page_not_found(open_page(tab, target, timeout_ms=30_000))
+                if gone:
+                    # No such page: the article has no full text there (J-STAGE's articles with their
+                    # PDF alone, whose full-text address is a 404), not a page to wait 15 s on.
+                    read, why = None, f"fulltext_not_shown: {urlparse(target).hostname or ''} answered {gone}"
+                else:
+                    read, why = self._read_fulltext_page(tab or page, doi, result)
+                if read is None and not gone and why.startswith("fulltext_not_shown") and not self._pdf_only(why):
                     # No full text on the page: a paywall or a denial there is no access, not a
                     # page without its text (pnas.org's "Get full access to this article",
                     # said 文章页没有正文, 2026-11-17). The shared rules, as the access check reads them.
@@ -458,6 +595,19 @@ class CaptureMixin:
         general = "; general rules (the site has no page scripts)" if read.get("general") else ""
         self._event(result, "fulltext_page_read",
                     f"{len(read['html'])} chars, {len(read['image_urls'])} images{prepared}{general}")
+
+    def _fulltext_shown_here(self, page: Any) -> bool:
+        """Whether the page shows the full text now, by the adapter's own rule: one look, no
+        wait; False when the browser cannot say."""
+        shown_js = getattr(self.adapter, "fulltext_shown_js", None)
+        if not shown_js:
+            return False
+        try:
+            return page.evaluate(shown_js) is True
+        except Exception as exc:
+            if not _is_browser_error(exc):
+                raise
+            return False
 
     # The longest wait for the page to load again before the second read.
     FULLTEXT_REREAD_SETTLE_MS = 5_000
@@ -510,6 +660,13 @@ class CaptureMixin:
             if not _is_browser_error(exc):
                 raise
             return ""
+
+    @staticmethod
+    def _page_not_found(response: Any) -> int | None:
+        """The status of a page that does not exist (404, 410), from its navigation's response;
+        None for any other, or when there is no response to ask."""
+        status = getattr(response, "status", None)
+        return status if isinstance(status, int) and status in (404, 410) else None
 
     @staticmethod
     def _pdf_only(why: str) -> bool:
@@ -602,7 +759,9 @@ class CaptureMixin:
         ``"ip_blocked"`` if a publisher IP-block signal (403/429 or block page)
         was observed during capture, else ``None``.
         """
+
         self._event(result, "pdf_capture_started")
+        self._agree_to_download_terms(page, result)
         self._remember_listed_supplements(page, doi, result)
         captured: dict[str, Any] = {"bytes": None, "url": "", "deferred_url": "", "block_reason": None, "receiving": False,
                                     "suspect_block": None, "closed": False, "readers": set()}
@@ -1043,7 +1202,21 @@ class CaptureMixin:
                 if not captured["bytes"] and self._pdf_step_hit_wall(page, result):
                     return None, "", None
                 if not captured["bytes"]:
-                    if self._uses_article_pdf_validation() and not self._wait_for_challenge(page, result):
+                    if self._is_challenge_page(page) or self._challenge_shell(page):
+                        # The PDF link itself opened a verification page: the same
+                        # wait as anywhere else. It gets nothing? Then stop the
+                        # capture as at a login wall, so the article's school
+                        # login runs and the PDF is asked for again with the
+                        # session, instead of waiting on the user here (the PDF
+                        # address itself answers empty to Bright Data, 2026-11-25).
+                        if not self._wait_for_challenge(page, result, hand_over_only=True):
+                            if captured is not None:
+                                captured["login_wall"] = True
+                            return None, "", None
+                        if not captured["bytes"]:
+                            return None, "", captured["block_reason"]
+                    if (not captured["bytes"] and self._uses_article_pdf_validation()
+                            and not self._wait_for_challenge(page, result)):
                         return None, "", captured["block_reason"]
                     if entitlement_denied():
                         return None, "", None
@@ -1083,6 +1256,12 @@ class CaptureMixin:
                     continue
                 if entitlement_denied():
                     return None, "", None
+                if self._paywall_answered_before_login(result):
+                    # The school's login first, then every address again (_paywall_answered_before_login).
+                    self._event(result, "pdf_candidates_after_login",
+                                f"{len(candidates) - candidates.index(pdf_url)} left: a PDF address answered with the "
+                                f"article's own page; the school's login first")
+                    return None, "", None
                 self._raise_on_publisher_content_error(page)
                 self._event(result, "pdf_candidate", pdf_url)
                 begin("url", pdf_url, time.time())
@@ -1095,6 +1274,11 @@ class CaptureMixin:
                     if captured.get("login_wall"):
                         return None, "", None
                     if self._is_challenge_page(page):
+                        # The same wait as everywhere else; nothing came? The
+                        # article's school login runs and the PDF is asked for
+                        # again with the session.
+                        if not self._wait_for_challenge(page, result, hand_over_only=True):
+                            captured["login_wall"] = True
                         return None, final_url, captured["block_reason"]
                     continue
                 try:
@@ -1396,12 +1580,14 @@ class CaptureMixin:
                 page, result, lambda href: self._article_pdf_link(href, keys, str(getattr(page, "url", "") or "")),
                 "current-doi-pdf-link", drop_download=self.adapter.keeps_pdf_out_of_downloads):
             return True
+        # A title or label naming PDF only on a control: Bioethics Open Research's "XML & PDF
+        # downloads (all versions)" is the title of a counter in a list, clicked as the PDF (2026-11-24).
         selectors = (
             "a.xpl-btn-pdf",
             ".xpl-btn-pdf",
             "a.stats-document-lh-action-downloadPdf_3",
-            "[title*='PDF']",
-            "[aria-label*='PDF']",
+            "a[title*='PDF'], button[title*='PDF'], [role='button'][title*='PDF']",
+            "a[aria-label*='PDF'], button[aria-label*='PDF'], [role='button'][aria-label*='PDF']",
             "button:has-text('PDF')",
             "a:has-text('PDF')",
         )
@@ -1428,6 +1614,14 @@ class CaptureMixin:
                         or re.search(r"\b(?:supplement(?:ary|al)?|supporting information|disclosure form)\b", text, re.I)):
                     continue
                 detail = {"selector": selector, "text": text[:200], "href": href[:300]}
+                # In the tab whose PDF responses are watched, as ScienceDirect's: a
+                # target=_blank link's PDF in a tab of its own is lost (IJOR's
+                # Squarespace "PDF" button, 2026-11-25).
+                try:
+                    control.evaluate(_SAME_TAB_JS, timeout=2_000)
+                except Exception as exc:
+                    if not _is_browser_error(exc):
+                        raise
                 if not self._click_control(page, control, result, f"pdf control: {selector}"):
                     continue  # nothing was clicked (script_click_failed)
                 self._event(result, "pdf_button_clicked", json.dumps(detail, ensure_ascii=False))
@@ -1491,6 +1685,9 @@ class CaptureMixin:
                     text: textOf(target).slice(0, 200),
                     href: ((target.href || target.getAttribute('href') || target.getAttribute('formaction') || '') + '').slice(0, 300)
                   };
+                  // In this tab, whose PDF responses are watched (_SAME_TAB_JS).
+                  const link = target.closest('a[target]');
+                  if (link && (link.getAttribute('target') || '').toLowerCase() === '_blank') link.setAttribute('target', '_self');
                   target.click();
                   return detail;
                 }

@@ -5,6 +5,7 @@ description = "Institutional (publisher-authorized) PDF and supplementary-file d
 readme = "README.md"
 requires-python = ">=3.11"
 license = "AGPL-3.0-only"
+authors = [{ name = "Yu Xie" }]
 license-files = ["LICENSE", "LICENSE-scansci-pdf", "NOTICE"]
 # Ranges below the next major version; the browser driver is pinned (ADR 0013, 0016).
 dependencies = [

@@ -15,6 +15,7 @@ from paper_search_school.engine import batch
 from paper_search_school.engine.batch import DownloadResult, PaperRecord, PublisherBatchDownloader
 from paper_search_school.engine.batch_user import PdfFoundWhileWaiting
 from paper_search_school.publishers.model import PublisherProfile
+from paper_search_school.publishers.profiles import infer_publisher_profile
 from tests.thread_clock import this_thread_only
 
 DOI = "10.1061/jsendh.steng-16404"
@@ -135,6 +136,76 @@ class PdfFirstTests(unittest.TestCase):
                 self.assertEqual(d._complete_login_from_current_page.call_count, 1 if gate else 0)
                 self.assertEqual("open_access_pdf_gated" in states, gate)
                 self.assertNotIn("access_unknown_pdf_first", states)
+
+    def test_an_open_page_whose_pdf_is_sent_to_the_article_page_signs_in_once(self):
+        """Open for its web page only, or not at all (Windows 2026-11-23, both ended as
+        pdf_not_captured with no school tried). JAMA: citation_fulltext_world_readable, its
+        /articlepdf/ address answered with /fullarticle/. jacc.org: "This is an Open Access
+        Article" read on a page with "GET ACCESS", its PDF addresses answering 403 with the
+        article's page."""
+        jama = "https://jamanetwork.com/journals/jama/fullarticle/2841034"
+        jama_pdf = "https://jamanetwork.com/journals/jama/articlepdf/2841034/jama_isaka_2025_oi_250083_1764782053.74853.pdf"
+        jacc = "https://www.jacc.org/doi/10.1016/j.jcmg.2025.09.021"
+        jacc_pdfs = ("https://www.jacc.org/doi/pdf/10.1016/j.jcmg.2025.09.021",
+                     "https://www.jacc.org/doi/epdf/10.1016/j.jcmg.2025.09.021")
+        title = "Prognostic Value of AI-Based Quantitative Coronary CTA vs Human Reader-Based Visual Assessment"
+
+        def attempt(how, url, final, outcome="html page", status=200):
+            return {"how": how, "url": url, "final_url": final, "status": status, "type": "text/html",
+                    "size": "", "outcome": outcome, "seconds": 5.0}
+
+        cases = {
+            "jama": ("10.1001/jama.2025.19316", jama, ("unknown", "", ""),
+                     "open licence: meta citation_fulltext_world_readable", [],
+                     [attempt("click", "jama-data-article-url", jama, "no pdf", None), attempt("url", jama_pdf, jama)], True),
+            "jacc": ("10.1016/j.jcmg.2025.09.021", jacc, ("in", "reader", "licence: This is an Open Access Article"), "",
+                     [f"403 {url} | {title}" for url in jacc_pdfs],
+                     [attempt("url", url, url, status=403) for url in jacc_pdfs], True),
+            # An HTML answer at the PDF's own address, without the article's title: not the article's page.
+            "jacc, not the article's page": ("10.1016/j.jcmg.2025.09.021", jacc,
+                                             ("in", "reader", "licence: This is an Open Access Article"), "", [],
+                                             [attempt("url", url, url, status=403) for url in jacc_pdfs], False),
+            # Nothing came back as the article's page.
+            "jama, no answer": ("10.1001/jama.2025.19316", jama, ("unknown", "", ""),
+                                "open licence: meta citation_fulltext_world_readable", [],
+                                [attempt("click", "jama-data-article-url", jama, "no pdf", None)], False),
+        }
+        for name, (doi, article, decision, signal, answers, attempts, signs_in) in cases.items():
+            with self.subTest(name):
+                profile = infer_publisher_profile(doi)
+                d = PublisherBatchDownloader({}, profile=profile, login_timeout_sec=300)
+                for helper in ("_write_diagnostic", "_hold_after_login", "_hold_after_run", "_return_from_other_article"):
+                    setattr(d, helper, Mock())
+                d._title = Mock(return_value="Article")
+                d._access_decision = Mock(return_value=decision)
+                d._open_access_signal = Mock(return_value=signal)
+                d._article_access_available = Mock(return_value=False)
+                d._login_block_reason = Mock(return_value="")
+                d._looks_logged_out = Mock(return_value=False)
+                replies = iter([(None, "", None), (pdf(doi), article + ".pdf", None)])
+
+                def capture(page, doi, result, answers=answers, attempts=attempts):
+                    if not result.pdf_attempts:
+                        for answer in answers:
+                            d._event(result, "pdf_step_article_page", answer)
+                        result.pdf_attempts.extend(attempts)
+                    return next(replies)
+
+                d._capture_pdf = Mock(side_effect=capture)
+                d._complete_login_from_current_page = Mock(return_value=True)
+                d._reopen_article_page = Mock()
+                d._save_captured_pdf = Mock(side_effect=lambda page, record, result, run_dir, body, url: result)
+                with tempfile.TemporaryDirectory() as directory, patch.object(batch.time, "sleep"):
+                    result = d.fetch_one(self.page(article), PaperRecord(doi=doi), Path(directory))
+                gated = [e["detail"] for e in result.events if e["state"] == "open_access_pdf_gated"]
+                self.assertEqual(d._complete_login_from_current_page.call_count, 1 if signs_in else 0)
+                self.assertEqual(d._capture_pdf.call_count, 2 if signs_in else 1)
+                self.assertEqual(bool(gated), signs_in)
+                if signs_in:
+                    self.assertIn("PDF sent to the article's web page: " + attempts[-1]["url"][:120], gated[0])
+                    d._save_captured_pdf.assert_called_once()
+                else:
+                    self.assertEqual(result.reason, "pdf_not_captured")
 
     def test_public_access_is_reused_only_until_the_main_document_changes(self):
         for navigation in (None, "iframe", "reload"):
@@ -443,6 +514,45 @@ class PdfSentToArticleAfterLoginTests(unittest.TestCase):
         from paper_search_school.adapters.taylor_francis import TaylorFrancisAdapter
         self.assertTrue(TaylorFrancisAdapter.pdf_address_shows_article_page)
 
+    def test_before_the_login_a_paywall_answer_leaves_the_other_addresses_for_after_it(self):
+        # Wiley's Angewandte (10.1002/anie.202516998, Windows 2026-11-24): epdf, pdfdirect and pdf each answered 403 with
+        # the article's page in about 20 s; the page budget ran out before the login. One such answer is enough.
+        d = self.downloader()
+        result = DownloadResult(doi=DOI, status="failed", article_url=ARTICLE)
+        d._item_result = result
+        result._pdf_first = True
+        d._event(result, "pdf_capture_started")
+        self.assertFalse(d._paywall_answered_before_login(result))
+        d._event(result, "pdf_step_article_page", f"403 {self.PDF_URL} | {TITLE}")
+        self.assertTrue(d._paywall_answered_before_login(result))
+        # After the school's login every address is tried again; so too in the next capture until it answers so.
+        result._visited_idp = True
+        self.assertFalse(d._paywall_answered_before_login(result))
+        result._visited_idp = False
+        d._event(result, "pdf_capture_started")
+        self.assertFalse(d._paywall_answered_before_login(result))
+        # Not the PDF tried first (the access read on the page): the capture goes on as before.
+        result._pdf_first = False
+        d._event(result, "pdf_step_article_page", f"403 {self.PDF_URL} | {TITLE}")
+        self.assertFalse(d._paywall_answered_before_login(result))
+
+    def test_a_pdf_address_answering_403_with_the_article_page_is_sent_back(self):
+        # jacc.org (10.1016/j.jcmg.2025.09.021, Windows 2026-11-23): /doi/pdf/ answered 403 with a page printing
+        # the article's title (pdf_step_article_page). Still only with the page's denial or offer.
+        at_its_address = {**self.attempt("html page", final=self.PDF_URL), "status": 403}
+        for body, found in (("Buy this article", True), ("Abstract\nReferences", False)):
+            with self.subTest(body=body):
+                d = self.downloader()
+                result = DownloadResult(doi=DOI, status="failed", article_url=ARTICLE)
+                result.pdf_attempts.append(at_its_address)
+                result._visited_idp = True
+                d._item_result = result
+                d._event(result, "pdf_step_article_page", f"403 {self.PDF_URL} | {TITLE}")
+                page = self.page()
+                page.locator.return_value.inner_text.return_value = body
+                self.assertEqual(d._pdf_sent_to_article_after_login(page, result, 0), found)
+                self.assertEqual(d._pdf_sent_to_article(page, result, 0), [at_its_address])
+
     def test_only_the_attempts_after_the_login_count(self):
         found, _ = self.judged([self.attempt("html page"), self.attempt("no pdf")], since=1)
         self.assertFalse(found)
@@ -550,10 +660,44 @@ class PdfSentToArticleAfterLoginTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.object(batch.time, "sleep"):
             result = d.fetch_one(self.page(), PaperRecord(doi=DOI), Path(directory))
         self.assertEqual(result.state, "institution_pdf_entitlement_missing")
-        d._school_login_done.return_value = False  # the institution's session alone: the old outcome
+        # No login in this item, and the page shows no school's session: nothing says who reads.
+        d._school_login_done.return_value = False
         with tempfile.TemporaryDirectory() as directory, patch.object(batch.time, "sleep"):
             result = d.fetch_one(self.page(), PaperRecord(doi=DOI), Path(directory))
         self.assertEqual(result.state, "pdf_not_captured")
+        # The school's session from an earlier item shows on the page, the article still offered.
+        page = self.page()
+        page.evaluate.return_value = {"labels": ["Welcome: Hong Mu-lan University"]}
+        with tempfile.TemporaryDirectory() as directory, patch.object(batch.time, "sleep"):
+            result = d.fetch_one(page, PaperRecord(doi=DOI), Path(directory))
+        self.assertEqual(result.state, "institution_pdf_entitlement_missing")
+        event = next(e for e in result.events if e["state"] == "no_access_after_login")
+        self.assertIn("with the school signed in", event["detail"])
+
+    def test_the_schools_session_from_an_earlier_item_with_get_access_is_no_access(self):
+        # NEJM Catalyst (10.1056/cat.24.0478, Windows 2026-11-23): "Welcome: <school>" in the header,
+        # "Get Access" over the abstract, the PDF address answering with that page at its own address.
+        from paper_search_school.publishers.profiles import infer_publisher_profile
+        doi = "10.1056/cat.24.0478"
+        pdf_url = "https://catalyst.nejm.org/doi/pdf/10.1056/CAT.24.0478"
+        d = PublisherBatchDownloader({"school_name_en": "Hong Mu-lan University"},
+                                     profile=infer_publisher_profile(doi))
+        self.assertTrue(d.adapter.pdf_address_shows_article_page)  # Atypon's, not one publisher's
+        result = DownloadResult(doi=doi, status="failed", article_url=f"https://doi.org/{doi}")
+        result.pdf_attempts.append({"how": "url", "url": pdf_url, "final_url": pdf_url, "status": 200,
+                                    "type": "text/html", "size": "", "outcome": "html page", "seconds": 13.6})
+        d._item_result = result
+        page = self.page(pdf_url)
+        page.locator.return_value.inner_text.return_value = "Get Access\nAbstract\nReferences"
+        for labels, expected in ((["Welcome: Hong Mu-lan University"], True), ([], False),
+                                 (["Welcome: Another Medical University"], False)):
+            with self.subTest(labels=labels):
+                page.evaluate.return_value = {"labels": labels}
+                self.assertIs(d._pdf_sent_to_article_after_login(page, result, 0), expected)
+        self.assertEqual(result.reason, "institution_pdf_entitlement_missing")
+        # The evidence the failures list shows (entitlement_denied): the page's offer, not "nothing saved".
+        page.evaluate.return_value = {"labels": ["Welcome: Hong Mu-lan University"]}
+        self.assertEqual(d._denial_line(page), 'offer: "Get Access" (the institution\'s session)')
 
 
 class ProbeTests(unittest.TestCase):
@@ -609,11 +753,15 @@ class AccessMenuEntryTests(unittest.TestCase):
         self.entry = None
         self.page.evaluate.side_effect = self.evaluate
 
+    check_access = None
+
     def evaluate(self, script, *args):
         if script == self.d._ACCESS_MENU_JS:
             return "GET ACCESS"
         if script == self.d._INSTITUTION_ENTRY_JS:
             return self.entry
+        if script == self.d._MENU_CHECK_ACCESS_JS:
+            return self.check_access
         return None
 
     def test_the_menus_institution_entry_is_opened(self):
@@ -641,7 +789,19 @@ class AccessMenuEntryTests(unittest.TestCase):
         self.page.url = IDP
         self.result._access_menus = set()
         self.assertFalse(self.d._open_entry_from_access_menu(self.page, self.result))
-        self.assertEqual(self.page.evaluate.call_args_list[-1].args[0], self.d._INSTITUTION_ENTRY_JS)
+        # Looked for on the article (the entry, then the panel's "Check Access"), nothing on the school's page.
+        self.assertEqual([c.args[0] for c in self.page.evaluate.call_args_list[-2:]],
+                         [self.d._INSTITUTION_ENTRY_JS, self.d._MENU_CHECK_ACCESS_JS])
+
+    def test_the_panels_check_access_for_an_institutional_subscription_is_opened(self):
+        # APA PsycNET (2026-11-24): "Get Access" shows "... through your institutional subscription. CHECK ACCESS",
+        # a button that opens its sign-in page with the institutions' list.
+        self.check_access = {"label": "CHECK ACCESS", "href": "", "index": 4}
+        self.d._click_control = Mock(return_value=True)
+        self.assertTrue(self.d._open_entry_from_access_menu(self.page, self.result))
+        self.assertEqual(self.d._click_control.call_args.args[3], "access-menu entry: CHECK ACCESS")
+        self.assertEqual(self.result.events[-1], {**self.result.events[-1], "state": "sso_entry_clicked",
+                                                  "detail": "access-menu: CHECK ACCESS"})
 
 
 if __name__ == "__main__":

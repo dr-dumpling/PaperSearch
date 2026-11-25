@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "@jest/globals";
 import { downloadBatch } from "../../src/capabilities/download/batch/batch.js";
 import type { DownloadTier, DownloadTierContext, DownloadTierResult } from "../../src/capabilities/download/content/pdf/DownloadTier.js";
-import { NETWORK_POLL_MS, networkSigns } from "../../src/capabilities/download/batch/networkLoss.js";
+import { NETWORK_POLL_MS, SITE_AGAIN_MS, networkSigns } from "../../src/capabilities/download/batch/networkLoss.js";
 import type { SchoolBackend, SchoolBatchUpdate } from "../../src/infrastructure/school/index.js";
 
 /**
@@ -114,10 +114,40 @@ describe("a batch without network", () => {
     expect(schoolCalls).toBe(4);
   });
 
+  it("does a paper whose publisher's site did not answer once more after a short wait, whatever 失败后自动重试 says", async () => {
+    // Springer Publishing's and Cambridge's in the publisher sweep (Windows, 2026-11-24): the connection dropped once.
+    for (const mode of ["entitled_only", "per_item"] as const) {
+      const answers: DownloadTierResult[] = [
+        { status: "error", code: "publisher_unreachable", message: "出版社网站没有应答" }, OK];
+      const pauses: number[] = [];
+      const lines: string[] = [];
+      let schoolCalls = 0;
+      const tiers = (): DownloadTier[] => [
+        { id: "entitled_access", stage: "entitled_access", run: async () => answers[Math.min(schoolCalls++, answers.length - 1)] },
+      ];
+      const result = await downloadBatch({} as never, { items: [{ doi: "10.1891/site" }], savePath: root, mode },
+        undefined, (line) => lines.push(line), tiers, async (ms) => { pauses.push(ms); }, async () => true);
+      expect([mode, result.items[0].status, schoolCalls]).toEqual([mode, "ok", 2]);
+      expect(pauses).toContain(SITE_AGAIN_MS);
+      expect(lines).toContain(`[批量] 出版社网站没有应答（连接被断开或打开超时）：${SITE_AGAIN_MS / 1000} 秒后重下这一篇`);
+    }
+    // Still not answering after the wait: once only, its reason kept.
+    let calls = 0;
+    const result = await downloadBatch({} as never, { items: [{ doi: "10.1017/site" }], savePath: root, mode: "entitled_only" },
+      undefined, () => {}, () => [{ id: "entitled_access", stage: "entitled_access", run: async () => {
+        calls += 1;
+        return { status: "error", code: "publisher_unreachable", message: "出版社网站没有应答" };
+      } }], async () => {}, async () => true);
+    expect([calls, result.items[0].attempts.at(-1)?.code]).toEqual([2, "publisher_unreachable"]);
+  });
+
   it("tells the backend's word and a stage's unreachable host apart", () => {
     expect(networkSigns({ status: "error", attempts: [{ stage: "entitled_access", status: "error", code: "network_unavailable", message: "" }] })).toBe("lost");
     expect(networkSigns({ status: "ok", attempts: [], supplements: [{ label: "", status: "failed", reason: "network_unavailable" }] })).toBe("lost");
     expect(networkSigns({ status: "error", attempts: [{ stage: "fulltext", status: "error", message: "PubMed Central did not answer: fetch failed" }] })).toBe("suspect");
     expect(networkSigns({ status: "error", attempts: [{ stage: "unpaywall", status: "error", message: "HTTP 403" }] })).toBeUndefined();
+    expect(networkSigns({ status: "error", attempts: [{ stage: "entitled_access", status: "error", code: "publisher_unreachable", message: "" }] })).toBe("site");
+    // A supplementary file not answered is not worth the paper again.
+    expect(networkSigns({ status: "ok", attempts: [], supplements: [{ label: "", status: "failed", reason: "publisher_unreachable" }] })).toBeUndefined();
   });
 });

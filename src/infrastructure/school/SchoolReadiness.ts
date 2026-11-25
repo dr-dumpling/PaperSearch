@@ -104,6 +104,8 @@ export interface SchoolBatchSupport {
   progressHeld?: boolean;
   /** school_batch_progress declares ``held_wait`` (only the held publishers left, waiting for the user). */
   progressHeldWait?: boolean;
+  /** school_batch_progress declares ``later`` and ``switch_to`` (the papers held for a later try, the next school). */
+  progressLater?: boolean;
   /** school_batch_papers exists (the papers behind the window's 成功, 失败 and 剩余). */
   papersTool?: boolean;
   /** school_keep_session exists (a batch's wait keeps the publisher's session alive). */
@@ -187,6 +189,9 @@ export function selectSchoolBatchSupport(
       ? { progressHeld: true } : {}),
     ...(progress.length === 1 && Object.hasOwn(progress[0].inputSchema.properties ?? {}, "held_wait")
       ? { progressHeldWait: true } : {}),
+    ...(progress.length === 1 && ["later", "switch_to"].every((name) =>
+      Object.hasOwn(progress[0].inputSchema.properties ?? {}, name))
+      ? { progressLater: true } : {}),
     ...(papers.length === 1 && ["batch_id", "folder", "papers"].every((name) =>
       Object.hasOwn(papers[0].inputSchema.properties ?? {}, name)) ? { papersTool: true } : {}),
     ...(keep.length === 1 && acceptsDeclaredArguments(keep[0].inputSchema, {}) ? { keepSessionTool: true } : {}),

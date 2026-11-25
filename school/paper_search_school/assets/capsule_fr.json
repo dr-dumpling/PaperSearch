@@ -9,6 +9,7 @@
   "正文已保存": "texte enregistré",
   "没权限": "Pas d'accès",
   "暂不支持": "Non pris en charge",
+  "待适配": "À adapter",
   "原因不明": "Motif inconnu",
   "待核对": "À vérifier",
   "PDF 未下到": "Pas de PDF",
@@ -67,7 +68,7 @@
   "显示 key": "Afficher la clé",
   "正在测试…": "Test en cours…",
   "读取配置失败": "Réglages illisibles",
-  "返回进度 ›": "Retour au suivi ›",
+  "返回进度": "Retour au suivi",
   "去处理 ›": "Traiter ›",
   "正文": "Texte",
   "附录": "Annexes",
@@ -308,9 +309,6 @@
   "已在浏览器打开": "Navigateur ouvert",
   "只读到摘要": "seul le résumé est lu",
   "网页显示没有权限": "page sans accès",
-  "Markdown：借用其他网站的规则转换": "Markdown : règles d'autres sites",
-  "没有适用的规则": "aucune règle adaptée",
-  "提 issue 纳入已登记网站": "Ouvrez un ticket pour l'ajouter",
   "钉住": "Épingler",
   "取消钉住": "Désépingler",
   "已钉住，点一下取消": "Épinglé (clic : retirer)",
@@ -335,6 +333,9 @@
   "请先在终端运行 gh auth login 登录 GitHub": "Lancez d'abord gh auth login dans un terminal",
   "测试版": "Bêta",
   "马上生效": "Appliquer",
+  "失败后自动重试": "Réessai auto des échecs",
+  "原因不明的失败，最后再重试": "Cause inconnue : réessai à la fin",
+  "被网站拦截的，10 分钟后再重试": "Bloqué par le site : réessai dans 10 min",
   "开": "Activé",
   "关": "Désactivé",
   "立即按新上限继续下载": "Nouvelle limite appliquée",
@@ -456,7 +457,7 @@
   "内华达州": "Nevada",
   "内布拉斯加州": "Nebraska",
   "冰岛": "Islande",
-  "出版社原文": "Texte de l'éditeur",
+  "出版社原文": "Texte original",
   "加利福尼亚州": "Californie",
   "加拿大": "Canada",
   "加纳": "Ghana",
@@ -487,7 +488,7 @@
   "哥伦比亚特区": "District de Columbia",
   "哥斯达黎加": "Costa Rica",
   "国家未注明": "Pays non précisé",
-  "图片或表格有缺失就不生成，记为失败并说明原因，后续重试。": "Non créé s'il manque une figure ou un tableau ; échec noté, réessayé.",
+  "表格有缺失就不生成；图片没下到的在批量最后再取一次，仍缺就在原位置标明，清单里写明缺哪张图。": "Non créé s'il manque un tableau ; figures manquantes reprises en fin de lot, les absentes signalées et listées.",
   "土耳其": "Turquie",
   "坦桑尼亚": "Tanzanie",
   "埃及": "Égypte",
@@ -506,7 +507,7 @@
   "孟加拉国": "Bangladesh",
   "安哥拉": "Angola",
   "安圭拉": "Anguilla",
-  "完整才保存": "Complet ou rien",
+  "缺失会标明": "Lacunes notées",
   "宾夕法尼亚州": "Pennsylvanie",
   "密克罗尼西亚": "Micronésie",
   "密歇根州": "Michigan",
@@ -818,7 +819,8 @@
   "被网站拦截": "Bloqué par le site",
   "出版社网站出错": "Erreur du site éditeur",
   "达到每小时下载上限": "Limite horaire atteinte",
-  "网站没有学校登录": "Site sans accès école",
+  "网站不提供学校登录": "Pas de connexion école",
+  "网站没有 PDF": "Pas de PDF sur le site",
   "网站暂未适配": "Site pas encore adapté",
   "附录暂未适配": "Annexes non adaptées",
   "拿错 PDF": "Mauvais PDF",
@@ -826,7 +828,32 @@
   "扩展需要更新": "Extension obsolète",
   "需要 Pro": "Pro requis",
   "Pro 暂不可用": "Pro indisponible",
-  "PMC 没响应": "PMC ne répond pas"
+  "PMC 没响应": "PMC ne répond pas",
+  "补全": "Compléter",
+  "待补全": "Incomplet",
+  "Zone 名称": "Nom de zone",
+  "填入“我的API”中的“名称”": "Saisir le nom dans « Mes API »",
+  "验证码增强，支持图片、数字等": "CAPTCHA images et chiffres",
+  "请先填写 API Token": "Saisir le jeton API",
+  "请先填写 Zone 名称": "Saisir le nom de zone",
+  "Zone 名称格式不正确": "Nom de zone invalide",
+  "连接 Bright Data 超时": "Délai Bright Data dépassé",
+  "连不上 Bright Data，请检查网络或代理": "Bright Data inaccessible. Vérifiez le réseau ou le proxy.",
+  "Bright Data 拒绝了 Token（HTTP 401）": "Jeton Bright Data refusé (HTTP 401)",
+  "Bright Data 拒绝读取活动 zone（HTTP 403），请检查 Token 权限": "Liste des zones refusée (HTTP 403). Vérifiez les droits du jeton.",
+  "Bright Data 限流，请稍后重试": "Limite Bright Data. Réessayez plus tard.",
+  "Bright Data 未返回可读取的活动 zone 列表": "Liste des zones actives Bright Data illisible",
+  "Bright Data 活动 zone 列表格式有误": "Format de liste des zones actives Bright Data invalide",
+  "Token 有效，所填 Zone 已启用": "Jeton accepté. Zone active.",
+  "Token 有效，所填 Zone 不在活动列表中": "Jeton accepté. Zone absente de la liste active.",
+  "换学校再试": "Autre établissement",
+  "最后再试一次": "Dernier essai",
+  "登录后继续": "Après connexion",
+  "请先填写 ClientKey": "Saisissez d'abord le ClientKey",
+  "服务地址": "Adresse du service",
+  "服务地址要写成 https://…": "L'adresse du service doit être https://…",
+  "YesCaptcha 拒绝了 ClientKey，或连不上它的服务": "YesCaptcha a refusé le ClientKey, ou il est injoignable",
+  "请先填写服务地址": "Indiquez l'adresse"
  },
  "patterns": [
   [
@@ -982,8 +1009,8 @@
    "Article $1/$2 : accès établissement"
   ],
   [
-   "^这篇文章只在 (.+) 平台提供，暂不支持，当前路径已停止$",
-   "Uniquement sur $1, non pris en charge ; voie arrêtée"
+   "^这篇文章只在 (.+) 平台提供，PaperSearch 还没有这个平台的规则，当前路径已停止$",
+   "Uniquement sur $1, que PaperSearch ne gère pas encore ; voie arrêtée"
   ],
   [
    "^被拒绝：key 不对，或已失效（(.+)）$",
@@ -1048,6 +1075,10 @@
   [
    "^剩余 (\\d+) 篇$",
    "Restants $1"
+  ],
+  [
+   "^重试 (\\d+) 篇$",
+   "Réessayer $1"
   ],
   [
    "^第 (\\d+) 篇$",
@@ -1146,20 +1177,8 @@
    "$1 en pause reprennent ensuite"
   ],
   [
-   "^(\\d+) 个网站暂未正式支持 Markdown$",
-   "$1 sites pas encore pris en charge pour Markdown"
-  ],
-  [
    "^(.+) 暂未正式支持 Markdown$",
    "$1 pas encore pris en charge pour Markdown"
-  ],
-  [
-   "^已尝试转换：(\\d+) 篇完整已保存，(\\d+) 篇不完整未保存，(\\d+) 篇未再尝试$",
-   "Essayés : $1 complets, enregistrés ; $2 incomplets, non conservés ; $3 non réessayés"
-  ],
-  [
-   "^已尝试转换：(\\d+) 篇完整已保存，(\\d+) 篇不完整未保存$",
-   "Essayés : $1 complets, enregistrés ; $2 incomplets, non conservés"
   ],
   [
    "^参考文献少 (\\d+) 条$",
@@ -1194,32 +1213,8 @@
    "Page du ticket non ouverte : $1"
   ],
   [
-   "^采用 (.+) 规则$",
-   "Règles $1"
-  ],
-  [
    "^(.+) 按 (.+) 的规则转换$",
    "$1 converti avec les règles de $2"
-  ],
-  [
-   "^(\\d+) 个网站$",
-   "$1 sites"
-  ],
-  [
-   "^(.+) 规则$",
-   "Règles $1"
-  ],
-  [
-   "^完整已保存 (\\d+) 篇$",
-   "$1 complets, enregistrés"
-  ],
-  [
-   "^不完整未保存 (\\d+) 篇$",
-   "$1 incomplets, non conservés"
-  ],
-  [
-   "^未再尝试 (\\d+) 篇$",
-   "$1 non réessayés"
   ],
   [
    "^正在下载 ([\\d.]+) / ([\\d.]+) MB$",
@@ -1304,6 +1299,34 @@
   [
    "^(\\d+) 所学校都没有权限$",
    "$1 établissements sans accès"
+  ],
+  [
+   "^被网站拦截，(\\d{1,2}:\\d{2}) 再试暂停的 (\\d+) 篇$",
+   "Bloqué par le site ; $2 repris à $1"
+  ],
+  [
+   "^Bright Data 返回 HTTP (\\d+)，未能校验 Token$",
+   "Bright Data a renvoyé HTTP $1. Échec de la validation du jeton."
+  ],
+  [
+   "^成功 (\\d+)$",
+   "Réussis $1"
+  ],
+  [
+   "^失败 (\\d+)$",
+   "Échecs $1"
+  ],
+  [
+   "^(\\d{1,2}:\\d{2}) 再试$",
+   "Nouvel essai à $1"
+  ],
+  [
+   "^换(.+)再试$",
+   "Nouvel essai avec $1"
+  ],
+  [
+   "^ClientKey 有效，余额 ([-0-9.,]+) 点$",
+   "ClientKey valide ; solde : $1 points"
   ]
  ]
 }

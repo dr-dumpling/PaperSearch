@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { latestPapers, planResume } from "../../src/capabilities/download/batch/resume.js";
+import { setPaperSearchVersion } from "../../src/infrastructure/runlog/RunLedger.js";
 import { DownloadBatchSchema } from "../../src/capabilities/download/schemas.js";
 import { useMarkdownPro } from "../../src/capabilities/download/content/markdown/pro.js";
 import { fakeMarkdownPro } from "../helpers/fakeMarkdownPro.js";
@@ -35,11 +36,58 @@ describe("going on with a batch", () => {
         supplements: [saved("g1"), { status: "failed", label: "S2", reason: "http_404" }] },
     ]);
     expect(planResume("latest", env())).toEqual({
-      runId: "20261115-143144-1a4de8", folder: "/out", content: "both", fulltext: false, complete: 3,
+      // G's second file answered 404: the site does not have it, it is not asked for again (2026-11-24).
+      runId: "20261115-143144-1a4de8", folder: "/out", content: "both", fulltext: false, complete: 4,
       retry: [{ doi: "10.1126/b", paperId: "10.1126/b" }], markdown: [],
       files: [{ doi: "10.1126/c", paperId: "10.1126/c", mainPath: "/out/C.pdf" },
-        { doi: "10.1126/d", paperId: "10.1126/d", mainPath: "/out/D.pdf" },
-        { doi: "10.1126/g", paperId: "10.1126/g", mainPath: "/out/G/G.pdf" }],
+        { doi: "10.1126/d", paperId: "10.1126/d", mainPath: "/out/D.pdf" }],
+    });
+  });
+
+  // Papers another try would end the same are left (user, 2026-11-24, after Nature Digest's natureasia.com).
+  describe("papers another try would end the same", () => {
+    const failedWith = (index: number, code: string) => ({ index, doi: `10.1/${code}`, paperId: `10.1/${code}`, status: "error",
+      stages: [{ stage: "entitled_access", status: "error", code }] });
+    const papers = [failedWith(1, "no_institution_entry"), failedWith(2, "doi_not_registered"), failedWith(3, "entitlement_missing"),
+      failedWith(4, "institution_federation_unavailable"), failedWith(5, "generic_institution_entry_missing"),
+      failedWith(6, "unsupported_platform"), failedWith(7, "login_paused"), failedWith(8, "download_failed"),
+      failedWith(9, "access_blocked"), failedWith(10, "pdf_not_offered")];
+    const current = "9.9.9";
+    beforeEach(() => setPaperSearchVersion(current));
+    afterEach(() => setPaperSearchVersion(""));
+    const doisOf = (plan: unknown) => ((plan as { retry: Array<{ doi: string }> }).retry).map((item) => item.doi.slice(5));
+
+    it("leaves those whose site offers no school login or no PDF, no access, 待适配 or a DOI never registered", () => {
+      run("20261124-090733-78336c", { savePath: "/out", content: "main", paperSearchVersion: current }, papers);
+      const plan = planResume("latest", env());
+      expect(doisOf(plan)).toEqual(["login_paused", "download_failed", "access_blocked"]);
+      expect(plan).toMatchObject({ notRetried: { 网站不提供学校登录: 1, "网站没有 PDF": 1, "DOI 从没登记": 1, 没权限: 2, 待适配: 2 }, complete: 0 });
+    });
+
+    it("downloads again those without access when another saved school is named for this run", () => {
+      run("20261124-090733-78336c", { savePath: "/out", content: "main", school: "红木兰大学", paperSearchVersion: current }, papers);
+      expect(doisOf(planResume("latest", env(), { school: "红木兰大学" }))).not.toContain("entitlement_missing");
+      const plan = planResume("latest", env(), { school: "青木兰大学" });
+      expect(doisOf(plan)).toEqual(["entitlement_missing", "institution_federation_unavailable", "login_paused", "download_failed",
+        "access_blocked"]);
+      expect(plan).toMatchObject({ notRetried: { 网站不提供学校登录: 1, "网站没有 PDF": 1, "DOI 从没登记": 1, 待适配: 2 } });
+    });
+
+    it("downloads again those 待适配 once PaperSearch has been updated since, or by a run that did not say its version", () => {
+      run("20261124-090733-78336c", { savePath: "/out", content: "main", paperSearchVersion: "0.0.1" }, papers);
+      expect(doisOf(planResume("latest", env()))).toEqual(["generic_institution_entry_missing", "unsupported_platform",
+        "login_paused", "download_failed", "access_blocked"]);
+      rmSync(join(root, "20261124-090733-78336c"), { recursive: true, force: true });
+      run("20261124-090733-78336c", { savePath: "/out", content: "main" }, papers);
+      expect(doisOf(planResume("latest", env()))).toContain("unsupported_platform");
+    });
+
+    it("does not ask again for a supplementary file its site answered 404 for", () => {
+      run("20261124-090733-78336c", { savePath: "/out", content: "both", paperSearchVersion: current }, [
+        { index: 1, doi: "10.1/a", paperId: "10.1/a", status: "ok", path: "/out/A.pdf",
+          supplements: [saved("a1"), { status: "failed", label: "S2", reason: "http_404" }] },
+      ]);
+      expect(planResume("latest", env())).toMatchObject({ files: [], complete: 1 });
     });
   });
 

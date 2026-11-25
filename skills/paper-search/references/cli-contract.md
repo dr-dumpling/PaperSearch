@@ -1,60 +1,60 @@
-# 命令约定
+# Command contract
 
-这里记录本 Skill 可以依赖的稳定命令。不要写这里和当前命令都没有的命令、参数或默认值。
+This file records the stable commands this Skill can rely on. Do not write commands, parameters or defaults that are neither here nor in the current command.
 
-## 入口
+## Entry points
 
-- `paper-search` 是主命令。
-- `paper-search --version`、`paper-search -v`、`paper-search version` 显示已安装的版本。
-- `paper-search --help`、`paper-search help` 显示用法。
-- `paper-search tools --pretty` 列出 `run` 可直接调用的工具名和参数结构。
-- 私有的 API key、email、token 通过 `paper-search setup`、`paper-search config`、`.env` 或 Shell 环境变量配置，不写进 Skill 文件。
+- `paper-search` is the main command.
+- `paper-search --version`, `paper-search -v`, `paper-search version` show the installed version.
+- `paper-search --help`, `paper-search help` show usage.
+- `paper-search tools --pretty` lists the tool names and parameter schemas that `run` can call directly.
+- Private API keys, emails and tokens are configured through `paper-search setup`, `paper-search config`, `.env` or shell environment variables, never written into Skill files.
 
-## 顶层命令
+## Top-level commands
 
 - `paper-search search <query> [--platform NAME] [--sources CSV] [--max-results N] [--year YEAR] [--pretty]`
 - `paper-search run <tool-name> --arg key=value --json-args '{"key":"value"}' [--pretty]`
-  - Windows PowerShell 会去掉传给程序的参数里的双引号，直接写 JSON 会报 `is not valid JSON`：把 JSON 写进 UTF-8 文件，传 `--json-args '@<文件路径>'`（`@` 开头要加引号）。不要另写脚本绕过。
+  - Windows PowerShell strips the double quotes from arguments passed to programs, so JSON written directly reports `is not valid JSON`: write the JSON to a UTF-8 file and pass `--json-args '@<file path>'` (quote it, since it starts with `@`). Do not write another script to work around it.
 - `paper-search download <paper-id> --platform NAME [--save-path PATH] [--pretty]`
 - `paper-search journal-metrics <journal...> [--file PATH] [--include-raw] [--pretty]`
-- `paper-search metrics ...` 是 `journal-metrics` 的别名。
+- `paper-search metrics ...` is an alias of `journal-metrics`.
 - `paper-search status [--validate] [--pretty]`
 - `paper-search doctor [--validate] [--format text] [--pretty]`
 - `paper-search failures [--run ID|--since YYYY-MM-DD|--runs N] [--doi DOI] [--export file.zip] [--all] [--format text] [--pretty]`
-- `paper-search update check [--format text] [--pretty]`（只检查，不安装）
+- `paper-search update check [--format text] [--pretty]` (checks only, does not install)
 - `paper-search school install [--browser chrome|ego] [--yes] [--force] [--skip-school] [--format text]`
 - `paper-search school status [--format text] [--pretty]`
 - `paper-search school update [--force] [--format text] [--pretty]`
 - `paper-search school login --doi <DOI> [--max-wait <seconds>] [--pretty]`
 - `paper-search school uninstall [--yes] [--remove-data] [--format text] [--pretty]`
-- `paper-search uninstall [--dry-run] [--yes] [--format text]`：卸载 PaperSearch 的数据、配置和各工具里的 Skill；用法见 `management-layer.md` 的“卸载”
+- `paper-search uninstall [--dry-run] [--yes] [--format text]`: uninstalls PaperSearch's data, configuration and the Skill in each tool; usage in "Uninstall" in `management-layer.md`
 - `paper-search smoke --mock [--pretty]`
 - `paper-search smoke --live [--pretty]`
 - `paper-search skills status [--targets CSV] [--pretty]`
 - `paper-search skills diff [--targets CSV] [--format text] [--pretty]`
 - `paper-search skills update [--targets CSV] [--pretty]`
 - `paper-search setup [--all] [--keys CSV] [--install-skills CSV] [--skip-skills]`
-- `paper-search config test [KEY] [--stdin] [--format text]`：用一次小请求测试 key 能不能用（有效、被拒绝、限流、连不上）；不带 KEY 时测试所有已填的 key。
-- `paper-search settings [about|download|wait|keys|<KEY>] [--format text]`：装了学校订阅下载时打开设置窗口（下载文件夹、等待和提醒、API key；about 是版本和更新）；没装或没有图形界面时返回错误，并给出终端命令。
+- `paper-search config test [KEY] [--stdin] [--format text]`: tests with one small request whether a key works (valid, rejected, rate-limited, unreachable); without KEY, tests all keys entered.
+- `paper-search settings [about|download|wait|keys|<KEY>] [--format text]`: with school subscription downloads installed, opens the settings window (download folder, waits and alerts, API keys; about is the version and updates); when it is not installed or there is no graphical interface, returns an error with the terminal command.
 - `paper-search tools [--pretty]`
 - `paper-search diagnostics [--pretty]`
-- `paper-search requirements [--pretty]` 是 `diagnostics` 的别名。
+- `paper-search requirements [--pretty]` is an alias of `diagnostics`.
 - `paper-search config init [--pretty]`
 - `paper-search config path [--pretty]`
 - `paper-search config keys [--pretty]`
 - `paper-search config list [--all] [--pretty]`
-- `paper-search config doctor [--pretty]` 是兼容用的配置摘要；完整健康报告用顶层的 `doctor`。
+- `paper-search config doctor [--pretty]` is a configuration summary kept for compatibility; for the full health report use the top-level `doctor`.
 - `paper-search config get KEY [--raw] [--pretty]`
 - `paper-search config set KEY VALUE [--pretty]`
 - `paper-search config unset KEY [--pretty]`
-- `paper-search config delete KEY [--pretty]` 和 `paper-search config remove KEY [--pretty]` 是 `unset` 的别名。
+- `paper-search config delete KEY [--pretty]` and `paper-search config remove KEY [--pretty]` are aliases of `unset`.
 - `paper-search config import-env [file] [--pretty]`
 
-机构下载后端自己的命令 `paper-search-school`（`issues`、`progress`、`preview`、`entitlements`、`setup`、`config`）见 `browser-download.md` 和 `school-setup.md`；它通常不在 PATH 上，用 `paper-search school status --format text` 显示的后端完整路径调用。
+The school download backend's own command `paper-search-school` (`issues`, `progress`, `preview`, `entitlements`, `setup`, `config`): see `browser-download.md` and `school-setup.md`; it is usually not on PATH; call it by the full backend path that `paper-search school status --format text` shows.
 
-## 可直接调用的工具
+## Tools for direct calls
 
-下面的名字可以用于 `paper-search run <tool-name>`：
+The names below can be used with `paper-search run <tool-name>`:
 
 - `search_papers`
 - `search_arxiv`
@@ -93,67 +93,67 @@
 - `search_openreview`
 - `search_springerlink`
 
-## 输出格式
+## Output formats
 
-- 默认输出 JSON，供 agent 和脚本读取。
-- `--pretty` 把 JSON 排版输出。
-- `--format text` 用于顶层的 `doctor`、`failures`、`school` 和 `skills diff`，在用户明确需要可读报告时使用。
-- `--include-text` 在支持的命令里把工具的原始返回文字保留在 JSON 里。
-- 做判断时解析 JSON；只有用户需要可读报告时才用文本格式。
+- JSON by default, for agents and scripts.
+- `--pretty` prints the JSON formatted.
+- `--format text` is for the top-level `doctor`, `failures`, `school` and `skills diff`, used when the user clearly needs a readable report.
+- `--include-text` keeps the tool's raw text in the JSON, in the commands that support it.
+- Parse the JSON for decisions; use the text format only when the user needs a readable report.
 
-## 检索命令
+## Search commands
 
-- `paper-search search` 是集成的元数据检索入口。
-- `--platform NAME` 只查一个来源，`--sources a,b,c` 明确指定多个来源。
-- `--sources no-key`（别名 `free`、`no_key`）展开为 Crossref、PubMed、Europe PMC、arXiv、OpenReview 这一组；不调用 Google Scholar，普通元数据检索不需要用户的 API key。
-- `search_google_scholar` 仍是需要明确指定的、尽力而为的网页来源：单一低频客户端（默认 `SCHOLAR_RATE_LIMIT_RPS=0.5`），有限次的临时重试，进程内缓存一小时，能识别验证页；遇到 CAPTCHA 或 `/sorry` 页面时报告，不盲目重试。
-- `--platform all` 或 `--sources all` 只在查全比查准更重要时使用。
-- `search_papers` 是集成 `search` 命令背后的工具。
-- `search_semantic_snippets` 的数量参数是 `limit`，不是 `maxResults`；它查的是正文、题名、摘要片段，不是完整全文。
-- `search_unpaywall` 按 DOI 查开放获取元数据，最多返回一条。
-- `search_scihub` 按 DOI 或网址定向查找，不是元数据检索来源。
-- `CORE_MAX_RESULTS_CAP` 设定 CORE 的结果上限，默认 `100`，最大 `500`；其他来源保留各自的上限。
+- `paper-search search` is the integrated metadata search entry.
+- `--platform NAME` queries one source; `--sources a,b,c` names several sources.
+- `--sources no-key` (aliases `free`, `no_key`) expands to Crossref, PubMed, Europe PMC, arXiv and OpenReview; it does not call Google Scholar, and plain metadata search needs no API key from the user.
+- `search_google_scholar` is still a best-effort web source that must be named explicitly: a single low-frequency client (default `SCHOLAR_RATE_LIMIT_RPS=0.5`), a limited number of transient retries, an in-process cache for one hour, and it recognizes verification pages; on a CAPTCHA or `/sorry` page it reports, and never retries blindly.
+- `--platform all` or `--sources all` only when recall matters more than precision.
+- `search_papers` is the tool behind the integrated `search` command.
+- The count parameter of `search_semantic_snippets` is `limit`, not `maxResults`; it searches body, title and abstract snippets, not complete full texts.
+- `search_unpaywall` looks up open-access metadata by DOI and returns at most one record.
+- `search_scihub` looks up by DOI or URL; it is not a metadata search source.
+- `CORE_MAX_RESULTS_CAP` sets CORE's result cap, default `100`, maximum `500`; other sources keep their own caps.
 
-## 施引扩展
+## Citation expansion
 
-`get_paper_citations` 查引用了目标论文的文献，`get_paper_references` 查目标论文的参考文献。两个都返回全部结果，没有 `limit`，每次结果只来自一个来源，`provider` 写明是哪个。
+`get_paper_citations` finds the papers citing the target paper; `get_paper_references` finds the target paper's references. Both return all results and have no `limit`; each result comes from one source only, named in `provider`.
 
-- 引文：OpenAlex 的全部施引文献，新的在前，结果带 `citedByCount`（OpenAlex 记录的被引次数）。不配 `OPENALEX_API_KEY` 时最多列出最新的 1 万条，配了能全部列出。OpenAlex 没有这篇论文时才用 Semantic Scholar（最多 1000 条），`notes` 会说明。
-- 参考文献：出版商在 Crossref 登记了每条参考文献的题名或引文时（如 Elsevier、Springer Nature、Frontiers、Wolters Kluwer），用这份清单，保持原文顺序，能看出原文编号时每条带 `number`，结果带 `numberedTo` 和 `missing`（出版商漏登记的编号）。出版商只登记 DOI 或没登记时（如 Wiley、NEJM），用 OpenAlex 的清单，新的在前。两者都没有时用 Semantic Scholar。`notes` 说明换来源的原因。
+- Citations: all of OpenAlex's citing papers, newest first, with `citedByCount` (the citation count OpenAlex records). Without `OPENALEX_API_KEY`, at most the newest 10,000 are listed; with it, all. Only when OpenAlex lacks this paper is Semantic Scholar used (at most 1,000), and `notes` says so.
+- References: when the publisher registered each reference's title or citation in Crossref (such as Elsevier, Springer Nature, Frontiers, Wolters Kluwer), this list is used, in the original order; when the original numbering can be seen, each item has `number`, and the result has `numberedTo` and `missing` (numbers the publisher left out). When the publisher registered only DOIs or nothing (such as Wiley, NEJM), OpenAlex's list is used, newest first. When neither has them, Semantic Scholar is used. `notes` explains why the source changed.
 
-- `paperId`、`doi`、`arxivId` 至少给一个。
-- 优先级：`paperId`，然后 `doi`，然后 `arxivId`。
-- `doi` 转成 `DOI:<doi>`，`arxivId` 转成 `ARXIV:<id>`。
+- Give at least one of `paperId`, `doi`, `arxivId`.
+- Priority: `paperId`, then `doi`, then `arxivId`.
+- `doi` becomes `DOI:<doi>`, `arxivId` becomes `ARXIV:<id>`.
 
 ```bash
 paper-search run get_paper_citations --arg doi="10.1038/nature12373" --pretty
 paper-search run get_paper_references --arg doi="10.1038/nature12373" --pretty
 ```
 
-## 下载命令
+## Download commands
 
-`download_paper` 和 `download_with_fallback` 用同一个下载漏斗；来源自带的下载属于 `primary` 层，最多试一次。
+`download_paper` and `download_with_fallback` use the same download funnel; the source's own download belongs to the `primary` layer and is tried at most once.
 
-固定顺序是 `primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access -> preprint`。Sci-Hub 成功就不再调用机构下载后端；Sci-Hub 失败或被跳过时进入可选的机构下载。`publisher_api` 在 Sci-Hub 之前，用用户自己的 `ELSEVIER_API_KEY` / `SPRINGER_API_KEY`；Springer 的结果是 JATS XML，这时顶层结果带 `format: "jats-xml"`。
+The fixed order is `primary -> direct_pdf_url -> repositories -> unpaywall -> publisher_api -> scihub -> entitled_access -> preprint`. When Sci-Hub succeeds, the school download backend is not called; when Sci-Hub fails or is skipped, it goes on to the optional school download. `publisher_api` comes before Sci-Hub and uses the user's own `ELSEVIER_API_KEY` / `SPRINGER_API_KEY`; Springer's result is JATS XML, and then the top-level result has `format: "jats-xml"`.
 
-机构下载后端（学校订阅下载）是唯一可选的授权下载后端，默认关闭，只有 `PAPER_SEARCH_SCHOOL_ENABLED` 恰好是 `true` 时启用。两个下载工具都有 `useEntitledAccess`，默认 `true`；传 `false` 关掉这一层，传 `true` 不能绕过全局关闭。
+The school download backend (school subscription downloads) is the only optional authorized download backend; it is off by default, enabled only when `PAPER_SEARCH_SCHOOL_ENABLED` is exactly `true`. Both download tools have `useEntitledAccess`, default `true`; `false` turns off this layer; `true` cannot bypass the global switch.
 
 ```json
 { "useEntitledAccess": false }
 ```
 
-Sci-Hub 兜底默认开启。用 `download_with_fallback` 时，跳过这一层、继续到可选的机构下载：
+The Sci-Hub fallback is on by default. With `download_with_fallback`, to skip this layer and go on to the optional school download:
 
 ```json
 { "useSciHub": false }
 ```
 
-常用写法：
+Common usage:
 
 ```bash
-# 安装并启用学校订阅下载（安装前会询问）：
+# Install and enable school subscription downloads (asks before installing):
 paper-search school install
-# 或者指定别处安装的后端：
+# Or point at a backend installed elsewhere:
 paper-search config set PAPER_SEARCH_SCHOOL_EXECUTABLE /absolute/path/to/paper-search-school
 paper-search config set PAPER_SEARCH_SCHOOL_ENABLED true
 paper-search doctor --pretty
@@ -161,39 +161,39 @@ paper-search download "<DOI>" --platform crossref
 paper-search run download_with_fallback --json-args '{"source":"crossref","paperId":"<DOI>","doi":"<DOI>","title":"<paper title>","useSciHub":false,"useEntitledAccess":true}'
 ```
 
-一组论文（几十篇以上，篇数不限）用一次按顺序执行的 `download_batch`，不要循环调用单篇下载：
+For a set of papers (dozens or more, no upper limit), use one `download_batch`, which runs them in order; do not loop over single downloads:
 
-- `"mode"`：默认 `"two_phase"`，每篇先试开放渠道，没拿到的随即走机构下载（一次一篇），两路同时进行，浏览器和学校登录在开始后几秒就出现；进度窗口按整批计数（k / N），装了学校订阅下载时，5 篇以上的批量从开头就显示；`"per_item"` 每篇走完整个漏斗；`"entitled_only"` 只走机构：跳过开放渠道，每篇直接走机构下载；用户要只走机构下载或测试学校这条路时用。`resume`（接着下）不写 `mode` 时沿用这一批原来的模式。
-- 不传 `savePath` 时存到 `DEFAULT_DOWNLOAD_PATH`；整批或每篇都可以带自己的 `savePath`，用户指定了别的文件夹时才传。
-- `"folderName"`：这一批自己的文件夹名，按内容起（某期刊的文章用与每篇文件夹开头相同的期刊缩写加年份，如 `"Osteoarthritis Cartilage_2024-2026"`），建在下载文件夹（或 `savePath`）下；每篇的文件夹直接放在里面，旁边是 `_run/`（下载参数、进度记录、每次运行的明细，以及每篇结果的清单 `article_index.csv`）。“接着下”补进同一个文件夹。不传时新建 `<年月日-时分秒>_PaperSearchDownload`，里面的结构相同。
-- `"content"`：两样内容各自单独取，可以都要，用逗号连起来写：`"pdf"`（正文 PDF，默认）、`"supplements"`（本文的补充材料，只写它时不走正文的各层），如 `"pdf,supplements"`。批量结果的 `content` 按同样的写法回显。补充材料存在 `<savePath>/<期刊缩写_年月_标题>/supplements/`（同一次下载里同名的另一篇加 `_2`）（只下正文时正文直接放在 `<savePath>` 里），清单与浏览器诊断在结果 `runLog` 所指运行记录目录的 `diagnostics/`（都下到时在 `records/`），结果的 `supplements` 列出每个文件的状态；只经机构下载后端获取，哪些出版社有规则见 `publisher-support.md`。
-- 每次下载都会写一份本地运行记录，结果里的 `runLog` 是它的目录（`run.json`；`items.jsonl`，含每一层的耗时、代码，以及后端的页面事件和截图；`timeline.log`）。排查失败时读它，不要猜。
-- 批量结果只给汇总，不列每一篇：`status`、`total`、`succeeded`、`failed`、`failureClasses`（按类别的失败数）、`supplementsMissing`（PDF 下到了、补充材料没拿全的篇数）、`folder`（批量文件夹）和 `index`（每篇结果的清单 `_run/article_index.csv`）。每篇的 PDF、补充材料 和失败原因看 `index`，失败按类别说明用 `paper-search failures --format text`，各次尝试看 `runLog`。
+- `"mode"`: default `"two_phase"`: each paper tries the open channels first, and those not found go straight on to the school download (one at a time); the two run side by side, and the browser and school login appear within seconds of the start; the progress window counts the whole batch (k / N), and with school subscription downloads installed, batches of 5 or more papers show it from the start; `"per_item"` takes each paper through the whole funnel; `"entitled_only"` is school only: it skips the open channels and each paper goes straight to the school download; use it when the user wants only the school download, or to test the school route. `resume` ("go on", 接着下) without `mode` keeps the batch's original mode.
+- Without `savePath`, files go to `DEFAULT_DOWNLOAD_PATH`; the whole batch or each paper can have its own `savePath`; pass it only when the user names another folder.
+- `"folderName"`: this batch's own folder name, named for its contents (a journal's papers: the same journal abbreviation that begins each paper's folder, plus years, such as `"Osteoarthritis Cartilage_2024-2026"`), created in the download folder (or `savePath`); each paper's folder goes straight into it, beside `_run/` (the download arguments, the progress log, each run's details, and the list of every paper's result, `article_index.csv`). "go on" (接着下) fills in the same folder. Without it, a new `<YYYYMMDD-HHmmss>_PaperSearchDownload` is created, with the same layout.
+- `"content"`: the two contents are each fetched on their own, and both can be wanted, joined with commas: `"pdf"` (the full-text PDF, default), `"supplements"` (this article's supplementary files; alone, it skips the full-text layers), such as `"pdf,supplements"`. The batch result's `content` echoes it in the same form. Supplementary files are saved in `<savePath>/<journal abbreviation_year-month_title>/supplements/` (another paper with the same name in the same download gets `_2`) (when only the full text was downloaded, it goes straight into `<savePath>`); the list and browser diagnostics are in `diagnostics/` of the run-log directory that the result's `runLog` points to (`records/` when everything was downloaded), and the result's `supplements` gives each file's status; they are fetched only through the school download backend; which publishers have rules: see `publisher-support.md`.
+- Each download writes a local run log; the result's `runLog` is its directory (`run.json`; `items.jsonl`, with each layer's timing and code, and the backend's page events and screenshots; `timeline.log`). Read it when investigating failures; do not guess.
+- The batch result gives only a summary, not each paper: `status`, `total`, `succeeded`, `failed`, `failureClasses` (failures per class), `supplementsMissing` (papers with the PDF but with incomplete supplementary files), `folder` (the batch folder) and `index` (the list of each paper's result, `_run/article_index.csv`). For each paper's PDF, supplementary files and failure reason, see `index`; to explain failures by class, use `paper-search failures --format text`; each attempt is in `runLog`.
 
 ```bash
-paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>","title":"<title 1>"},{"doi":"<DOI-2>"}],"folderName":"<批量文件夹名>","useSciHub":false}'
+paper-search run download_batch --json-args '{"items":[{"doi":"<DOI-1>","title":"<title 1>"},{"doi":"<DOI-2>"}],"folderName":"<batch folder name>","useSciHub":false}'
 ```
 
-必须由外部循环逐篇调用 `download_with_fallback` 时，传 `"batch":{"id":"<同一个 id>","index":k,"total":N,"done":…,"succeeded":…,"failed":…}`，可以得到同样的进度窗口。
+When an outside loop must call `download_with_fallback` paper by paper, pass `"batch":{"id":"<the same id>","index":k,"total":N,"done":…,"succeeded":…,"failed":…}` to get the same progress window.
 
-命令行参数用短横线写法（kebab-case），JSON 参数用工具定义的驼峰写法（camelCase）。`--platform` / `source` 选的是论文元数据来源，不是后端。`useSciHub`、`doi`、`title` 只在 `download_with_fallback` 上有，`download_paper` 和它的简写 `download` 没有。后端路径是可选配置，既不启用机构下载后端，也不改变它的配置；PaperSearch 用 `run` 启动配置的后端（`PAPER_SEARCH_SCHOOL_EXECUTABLE`），用户不需要每次下载前自己启动服务。
+Command-line arguments use kebab-case; JSON arguments use the camelCase of the tool definitions. `--platform` / `source` choose the paper's metadata source, not the backend. `useSciHub`, `doi` and `title` exist only on `download_with_fallback`, not on `download_paper` and its short form `download`. The backend path is optional configuration; it neither enables the school download backend nor changes its configuration; PaperSearch starts the configured backend (`PAPER_SEARCH_SCHOOL_EXECUTABLE`) with `run`; the user does not need to start a service before each download.
 
-支持的进度通知绑定到当前请求，以固定的文字写到 stderr；stdout 默认只有最终的 JSON，不是逐行进度流。不发通知的旧后端不提供推测的阶段。已保存的 PDF 仍要核对身份；带 `review.path` 的错误不是成功的下载。手动登录、绑定请求的截图预览和补充材料的边界见 `browser-download.md`。
+Supported progress notices are bound to the current request and written to stderr as fixed text; by default stdout has only the final JSON, not a line-by-line progress stream. Old backends that send no notices give no guessed stages. A saved PDF still needs its identity checked; an error with `review.path` is not a successful download. Manual sign-in, screenshot previews bound to the request, and the boundaries for supplementary files are in `browser-download.md`.
 
-机构下载后端只用 `paper-search school install` / `status` / `update` / `uninstall` 安装、查看、更新和卸载；不要编造别的安装命令、账号登录流程或后端选择方式。后端自带 MCP stdio 服务，PaperSearch 不需要另装 MCP、全局 MCP 配置、常驻进程或端口。
+The school download backend is installed, checked, updated and uninstalled only with `paper-search school install` / `status` / `update` / `uninstall`; do not make up other install commands, account sign-in flows or ways of choosing the backend. The backend has its own MCP stdio service; PaperSearch needs no separate MCP, global MCP configuration, resident process or port.
 
-命令里别处用到的出版社、数据库 key 不能当作本机的授权 PDF 后端：`ELSEVIER_API_KEY` 和 `SPRINGER_API_KEY` 另外用于 `publisher_api` 层（直接经 HTTPS 调全文接口，权限跟随用户的网络或 key），经浏览器的机构访问只由可选的机构下载后端负责。机构下载适配固定 `strategy=legal_only`（后端声明支持时用 `institutional_only`）、`scihub_enabled=false`、`use_tor=false`，但 `legal_only` 不能证明结果来自学校授权。除机构下载后端外，没有浏览器、WebVPN 或 EZProxy 兜底。
+Publisher and database keys used elsewhere in the command cannot serve as a local authorized PDF backend: `ELSEVIER_API_KEY` and `SPRINGER_API_KEY` are also used for the `publisher_api` layer (calling full-text APIs directly over HTTPS, with access following the user's network or key); browser-based institutional access is handled only by the optional school download backend. The school download adapter fixes `strategy=legal_only` (`institutional_only` when the backend declares support for it), `scihub_enabled=false` and `use_tor=false`, but `legal_only` cannot prove that the result came from school authorization. Apart from the school download backend, there is no browser, WebVPN or EZProxy fallback.
 
-## 配置与密钥边界
+## Configuration and key boundaries
 
-配置来源按优先级：
+Configuration sources, by priority:
 
-1. Shell 环境变量
-2. 当前目录的 `.env`
-3. 用户配置文件 `~/.config/paper-search-cli/config.json`
-4. 免费来源的内置默认值
+1. Shell environment variables
+2. `.env` in the current directory
+3. The user configuration file `~/.config/paper-search-cli/config.json`
+4. Built-in defaults for free sources
 
-常用配置命令：
+Common configuration commands:
 
 ```bash
 paper-search setup
@@ -206,14 +206,14 @@ paper-search config list --pretty
 paper-search doctor --pretty
 ```
 
-`doctor` 和 `config` 的输出会把已配置的密钥脱敏。
+The output of `doctor` and `config` masks configured keys.
 
-`PAPER_SEARCH_SCHOOL_ENABLED` 是不保密的严格开关：只有字符串 `true` 启用；`TRUE`、`1`、`yes` 或前后带空格的写法都算关闭。
+`PAPER_SEARCH_SCHOOL_ENABLED` is a strict switch and not a secret: only the string `true` enables it; `TRUE`, `1`, `yes` or values with surrounding spaces all count as off.
 
-用户的学校用 `paper-search-school setup --institution "<学校>"` 配置，数据目录要和下载用的相同，见 `school-setup.md`。学校只写用户自己告诉你的那一所；`doctor=available` 不能说成学校会话有效或对某篇有权限的证明。
+The user's school is configured with `paper-search-school setup --institution "<school>"`, with the same data directory as the downloads; see `school-setup.md`. Write only the school the user told you; `doctor=available` cannot be presented as proof that the school session is valid or that there is access to any paper.
 
 ### arXiv
 
-`search_arxiv`：`query` 必填，可选 `maxResults`、`category`、`author`、`year`、`sortBy`、`sortOrder`。例如：`paper-search run search_arxiv --arg query="transformer" --arg maxResults=3 --pretty`。
+`search_arxiv`: `query` is required; `maxResults`, `category`, `author`, `year`, `sortBy`, `sortOrder` are optional. For example: `paper-search run search_arxiv --arg query="transformer" --arg maxResults=3 --pretty`.
 
-`paper-search download 1706.03762 --platform arxiv` 同样遵守正式版优先策略；返回 `version: "preprint"` 时必须明确说明拿到预印本。`publishedDoi` 是元数据关联，不表示已下载正式版。`entitled_only` 批量模式不尝试预印本。
+`paper-search download 1706.03762 --platform arxiv` also follows the published-version-first policy; when it returns `version: "preprint"`, you must say clearly that a preprint was obtained. `publishedDoi` is a metadata link and does not mean the published version was downloaded. The `entitled_only` batch mode does not try preprints.

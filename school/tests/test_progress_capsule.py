@@ -67,6 +67,17 @@ class ViewTests(unittest.TestCase):
         self.assertEqual((v["mode"], v["tone"], v["headline"]), ("running", "accent", "下载中"))
         self.assertEqual((v["done"], v["total"], v["pct"], v["left"]), (12, 40, 30, 28))
         self.assertEqual((v["part"], v["publisher"], v["where"]), ("PDF", "Wiley", "Eur J Heart Fail · Wiley"))
+        # A journal named as its publisher shows once (Science · Science · DOI, Windows 2026-11-23).
+        self.assertEqual(pv.view(running(journal="Science", publisher="science"), NOW)["where"], "Science")
+        # A site without rules of its own: never its "site:" name; its journal, else its domain (user, 2026-11-24).
+        site = pv.view(running(journal="Global Discourse", publisher="site:bristoluniversitypressdigital.com"), NOW)
+        self.assertEqual((site["publisher"], site["where"]), ("Global Discourse", "Global Discourse"))
+        site = pv.view(running(journal="", publisher="site:bristoluniversitypressdigital.com"), NOW)
+        self.assertEqual((site["publisher"], site["where"]), ("bristoluniversitypressdigital.com", "bristoluniversitypressdigital.com"))
+        held = pv.view(running(held=[{"key": "site:bristoluniversitypressdigital.com", "name": "site:bristoluniversitypressdigital.com",
+                                      "count": 2}]), NOW)["held"]
+        self.assertEqual([(h["key"], h["name"]) for h in held],
+                         [("site:bristoluniversitypressdigital.com", "bristoluniversitypressdigital.com")])
         self.assertEqual(v["step"], {"index": 2, "label": "取 PDF"})
         self.assertEqual(v["elapsed"], "3:12")
         self.assertTrue(v["actions"])
@@ -161,6 +172,27 @@ class ViewTests(unittest.TestCase):
         self.assertEqual((stopped["headline"], stopped["finished"]), ("已终止任务", "已终止"))
         self.assertEqual(pv.view(running(status="done"), NOW)["finished"], "完成")
         self.assertEqual([pv.fmt_clock(s) for s in (9, 161, 3723)], ["0:09", "2:41", "1:02:03"])
+
+    def test_the_papers_held_for_a_later_try_and_the_next_school_named_a_moment(self):
+        # The ring's amber part and its card (user, 2026-11-23); the counts, 剩余 and the percentage as they were.
+        import time
+        later = {"no_access": 2, "unexplained": 2, "blocked": 1, "blocked_at": NOW + 600, "login": 0}
+        v = pv.view(running(later=later), NOW)
+        self.assertEqual(v["later"], {"total": 5, "no_access": 2, "unexplained": 2, "blocked": 1, "login": 0,
+                                      "blocked_at": time.strftime("%H:%M", time.localtime(NOW + 600))})
+        self.assertEqual((v["done"], v["left"], v["pct"], v["ok"], v["bad"]), (12, 28, 30, 10, 1))
+        # Never more than the papers not done (one just counted may still be said held); none held, none blocked: no time.
+        self.assertEqual(pv.view(running(done=39, later=later), NOW)["later"]["total"], 1)
+        self.assertEqual(pv.view(running(later={"login": 3, "blocked_at": NOW}), NOW)["later"]["blocked_at"], "")
+        self.assertIsNone(pv.view(running(later={"no_access": 0}), NOW)["later"])
+        self.assertIsNone(pv.view(running(status="done", later=later), NOW)["later"])
+        # An older PaperSearch says none of it: the ring and the line as before.
+        self.assertEqual((pv.view(running(), NOW)["later"], pv.view(running(), NOW)["switch_note"]), (None, ""))
+        # The next school, on the line under the title for five seconds.
+        note = {"school": "红木兰大学", "at": NOW - 2}
+        self.assertEqual(pv.view(running(switch_note=note), NOW)["switch_note"], "换红木兰大学再试")
+        self.assertEqual(pv.view(running(switch_note=note), NOW + 4)["switch_note"], "")
+        self.assertEqual(pv.view(running(switch_note=note, status="done"), NOW)["switch_note"], "")
 
     def test_the_papers_a_stop_left_undone_are_not_counted_as_failed(self):
         # A stopped batch said 失败 69 (Windows, 2026-11-16): 已终止 in place of the time.
@@ -339,6 +371,37 @@ class ApiTests(unittest.TestCase):
             self.assertIs(user_settings.hourly_now(), False)
             self.assertEqual(user_settings.current(), before)
             self.assertFalse(a.set_hourly_now('true')['ok'])
+
+    def test_the_retry_switch_is_off_by_default_and_saves_at_once(self):
+        """失败后自动重试 on the 等待和提醒 page (user, 2026-11-24): off by default, saved by itself."""
+        from paper_search_school import config, user_settings
+        with TemporaryDirectory() as directory, \
+                patch.object(config, 'DATA_DIR', Path(directory)), \
+                patch.object(config, 'CONFIG_FILE', Path(directory) / 'config.json'), \
+                patch.object(capsule, 'read_state', return_value=running()):
+            a = api()
+            self.assertIs(a.settings()['retry'], False)
+            before = user_settings.current()
+            self.assertEqual(a.set_retry(True), {'ok': True, 'retry': True})
+            self.assertIs(user_settings.retry_enabled(), True)
+            self.assertIs(a.settings()['retry'], True)
+            self.assertEqual(a.set_retry(False), {'ok': True, 'retry': False})
+            self.assertIs(user_settings.retry_enabled(), False)
+            self.assertEqual(user_settings.current(), before)
+            self.assertFalse(a.set_retry('true')['ok'])
+
+    def test_the_card_shows_retry_only_when_a_batch_may_hold_papers(self):
+        """重试 on the running card (user, 2026-11-24): 失败后自动重试 on, or 没权限时换下一所学校 on with another saved
+        school; each switch its own. Both off: no 重试, the state says so (``holds``)."""
+        from paper_search_school import school_switch, user_settings
+        cases = [(True, True, 1, True), (False, True, 2, True), (False, True, 1, False), (False, False, 2, False)]
+        for retry, switch, schools, holds in cases:
+            with self.subTest(retry=retry, switch=switch, schools=schools), \
+                    patch.object(capsule, 'read_state', return_value=running()), \
+                    patch.object(user_settings, 'retry_enabled', return_value=retry), \
+                    patch.object(school_switch, 'enabled', return_value=switch), \
+                    patch.object(school_switch, 'schools', return_value=[{}] * schools):
+                self.assertIs(api().state()['holds'], holds)
 
     def test_browser_focus_only_targets_the_current_running_prompt(self):
         state = running(attention={'login': {'message': '请登录学校'}}, run_id='r1', browser_pid=101)

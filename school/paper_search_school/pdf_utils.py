@@ -12,11 +12,6 @@ import requests
 
 from .network import fetch
 
-try:
-    from bs4 import BeautifulSoup
-except Exception:
-    BeautifulSoup = None
-
 
 def is_pdf_file(path: Path) -> bool:
     try:
@@ -156,6 +151,13 @@ def iter_urls(obj: Any) -> Any:
 
 
 def extract_pdf_url_from_html(html: str, base_url: str) -> str | None:
+    """The PDF address the page states about itself, or ``None``.
+
+    Only ``citation_pdf_url``: the page's other links are references, related
+    papers and other documents. One guessed from them was a UN ageing-policy PDF
+    for a Journal of Global Aging article (2026-11-24), so no address is better
+    than a wrong one.
+    """
     urls: list[str] = []
     for match in re.finditer(
         r"""<meta[^>]+name=["']citation_pdf_url["'][^>]+content=["']([^"']+)["']""", html, re.I
@@ -165,20 +167,27 @@ def extract_pdf_url_from_html(html: str, base_url: str) -> str | None:
         r"""<meta[^>]+content=["']([^"']+)["'][^>]+name=["']citation_pdf_url["']""", html, re.I
     ):
         urls.append(urllib.parse.urljoin(base_url, match.group(1)))
-    if BeautifulSoup is not None:
-        soup = BeautifulSoup(html, "html.parser")
-        for tag in soup.find_all(["iframe", "embed", "a"]):
-            candidate = tag.get("src") or tag.get("href")
-            if candidate:
-                urls.append(urllib.parse.urljoin(base_url, candidate))
-    else:
-        for match in re.finditer(r"""(?:src|href)=["']([^"']+)["']""", html, re.I):
-            urls.append(urllib.parse.urljoin(base_url, match.group(1)))
-
     for url in dedupe(urls):
-        if is_plausible_pdf_url(url):
+        # The page's own declaration, not a guessed link: the plausibility rules
+        # above are for links read off a page, and they reject the publisher's
+        # own "/journals/…/article-p181.pdf" (Bristol, 2026-11-25).
+        if url.startswith(("http://", "https://")) and not url.startswith("data:"):
             return url
     return None
+
+
+def pdf_links_from_html(html: str, base_url: str) -> list[str]:
+    """Every address in the page that could be a PDF, for the caller to judge.
+
+    The choice is the caller's, by the same rule its usual address flow uses:
+    a link here is only a candidate, not this article's PDF.
+    """
+    if not html:
+        return []
+    urls: list[str] = []
+    for match in re.finditer(r"""(?:src|href)=["']([^"']+)["']""", html, re.I):
+        urls.append(urllib.parse.urljoin(base_url, match.group(1)))
+    return [url for url in dedupe(urls) if is_plausible_pdf_url(url)]
 
 
 def download_pdf(

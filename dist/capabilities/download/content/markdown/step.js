@@ -33,6 +33,7 @@ function summaryOf(outcome) {
         // The checks stay in the run's records (keepUnverifiedPage), not in the result.
         ...(outcome.unverified ? { unverified: (({ checks: _checks, attempt: _attempt, ...site }) => site)(outcome.unverified) } : {}),
         ...(outcome.possiblyMissing ? { possiblyMissing: outcome.possiblyMissing } : {}),
+        ...(outcome.missingFigures?.length ? { missingFigures: outcome.missingFigures } : {}),
         ...(outcome.rulesFallback ? { rulesFallback: outcome.rulesFallback } : {}),
         message: outcome.message,
     };
@@ -167,8 +168,11 @@ export async function fulltextForItem(result, request, searchers, visitPage) {
             if (outcome.status === "ok" && mainPath)
                 result.path = moveIntoPaperDir(mainPath, layout);
             // No page read: why the institutional download gave none, named as for a PDF (user, 2026-11-16).
+            // A page read without its full text is that reason, also in a batch through the school
+            // alone, where the sources say only that no page was saved (page_not_saved: 22 papers of
+            // the sweep were said 原因不明 · 文章页没存下来, 2026-11-22).
             if ((outcome.status === "incomplete" || outcome.status === "unavailable") && !page && !visited
-                && !institutionalReason(outcome.code)) {
+                && (pageShowedNone || !institutionalReason(outcome.code))) {
                 // The visit that took the PDF through the school saw no full text on the page: not a
                 // missing subscription (Volume Index, withdrawal notices, articles whose text is not
                 // online yet; 14 of an AR batch were said 学校没有订阅, Windows 2026-11-17).
@@ -224,7 +228,7 @@ export async function fulltextForItem(result, request, searchers, visitPage) {
         removeWorkFolder(layout);
     // Counted for the settings window's Pro page.
     if (outcome.status === "ok")
-        recordMarkdownSaved(!outcome.possiblyMissing);
+        recordMarkdownSaved(!outcome.possiblyMissing && !outcome.missingFigures?.length);
     // Missing figures is a failure to try again (接着下), as an error is.
     const attempt = {
         stage: "markdown",
@@ -237,9 +241,45 @@ export async function fulltextForItem(result, request, searchers, visitPage) {
     result.markdown = summary;
     request.onStage?.({ ...attempt, ...(outcome.markdown ? { path: outcome.markdown } : {}),
         ...(outcome.possiblyMissing ? { possiblyMissing: outcome.possiblyMissing } : {}),
+        ...(outcome.missingFigures?.length ? { missingFigures: outcome.missingFigures } : {}),
         ...(outcome.rulesFallback ? { rulesFallback: outcome.rulesFallback } : {}),
         startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt });
     return summary;
+}
+/** A Markdown saved without some figures (each marked in it): a batch tries them once more at its end. */
+export function figuresMissing(result) {
+    return result?.markdown?.status === "ok" && !!result.markdown.missingFigures?.length && !!result.markdown.file;
+}
+/**
+ * A batch's end (user, 2026-11-23: "批量最后再试一次图片，仍缺的保留 Markdown 并标明缺哪张图"): the
+ * figures the paper's saved Markdown lacks, downloaded once more by Pro, each that comes put in
+ * its place. The Markdown stays saved either way; its new state is a "markdown" stage of its
+ * own (the run's records and the batch's list say what is still missing).
+ */
+export async function figuresOnceMore(result, request) {
+    const markdown = result.markdown;
+    const pro = markdownPro();
+    if (!markdown || !figuresMissing(result) || !pro?.retryMissingFigures || markdownBlocked(pro))
+        return;
+    const startedAt = Date.now();
+    let outcome;
+    try {
+        outcome = await pro.retryMissingFigures(markdown.file);
+    }
+    catch (error) {
+        // The package stays as it was, its figures marked; the attempt says why it was not retried.
+        outcome = { status: "ok", ...(markdown.figures ? { figures: markdown.figures } : {}), missingFigures: markdown.missingFigures,
+            message: `Figures not tried again: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    const { missingFigures: _before, ...kept } = markdown;
+    result.markdown = { ...kept, ...(outcome.figures ? { figures: outcome.figures } : {}),
+        ...(outcome.missingFigures?.length ? { missingFigures: outcome.missingFigures } : {}), message: `${markdown.message} ${outcome.message}` };
+    const attempt = { stage: "markdown", status: "ok", message: outcome.message };
+    result.attempts.push(attempt);
+    request.onStage?.({ ...attempt, path: markdown.file,
+        ...(markdown.possiblyMissing ? { possiblyMissing: markdown.possiblyMissing } : {}),
+        ...(outcome.missingFigures?.length ? { missingFigures: outcome.missingFigures } : {}),
+        startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt });
 }
 /**
  * A code saying why the institutional download gave no page (or no whole package), as the

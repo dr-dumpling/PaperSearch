@@ -13,7 +13,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from ...engine.batch_common import open_page, pump_until
-from ...engine.fulltext_page import MATHJAX_SOURCES_JS
+from ...engine.fulltext_page import MATHJAX_SOURCES_JS, paragraph_text_js
 from ..base import PublisherAdapter, register
 
 # --fulltext (PaperSearch's sites/templates/optica.ts). The article page (abstract.cfm, as
@@ -23,14 +23,7 @@ from ..base import PublisherAdapter, register
 # (viewmedia.cfm ...&imagetype=full) is the full-size image, taken as the converter does; the
 # general sample rules had the loader (Optics Letters, a page saved after a school login,
 # 2026-11-15).
-FULLTEXT_SHOWN_JS = """() => {
-  const body = document.querySelector('div#articleBody > article');
-  if (!body) return false;
-  const text = [...body.querySelectorAll('p')]
-    .filter((p) => !p.closest('.back, .figure-image, .text-plus-thumb'))
-    .reduce((total, p) => total + (p.textContent || '').length, 0);
-  return text > 500;
-}"""
+FULLTEXT_SHOWN_JS = paragraph_text_js("p", ".back, .figure-image, .text-plus-thumb", "> 500", root="div#articleBody > article")
 FULLTEXT_IMAGES_JS = """() => [...document.querySelectorAll('div#articleBody div.figure-image')].map((figure) => {
   const full = [...figure.querySelectorAll('a[href]')].find((a) => /[?&]imagetype=full(?:&|$)/i.test(a.getAttribute('href') || ''));
   if (full) return full.getAttribute('href');

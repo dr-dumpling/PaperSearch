@@ -43,6 +43,12 @@ export interface MarkdownPro {
   fetchFulltext(request: FulltextRequest): Promise<FulltextOutcome>;
   /** The package from an article page the browser saved. */
   fulltextFromPage(page: CapturedFulltextPage, doi: string, request: Omit<FulltextRequest, "doi">): Promise<FulltextOutcome>;
+  /**
+   * A batch's end: the figures a saved package (its article.md) was saved without, downloaded
+   * once more; the package as it is then. An older Pro has none (it kept no Markdown missing a
+   * figure).
+   */
+  retryMissingFigures?(markdownFile: string): Promise<FulltextOutcome>;
   /** Pro has rules for the site at this address, or the one this DOI leads to. */
   hasRulesForUrl(url: string): boolean;
   hasRulesForDoi(doi: string): boolean;

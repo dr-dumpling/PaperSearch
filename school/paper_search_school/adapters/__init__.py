@@ -22,5 +22,7 @@ from . import (  # noqa: F401  (register the adapters)
     acm, acs, aha_journals, aip, ams, annual_reviews, aps, asce, bmj, copernicus, dovepress, elsevier, frontiers, ieee,
     iop, jama, karger, lww, mdpi, nejm, neurology, optica, oup, plos, pnas, royal_society, rsc, sage, science,
     springer, taylor_francis, thieme, wiley, world_scientific)
+# A platform whose publishers have no profile: its rules are registered for the site's run-time profile.
+from .platforms import jstage  # noqa: F401
 
 __all__ = ["PublisherAdapter", "SupplementLink", "adapter_class", "adapter_for", "register"]

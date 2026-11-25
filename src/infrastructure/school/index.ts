@@ -23,11 +23,12 @@ export {
   takeDownloadLock,
 } from "./SchoolMcpClient.js";
 
-export { schoolAttemptDetails, schoolShortReason } from "./SchoolAttempt.js";
+export { blockedBySite, CHALLENGE_TYPE_LABELS, schoolAttemptDetails, schoolShortReason } from "./SchoolAttempt.js";
 export { SCHOOL_UPDATE_NEEDED, SCHOOL_UPDATE_NEEDED_MESSAGE } from "./types.js";
 
 export type {
   SchoolBackend,
+  SchoolBatchLater,
   SchoolBatchPaper,
   SchoolBatchPapers,
   SchoolBatchPosition,

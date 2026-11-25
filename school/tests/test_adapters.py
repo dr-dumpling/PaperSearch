@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import MagicMock
 from types import SimpleNamespace
 from urllib.parse import urljoin
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 from paper_search_school.adapters import PublisherAdapter, adapter_class
 from paper_search_school.adapters import base
@@ -693,6 +693,132 @@ class ElsevierDoiPathJournalSiteTests(unittest.TestCase):
         self.assertTrue(d.adapter.is_other_article(Mock(url=self.URL), "10.1016/j.jacc.2026.07.001"))
 
 
+class LoginSiteArticleAfterFailedPdfTests(unittest.TestCase):
+    """The login after a failed PDF, sent from a journal's own site to ScienceDirect's same
+    article. jacc.org (10.1016/j.jcmg.2025.09.021, Windows 2026-11-23): "This is an Open Access
+    Article" by "GET ACCESS", its PDF addresses 403; the login went to ScienceDirect, which showed
+    "Open access" and the full text; the program looked for a school to choose there
+    (institution_selection_required), waited a page wait (60 s) and ended as pdf_not_captured."""
+
+    DOI = "10.1016/j.jcmg.2025.09.021"
+    JACC = "https://www.jacc.org/doi/10.1016/j.jcmg.2025.09.021"
+    SD = "https://www.sciencedirect.com/science/article/pii/S1936878X25005790"
+    TITLE = ("Prognostic Value of AI-Based Quantitative Coronary CTA vs Human Reader-Based Visual Assessment: "
+             "Results From the CONFIRM2 Registry")
+    JACC_BODY = f"GET ACCESS\n{TITLE}\nThis is an Open Access Article\nAbstract"
+    OPEN = (f"JACC: Cardiovascular Imaging\nOpen access\n{TITLE}\nAbstract\nIntroduction", {"badges": ["Open access"]})
+    SESSION_DENIED = ("Brought to you by:\nHong Mu-Lan University\nScienceDirect\n"
+                      "Hong Mu-Lan University does not subscribe to this content on ScienceDirect.\n"
+                      f"{TITLE}\nAbstract", {})
+    SIGNED_OUT = (f"Access through your organization\nPurchase PDF\n{TITLE}\nAbstract",
+                  {"gate": "Access through your organization", "offers": ["Purchase PDF"]})
+    # Full text through a personal account, no PDF (J Hepatol, 2026-10-31; through ClinicalKey
+    # it is ClinicalKey's, unsupported_platform).
+    PERSONAL = (f"Research article\nFull text access\n{TITLE}\nAbstract\nIntroduction", {"badges": ["Full text access"]})
+
+    def setUp(self):
+        from paper_search_school.adapters import elsevier
+        elsevier._record_pii.cache_clear()
+        self.addCleanup(elsevier._record_pii.cache_clear)
+        pii = patch("paper_search_school.adapters.elsevier.journal_site._get_elsevier_pii",
+                    return_value="S1936878X25005790")
+        pii.start()
+        self.addCleanup(pii.stop)
+
+    def downloader(self, sciencedirect, *, retry=True):
+        from paper_search_school.engine import access_rules
+        from paper_search_school.engine.batch import DownloadResult
+        d = PublisherBatchDownloader(dict(CARSI_SCHOOL), profile=get_publisher_profile("elsevier"), login_timeout_sec=300)
+        result = DownloadResult(doi=self.DOI, status="failed", article_url="https://doi.org/" + self.DOI)
+        result._pdf_retry_login = retry
+        d._item_result = result
+        for name in ("_dismiss_cookie_banners", "_click_openathens_entry", "_challenge_shell", "_is_challenge_page",
+                     "_follow_federated_login_option", "_click_optional_continue", "_check_user_decision",
+                     "_ended_on_personal_sign_in", "_is_human_login_page", "_check_federation_school_links",
+                     "_federation_list_lacks_ours", "_openathens_lacks_school", "_accept_publisher_terms",
+                     "_accept_idp_confirmation", "_skip_personal_account_offer", "_wait_past_redirect_page"):
+            setattr(d, name, Mock(return_value=False))
+        d._select_institution = Mock(return_value=False)
+        d._stuck_on_school_site = Mock(return_value="")
+        d._snapshot = Mock()
+        page = MagicMock()
+        page.url = self.JACC
+        page.is_closed.return_value = False
+        pages = {self.JACC: (self.JACC_BODY, {}), self.SD: sciencedirect}
+        page.locator.return_value.inner_text.side_effect = lambda **kw: pages.get(page.url, ("", {}))[0]
+        page.title.side_effect = lambda: self.TITLE + (" - ScienceDirect" if "sciencedirect" in page.url else "")
+        page.evaluate.side_effect = lambda script, *args: (
+            pages.get(page.url, ("", {}))[1] if script == access_rules.PROBE_JS else "")
+        return d, result, page
+
+    def login(self, d, result, page):
+        from paper_search_school.engine import batch, batch_login
+        from tests.thread_clock import this_thread_only
+        clock = [1000.0]
+        fake_time, fake_sleep = this_thread_only(lambda: clock[0], lambda s: clock.__setitem__(0, clock[0] + s))
+
+        def go(target, url, **kwargs):
+            target.url = url
+        with patch.object(batch.time, "time", fake_time), patch.object(batch.time, "sleep", fake_sleep), \
+                patch.object(batch_login, "open_page", side_effect=go), patch.object(batch_login, "settle"):
+            return d._complete_login_from_current_page(page, result), clock[0] - 1000.0
+
+    def test_the_login_sites_open_article_ends_the_login_there(self):
+        d, result, page = self.downloader(self.OPEN)
+        signed_in, waited = self.login(d, result, page)
+        self.assertTrue(signed_in)
+        self.assertEqual(page.url, self.SD)  # the PDF is taken on ScienceDirect, not back on jacc.org
+        self.assertLess(waited, 5)
+        states = [e["state"] for e in result.events]
+        self.assertIn("login_page_opened", states)
+        self.assertNotIn("login_site_left", states)
+        self.assertNotIn("page_wait_ended", states)
+        d._select_institution.assert_not_called()  # no school to choose on an article it gives
+        self.assertEqual([e["detail"] for e in result.events if e["state"] == "login_site_article_readable"],
+                         [f"{self.SD} | in (reader): badge: Open access"])
+
+    def test_the_login_sites_denial_to_the_schools_session_is_no_access(self):
+        d, result, page = self.downloader(self.SESSION_DENIED)
+        signed_in, waited = self.login(d, result, page)
+        self.assertFalse(signed_in)
+        self.assertLess(waited, 5)
+        self.assertEqual(page.url, self.SD)
+        self.assertEqual(d._login_block_reason(page), "institution_pdf_entitlement_missing")
+        states = [e["state"] for e in result.events]
+        self.assertIn("institution_pdf_entitlement_missing", states)
+        self.assertNotIn("login_site_left", states)
+
+    def test_a_login_site_without_open_access_or_the_schools_session_still_signs_in_there(self):
+        # Its own entry and the school's choice, as before: signed out, or full text through a
+        # personal account, whose PDF the school's login is still needed for.
+        for name, sciencedirect in (("signed out", self.SIGNED_OUT), ("personal account", self.PERSONAL)):
+            with self.subTest(name):
+                d, result, page = self.downloader(sciencedirect)
+                signed_in, waited = self.login(d, result, page)
+                self.assertFalse(signed_in)
+                self.assertGreaterEqual(waited, d.page_wait_sec)
+                self.assertTrue(d._select_institution.called)
+                self.assertNotIn("login_site_article_readable", [e["state"] for e in result.events])
+
+    def test_only_the_login_sites_page_counts_and_only_after_a_failed_pdf(self):
+        d, result, page = self.downloader(self.OPEN)
+        page.url = self.SD
+        self.assertFalse(d._article_access_available(page))  # the login was not sent here
+        result._login_site_from = self.JACC
+        self.assertTrue(d._article_access_available(page))
+        page.url = self.JACC  # the page whose PDF failed: its reader access is not asked again
+        self.assertFalse(d._article_access_available(page))
+        # Outside the login after a failed PDF the journal's site decides, as before.
+        d, result, page = self.downloader(self.OPEN, retry=False)
+        result._login_site_from = self.JACC
+        page.url = self.SD
+        with patch("paper_search_school.engine.batch_login.open_page") as opened, \
+                patch("paper_search_school.engine.batch_login.settle"):
+            self.assertTrue(d._return_from_login_site(page, result))
+        self.assertEqual(opened.call_args.args[1], result.article_url)
+        self.assertEqual([e["state"] for e in result.events], ["login_site_left"])
+
+
 @unittest.skipUnless(__import__("os").environ.get("SCHOOL_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
 class ElsevierDoiPathPdfTests(unittest.TestCase):
     def test_only_this_articles_doi_pdf_link_is_clicked(self):
@@ -1195,6 +1321,26 @@ class AtyponSiteTests(unittest.TestCase):
         self.assertEqual(d.adapter.chooser_url("https://www.nejm.org/sign-in?uri=/doi/10.1056/NEJMoa2605812"), "")
         self.assertEqual(type(self.downloader("10.1056/evidx2600264").adapter).__name__, "NEJMAdapter")
 
+    def test_continuum_is_on_the_neurology_sites_platform(self):
+        # CONTINUUM (10.1212/cont.0000000000001619, Windows 2026-11-23): continuum.aan.com, "GET ACCESS" in its
+        # access box; not among the Neurology rules' hosts, its page was no publisher page to them, no institution
+        # login was opened and the wait ran out on the article (login_not_reached).
+        doi = "10.1212/cont.0000000000001619"
+        url = "https://continuum.aan.com/doi/10.1212/cont.0000000000001619"
+        d = self.downloader(doi)
+        self.assertEqual(type(d.adapter).__name__, "NeurologyAdapter")
+        self.assertTrue(d.adapter.is_article_page_url(url))
+        self.assertTrue(d._on_publisher_host(url))
+        from paper_search_school.publishers.profiles import infer_publisher_profile_from_url
+        self.assertEqual(infer_publisher_profile_from_url(url).name, "Neurology")
+        d._event = Mock()
+        with patch("paper_search_school.adapters.platforms.atypon.open_page") as opened:
+            self.assertIs(d.adapter.open_institution_entry(self.page(url, []), SimpleNamespace(doi=doi, events=[])), True)
+        opened.assert_called_once_with(
+            ANY, "https://continuum.aan.com/action/ssostart?redirectUri=%2Fdoi%2F10.1212%2Fcont.0000000000001619",
+            timeout_ms=30_000)
+        self.assertFalse(d.adapter.is_article_page_url("https://www.aan.com/doi/10.1212/cont.0000000000001619"))
+
     def test_the_institution_login_is_used_never_a_link_to_one_idp(self):
         d = self.downloader()
         member = "/action/ssostart?idp=https://ahasso.heart.org&redirectUri=%2Fdoi%2F10.1161%2FCIRCULATIONAHA.126.082827"
@@ -1292,6 +1438,60 @@ class AMSEntryTests(unittest.TestCase):
         self.assertEqual(d._event.call_args.args[1], "institution_login_unavailable")
         self.assertIs(d.adapter.prepare_institution_choice(Mock(), result), False)
         self.assertEqual(d._event.call_count, 1)
+
+
+class IOPServerErrorPageTests(unittest.TestCase):
+    ARTICLE = "https://iopscience.iop.org/article/10.1088/1361-6382/ae272e"
+
+    def downloader(self, titles):
+        from paper_search_school.engine.batch import PublisherBatchDownloader
+        d = PublisherBatchDownloader({}, profile=get_publisher_profile("iop"))
+        d._wait_past_redirect_page = Mock()
+        d._body_text = Mock(return_value="We value your privacy " * 30)  # no proxy error body
+        d._title = Mock(side_effect=titles)
+        return d
+
+    def result(self):
+        from paper_search_school.engine.batch import DownloadResult
+        return DownloadResult(doi="10.1088/1361-6382/ae272e", status="failed", article_url=self.ARTICLE)
+
+    def test_the_article_is_opened_again_after_iopsciences_error_page(self):
+        # Classical and Quantum Gravity: "IOPscience::.. Error!" in place of the article (Windows, 2026-11-25).
+        d = self.downloader(["IOPscience::.. Error!", "Periapsis shift in the Zipoy–Voorhees spacetime - IOPscience"])
+        page, result = Mock(url=self.ARTICLE), self.result()
+        with patch("paper_search_school.engine.batch_login.time.sleep"):
+            d._reopen_after_gateway_error(page, result)
+        page.goto.assert_called_once()
+        self.assertEqual(page.goto.call_args.args[0], self.ARTICLE)
+        self.assertEqual([(e["state"], e["detail"]) for e in result.events],
+                         [("gateway_error_page", "IOPscience::.. Error!")])
+
+    def test_the_error_page_twice_is_the_publishers_error(self):
+        from paper_search_school.engine.batch import PublisherContentError
+        d = self.downloader(["IOPscience::.. Error!"] * 2)
+        page = Mock(url=self.ARTICLE)
+        with patch("paper_search_school.engine.batch_login.time.sleep"):
+            with self.assertRaises(PublisherContentError):
+                d._reopen_after_gateway_error(page, self.result())
+        page.goto.assert_called_once()
+
+    def test_other_iopscience_pages_are_not_its_error_page(self):
+        for title in ("Periapsis shift in the Zipoy–Voorhees spacetime - IOPscience", "IOPscience::.. Page Not Found", ""):
+            d = self.downloader([title])
+            self.assertEqual(d.adapter.server_error_page(Mock()), "")
+        d = PublisherBatchDownloader({}, profile=get_publisher_profile("lww"))
+        d._title = Mock(return_value="IOPscience::.. Error!")
+        self.assertEqual(d.adapter.server_error_page(Mock()), "")  # IOP's page, not another publisher's
+
+
+class IOPPdfAddressTests(unittest.TestCase):
+    def test_the_aas_provided_pdf_after_the_pdf(self):
+        # Research Notes of the AAS: /pdf answers 404, the PDF is /ampdf (2026-11-24). Tried after /pdf, for any DOI.
+        from paper_search_school.engine.router import build_pdf_candidates
+        profile = get_publisher_profile("iop")
+        for doi in ("10.3847/2515-5172/ae12e4", "10.1149/1945-7111/ae0f5b"):
+            page = f"https://iopscience.iop.org/article/{doi}"
+            self.assertEqual(build_pdf_candidates(profile, doi, source_url=page)[:2], [page + "/pdf", page + "/ampdf"])
 
 
 class IOPEntryTests(unittest.TestCase):

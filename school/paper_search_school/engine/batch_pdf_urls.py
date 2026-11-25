@@ -9,7 +9,8 @@ from fnmatch import fnmatch
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-from .router import build_pdf_candidates, extract_elsevier_pii, is_pdf_candidate_url, is_supplementary_url, is_springer_article_pdf_url
+from .router import (OJS_VIEW_PATH, PLATFORM_FILE_PATH, build_pdf_candidates, extract_elsevier_pii, is_pdf_candidate_url,
+                     is_supplementary_url, is_springer_article_pdf_url)
 from .batch_common import PaperRecord, _REFERENCE_AREA, _is_browser_error
 
 
@@ -24,22 +25,45 @@ _NOT_PDF_LINK = re.compile(
     r"|password|/ads?/|doubleclick|addtoany", re.I)
 # A path that serves a PDF: a .pdf file or a PDF view (Wiley /doi/pdf|epdf|pdfdirect/,
 # ScienceDirect /pdfft, RSC /articlepdf/, Elsevier journals' /action/showPdf, IEEE's
-# stamp.jsp and stampPDF, Optica's viewmedia.cfm, PLOS's /article/file).
+# stamp.jsp and stampPDF, Optica's viewmedia.cfm, PLOS's /article/file), or a platform's file
+# (router.PLATFORM_FILE_PATH: an Open Journal Systems galley, bepress's viewcontent.cgi).
 _PDF_PATH = re.compile(
     r"\.pdf$|/(?:pdf|epdf|pdfdirect|pdfft|articlepdf|stamppdf)(?:/|$)|/action/showpdf$|/stamp/stamp\.jsp$"
-    r"|viewmedia\.cfm$|/article/file$", re.I)
+    r"|viewmedia\.cfm$|/article/file$|" + PLATFORM_FILE_PATH.pattern, re.I)
 # Article views that are not an article id ("/article/123/fulltext").
 _VIEWS = frozenset({"fulltext", "abstract", "full", "abs", "html", "pdf", "epdf", "summary", "info", "references"})
-# The page's citation metadata and its visible links outside the references, in one round trip.
+# The page's citation metadata and its visible links outside the references, in one round trip. A form with a
+# control shown counts as a link to its address (with its own fields when it is sent by GET): Brepols's PDF button is
+# a link to "#" in <form action="/deliver/fulltext/.../<article>.pdf">, sent by the page's script; the click gave no
+# PDF and its address was never tried (Centaurus, Windows 2026-11-24). Its address still has to pass as this
+# article's PDF (_article_pdf_link).
+# A page without citation_doi names its DOI elsewhere: bepress Digital Commons in bepress_citation_doi (with
+# its PDF in bepress_citation_pdf_url, Osgoode Hall Law Journal), Tellus B's site in DC.Identifier (its
+# citation_pdf_url never tried, 2026-11-24). Those are read only when the citation_ names are missing.
 _PAGE_PDF_LINKS_JS = """() => {
     const shown = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
-    const meta = name => [...document.querySelectorAll('meta[name="' + name + '"]')]
+    const meta = name => [...document.querySelectorAll('meta[name="' + name + '" i]')]
         .map(el => (el.content || '').trim()).filter(Boolean);
+    const first = (...lists) => lists.find(list => list.length) || [];
+    const doiLike = values => values.map(value => value.replace(/^(?:https?:\\/\\/(?:dx\\.)?doi\\.org\\/|doi:\\s*)/i, ''))
+        .filter(value => /^10\\.\\d{4,9}\\/\\S+$/.test(value));
     const absolute = value => { try { return new URL(value, location.href).href; } catch (_) { return ''; } };
     const links = [...document.querySelectorAll('a[href]')]
         .filter(a => shown(a) && !a.closest(REFERENCES)).map(a => a.href).filter(href => /^https?:/i.test(href));
-    return {dois: meta('citation_doi'), pdfs: meta('citation_pdf_url').map(absolute).filter(Boolean),
-            links: [...new Set(links)].slice(0, 800)};
+    const forms = [...document.querySelectorAll('form[action]')]
+        .filter(f => !f.closest(REFERENCES) && [...f.querySelectorAll('a, button, input[type=submit], [role=button]')].some(shown))
+        .map(f => {
+            let target;
+            try { target = new URL(f.getAttribute('action'), location.href); } catch (_) { return ''; }
+            if ((f.getAttribute('method') || 'get').toLowerCase() === 'get') {
+                for (const [name, value] of new FormData(f)) if (typeof value === 'string') target.searchParams.append(name, value);
+            }
+            return target.href;
+        }).filter(href => /^https?:/i.test(href));
+    return {dois: first(meta('citation_doi'), meta('bepress_citation_doi'), doiLike(meta('DC.Identifier.DOI')),
+                        doiLike(meta('DC.Identifier'))),
+            pdfs: first(meta('citation_pdf_url'), meta('bepress_citation_pdf_url')).map(absolute).filter(Boolean),
+            links: [...new Set([...links, ...forms])].slice(0, 800)};
 }""".replace("REFERENCES", repr(_REFERENCE_AREA))
 
 
@@ -83,6 +107,13 @@ class PdfUrlsMixin:
         ids = [part for part in segments if re.fullmatch(r"\d{5,}", part)]
         if ids:
             keys.append(ids[-1])
+        # On an Open Journal Systems article or galley page, that article's galley files: its
+        # "PDF" opens /article/view/<article>/<galley>, a page around the PDF whose Download is
+        # /article/download/<article>/<galley>/<file>; the article number was too short to name it
+        # (AJPR's 442) or a name (JSIHS), and that Download was never tried (2026-11-24).
+        ojs = OJS_VIEW_PATH.search(urlparse(page_url or "").path.lower())
+        if ojs:
+            keys.append(f"/article/download/{ojs.group(1)}/")
         return [key for key in dict.fromkeys(keys) if key]
 
     def _citation_pdf_urls(self, page: Any, doi: str, found: dict | None = None) -> list[str]:

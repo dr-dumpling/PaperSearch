@@ -164,6 +164,17 @@ class ReadPageTests(unittest.TestCase):
         # A site with its own scripts keeps them.
         self.assertNotIn("general", read_page(FakePage(), "10.1126/science.abc1234", ADAPTER)[0])
 
+    def test_a_page_naming_its_doi_with_a_full_stop_after_it_is_this_articles(self):
+        # The AMA Journal of Ethics writes "10.1001/amajethics.2025.884." in its citation_doi: its pages
+        # were taken for another article's and not saved (other_article, 2026-11-22).
+        read, why = read_page(FakePage(doi="10.1126/science.abc1234."), "10.1126/science.abc1234", ADAPTER)
+        self.assertEqual(why, "")
+        self.assertIsNotNone(read)
+        self.assertEqual(read_page(FakePage(doi="https://doi.org/10.1126/SCIENCE.ABC1234."), "10.1126/science.abc1234", ADAPTER)[1], "")
+        # Another article's DOI with a full stop is still another article's.
+        self.assertEqual(read_page(FakePage(doi="10.1126/science.abc1235."), "10.1126/science.abc1234", ADAPTER)[1], "other_article")
+        self.assertEqual(read_page(FakePage(doi="10.1126/science.abc12345"), "10.1126/science.abc1234", ADAPTER)[1], "other_article")
+
     def test_says_why_a_page_is_not_read(self):
         self.assertEqual(read_page(FakePage(doi="10.1126/other"), "10.1126/science.abc1234", ADAPTER)[1], "other_article")
         self.assertEqual(read_page(FakePage(shown=False), "10.1126/science.abc1234", ADAPTER)[1],
@@ -237,14 +248,17 @@ class ReadPageTests(unittest.TestCase):
 
 
 class Response:
-    def __init__(self, status=200, content_type="image/jpeg", body=b"\xff\xd8 jpeg"):
+    def __init__(self, status=200, content_type="image/jpeg", body=b"\xff\xd8 jpeg", fails=None):
         self.status, self.ok = status, status < 400
         self.headers = {"content-type": content_type}
         self.body = body
+        self.fails = fails
         self.disposed = False
 
     def chunks(self):
         yield self.body
+        if self.fails:
+            raise self.fails
 
     def dispose(self):
         self.disposed = True
@@ -277,6 +291,25 @@ class SavePageTests(unittest.TestCase):
             self.assertEqual([(f["url"].rsplit("/", 1)[-1], f["reason"]) for f in saved["failed_images"]],
                              [("f3.jpg", "http_403"), ("f4.jpg", "not_an_image"), ("f5.jpg", "ConnectionError")])
             self.assertTrue(all(response.disposed for response in answers.values()))
+
+    def test_an_image_whose_read_times_out_part_way_is_missing_and_the_others_are_saved(self):
+        # PLOS ONE 10.1371/journal.pone.0333635 (Windows, 2026-11-23): its image host's read timed out after
+        # the PDF was saved, and the error ended the whole article.
+        stalled = Response(fails=TimeoutError("The read operation timed out"))
+        answers = {"https://journals.plos.org/plosone/article/figure/image?id=1": stalled,
+                   "https://journals.plos.org/plosone/article/figure/image?id=2": Response()}
+
+        class Request:
+            def get(self, url, *, timeout):
+                return answers[url]
+
+        read = {"html": "<html></html>", "url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0333635",
+                "image_urls": list(answers)}
+        with tempfile.TemporaryDirectory() as out:
+            saved = save_page(read, Path(out), "10.1371/journal.pone.0333635", Request())
+            self.assertEqual(len(saved["images"]), 1)
+            self.assertEqual([f["reason"] for f in saved["failed_images"]], ["TimeoutError"])
+            self.assertTrue(stalled.disposed)
 
 
 class RememberPageTests(unittest.TestCase):
@@ -584,6 +617,127 @@ class FullTextElsewhereTests(unittest.TestCase):
         tab.close.assert_called_once()
         self.assertEqual(result._fulltext_read["url"], tab.url)
 
+    def test_the_article_page_showing_its_full_text_is_read_there_not_at_the_address_named(self):
+        # Sweep, 2026-11-22: 16 of 80 MDPI articles got no Markdown; the address with the query
+        # gave the abstract alone twice (10.3390/s25226876: "article=137 main=5116"), while for 6
+        # of them the article page itself was a full one.
+        from paper_search_school.adapters import mdpi
+        from paper_search_school.publishers.profiles import get_publisher_profile
+
+        doi, address = "10.3390/s25226876", "https://www.mdpi.com/1424-8220/25/22/6876"
+
+        def remember(shown):
+            downloader = PublisherBatchDownloader({"fulltext": True}, profile=get_publisher_profile("mdpi"))
+            result = DownloadResult(doi=doi, status="started")
+            article = mock.Mock(url=address)
+            article.evaluate.side_effect = lambda script, **_: shown(script) if script == mdpi.FULLTEXT_SHOWN_JS else "Fixture Browser"
+            tab = mock.Mock(url=f"{address}?type=check_update&version=1&t=1795008040123")
+            article.context.new_page.return_value = tab
+            with mock.patch("paper_search_school.engine.batch_common.open_page") as opened, \
+                 mock.patch.object(fulltext_page, "read_page", return_value=({"html": "x", "url": address, "image_urls": []}, "")) as read:
+                downloader._remember_fulltext_page(article, doi, result)
+            return article, tab, opened, read
+
+        article, tab, opened, read = remember(lambda script: True)
+        opened.assert_not_called()
+        article.context.new_page.assert_not_called()
+        self.assertIs(read.call_args.args[0], article)
+        # No full text on it, or the browser cannot say: the address the adapter names, in a tab.
+        driver_error = type("Error", (Exception,), {"__module__": "patchright._impl._errors"})
+
+        def cut(script):
+            raise driver_error("Execution context was destroyed")
+        for shown in (lambda script: False, cut):
+            article, tab, opened, read = remember(shown)
+            self.assertRegex(opened.call_args.args[1], r"^https://www\.mdpi\.com/1424-8220/25/22/6876\?type=check_update&version=1&t=\d{13}$")
+            self.assertIs(read.call_args.args[0], tab)
+            tab.close.assert_called_once()
+
+
+class JStageFullTextTests(unittest.TestCase):
+    """J-STAGE: its societies have no publisher profile; the platform's page rules, keyed by the
+    run-time profile, open the "Full Text HTML" page beside the abstract page (2026-11-23)."""
+
+    ABSTRACT = "https://www.jstage.jst.go.jp/article/abc/31/0/31_25-00001/_article"
+    FULLTEXT = "https://www.jstage.jst.go.jp/article/abc/31/0/31_25-00001/_html/-char/en"
+
+    def downloader(self, article):
+        from paper_search_school.publishers.site import site_profile
+
+        downloader = PublisherBatchDownloader({"fulltext": True}, profile=site_profile("10.9999/abc.25-00001", self.ABSTRACT))
+        downloader._track_article_for_adapter(article, "10.9999/abc.25-00001")
+        return downloader
+
+    def test_the_platform_rules_are_the_run_time_profiles_on_j_stage_alone(self):
+        from paper_search_school.adapters.base import PublisherAdapter, adapter_class
+        from paper_search_school.adapters.platforms.jstage import JStageAdapter
+        from paper_search_school.publishers.site import site_profile
+
+        # The profile a society's DOI resolving to J-STAGE runs under is the name the rules are kept by.
+        self.assertEqual(site_profile("10.9999/abc.25-00001", self.ABSTRACT).name, JStageAdapter.publisher)
+        self.assertIs(adapter_class(JStageAdapter.publisher, host="www.jstage.jst.go.jp"), JStageAdapter)
+        # Another site of JST's under the same domain, and no page yet (the PDF's routing): the shared rules.
+        self.assertIs(adapter_class(JStageAdapter.publisher, host="jxiv.jst.go.jp"), PublisherAdapter)
+        self.assertIs(adapter_class(JStageAdapter.publisher), PublisherAdapter)
+        self.assertIs(type(self.downloader(mock.Mock(url=self.ABSTRACT)).adapter), JStageAdapter)
+
+    def test_the_full_text_page_beside_the_abstract_page(self):
+        from paper_search_school.adapters.platforms.jstage import JStageAdapter
+
+        url = lambda page: JStageAdapter.fulltext_page_url(None, "10.9999/abc.25-00001", page)  # noqa: E731
+        self.assertEqual(url(self.ABSTRACT), self.FULLTEXT)
+        self.assertEqual(url("https://www.jstage.jst.go.jp/article/abc/135/4/135_135.359/_article/-char/ja/"),
+                         "https://www.jstage.jst.go.jp/article/abc/135/4/135_135.359/_html/-char/ja")
+        for other in (self.FULLTEXT, "https://www.jstage.jst.go.jp/browse/abc/-char/en", "http://www.jstage.jst.go.jp/article/abc/31/0/31_1/_article",
+                      "https://jxiv.jst.go.jp/index.php/jxiv/preprint/view/1", "https://idp.example.edu/login"):
+            self.assertEqual(url(other), "")
+
+    def test_its_page_rules_read_the_sections_and_their_figures(self):
+        from paper_search_school.adapters.platforms import jstage
+        from paper_search_school.adapters.platforms.jstage import JStageAdapter
+        from paper_search_school.engine.fulltext_page import MATHJAX_SOURCES_JS
+
+        self.assertIs(JStageAdapter.fulltext_shown_js, jstage.FULLTEXT_SHOWN_JS)
+        self.assertIs(JStageAdapter.fulltext_images_js, jstage.FULLTEXT_IMAGES_JS)
+        for part in ("#article-overiew-abstract-wrap > div[id^=\"sec\"]", ".global-image-holder, .responsive-table-wrap, .fj-list-ref", "text >= 200"):
+            self.assertIn(part, JStageAdapter.fulltext_shown_js)
+        for part in ("div.global-image-holder img", "new URL(src, location.href)"):
+            self.assertIn(part, JStageAdapter.fulltext_images_js)
+        self.assertIs(JStageAdapter.fulltext_prepare_js, MATHJAX_SOURCES_JS)  # MathJax 2
+
+    def remember(self, status):
+        from paper_search_school.adapters.platforms import jstage
+
+        article = mock.Mock(url=self.ABSTRACT)
+        article.evaluate.side_effect = lambda script, **_: False if script == jstage.FULLTEXT_SHOWN_JS else ""
+        tab = mock.Mock(url=self.FULLTEXT)
+        article.context.new_page.return_value = tab
+        downloader = self.downloader(article)
+        result = DownloadResult(doi="10.9999/abc.25-00001", status="started")
+        with mock.patch("paper_search_school.engine.batch_common.open_page", return_value=SimpleNamespace(status=status)) as opened, \
+             mock.patch.object(fulltext_page, "read_page", return_value=({"html": "x", "url": tab.url, "image_urls": []}, "")) as read, \
+             mock.patch.object(PublisherBatchDownloader, "_page_closed", return_value="") as closed:
+            downloader._remember_fulltext_page(article, "10.9999/abc.25-00001", result)
+        self.assertEqual(opened.call_args.args[1], self.FULLTEXT)
+        tab.close.assert_called_once()
+        return result, read, closed
+
+    def test_the_abstract_page_sends_the_read_to_the_full_text_page(self):
+        result, read, _ = self.remember(200)
+        self.assertEqual(read.call_args.args[0].url, self.FULLTEXT)  # read in the tab
+        self.assertEqual(result._fulltext_read["url"], self.FULLTEXT)
+
+    def test_an_article_with_its_pdf_alone_ends_at_the_404_without_waiting(self):
+        # Most J-STAGE articles have no HTML full text: the address answers 404 (10.2186/jpr.jpr_d_24_00325,
+        # 2026-11-23), read as 文章页没有正文 at once, not after the 15 s wait for the body.
+        for status in (404, 410):
+            result, read, closed = self.remember(status)
+            read.assert_not_called()
+            closed.assert_not_called()  # a missing page is no paywall
+            self.assertIsNone(getattr(result, "_fulltext_read", None))
+            missed = [event for event in result.events if event["state"] == "fulltext_page_not_saved"]
+            self.assertEqual(missed[-1]["detail"], f"fulltext_not_shown: www.jstage.jst.go.jp answered {status}")
+
 
 class AdapterRuleTests(unittest.TestCase):
     def test_science_and_sciencedirect_name_their_pages(self):
@@ -738,7 +892,7 @@ class AdapterRuleTests(unittest.TestCase):
         prepare = IEEEAdapter.fulltext_prepare_js
         self.assertTrue(prepare.startswith("async () =>"))
         for part in ("/rest/document/${number}/references", "rowsPerPage=30", "credentials: 'include'", "AbortController",
-                     "referenceCount", "Date.now() + 10000", "Math.min(5000", "papersearch-ieee-references", "application/json",
+                     "referenceCount", "Date.now() + 18000", "Math.min(5000", "papersearch-ieee-references", "application/json",
                      r"'\\u003c'"):
             self.assertIn(part, prepare)
         # The formulas' TeX stays in MathJax 2's scripts: no MathML to keep.
@@ -886,6 +1040,27 @@ class AdapterRuleTests(unittest.TestCase):
         self.assertIsNone(FrontiersAdapter.fulltext_prepare_js)  # MathJax 2 keeps each formula's MathML
         self.assertEqual(FrontiersAdapter.fulltext_page_url(None, "10.3389/fexr.2026.1234567", "https://www.frontiersin.org/x"), "")
 
+    def test_frontiers_for_young_minds_reads_its_own_article_page(self):
+        from paper_search_school.adapters import adapter_class
+        from paper_search_school.adapters import frontiers
+        from paper_search_school.adapters.frontiers import FrontiersAdapter, FrontiersForYoungMindsAdapter
+
+        # kids.frontiersin.org has no div.ArticleContent: Frontiers' scripts saw no full text on its
+        # pages (2026-11-22). Its page on its own host takes its own scripts, the rest Frontiers'.
+        self.assertIs(adapter_class("frontiers", doi="10.3389/frym.2025.1642540", host="kids.frontiersin.org"),
+                      FrontiersForYoungMindsAdapter)
+        self.assertIs(adapter_class("frontiers", doi="10.3389/frym.2025.1642540", host="www.frontiersin.org"), FrontiersAdapter)
+        self.assertIs(adapter_class("frontiers"), FrontiersAdapter)
+        self.assertTrue(issubclass(FrontiersForYoungMindsAdapter, FrontiersAdapter))
+        self.assertIs(FrontiersForYoungMindsAdapter.fulltext_shown_js, frontiers.YOUNG_MINDS_FULLTEXT_SHOWN_JS)
+        for part in ("div.fulltext div.fulltext-content", "div.abstract, section#full-text-references, figure", "text > 500"):
+            self.assertIn(part, FrontiersForYoungMindsAdapter.fulltext_shown_js)
+        # Each figure's original, the resizer's lazy address taken back to it.
+        self.assertIs(FrontiersForYoungMindsAdapter.fulltext_images_js, frontiers.YOUNG_MINDS_FULLTEXT_IMAGES_JS)
+        for part in ("querySelectorAll('figure')", "data-src", r"\/api\/ipx\/", "new URL(original(value), location.href)"):
+            self.assertIn(part, FrontiersForYoungMindsAdapter.fulltext_images_js)
+        self.assertIsNone(FrontiersForYoungMindsAdapter.fulltext_prepare_js)  # no formulas
+
     def test_mdpi_reads_its_article_and_each_figures_full_size_image(self):
         from paper_search_school.adapters import adapter_class
         from paper_search_school.adapters import mdpi
@@ -906,12 +1081,17 @@ class AdapterRuleTests(unittest.TestCase):
             self.assertIn(part, adapter.fulltext_images_js)
         # The shared script keeps the formulas' MathML when MathJax answers; PaperSearch reads the payload otherwise.
         self.assertIs(adapter.fulltext_prepare_js, fulltext_page.MATHJAX_SOURCES_JS)
-        # Read at the address with a query: the bare one can serve the abstract alone on a repeat visit.
+        # Read at the address with a query of the read's own: an address MDPI has answered with the
+        # abstract alone keeps giving it, the bare one on a repeat visit (2026-11-18) and the one with
+        # its update-check query too (16 of 80 in the sweep, 2026-11-22).
         page_url = adapter.fulltext_page_url
-        self.assertEqual(page_url(None, "10.3390/en19215291", "https://www.mdpi.com/1996-1073/19/21/5291"),
-                         "https://www.mdpi.com/1996-1073/19/21/5291?type=check_update&version=1")
-        self.assertEqual(page_url(None, "10.3390/jcm14217740", "https://www.mdpi.com/2077-0383/14/21/7740/#sec1"),
-                         "https://www.mdpi.com/2077-0383/14/21/7740/?type=check_update&version=1")
+        with mock.patch.object(mdpi.time, "time_ns", side_effect=[1795008040123_000_000, 1795008070456_000_000]):
+            first = page_url(None, "10.3390/s25226876", "https://www.mdpi.com/1424-8220/25/22/6876")
+            again = page_url(None, "10.3390/s25226876", "https://www.mdpi.com/1424-8220/25/22/6876")
+        self.assertEqual(first, "https://www.mdpi.com/1424-8220/25/22/6876?type=check_update&version=1&t=1795008040123")
+        self.assertEqual(again, "https://www.mdpi.com/1424-8220/25/22/6876?type=check_update&version=1&t=1795008070456")
+        self.assertRegex(page_url(None, "10.3390/jcm14217740", "https://www.mdpi.com/2077-0383/14/21/7740/#sec1"),
+                         r"^https://www\.mdpi\.com/2077-0383/14/21/7740/\?type=check_update&version=1&t=\d{13}$")
         for other in ("https://www.mdpi.com/1996-1073/19/21/5291?type=check_update&version=1",
                       "https://www.mdpi.com/1996-1073/19/21/5291/pdf", "https://www.mdpi.com/journal/energies",
                       "http://www.mdpi.com/1996-1073/19/21/5291", "https://evil.example/1996-1073/19/21/5291", ""):
@@ -1001,6 +1181,57 @@ class DoveFulltextPageBrowserTests(unittest.TestCase):
         self.assertEqual(self.evaluate(empty), (False, []))
 
 
+# A J-STAGE "Full Text HTML" page as the server sends it, with invented text: the left column of
+# links, the abstract and two sections in the wrap, a figure and a table, the references, then the
+# "Figures" panel (the figures again) the page's script fills in.
+JSTAGE_PAGE = """<!DOCTYPE html><html><head><meta name="citation_doi" content="10.9999/abc.25-00001"></head><body>
+<div class="fullHtmlNonDisp"><div class="clearfix container"><div id="sticky-sidebar"><nav><a href="#sec01">Introduction</a></nav></div>
+<div class="non-sticky-content" id="article-overiew-abstract-wrap">
+<div id="abstract"><div class="section-title-18">Abstract</div><p class="global-para-14 fj-sec-p"><b>Background:</b> Knees swell.</p></div>
+<div id="sec01"><p class="global-para-14"></p><div class="section-title-18">Introduction</div>
+<p class="global-para-14 fj-sec-p">Swollen knees trouble many rats in the cold season, and the bark of the red magnolia tree is an
+ old remedy for them, though few studies have asked how it might work and fewer have measured it at all [<a href="#r01">1</a>].</p></div>
+<div id="sec02"><p class="global-para-14"></p><div class="section-title-18">Results</div>
+<span class="global-bold-txt font-size14 span-block bottom-margin-1" id="sec0201">Swelling</span>
+<p class="global-para-14 fj-sec-p">Swelling fell in every rat given the bark, and fell most in those given it every morning for a month.</p>
+<div class="global-image-holder overview-landing-limg" id="fig01"><img src="./Graphics/abc-fig01.jpg"><div class="figures-tables-support-txt">Fig. 1 <p>The knee.</p></div><span class="fa fa-search-plus img-zoom-icon"></span></div>
+<div style="position:relative;" id="tbl01">Table 1 Doses<p></p><div class="responsive-table-wrap"><table class="table"><tbody><tr><td>Bark</td><td>1 g</td></tr></tbody></table></div><p>Note: per kilogram.</p></div>
+</div>
+<div id="article-overiew-references-wrap"><div class="section-title-18">References</div><ul><li id="r01"><span class="reference-num-sequence">1.&nbsp;&nbsp;</span><span class="reference-num-txt">Smith J. Bark. 2020.</span></li></ul></div>
+<div id="figures-tables-wrap"><a href="https://www.jstage.jst.go.jp/article/abc/31/0/31_25-00001/_figures/abc-fig01.jpg"><img class="layout-media-figure" src="https://www.jstage.jst.go.jp/article/abc/31/0/31_25-00001/_figures/abc-fig01.jpg"></a></div>
+</div></div></div></body></html>"""
+
+
+@unittest.skipUnless(__import__("os").environ.get("SCHOOL_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
+class JStageFulltextPageBrowserTests(unittest.TestCase):
+    URL = "https://www.jstage.jst.go.jp/article/abc/31/0/31_25-00001/_html/-char/en"
+
+    def evaluate(self, html):
+        from patchright.sync_api import sync_playwright
+        from paper_search_school.adapters.platforms.jstage import FULLTEXT_IMAGES_JS, FULLTEXT_SHOWN_JS
+
+        with sync_playwright() as driver:
+            browser = driver.chromium.launch(channel="chrome", headless=True)
+            try:
+                context = browser.new_context()
+                context.route("**/*", lambda route: route.fulfill(status=200, content_type="text/html", body=html))
+                page = context.new_page()
+                page.goto(self.URL)
+                return page.evaluate(FULLTEXT_SHOWN_JS), page.evaluate(FULLTEXT_IMAGES_JS)
+            finally:
+                browser.close()
+
+    def test_the_sections_show_and_each_figure_is_its_image_beside_the_page(self):
+        shown, images = self.evaluate(JSTAGE_PAGE)
+        self.assertTrue(shown)
+        # The figure in the text, resolved against the page; not the "Figures" panel's copy.
+        self.assertEqual(images, ["https://www.jstage.jst.go.jp/article/abc/31/0/31_25-00001/_html/-char/Graphics/abc-fig01.jpg"])
+
+    def test_the_abstract_page_is_not_shown(self):
+        start, end = JSTAGE_PAGE.index('<div id="sec01">'), JSTAGE_PAGE.index('<div id="article-overiew-references-wrap">')
+        self.assertEqual(self.evaluate(JSTAGE_PAGE[:start] + JSTAGE_PAGE[end:]), (False, []))
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -1041,6 +1272,35 @@ FRONTIERS_PAGE = """<html><head><meta name="citation_doi" content="10.3389/fexr.
 
 
 @unittest.skipUnless(os.environ.get("SCHOOL_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
+class AtyponCurrentImagesBrowserTests(unittest.TestCase):
+    """Atypon's current template's figure images (Chrome, headless): a table's figure that holds the
+    table itself gives none (NEJM, 2026-11-25: its picture was counted as a figure left out)."""
+
+    def test_a_tables_picture_beside_its_table_is_not_a_figure(self):
+        from patchright.sync_api import sync_playwright
+        from paper_search_school.adapters.platforms.atypon import CURRENT_TEMPLATE_FULLTEXT_IMAGES_JS
+
+        base = "https://www.nejm.org/cms/10.1056/NEJMoa0000001/asset/x/assets/images"
+        html = (f'<section id="bodymatter"><div class="figure-wrap"><figure class="graphic"><img src="{base}/medium/f1.jpg"></figure></div>'
+                f'<div class="figure-wrap"><figure class="table"><div class="graphic-wrap"><img src="{base}/medium/t1.jpg"></div>'
+                '<table><tr><td>Age</td><td>42</td></tr></table></figure></div>'
+                f'<div class="figure-wrap"><figure class="table"><div class="graphic-wrap"><img src="{base}/medium/t2.jpg"></div></figure></div>'
+                '</section>')
+        with sync_playwright() as driver:
+            browser = driver.chromium.launch(channel="chrome", headless=True)
+            try:
+                context = browser.new_context()
+                context.route("**/*", lambda route: route.fulfill(status=200, content_type="text/html", body=html))
+                page = context.new_page()
+                page.goto("https://www.nejm.org/doi/full/10.1056/NEJMoa0000001")
+                images = page.evaluate(CURRENT_TEMPLATE_FULLTEXT_IMAGES_JS)
+            finally:
+                browser.close()
+        # The figure, and a table given only as a picture; not the picture beside a table.
+        self.assertEqual(images, [f"{base}/large/f1.jpg", f"{base}/large/t2.jpg"])
+
+
+@unittest.skipUnless(os.environ.get("SCHOOL_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
 class FrontiersPageScriptTests(unittest.TestCase):
     """The Frontiers adapter's page scripts on a page as the browser has it (Chrome, headless)."""
 
@@ -1078,3 +1338,113 @@ class FrontiersPageScriptTests(unittest.TestCase):
         [images] = self.evaluate(FRONTIERS_PAGE.replace("{body}", FRONTIERS_BODY), frontiers.FULLTEXT_IMAGES_JS)
         # Not the authors' photos, the left column's thumbnails or the card's image; a table in HTML has none.
         self.assertEqual(images, [FRONTIERS_ORIGINAL.format(name) for name in ("g001", "g002", "g003", "t002")])
+
+
+# A Frontiers for Young Minds article page (kids.frontiersin.org, 2026-11-23): the people's photos and the main
+# illustration before div.fulltext-content; in it the abstract box, the text, two lazy figures behind the resizer
+# (one already loaded), an exercise box, the references.
+YOUNG_MINDS_ORIGINAL = "https://www.frontiersin.org/files/Articles/1600001/frym-14-1600001-HTML/image_m/{}"
+YOUNG_MINDS_RESIZED = "https://www.frontiersin.org/api/ipx/w=1200&f=webp/" + YOUNG_MINDS_ORIGINAL
+YOUNG_MINDS_PAGE = """<html><head><meta property="og:url" content="https://kids.frontiersin.org/articles/10.3389/frym.2026.1600001"></head><body>
+<main><article><div class="fulltext">
+<div class="size size-large"><h1 class="heading fulltext-heading">Why Red Magnolias Bloom Early</h1>
+  <aside><div class="fulltext-metadata"><a class="fulltext-person"><div class="image-container"><img class="image" src="{author}"></div>
+  <span class="fulltext-person-name">Alice Author</span></a></div></aside></div>
+<div class="size size-large"><div class="image-container fulltext-image-container"><img class="image" src="{main}"></div></div>
+<div class="size size-small fulltext-content">
+<div class="abstract"><h4>Abstract</h4><p>{abstract}</p></div>
+<h2 class="font-size-4 text-blue">When Do Trees Bloom?</h2>{{body}}
+<figure id="figure-1"><div class="figure-container"><img src="" class="lazy" data-src="{figure1}"></div>
+  <figcaption><ul><li class="figure-title">Figure 1 - A red magnolia.</li></ul></figcaption></figure>
+<figure id="figure-2"><div class="figure-container"><img src="{figure2}" class="lazy-loaded-image"></div>
+  <figcaption><ul><li class="figure-title">Figure 2 - Bloom dates.</li></ul></figcaption></figure>
+<div class="full-text-green-box"><h3>Box 1 - Exercise 1:</h3><p>Count the petals.</p></div>
+<section id="full-text-references"><h6>References</h6><p id="ref1">[1] {reference}</p></section>
+</div></div></article></main></body></html>""".format(
+    author=YOUNG_MINDS_ORIGINAL.format("auth-alice.jpg"), main=YOUNG_MINDS_RESIZED.format("main.jpg"),
+    figure1=YOUNG_MINDS_RESIZED.format("figure-1.jpg"), figure2=YOUNG_MINDS_RESIZED.format("figure-2.jpg"),
+    abstract="Red magnolias bloom earlier every spring. " * 20, reference="Smith J. Blooms. " * 40)
+YOUNG_MINDS_BODY = "<p>" + "Every tree keeps its own calendar, and the red magnolia opens its flowers before its leaves. " * 8 + "</p>"
+
+
+@unittest.skipUnless(os.environ.get("SCHOOL_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
+class FrontiersForYoungMindsPageScriptTests(unittest.TestCase):
+    """The Frontiers for Young Minds adapter's page scripts on its page as the browser has it (Chrome, headless)."""
+
+    evaluate = FrontiersPageScriptTests.evaluate
+
+    def test_the_article_shows_its_full_text_where_frontiers_scripts_saw_none(self):
+        from paper_search_school.adapters import frontiers
+
+        shown, frontiers_shown = self.evaluate(YOUNG_MINDS_PAGE.replace("{body}", YOUNG_MINDS_BODY),
+                                               frontiers.YOUNG_MINDS_FULLTEXT_SHOWN_JS, frontiers.FULLTEXT_SHOWN_JS)
+        self.assertTrue(shown)
+        # 10.3389/frym.2025.1642540 and 1605444: "showed no full text when the PDF was taken" (2026-11-22).
+        self.assertFalse(frontiers_shown)
+
+    def test_a_page_with_only_its_abstract_and_references_shows_no_full_text(self):
+        from paper_search_school.adapters import frontiers
+
+        self.assertEqual(self.evaluate(YOUNG_MINDS_PAGE.replace("{body}", ""), frontiers.YOUNG_MINDS_FULLTEXT_SHOWN_JS), [False])
+
+    def test_each_figures_original_image(self):
+        from paper_search_school.adapters import frontiers
+
+        [images] = self.evaluate(YOUNG_MINDS_PAGE.replace("{body}", YOUNG_MINDS_BODY), frontiers.YOUNG_MINDS_FULLTEXT_IMAGES_JS)
+        # Not the author's photo or the main illustration; the lazy address and the loaded one alike.
+        self.assertEqual(images, [YOUNG_MINDS_ORIGINAL.format("figure-1.jpg"), YOUNG_MINDS_ORIGINAL.format("figure-2.jpg")])
+
+
+# The AMA Journal of Ethics' pages (journalofethics.ama-assn.org, 2026-11-23), read with the general rules
+# (site:ama-assn.org: JAMA's adapter is for jamanetwork.com): a visual article whose figures are <img srcset>
+# in <figure>, and a comic whose text is a few lines beside its abstract, both with the page's footer of tags,
+# biography and related articles inside <main>.
+AMA_PAGE = """<html><head><meta name="citation_doi" content="10.1001/amajethics.2026.250."></head><body>
+<header><nav><a href="/issues">Issues</a></nav></header>
+<main id="main-content" role="main"><article class="vc-article"><header class="vc-hero-ethics"><div class="vc-hero-ethics__image">
+<img src="/sites/joedb/files/2026-02/Hero.jpg" alt=""></div><h1 class="vc-hero-ethics__title">What Does the Red Magnolia Mean?</h1></header>
+<div class="c-field__content"><div class="c-paragraph"><h2 class="layout__heading">Abstract</h2><div class="vc-text-block"><div class="lede"><p>{abstract}</p></div></div></div>
+<div class="c-paragraph"><div class="vc-featured-media"><figcaption class="vc-featured-media__caption"><p><strong>Figure 2. </strong>A grove</p></figcaption>
+<figure class="vc-featured-media__figure"><img srcset='/sites/joedb/files/2026-02/Magnolia%20Grove.jpg' alt='Grove'></figure></div>
+<div class="vc-text-block">{{body}}</div></div></div>
+<div class="vc-article-bottom"><footer class="joe__article-footer"><h3>Citation</h3><div>AMA J Ethics. 2026;28(3):E250-262.</div>
+<h3>Conflict of Interest Disclosure</h3><p>Contributor disclosed no conflicts of interest relevant to the content.</p></footer>
+<aside class="joe__author-information"><p>{bio}</p></aside>
+<section class="joe__article-issue-footer"><article class="joe__article-teaser"><picture><img src="/sites/joedb/files/styles/teaser/x.jpg.webp"></picture>
+<h2>Bark and Bias</h2></article></section></div>
+</article></main></body></html>""".format(abstract="Painters have long used the red magnolia as a sign of patience. " * 4,
+                                          bio="Alice Author is the editor of an example journal and draws in her spare time. " * 4)
+AMA_ARTICLE_BODY = "<p>" + "Groves of red magnolias were planted beside hospitals in the belief that patients would heal sooner. " * 30 + "</p>"
+AMA_COMIC_BODY = "<p>Numbers in a record do not by themselves tell a patient what matters; clinicians can say which do.</p>"
+
+
+@unittest.skipUnless(os.environ.get("SCHOOL_LOCAL_BROWSER_TEST") == "1", "local browser fixture opt-in")
+class AmaJournalOfEthicsGeneralRuleTests(unittest.TestCase):
+    """The general rules on the AMA Journal of Ethics' pages (Chrome, headless)."""
+
+    def evaluate(self, html, *scripts):
+        from patchright.sync_api import sync_playwright
+
+        with sync_playwright() as driver:
+            browser = driver.chromium.launch(channel="chrome", headless=True)
+            try:
+                context = browser.new_context()
+                context.route("**/*", lambda route: route.fulfill(status=200, content_type="text/html", body=html))
+                page = context.new_page()
+                page.goto("https://journalofethics.ama-assn.org/article/what-does-red-magnolia-mean/2026-03")
+                return [page.evaluate(script) for script in scripts]
+            finally:
+                browser.close()
+
+    def test_an_article_shows_its_full_text_and_its_figures(self):
+        shown, images, named = self.evaluate(AMA_PAGE.replace("{body}", AMA_ARTICLE_BODY), fulltext_page._SAMPLE_SHOWN_JS,
+                                             fulltext_page._SAMPLE_IMAGES_JS, fulltext_page._PAGE_DOI_JS)
+        self.assertTrue(shown)
+        # The figure's srcset, not the hero or a related article's teaser.
+        self.assertEqual(images, ["https://journalofethics.ama-assn.org/sites/joedb/files/2026-02/Magnolia%20Grove.jpg"])
+        # Its DOI with a full stop after it is this article's (10.1001/amajethics.2025.884, 2026-11-22).
+        self.assertTrue(fulltext_page._names_doi(named, "10.1001/amajethics.2026.250"))
+
+    def test_a_comic_with_a_few_lines_shows_no_full_text(self):
+        # 10.1001/amajethics.2025.821 ends as 文章页没有正文, not 原因不明 (2026-11-23).
+        self.assertEqual(self.evaluate(AMA_PAGE.replace("{body}", AMA_COMIC_BODY), fulltext_page._SAMPLE_SHOWN_JS), [False])

@@ -6,6 +6,8 @@ declare const STAGES: {
     readonly waiting_login: "正在等待机构登录，请在下载浏览器中完成。";
     readonly waiting_verification: "正在等待人工安全验证，请在下载浏览器中完成。";
     readonly checking_access: "正在检查当前页面的全文访问状态。";
+    readonly unlocking: "正在用 Bright Data 取回正文。";
+    readonly unlocking_pdf: "正在用 Bright Data 取回 PDF。";
     readonly fetching_pdf: "正在获取 PDF。";
     readonly pdf_captured: "已捕获 PDF，正在保存。";
     readonly saved_pending_verification: "PDF 已保存，正在等待产品核验论文身份。";
