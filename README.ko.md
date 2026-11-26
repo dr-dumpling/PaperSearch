@@ -208,8 +208,9 @@ paper-search school status --format text   # 설치됐는지 확인
 | 본문 구절 검색 | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api)([안내](https://docs.qq.com/aio/DTW9RdFVHc2hJUmpx), 중국어) |
 | 무료 전문 찾기 | `PAPER_SEARCH_UNPAYWALL_EMAIL` | 발급 불필요([Unpaywall 설명](https://unpaywall.org/products/api)) |
 | 논문 검색, DOI 실재 확인 | `CROSSREF_MAILTO` | 발급 불필요([Crossref 설명](https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/)) |
+| 학교 구독 다운로드 중 이미지 인증 자동 해결 | `YESCAPTCHA_KEY` | [YesCaptcha](https://yescaptcha.com/i/E9n1T5/)([안내](https://docs.qq.com/aio/DTUhYbkVjektKeHdV), 중국어) |
 
-개발 버전에서는 설정의 ‘API key → YesCaptcha’에 ClientKey를 입력하고, ‘테스트’로 잔액과 키를 확인한 뒤 저장합니다. 지원하는 이미지 인증은 문제 이미지와 질문만 전송하며, 답 입력과 클릭은 로컬 브라우저에서 수행합니다. 학교 로그인 페이지는 전송하지 않습니다. [YesCaptcha 가입](https://yescaptcha.com/)
+입력한 뒤 설정의 ‘테스트’로 남은 포인트를 확인할 수 있습니다. YesCaptcha에는 인증 문제 이미지와 질문만 전송하며(AWS WAF 격자, 문자 인증, reCAPTCHA·hCaptcha 이미지 문제), 답 입력과 클릭은 로컬 브라우저에서 수행합니다. 학교 로그인 페이지는 전송하지 않습니다.
 
 내장형 Turnstile은 로컬 인증이 완료되지 않으면 공개 사이트 출처와 위젯 매개변수만 보내 서비스로 이어서 처리합니다. 전체 페이지 Cloudflare 검사는 로컬에서 처리합니다.
 

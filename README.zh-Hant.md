@@ -208,8 +208,9 @@ paper-search school status --format text   # 查看是否裝好
 | 搜正文片段 | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api)（[申請教程](https://docs.qq.com/aio/DTW9RdFVHc2hJUmpx)） |
 | 下載時找免費全文 | `PAPER_SEARCH_UNPAYWALL_EMAIL` | 不用申請（[Unpaywall 說明](https://unpaywall.org/products/api)） |
 | 檢索論文、核對 DOI 是否真實 | `CROSSREF_MAILTO` | 不用申請（[Crossref 說明](https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/)） |
+| 學校訂閱下載時自動辨識圖片驗證碼 | `YESCAPTCHA_KEY` | [YesCaptcha](https://yescaptcha.com/i/E9n1T5/)（[申請教程](https://docs.qq.com/aio/DTUhYbkVjektKeHdV)） |
 
-開發版可在設定的「API key → YesCaptcha」填寫 ClientKey，按「測試」查詢餘額、確認金鑰後儲存。已支援的圖片驗證只傳送題目圖片與題目，答案回到本機填寫或點選；學校登入頁不會傳送給辨識服務。[註冊 YesCaptcha](https://yescaptcha.com/)
+YesCaptcha 填好後，可在設定裡按「測試」查看剩餘點數。它只收到驗證的題目圖片與題目（AWS WAF 九宮格、字元驗證碼、reCAPTCHA 和 hCaptcha 的圖片題），答案回到本機填寫或點選；學校登入頁不會傳送給辨識服務。
 
 嵌入式 Turnstile 支援本機驗證未完成後的服務接續，只傳送公開網站根網址和元件參數；整頁 Cloudflare 保留本機處理。
 

@@ -208,8 +208,9 @@ Keys fall into four groups by what they are for. Get the key you need (an email 
 | Search full-text snippets | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api) ([guide](https://docs.qq.com/aio/DTW9RdFVHc2hJUmpx), in Chinese) |
 | Find free full texts when downloading | `PAPER_SEARCH_UNPAYWALL_EMAIL` | No sign-up ([Unpaywall: about](https://unpaywall.org/products/api)) |
 | Search papers, check that DOIs are real | `CROSSREF_MAILTO` | No sign-up ([Crossref: about](https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/)) |
+| Solve picture verifications during school subscription downloads | `YESCAPTCHA_KEY` | [YesCaptcha](https://yescaptcha.com/i/E9n1T5/) ([guide](https://docs.qq.com/aio/DTUhYbkVjektKeHdV), in Chinese) |
 
-In the development build, open Settings → API key → YesCaptcha, enter your ClientKey, and use Test to check the balance before saving. Supported image challenges send only the puzzle images and question; answers are entered or clicked in the local browser. School sign-in pages are excluded. [Register with YesCaptcha](https://yescaptcha.com/).
+Once it is entered, Test in Settings shows the points left. YesCaptcha receives only the challenge images and question (AWS WAF grids, character codes, reCAPTCHA and hCaptcha image challenges); answers are entered or clicked in the local browser. School sign-in pages are never sent.
 
 Embedded Turnstile can continue through the service after local verification fails, sending only the public site origin and widget parameters; full-page Cloudflare checks remain local.
 

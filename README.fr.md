@@ -208,8 +208,9 @@ Elles se répartissent en quatre groupes selon leur usage : demandez les clés d
 | Rechercher des extraits de texte | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api) ([guide](https://docs.qq.com/aio/DTW9RdFVHc2hJUmpx), en chinois) |
 | Trouver le texte gratuit lors du téléchargement | `PAPER_SEARCH_UNPAYWALL_EMAIL` | Sans inscription ([à propos d'Unpaywall](https://unpaywall.org/products/api)) |
 | Chercher des articles, vérifier que les DOI existent | `CROSSREF_MAILTO` | Sans inscription ([à propos de Crossref](https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/)) |
+| Résoudre les vérifications en images pendant le téléchargement via l'établissement | `YESCAPTCHA_KEY` | [YesCaptcha](https://yescaptcha.com/i/E9n1T5/) ([guide](https://docs.qq.com/aio/DTUhYbkVjektKeHdV), en chinois) |
 
-Dans la version de développement, ouvrez « Réglages → API key → YesCaptcha », saisissez votre ClientKey, puis utilisez « Tester » pour vérifier le solde avant d’enregistrer. Pour les défis d’images pris en charge, seules les images et la consigne sont envoyées ; les réponses sont saisies ou sélectionnées dans le navigateur local. Les pages de connexion universitaire sont exclues. [Créer un compte YesCaptcha](https://yescaptcha.com/).
+Une fois la clé saisie, « Tester » dans les Réglages affiche les points restants. YesCaptcha ne reçoit que les images et la consigne du défi (grilles AWS WAF, codes de caractères, défis d’images reCAPTCHA et hCaptcha) ; les réponses sont saisies ou sélectionnées dans le navigateur local. Les pages de connexion universitaire ne sont jamais envoyées.
 
 Turnstile intégré peut passer au service si la vérification locale échoue, en envoyant uniquement l’origine publique du site et les paramètres du widget ; les vérifications Cloudflare pleine page restent locales.
 

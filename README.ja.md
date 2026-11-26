@@ -208,8 +208,9 @@ paper-search school status --format text   # インストールできたか確�
 | 本文スニペット検索 | `SEMANTIC_SCHOLAR_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api)（[取得ガイド](https://docs.qq.com/aio/DTW9RdFVHc2hJUmpx)、中国語） |
 | ダウンロード時に無料の全文を探す | `PAPER_SEARCH_UNPAYWALL_EMAIL` | 取得不要（[Unpaywall の説明](https://unpaywall.org/products/api)） |
 | 論文検索と DOI の実在確認 | `CROSSREF_MAILTO` | 取得不要（[Crossref の説明](https://www.crossref.org/documentation/retrieve-metadata/rest-api/tips-for-using-the-crossref-rest-api/)） |
+| 学校購読ダウンロード中の画像認証を自動で解く | `YESCAPTCHA_KEY` | [YesCaptcha](https://yescaptcha.com/i/E9n1T5/)（[取得ガイド](https://docs.qq.com/aio/DTUhYbkVjektKeHdV)、中国語） |
 
-開発版では「設定 → API key → YesCaptcha」に ClientKey を入力し、「テスト」で残高とキーを確認して保存します。対応する画像認証では問題の画像と質問だけを送信し、回答の入力やクリックはローカルブラウザーで行います。大学のログインページは送信しません。[YesCaptcha に登録](https://yescaptcha.com/)
+入力後、設定の「テスト」で残りポイントを確認できます。YesCaptcha に送るのは認証の問題画像と質問だけです（AWS WAF のグリッド、文字認証、reCAPTCHA と hCaptcha の画像問題）。回答の入力やクリックはローカルブラウザーで行います。大学のログインページは送信しません。
 
 埋め込み型Turnstileはローカル認証が完了しない場合にサービスへ引き継ぎ、公開サイトのオリジンとウィジェットのパラメーターだけを送信します。ページ全体のCloudflare認証はローカルで処理します。
 
