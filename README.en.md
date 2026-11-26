@@ -10,9 +10,9 @@ One sentence and your AI searches, verifies and downloads full texts and supplem
 <p align="center"><a href="README.md">简体中文</a> | <a href="README.zh-Hant.md">繁體中文</a> | English | <a href="README.ja.md">日本語</a> | <a href="README.ko.md">한국어</a> | <a href="README.fr.md">Français</a></p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch?style=flat-square" alt="npm"></a>
-  <a href="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml"><img src="https://img.shields.io/github/actions/workflow/status/dr-dumpling/PaperSearch/publish.yml?style=flat-square&amp;label=publish" alt="Publish workflow status"></a>
-  <a href="https://nodejs.org/"><img src="https://img.shields.io/node/v/papersearch?style=flat-square" alt="Required Node.js version"></a>
+  <a href="https://www.npmjs.com/package/papersearch"><img src="https://badgen.net/npm/v/papersearch?style=flat" alt="npm"></a>
+  <a href="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml"><img src="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml/badge.svg" alt="Publish workflow status"></a>
+  <a href="https://nodejs.org/"><img src="https://badgen.net/npm/node/papersearch?style=flat" alt="Required Node.js version"></a>
   <a href="#1-school-subscription-downloads"><img src="https://img.shields.io/badge/school%20login-eduGAIN%20%2B%20OpenAthens-7284CE?style=flat-square" alt="School subscription downloads: academic identity federations in eduGAIN, and OpenAthens"></a>
   <a href="docs/guide.en.md#agent-skill"><img src="https://img.shields.io/badge/Agent%20Skill-bundled-D97757?style=flat-square" alt="Bundled Agent Skill"></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-555555?style=flat-square" alt="Runs on macOS and Windows"></a>

@@ -10,9 +10,9 @@
 <p align="center">简体中文 | <a href="README.zh-Hant.md">繁體中文</a> | <a href="README.en.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.ko.md">한국어</a> | <a href="README.fr.md">Français</a></p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch?style=flat-square" alt="npm"></a>
-  <a href="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml"><img src="https://img.shields.io/github/actions/workflow/status/dr-dumpling/PaperSearch/publish.yml?style=flat-square&amp;label=publish" alt="发布工作流状态"></a>
-  <a href="https://nodejs.org/"><img src="https://img.shields.io/node/v/papersearch?style=flat-square" alt="Node.js 版本要求"></a>
+  <a href="https://www.npmjs.com/package/papersearch"><img src="https://badgen.net/npm/v/papersearch?style=flat" alt="npm"></a>
+  <a href="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml"><img src="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml/badge.svg" alt="发布工作流状态"></a>
+  <a href="https://nodejs.org/"><img src="https://badgen.net/npm/node/papersearch?style=flat" alt="Node.js 版本要求"></a>
   <a href="#1-学校订阅下载"><img src="https://img.shields.io/badge/school%20login-eduGAIN%20%2B%20OpenAthens-7284CE?style=flat-square" alt="学校订阅下载：eduGAIN 中的学术身份联盟和 OpenAthens"></a>
   <a href="docs/guide.zh.md#agent-skill"><img src="https://img.shields.io/badge/Agent%20Skill-bundled-D97757?style=flat-square" alt="随包 Agent Skill"></a>
   <a href="#快速开始"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-555555?style=flat-square" alt="支持 macOS 和 Windows"></a>

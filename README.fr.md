@@ -10,9 +10,9 @@ Une phrase suffit : l'IA cherche et vérifie la littérature, télécharge les t
 <p align="center"><a href="README.md">简体中文</a> | <a href="README.zh-Hant.md">繁體中文</a> | <a href="README.en.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.ko.md">한국어</a> | Français</p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/papersearch"><img src="https://img.shields.io/npm/v/papersearch?style=flat-square" alt="npm"></a>
-  <a href="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml"><img src="https://img.shields.io/github/actions/workflow/status/dr-dumpling/PaperSearch/publish.yml?style=flat-square&amp;label=publish" alt="État du workflow de publication"></a>
-  <a href="https://nodejs.org/"><img src="https://img.shields.io/node/v/papersearch?style=flat-square" alt="Version de Node.js requise"></a>
+  <a href="https://www.npmjs.com/package/papersearch"><img src="https://badgen.net/npm/v/papersearch?style=flat" alt="npm"></a>
+  <a href="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml"><img src="https://github.com/dr-dumpling/PaperSearch/actions/workflows/publish.yml/badge.svg" alt="État du workflow de publication"></a>
+  <a href="https://nodejs.org/"><img src="https://badgen.net/npm/node/papersearch?style=flat" alt="Version de Node.js requise"></a>
   <a href="#1-téléchargement-via-létablissement"><img src="https://img.shields.io/badge/school%20login-eduGAIN%20%2B%20OpenAthens-7284CE?style=flat-square" alt="Téléchargement via l'établissement : fédérations d'identité académiques d'eduGAIN et OpenAthens"></a>
   <a href="docs/guide.fr.md#agent-skill"><img src="https://img.shields.io/badge/Agent%20Skill-bundled-D97757?style=flat-square" alt="Agent Skill inclus dans le paquet"></a>
   <a href="#démarrage-rapide"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-555555?style=flat-square" alt="Fonctionne sous macOS et Windows"></a>
