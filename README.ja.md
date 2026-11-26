@@ -260,7 +260,6 @@ paper-search school status --format text   # インストールできたか確�
 
 - [LINUX DO コミュニティ](https://linux.do/) に感謝します：コマンド + Skill という方針とワークフローの改善は、コミュニティでの交流とオープンな共有から生まれました。
 - [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp)：本プロジェクトはその考え方を参考にし、独立したコマンドラインツールに作り直しました。
-- [Dianel555/paper-search-mcp-nodejs](https://github.com/Dianel555/paper-search-mcp-nodejs)（MIT）：コマンドライン版は当初、その Node.js 実装を改変して作りました。
 - [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf)（MIT）：機関ダウンロードのバックエンド（`school/`）は、そのアーキテクチャ（CARSI などのフェデレーションへのログイン、出版社サイトの取得、セッションの再利用、PDF の取得）を参考にしています。
 
 ## ライセンス

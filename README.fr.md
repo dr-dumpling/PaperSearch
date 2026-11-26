@@ -260,7 +260,6 @@ Le plan complet est dans la [feuille de route](docs/ROADMAP.zh.md) (en chinois),
 
 - Merci à la [communauté LINUX DO](https://linux.do/) : l'approche commande + Skill et les améliorations du flux de travail viennent des échanges et du partage open source de la communauté.
 - [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp) : ce projet reprend ses idées, transformées en un outil en ligne de commande autonome.
-- [Dianel555/paper-search-mcp-nodejs](https://github.com/Dianel555/paper-search-mcp-nodejs) (MIT) : la version en ligne de commande a d'abord été adaptée de son implémentation Node.js.
 - [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf) (MIT) : le backend de téléchargement institutionnel (`school/`) s'inspire de son architecture (connexion par fédérations comme CARSI, récupération sur les sites d'éditeurs, réutilisation des sessions, capture des PDF).
 
 ## Licence

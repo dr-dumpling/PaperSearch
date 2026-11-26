@@ -260,7 +260,6 @@ paper-search school status --format text   # 설치됐는지 확인
 
 - [LINUX DO 커뮤니티](https://linux.do/)에 감사드립니다. 명령 + Skill 방식과 워크플로 개선은 커뮤니티의 교류와 오픈소스 공유에서 나왔습니다.
 - [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp): 이 프로젝트는 그 아이디어를 참고해 독립된 명령줄 도구로 바꿨습니다.
-- [Dianel555/paper-search-mcp-nodejs](https://github.com/Dianel555/paper-search-mcp-nodejs)(MIT): 명령줄 버전은 처음에 이 프로젝트의 Node.js 구현을 바탕으로 만들었습니다.
 - [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf)(MIT): 기관 다운로드 백엔드(`school/`)는 이 프로젝트의 구조(CARSI 등 연합 로그인, 출판사 사이트 수집, 세션 재사용, PDF 캡처)를 참고했습니다.
 
 ## 라이선스

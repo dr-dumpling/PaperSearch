@@ -260,7 +260,6 @@ paper-search school status --format text   # 查看是否裝好
 
 - 感謝 [LINUX DO 社區](https://linux.do/)：命令 + Skill 的路線和工作流改進來自社區交流與開源分享。
 - [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp)：本項目參考了它的思路，並改成獨立的命令行工具。
-- [Dianel555/paper-search-mcp-nodejs](https://github.com/Dianel555/paper-search-mcp-nodejs)（MIT）：命令行版最初由它的 Node.js 實現改編而來。
 - [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf)（MIT）：機構下載後端（`school/`）借鑑了它的架構（CARSI 等聯盟登入、出版社網站抓取、會話復用、PDF 捕獲）。
 
 ## License

@@ -260,7 +260,6 @@ The full plan is in the [roadmap](docs/ROADMAP.zh.md) (Chinese); how it works in
 
 - Thanks to the [LINUX DO community](https://linux.do/): the command-plus-Skill approach and workflow improvements came from discussion and open sharing there.
 - [openags/paper-search-mcp](https://github.com/openags/paper-search-mcp): the project draws on its ideas, reworked into a standalone command.
-- [Dianel555/paper-search-mcp-nodejs](https://github.com/Dianel555/paper-search-mcp-nodejs) (MIT): the command started as an adaptation of its Node.js implementation.
 - [Rimagination/scansci-pdf](https://github.com/Rimagination/scansci-pdf) (MIT): the institutional download backend (`school/`) draws on its architecture (CARSI and other federation sign-in, publisher site capture, session reuse, PDF capture).
 
 ## License
